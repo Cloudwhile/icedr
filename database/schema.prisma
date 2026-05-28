@@ -1,0 +1,12 @@
+// ICEDR keeps this file as the recommended database schema entry point.
+// Runtime table creation is still handled by Nest repositories.
+// Add Prisma models here only after introducing Prisma migrations to the project.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

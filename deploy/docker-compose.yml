@@ -1,0 +1,132 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: icedr-postgres
+    environment:
+      POSTGRES_DB: icedr
+      POSTGRES_USER: icedr
+      POSTGRES_PASSWORD: icedr
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U icedr -d icedr"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+    volumes:
+      - icedr-postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: icedr-redis
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "6379:6379"
+    volumes:
+      - icedr-redis:/data
+
+  minio:
+    image: minio/minio:RELEASE.2026-04-26T18-56-30Z
+    container_name: icedr-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: icedr
+      MINIO_ROOT_PASSWORD: icedr-secret
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - icedr-minio:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2026-05-21T15-59-27Z
+    container_name: icedr-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 icedr icedr-secret &&
+      mc mb --ignore-existing local/icedr-drive &&
+      mc anonymous set none local/icedr-drive
+      "
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/docker/backend.Dockerfile
+    container_name: icedr-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 13001
+      API_CORS_ORIGIN: http://localhost:13000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_DBNAME: icedr
+      DATABASE_USER: icedr
+      DATABASE_PASSWORD: icedr
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DBNAME: 0
+      REDIS_USER: ""
+      REDIS_PASSWORD: ""
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: icedr-drive
+      S3_ACCESS_KEY_ID: icedr
+      S3_SECRET_ACCESS_KEY: icedr-secret
+      S3_FORCE_PATH_STYLE: "true"
+      LOCAL_STORAGE_ROOT: /workspace/backend/data/local-files
+      PUBLIC_SHARE_BASE_URL: http://localhost:13000/share/s
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:13001/api
+      DEFAULT_WORKSPACE_ACTOR: Workspace User
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13001/api/health | grep -q '\"status\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "13001:13001"
+    volumes:
+      - icedr-api-local-files:/workspace/backend/data/local-files
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:13001/api
+    container_name: icedr-web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:13001/api
+    ports:
+      - "13000:13000"
+
+volumes:
+  icedr-postgres:
+  icedr-redis:
+  icedr-minio:
+  icedr-api-local-files:

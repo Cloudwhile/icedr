@@ -1,0 +1,50 @@
+import type { useTranslations } from "next-intl";
+import { formatFileSize, type Locale } from "@/features/file/model";
+import type { TransferRow } from "./drive-types";
+
+type DriveTranslator = ReturnType<typeof useTranslations>;
+
+export function getTransferMetricLine(row: TransferRow, locale: Locale, t: DriveTranslator) {
+  if (row.status === "completed") return row.totalBytes ? formatFileSize(row.totalBytes, locale) : null;
+  if (row.status === "failed") return null;
+
+  const parts: string[] = [];
+  if (row.speedBytesPerSecond && row.speedBytesPerSecond > 0) {
+    parts.push(t("transfers.speedValue", {
+      speed: formatFileSize(row.speedBytesPerSecond, locale),
+    }));
+  }
+  if (row.remainingSeconds !== undefined && row.remainingSeconds !== null) {
+    parts.push(t("transfers.remainingValue", {
+      time: formatRemainingTime(row.remainingSeconds, locale),
+    }));
+  }
+  return parts.join(" / ") || null;
+}
+
+export function formatRemainingTime(seconds: number, locale: Locale) {
+  const rounded = Math.max(0, Math.ceil(seconds));
+  if (rounded <= 1) return locale === "zh" ? "1 秒内" : "< 1s";
+  if (rounded < 60) return locale === "zh" ? `${rounded} 秒` : `${rounded}s`;
+
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  if (locale === "zh") {
+    return remainingSeconds > 0 ? `${minutes} 分 ${remainingSeconds} 秒` : `${minutes} 分`;
+  }
+  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+}
+
+export function formatAbsoluteDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function formatAuditAction(action: string) {
+  return action.replace(/\./g, " ");
+}
