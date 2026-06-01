@@ -49,6 +49,7 @@ import {
   PasswordResetVerifyResponse,
   RegisterDto,
   UpdateAuthSettingsDto,
+  UpdateCurrentUserDto,
 } from './auth.dto';
 import { AuthRepository, StoredAuthUser } from './auth.repository';
 
@@ -185,6 +186,30 @@ export class AuthService {
 
   async getCurrentUser(authorization?: string): Promise<AuthUserResponse> {
     return (await this.requireSession(authorization)).user;
+  }
+
+  async updateCurrentUser(
+    dto: UpdateCurrentUserDto,
+    authorization?: string,
+  ): Promise<AuthUserResponse> {
+    const session = await this.requireSession(authorization);
+    const displayName = dto.displayName?.trim();
+    if (dto.displayName !== undefined && !displayName) {
+      throw new BadRequestException('Display name is required');
+    }
+
+    return this.authRepository.updateUserProfile(session.user.id, {
+      avatarUrl:
+        dto.avatarUrl === undefined
+          ? undefined
+          : dto.avatarUrl?.trim()
+            ? dto.avatarUrl.trim()
+            : null,
+      displayName,
+      locale: this.normalizeNullableString(dto.locale),
+      theme: this.normalizeNullableString(dto.theme),
+      timezone: this.normalizeNullableString(dto.timezone),
+    });
   }
 
   async requireAdminSession(authorization?: string) {
@@ -1046,6 +1071,13 @@ export class AuthService {
 
   private normalizeEmail(email: string) {
     return email.trim().toLowerCase();
+  }
+
+  private normalizeNullableString(value: string | null | undefined) {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    const trimmed = value.trim();
+    return trimmed || null;
   }
 
   private normalizePasswordResetCode(code: string) {

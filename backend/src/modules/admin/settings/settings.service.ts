@@ -15,10 +15,12 @@ import {
   PasskeySettings,
   PublicSiteSettings,
   SetupStatusResponse,
+  TranslationSettings,
   UpdateMailSettingsDto,
   UpdateOAuthSettingsDto,
   UpdatePasskeySettingsDto,
   UpdateSiteSettingsDto,
+  UpsertTranslationBundleDto,
 } from './settings.dto';
 import {
   bootstrapMeta,
@@ -29,6 +31,7 @@ import {
   settingsParentMeta,
   SettingsRepository,
   siteMeta,
+  translationsMeta,
 } from './settings.repository';
 
 type BootstrapSetting = {
@@ -37,6 +40,7 @@ type BootstrapSetting = {
 };
 
 const maxLogoBytes = 256 * 1024;
+const maxTranslationBytes = 1024 * 1024;
 const logoPattern =
   /^data:image\/(?:png|jpeg|jpg|webp|svg\+xml);base64,[a-z0-9+/=]+$/i;
 
@@ -147,6 +151,38 @@ export class SettingsService {
           : this.validateLogo(dto.authLogoDataUrl),
     };
     return this.repository.set(settingsParentMeta, siteMeta, next);
+  }
+
+  async getTranslationSettings(): Promise<TranslationSettings> {
+    const stored = await this.repository.get<TranslationSettings>(
+      settingsParentMeta,
+      translationsMeta,
+      { bundles: [] },
+    );
+    return {
+      bundles: Array.isArray(stored.bundles) ? stored.bundles : [],
+    };
+  }
+
+  async upsertTranslationBundle(dto: UpsertTranslationBundleDto) {
+    const code = this.normalizeTranslationCode(dto.code);
+    const content = this.validateTslnContent(dto.content);
+    const language = this.extractTslnLanguage(content);
+    const current = await this.getTranslationSettings();
+    const nextBundle = {
+      code,
+      content,
+      language,
+      updatedAt: new Date().toISOString(),
+    };
+    const next = {
+      bundles: [
+        nextBundle,
+        ...current.bundles.filter((bundle) => bundle.code !== code),
+      ].sort((left, right) => left.code.localeCompare(right.code)),
+    };
+    await this.repository.set(settingsParentMeta, translationsMeta, next);
+    return nextBundle;
   }
 
   async getOAuthSettings(): Promise<OAuthSettings> {
@@ -454,6 +490,45 @@ export class SettingsService {
       throw new BadRequestException('Logo must be 256KB or smaller');
     }
     return normalized;
+  }
+
+  private normalizeTranslationCode(value: string) {
+    const code = value.trim();
+    if (!/^[a-z]{2,3}_[A-Z0-9]{2,8}$/.test(code)) {
+      throw new BadRequestException('Translation locale code is not valid');
+    }
+    return code;
+  }
+
+  private validateTslnContent(value: string) {
+    const content = value.replace(/^\uFEFF/, '').trim();
+    if (!content) throw new BadRequestException('Translation file is empty');
+    if (Buffer.byteLength(content, 'utf8') > maxTranslationBytes) {
+      throw new BadRequestException('Translation file must be 1MB or smaller');
+    }
+
+    content.split(/\r?\n/).forEach((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      if (index === 0 && /^language:\s*"([^"]+)"$/.test(trimmed)) return;
+      if (!/^"[^"]+"\s*:\s*"[\s\S]*"$/.test(trimmed)) {
+        throw new BadRequestException(`Invalid translation line ${index + 1}`);
+      }
+    });
+    this.extractTslnLanguage(content);
+    return content;
+  }
+
+  private extractTslnLanguage(content: string) {
+    const firstMeaningfulLine = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('#'));
+    const match = firstMeaningfulLine?.match(/^language:\s*"([^"]+)"$/);
+    if (!match?.[1]?.trim()) {
+      throw new BadRequestException('Translation language header is required');
+    }
+    return match[1].trim();
   }
 
   private assertPasskeyOrigin(origin: string) {

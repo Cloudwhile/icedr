@@ -29,6 +29,12 @@ function requireProductionEnv(name: string) {
   }
 }
 
+function requireProductionEnvOneOf(names: string[]) {
+  if (isProduction() && !names.some((name) => process.env[name])) {
+    throw new Error(`${names.join(' or ')} is required in production`);
+  }
+}
+
 export default () => {
   [
     'DATABASE_HOST',
@@ -44,8 +50,12 @@ export default () => {
     'S3_ACCESS_KEY_ID',
     'S3_SECRET_ACCESS_KEY',
     'PUBLIC_SHARE_BASE_URL',
-    'NEXT_PUBLIC_API_BASE_URL',
   ].forEach(requireProductionEnv);
+  requireProductionEnvOneOf([
+    'API_PUBLIC_BASE_URL',
+    'VITE_API_BASE_URL',
+    'NEXT_PUBLIC_API_BASE_URL',
+  ]);
 
   return {
     app: {
@@ -60,6 +70,7 @@ export default () => {
       corsOrigin: process.env.API_CORS_ORIGIN ?? 'http://localhost:13000',
       publicBaseUrl:
         process.env.API_PUBLIC_BASE_URL ??
+        process.env.VITE_API_BASE_URL ??
         process.env.NEXT_PUBLIC_API_BASE_URL ??
         `http://${process.env.API_HOST ?? '127.0.0.1'}:${process.env.API_PORT ?? process.env.PORT ?? 13001}/api`,
     },

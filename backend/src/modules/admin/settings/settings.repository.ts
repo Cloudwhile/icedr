@@ -6,6 +6,7 @@ export const settingsParentMeta = 'system';
 export const bootstrapMeta = 'bootstrap';
 export const databaseMeta = 'database';
 export const siteMeta = 'site';
+export const translationsMeta = 'translations';
 export const oauthMeta = 'oauth';
 export const passkeyMeta = 'passkey';
 export const mailMeta = 'mail';

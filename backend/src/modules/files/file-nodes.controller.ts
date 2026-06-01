@@ -13,8 +13,13 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
   CompleteUploadDto,
+  CopyFileNodeDto,
   CreateDownloadIntentDto,
+  CreateFolderDto,
   CreateUploadIntentDto,
+  MoveFileNodeDto,
+  RenameFileNodeDto,
+  UpdateFileNodeContentDto,
   UpdateFileNodeStateDto,
 } from './file-nodes.dto';
 import { FileNodesService } from './file-nodes.service';
@@ -54,6 +59,45 @@ export class FileNodesController {
       ...dto,
       owner: dto.owner ?? workspaceActor,
     });
+  }
+
+  @Post('folders')
+  createFolder(
+    @Body() dto: CreateFolderDto,
+    @Headers('x-workspace-actor') workspaceActor?: string,
+  ) {
+    return this.fileNodesService.createFolder({
+      ...dto,
+      owner: dto.owner ?? workspaceActor,
+    });
+  }
+
+  @Patch(':id')
+  renameFileNode(@Param('id') id: string, @Body() dto: RenameFileNodeDto) {
+    return this.fileNodesService.renameFileNode(id, dto);
+  }
+
+  @Post(':id/move')
+  moveFileNode(@Param('id') id: string, @Body() dto: MoveFileNodeDto) {
+    return this.fileNodesService.moveFileNode(id, dto);
+  }
+
+  @Post(':id/copy')
+  copyFileNode(@Param('id') id: string, @Body() dto: CopyFileNodeDto) {
+    return this.fileNodesService.copyFileNode(id, dto);
+  }
+
+  @Get(':id/content')
+  getFileNodeContent(@Param('id') id: string) {
+    return this.fileNodesService.getFileNodeContent(id);
+  }
+
+  @Patch(':id/content')
+  updateFileNodeContent(
+    @Param('id') id: string,
+    @Body() dto: UpdateFileNodeContentDto,
+  ) {
+    return this.fileNodesService.updateFileNodeContent(id, dto);
   }
 
   @Patch(':id/state')

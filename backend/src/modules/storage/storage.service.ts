@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, createWriteStream } from 'fs';
-import { mkdir, rm, stat } from 'fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { dirname, resolve, sep } from 'path';
 import type { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -298,6 +298,54 @@ export class StorageService {
       contentType: 'application/octet-stream',
       stream: createReadStream(filePath),
     };
+  }
+
+  async readObjectText(objectKey: string, maxBytes = 1024 * 1024) {
+    if (this.isLocalObjectKey(objectKey)) {
+      const filePath = this.resolveLocalObjectPath(objectKey);
+      const fileStat = await stat(filePath);
+      if (fileStat.size > maxBytes) {
+        throw new BadRequestException('File is too large to edit as text');
+      }
+      return readFile(filePath, 'utf8');
+    }
+
+    const settings = await this.getResolvedSettings();
+    const response = await this.createClient(settings).send(
+      new GetObjectCommand({
+        Bucket: this.getBucket(settings),
+        Key: objectKey,
+      }),
+    );
+    const body = await response.Body?.transformToByteArray();
+    if (!body) return '';
+    if (body.byteLength > maxBytes) {
+      throw new BadRequestException('File is too large to edit as text');
+    }
+    return Buffer.from(body).toString('utf8');
+  }
+
+  async writeObjectText(
+    objectKey: string,
+    content: string,
+    contentType = 'text/plain; charset=utf-8',
+  ) {
+    if (this.isLocalObjectKey(objectKey)) {
+      const filePath = this.resolveLocalObjectPath(objectKey);
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, content, 'utf8');
+      return;
+    }
+
+    const settings = await this.getResolvedSettings();
+    await this.createClient(settings).send(
+      new PutObjectCommand({
+        Body: content,
+        Bucket: this.getBucket(settings),
+        ContentType: contentType,
+        Key: objectKey,
+      }),
+    );
   }
 
   private getBucket(settings: ObjectStorageConnectionSettings) {

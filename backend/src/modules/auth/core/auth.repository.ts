@@ -551,6 +551,61 @@ export class AuthRepository implements OnModuleInit {
     return result.rows[0] ? this.mapUserRow(result.rows[0]) : null;
   }
 
+  async updateUserProfile(
+    userId: string,
+    input: {
+      avatarUrl?: string | null;
+      displayName?: string;
+      locale?: string | null;
+      theme?: string | null;
+      timezone?: string | null;
+    },
+  ): Promise<AuthUserResponse> {
+    const current = await this.findUserById(userId);
+    if (!current) throw new Error('User is unavailable');
+
+    const displayName = input.displayName ?? current.displayName;
+    await this.database.query(
+      `
+        update users
+        set display_name = $2, updated_at = now()
+        where id = $1
+      `,
+      [userId, displayName],
+    );
+
+    await this.database.query(
+      `
+        insert into user_meta (
+          user_id,
+          avatar_url,
+          locale,
+          theme,
+          timezone,
+          updated_at
+        )
+        values ($1, $2, $3, $4, $5, now())
+        on conflict (user_id) do update set
+          avatar_url = excluded.avatar_url,
+          locale = excluded.locale,
+          theme = excluded.theme,
+          timezone = excluded.timezone,
+          updated_at = excluded.updated_at
+      `,
+      [
+        userId,
+        input.avatarUrl !== undefined ? input.avatarUrl : current.avatarUrl,
+        input.locale !== undefined ? input.locale : current.locale,
+        input.theme !== undefined ? input.theme : current.theme,
+        input.timezone !== undefined ? input.timezone : current.timezone,
+      ],
+    );
+
+    const updated = await this.findUserById(userId);
+    if (!updated) throw new Error('Updated user is unavailable');
+    return updated;
+  }
+
   async findUserByProviderIdentity(provider: string, subject: string) {
     const result = await this.database.query<UserRow>(
       `

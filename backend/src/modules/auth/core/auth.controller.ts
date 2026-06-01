@@ -24,6 +24,7 @@ import {
   PasswordResetVerifyDto,
   RegisterDto,
   UpdateAuthSettingsDto,
+  UpdateCurrentUserDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
 
@@ -63,6 +64,14 @@ export class AuthController {
   @Get('me')
   me(@Headers('authorization') authorization?: string) {
     return this.authService.getCurrentUser(authorization);
+  }
+
+  @Patch('me')
+  updateMe(
+    @Body() dto: UpdateCurrentUserDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.authService.updateCurrentUser(dto, authorization);
   }
 
   @Post('password-reset/request')

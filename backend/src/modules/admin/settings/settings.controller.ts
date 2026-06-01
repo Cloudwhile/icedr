@@ -5,6 +5,7 @@ import {
   UpdateOAuthSettingsDto,
   UpdatePasskeySettingsDto,
   UpdateSiteSettingsDto,
+  UpsertTranslationBundleDto,
   VerifyDatabaseDto,
 } from './settings.dto';
 import { SettingsService } from './settings.service';
@@ -22,6 +23,11 @@ export class SiteSettingsController {
     return this.settingsService.getPublicSiteSettings();
   }
 
+  @Get('public/translations')
+  getPublicTranslations() {
+    return this.settingsService.getTranslationSettings();
+  }
+
   @Get()
   async getSettings(@Headers('authorization') authorization?: string) {
     await this.adminGuard.requireAdminSession(authorization);
@@ -35,6 +41,21 @@ export class SiteSettingsController {
   ) {
     await this.adminGuard.requireAdminSession(authorization);
     return this.settingsService.updateSiteSettings(dto);
+  }
+
+  @Get('translations')
+  async getTranslations(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.getTranslationSettings();
+  }
+
+  @Post('translations')
+  async upsertTranslation(
+    @Body() dto: UpsertTranslationBundleDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.upsertTranslationBundle(dto);
   }
 }
 

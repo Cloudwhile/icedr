@@ -31,6 +31,17 @@ export type PublicSiteSettings = {
   authLogoDataUrl: string | null;
 };
 
+export type TranslationBundle = {
+  code: string;
+  content: string;
+  language: string;
+  updatedAt: string;
+};
+
+export type TranslationSettings = {
+  bundles: TranslationBundle[];
+};
+
 export type OAuthSettings = {
   enabled: boolean;
   providerProfile: 'oidc' | 'icetowne-blog';
@@ -90,6 +101,15 @@ export type AdminSettingsResponse = {
   mail: MailSettingsResponse;
   bootstrapCompleted: boolean;
 };
+
+export class UpsertTranslationBundleDto {
+  @IsString()
+  @Length(2, 32)
+  code!: string;
+
+  @IsString()
+  content!: string;
+}
 
 export class UpdateSiteSettingsDto {
   @IsString()

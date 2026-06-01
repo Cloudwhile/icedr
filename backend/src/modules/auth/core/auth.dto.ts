@@ -83,6 +83,32 @@ export class UpdateAuthSettingsDto {
   passkeyEnabled?: boolean;
 }
 
+export class UpdateCurrentUserDto {
+  @IsString()
+  @Length(1, 80)
+  @IsOptional()
+  displayName?: string;
+
+  @IsString()
+  @Length(0, 200000)
+  @IsOptional()
+  avatarUrl?: string | null;
+
+  @IsString()
+  @Length(1, 32)
+  @IsOptional()
+  locale?: string | null;
+
+  @IsIn(['system', 'dark', 'light'])
+  @IsOptional()
+  theme?: string | null;
+
+  @IsString()
+  @Length(1, 80)
+  @IsOptional()
+  timezone?: string | null;
+}
+
 export class RegisterDto {
   @IsEmail()
   email!: string;

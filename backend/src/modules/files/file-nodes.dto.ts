@@ -8,7 +8,13 @@ import {
   Min,
 } from 'class-validator';
 
-export type FileNodeKind = 'folder' | 'doc' | 'sheet' | 'image' | 'archive';
+export type FileNodeKind =
+  | 'folder'
+  | 'doc'
+  | 'sheet'
+  | 'image'
+  | 'video'
+  | 'archive';
 export type FileNodeListState = 'active' | 'archived' | 'all';
 export type FileNodePreviewStatus =
   | 'pending'
@@ -68,6 +74,51 @@ export class CompleteUploadDto {
   transferId?: string;
 }
 
+export class CreateFolderDto {
+  @IsString()
+  @IsNotEmpty()
+  workspaceId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsOptional()
+  parentNodeId?: string;
+
+  @IsString()
+  @IsOptional()
+  owner?: string;
+}
+
+export class RenameFileNodeDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
+export class MoveFileNodeDto {
+  @IsString()
+  @IsOptional()
+  parentNodeId?: string | null;
+}
+
+export class CopyFileNodeDto {
+  @IsString()
+  @IsOptional()
+  parentNodeId?: string | null;
+
+  @IsString()
+  @IsOptional()
+  name?: string;
+}
+
+export class UpdateFileNodeContentDto {
+  @IsString()
+  content!: string;
+}
+
 export class UpdateFileNodeStateDto {
   @IsBoolean()
   @IsOptional()
@@ -111,6 +162,14 @@ export type FileNodeResponse = {
   starred: boolean;
   archivedAt: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type FileNodeContentResponse = {
+  content: string;
+  id: string;
+  mimeType: string;
+  name: string;
   updatedAt: string;
 };
 

@@ -4,6 +4,7 @@ import { createAuditEvent } from '../logs/audit-events';
 import { DatabaseService } from '../../database/database.service';
 import {
   CompleteUploadDto,
+  CreateFolderDto,
   DownloadIntentResponse,
   FileNodeListState,
   FileNodeKind,
@@ -55,6 +56,11 @@ type DownloadIntentRow = {
 };
 
 export type FileAuditAction =
+  | 'file.folder_created'
+  | 'file.renamed'
+  | 'file.moved'
+  | 'file.copied'
+  | 'file.content_updated'
   | 'file.upload_intent_created'
   | 'file.upload_completed'
   | 'file.starred_updated'
@@ -179,6 +185,159 @@ export class FileNodesRepository implements OnModuleInit {
       [id],
     );
     return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+  }
+
+  async createFolder(dto: CreateFolderDto) {
+    const now = new Date().toISOString();
+    const node: FileNodeResponse = {
+      id: `node_${randomBytes(12).toString('base64url')}`,
+      workspaceId: dto.workspaceId,
+      parentNodeId: dto.parentNodeId ?? null,
+      name: dto.name,
+      kind: 'folder',
+      mimeType: 'inode/directory',
+      sizeBytes: null,
+      objectKey: null,
+      owner: dto.owner ?? '',
+      starred: false,
+      archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await this.database.query<FileNodeRow>(
+      `
+        insert into file_nodes (
+          id,
+          workspace_id,
+          parent_node_id,
+          name,
+          kind,
+          mime_type,
+          size_bytes,
+          object_key,
+          owner_name,
+          starred,
+          archived_at,
+          created_at,
+          updated_at
+        )
+        values ($1, $2, $3, $4, 'folder', 'inode/directory', null, null, $5, false, null, $6, $7)
+        returning *
+      `,
+      [
+        node.id,
+        node.workspaceId,
+        node.parentNodeId,
+        node.name,
+        node.owner,
+        node.createdAt,
+        node.updatedAt,
+      ],
+    );
+    return this.mapRow(result.rows[0]);
+  }
+
+  async rename(id: string, name: string) {
+    const result = await this.database.query<FileNodeRow>(
+      `
+        update file_nodes
+        set name = $2, updated_at = now()
+        where id = $1
+        returning *
+      `,
+      [id, name],
+    );
+    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+  }
+
+  async move(id: string, parentNodeId: string | null) {
+    const result = await this.database.query<FileNodeRow>(
+      `
+        update file_nodes
+        set parent_node_id = $2, updated_at = now()
+        where id = $1
+        returning *
+      `,
+      [id, parentNodeId],
+    );
+    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+  }
+
+  async updateSize(id: string, sizeBytes: number) {
+    const result = await this.database.query<FileNodeRow>(
+      `
+        update file_nodes
+        set size_bytes = $2, updated_at = now()
+        where id = $1
+        returning *
+      `,
+      [id, sizeBytes],
+    );
+    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+  }
+
+  async copyTree(
+    source: FileNodeResponse,
+    options: { name?: string; parentNodeId: string | null },
+  ) {
+    const descendants = await this.collectDescendants(source.id);
+    const rows = [source, ...descendants];
+    const idMap = new Map<string, string>();
+    rows.forEach((row) => {
+      idMap.set(row.id, `node_${randomBytes(12).toString('base64url')}`);
+    });
+
+    const now = new Date().toISOString();
+    const copiedNodes: FileNodeResponse[] = [];
+    for (const row of rows) {
+      const copiedId = idMap.get(row.id);
+      if (!copiedId) continue;
+      const copiedParent =
+        row.id === source.id
+          ? options.parentNodeId
+          : row.parentNodeId
+            ? (idMap.get(row.parentNodeId) ?? null)
+            : null;
+      const copiedName =
+        row.id === source.id ? options.name?.trim() || row.name : row.name;
+      const result = await this.database.query<FileNodeRow>(
+        `
+          insert into file_nodes (
+            id,
+            workspace_id,
+            parent_node_id,
+            name,
+            kind,
+            mime_type,
+            size_bytes,
+            object_key,
+            owner_name,
+            starred,
+            archived_at,
+            created_at,
+            updated_at
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, null, $10, $11)
+          returning *
+        `,
+        [
+          copiedId,
+          row.workspaceId,
+          copiedParent,
+          copiedName,
+          row.kind,
+          row.mimeType,
+          row.sizeBytes,
+          row.objectKey,
+          row.owner,
+          now,
+          now,
+        ],
+      );
+      copiedNodes.push(this.mapRow(result.rows[0]));
+    }
+    return copiedNodes[0] ?? null;
   }
 
   async updateState(
@@ -331,6 +490,29 @@ export class FileNodesRepository implements OnModuleInit {
     return this.mapRow(result.rows[0]);
   }
 
+  private async collectDescendants(parentId: string) {
+    const collected: FileNodeResponse[] = [];
+    const visit = async (id: string) => {
+      const result = await this.database.query<FileNodeRow>(
+        `
+          select *
+          from file_nodes
+          where parent_node_id = $1 and archived_at is null
+          order by name asc
+        `,
+        [id],
+      );
+      for (const row of result.rows) {
+        const node = this.mapRow(row);
+        collected.push(node);
+        await visit(node.id);
+      }
+    };
+
+    await visit(parentId);
+    return collected;
+  }
+
   async recordAudit(action: FileAuditAction, target: string) {
     const node = action.startsWith('file.')
       ? await this.findById(target)
@@ -405,10 +587,14 @@ export class FileNodesRepository implements OnModuleInit {
 
   private getKind(fileName: string, mimeType = ''): FileNodeKind {
     if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
     const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
     if (['xlsx', 'xls', 'csv'].includes(extension)) return 'sheet';
     if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
       return 'image';
+    }
+    if (['mp4', 'webm', 'mov', 'm4v', 'ogv'].includes(extension)) {
+      return 'video';
     }
     if (['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)) return 'archive';
     return 'doc';
