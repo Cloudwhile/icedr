@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/compat/link";
 import type { CSSProperties } from "react";
 import type { Locale, Palette } from "@/features/file/model";
 import { getLegalPageLabel } from "@/features/legal/content";

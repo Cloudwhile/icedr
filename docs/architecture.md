@@ -1,10 +1,10 @@
 # ICEDR Architecture
 
-ICEDR is a Node.js monorepo with a Next.js frontend and a NestJS backend.
+ICEDR is a Node.js monorepo with a Vite frontend and a NestJS backend.
 
 ## Structure
 
-- `frontend/`: Next.js App Router application. Route files stay in `src/app`, while reusable UI lives under `src/components`, feature code under `src/features`, and shared client utilities under `src/lib`.
+- `frontend/`: Vite React application. The SPA entry is `src/main.tsx`, reusable UI lives under `src/components`, feature code under `src/features`, and shared client utilities under `src/lib`.
 - `backend/`: NestJS API. Business modules live under `src/modules`; cross-cutting code lives under `src/common`, configuration under `src/config`, and database access under `src/database`.
 - `database/`: database planning and migration entry point. The current runtime still creates PostgreSQL tables from Nest repositories during module startup.
 - `deploy/`: Docker Compose, Dockerfiles, and optional Nginx config.

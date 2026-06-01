@@ -7,11 +7,9 @@ import { AuthGate } from "./auth-client";
 export function ExternalShareSettingsRoute() {
   return (
     <LocalizedDriveShell>
-      {({ locale, setLocale, setThemeMode, themeMode }) => (
+      {({ setThemeMode, themeMode }) => (
         <AuthGate>
           <ExternalShareAdminSettingsPage
-            locale={locale}
-            setLocale={setLocale}
             setThemeMode={setThemeMode}
             themeMode={themeMode}
           />

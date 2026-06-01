@@ -8,6 +8,7 @@ export function mapFileNodeToDriveItem(node: FileNodeResponse): DriveItem {
     workspaceId: node.workspaceId,
     parentId: node.parentNodeId,
     owner: node.owner,
+    createdAt: node.createdAt,
     modifiedAt: node.updatedAt,
     mimeType: node.mimeType,
     objectKey: node.objectKey,
@@ -15,6 +16,6 @@ export function mapFileNodeToDriveItem(node: FileNodeResponse): DriveItem {
     shared: false,
     starred: node.starred,
     archivedAt: node.archivedAt,
-    colorKey: node.kind === "sheet" ? "success" : node.kind === "image" ? "secure" : node.kind === "archive" ? "tertiary" : "primary",
+    colorKey: node.kind === "sheet" ? "success" : node.kind === "image" || node.kind === "video" ? "secure" : node.kind === "archive" ? "tertiary" : "primary",
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { ProgressMeter } from "@/components/ui/progress-meter";
 import { MotionList } from "@/components/ui/motion";
 import { findDriveItem, formatFileSize, type DriveItem, type Locale, type Palette } from "@/features/file/model";
@@ -22,6 +22,8 @@ export type LinksModuleProps = {
 
 export function LinksModule({ error, links, onCloseLink, onCopyLink, onFocusRecords, palette, sourceItems }: LinksModuleProps) {
   const t = useTranslations();
+  const locale = useLocale() as Locale;
+  const timeZone = useTimeZone();
   const riskLinks = links.filter((link) => link.riskLevel === "high");
   const expiringSoon = links.filter((link) => link.status === "expired");
   const emailGatedLinks = links.filter((link) => Boolean(link.policy.allowedDomain || link.policy.waitValue > 0));
@@ -176,8 +178,8 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, onFocusReco
                       <MetaIcon icon="clock">{t("links.daysValue", { count: link.expiresDays })}</MetaIcon>
                       <MetaIcon icon="visible">{t("links.visitsValue", { count: String(link.visitCount ?? 0) })}</MetaIcon>
                       <MetaIcon icon="download">{t("links.downloadsValue", { count: String(link.downloadCount ?? 0) })}</MetaIcon>
-                      <MetaIcon icon="calendar">{formatAbsoluteDate(link.createdAt)}</MetaIcon>
-                      {link.lastAccessAt ? <MetaIcon icon="key">{t("links.lastAccessValue", { value: formatAbsoluteDate(link.lastAccessAt) })}</MetaIcon> : null}
+                      <MetaIcon icon="calendar">{formatAbsoluteDate(link.createdAt, locale, timeZone)}</MetaIcon>
+                      {link.lastAccessAt ? <MetaIcon icon="key">{t("links.lastAccessValue", { value: formatAbsoluteDate(link.lastAccessAt, locale, timeZone) })}</MetaIcon> : null}
                     </div>
                   </div>
                 </div>
@@ -336,6 +338,8 @@ export function AuditModule({
   palette: Palette;
 }) {
   const t = useTranslations();
+  const locale = useLocale() as Locale;
+  const timeZone = useTimeZone();
 
   return (
     <Surface palette={palette} style={{ overflow: "hidden" }}>
@@ -393,7 +397,7 @@ export function AuditModule({
                 </span>
               </div>
             </div>
-            <span style={{ color: palette.subtle, flexShrink: "0", fontSize: "12px", whiteSpace: "nowrap" }}>{formatAbsoluteDate(row.createdAt)}</span>
+            <span style={{ color: palette.subtle, flexShrink: "0", fontSize: "12px", whiteSpace: "nowrap" }}>{formatAbsoluteDate(row.createdAt, locale, timeZone)}</span>
           </div>
         ))}
       </MotionList>

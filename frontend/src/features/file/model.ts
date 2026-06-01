@@ -1,7 +1,12 @@
-export type Locale = "en" | "zh";
+export type Locale = string;
+export type LanguageOption = {
+  label: string;
+  value: Locale;
+};
 export type ThemeMode = "dark" | "light";
+export type ThemePreference = "system" | ThemeMode;
 export type DriveModule = "drive" | "links" | "transfers" | "audit";
-export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "archive";
+export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "video" | "archive";
 export type LocalIconName =
   | "abc"
   | "arrow_down"
@@ -21,6 +26,7 @@ export type LocalIconName =
   | "file"
   | "folder"
   | "grid"
+  | "house"
   | "image"
   | "import"
   | "info"
@@ -32,6 +38,7 @@ export type LocalIconName =
   | "menu"
   | "menu7"
   | "notification"
+  | "plus"
   | "refresh"
   | "save"
   | "search"
@@ -56,6 +63,7 @@ export type DriveItem = {
   workspaceId?: string;
   parentId: string | null;
   owner: string;
+  createdAt?: string | null;
   modifiedAt: string | null;
   mimeType?: string;
   objectKey?: string | null;
@@ -152,6 +160,7 @@ export const kindIcons: Record<DriveItemKind, LocalIconName> = {
   doc: "document",
   sheet: "grid",
   image: "image",
+  video: "visible",
   archive: "file",
 };
 
@@ -168,6 +177,11 @@ const extensionKinds: Record<string, DriveItemKind> = {
   jpeg: "image",
   webp: "image",
   gif: "image",
+  mp4: "video",
+  webm: "video",
+  mov: "video",
+  m4v: "video",
+  ogv: "video",
   zip: "archive",
   rar: "archive",
   "7z": "archive",
@@ -182,6 +196,8 @@ export function getItemExtension(item: DriveItem) {
 }
 
 export function getItemKind(item: DriveItem): DriveItemKind {
+  if (item.mimeType?.startsWith("image/")) return "image";
+  if (item.mimeType?.startsWith("video/")) return "video";
   const extension = getItemExtension(item);
   return extension ? extensionKinds[extension] ?? "doc" : "folder";
 }
@@ -199,7 +215,7 @@ export function formatFileSize(sizeBytes: number | null, locale: Locale) {
   }
 
   const maximumFractionDigits = value >= 10 || unitIndex === 0 ? 0 : 1;
-  const formatter = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en", {
+  const formatter = new Intl.NumberFormat(getIntlLocale(locale), {
     maximumFractionDigits,
   });
 
@@ -245,14 +261,15 @@ export function getFolderPath(folderId: string | null, sourceItems: DriveItem[] 
   return path;
 }
 
-export function formatDriveItemModified(item: DriveItem, locale: Locale) {
+export function formatDriveItemModified(item: DriveItem, locale: Locale, timeZone?: string) {
   if (!item.modifiedAt) return "--";
   const date = new Date(item.modifiedAt);
   if (Number.isNaN(date.getTime())) return "--";
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", {
+  return new Intl.DateTimeFormat(getIntlLocale(locale), {
     month: "short",
     day: "numeric",
     year: "numeric",
+    ...(timeZone ? { timeZone } : {}),
   }).format(date);
 }
 
@@ -260,4 +277,10 @@ export function compareByModified(a: DriveItem, b: DriveItem) {
   const aTime = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0;
   const bTime = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0;
   return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+}
+
+export function getIntlLocale(locale: Locale) {
+  if (locale === "zh") return "zh-CN";
+  if (locale === "en") return "en";
+  return locale.replace(/_/g, "-");
 }

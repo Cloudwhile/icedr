@@ -103,6 +103,14 @@ export type AuthUser = {
   createdAt: string;
 };
 
+export type UpdateCurrentUserInput = Partial<{
+  avatarUrl: string | null;
+  displayName: string;
+  locale: string | null;
+  theme: string | null;
+  timezone: string | null;
+}>;
+
 export type DatabaseProfile = {
   host: string;
   port: number;
@@ -117,6 +125,17 @@ export type DatabaseProfile = {
 export type PublicSiteSettings = {
   siteName: string;
   authLogoDataUrl: string | null;
+};
+
+export type TranslationBundle = {
+  code: string;
+  content: string;
+  language: string;
+  updatedAt: string;
+};
+
+export type TranslationSettings = {
+  bundles: TranslationBundle[];
 };
 
 export type OAuthSettings = {
@@ -254,7 +273,7 @@ export type FileNodeResponse = {
   workspaceId: string;
   parentNodeId: string | null;
   name: string;
-  kind: "folder" | "doc" | "sheet" | "image" | "archive";
+  kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive";
   mimeType: string;
   sizeBytes: number | null;
   objectKey: string | null;
@@ -266,6 +285,14 @@ export type FileNodeResponse = {
 };
 
 export type FileNodeListState = "active" | "archived" | "all";
+
+export type FileNodeContentResponse = {
+  content: string;
+  id: string;
+  mimeType: string;
+  name: string;
+  updatedAt: string;
+};
 
 export type TransferResponse = {
   id: string;
@@ -302,7 +329,7 @@ export class DriveApiError extends Error {
 }
 
 export function getApiBaseUrl() {
-  return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:13001/api").replace(/\/$/, "");
+  return (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:13001/api").replace(/\/$/, "");
 }
 
 export function buildApiUrl(path: string) {
@@ -434,6 +461,53 @@ export function updateFileNodeState(id: string, state: { starred?: boolean; arch
   });
 }
 
+export function createFolderNode(input: {
+  name: string;
+  owner?: string;
+  parentNodeId?: string | null;
+  workspaceId: string;
+}) {
+  return requestDriveApi<FileNodeResponse>("/file-nodes/folders", {
+    method: "POST",
+    body: JSON.stringify({
+      ...input,
+      parentNodeId: input.parentNodeId ?? undefined,
+    }),
+  });
+}
+
+export function renameFileNode(id: string, name: string) {
+  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function moveFileNode(id: string, parentNodeId: string | null) {
+  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/move`, {
+    method: "POST",
+    body: JSON.stringify({ parentNodeId }),
+  });
+}
+
+export function copyFileNode(id: string, input: { name?: string; parentNodeId?: string | null } = {}) {
+  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/copy`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchFileNodeContent(id: string) {
+  return requestDriveApi<FileNodeContentResponse>(`/file-nodes/${encodeURIComponent(id)}/content`);
+}
+
+export function updateFileNodeContent(id: string, content: string) {
+  return requestDriveApi<FileNodeContentResponse>(`/file-nodes/${encodeURIComponent(id)}/content`, {
+    method: "PATCH",
+    body: JSON.stringify({ content }),
+  });
+}
+
 export function createFileDownloadIntent(id: string, workspaceId?: string) {
   return requestDriveApi<DownloadIntentResponse>(`/file-nodes/${encodeURIComponent(id)}/download-intents`, {
     method: "POST",
@@ -496,6 +570,21 @@ export function updateSiteSettings(settings: Partial<PublicSiteSettings>) {
   return requestDriveApi<PublicSiteSettings>("/site/settings", {
     method: "PATCH",
     body: JSON.stringify(settings),
+  });
+}
+
+export function fetchTranslationSettings() {
+  return requestDriveApi<TranslationSettings>("/site/settings/translations");
+}
+
+export function fetchPublicTranslationSettings() {
+  return requestDriveApi<TranslationSettings>("/site/settings/public/translations");
+}
+
+export function upsertTranslationBundle(input: { code: string; content: string }) {
+  return requestDriveApi<TranslationBundle>("/site/settings/translations", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 
@@ -649,6 +738,13 @@ export function logoutLocalUser() {
 
 export function fetchCurrentUser() {
   return requestDriveApi<AuthUser>("/auth/me");
+}
+
+export function updateCurrentUserProfile(input: UpdateCurrentUserInput) {
+  return requestDriveApi<AuthUser>("/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export function requestPasswordReset(input: { email: string; locale?: "en" | "zh" }) {

@@ -2,7 +2,6 @@
 
 import { ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import type { CSSProperties, ReactNode } from "react";
-import { AppTooltip } from "./app-tooltip";
 import { cn } from "./cn";
 import type { Palette } from "@/features/file/model";
 
@@ -55,26 +54,25 @@ export function SegmentedToolGroup<T extends string>({
       }}
     >
       {options.map((option, index) => (
-        <AppTooltip content={option.label} key={option.value} palette={palette}>
-          <ToggleButton
-            aria-label={option.label}
-            className="icedr-segmented-tool"
-            id={option.value}
-            isDisabled={option.disabled}
-            isIconOnly
-            style={{
-              "--segmented-tool-active-bg": palette.selected,
-              "--segmented-tool-active-color": palette.primaryHover,
-              "--segmented-tool-color": palette.subtle,
-              "--segmented-tool-hover-bg": palette.surface2,
-              "--segmented-tool-hover-color": palette.ink,
-            } as CSSProperties}
-            variant="ghost"
-          >
-            {index > 0 ? <ToggleButtonGroup.Separator /> : null}
-            {option.icon}
-          </ToggleButton>
-        </AppTooltip>
+        <ToggleButton
+          aria-label={option.label}
+          className="icedr-segmented-tool"
+          id={option.value}
+          isDisabled={option.disabled}
+          isIconOnly
+          key={option.value}
+          style={{
+            "--segmented-tool-active-bg": palette.selected,
+            "--segmented-tool-active-color": palette.primaryHover,
+            "--segmented-tool-color": palette.subtle,
+            "--segmented-tool-hover-bg": palette.surface2,
+            "--segmented-tool-hover-color": palette.ink,
+          } as CSSProperties}
+          variant="ghost"
+        >
+          {index > 0 ? <ToggleButtonGroup.Separator /> : null}
+          {option.icon}
+        </ToggleButton>
       ))}
     </ToggleButtonGroup>
   );

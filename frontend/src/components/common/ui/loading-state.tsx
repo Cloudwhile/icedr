@@ -138,7 +138,7 @@ export function AppLoading({
         <div className="icedr-r-grid-template-columns" style={{
         display: "grid",
         "--r-grid-template-columns-base": "1fr",
-        "--r-grid-template-columns-lg": "248px minmax(0, 1fr) 316px",
+        "--r-grid-template-columns-lg": "232px minmax(0, 1fr) 328px",
         flex: "1 1 auto",
         minHeight: "0px"
       } as React.CSSProperties}>
@@ -181,7 +181,7 @@ function TopbarSkeleton({
       display: "flex",
       gap: "8px",
       "--r-width-base": "auto",
-      "--r-width-md": "248px",
+      "--r-width-md": "232px",
       flexShrink: "0"
     } as React.CSSProperties}>
         <SkeletonBlock palette={palette} style={{
@@ -230,7 +230,7 @@ function TopbarSkeleton({
       display: "flex",
       gap: "8px",
       "--r-width-base": "auto",
-      "--r-width-md": "248px",
+      "--r-width-md": "232px",
       justifyContent: "flex-end",
       flexShrink: "0"
     } as React.CSSProperties}>

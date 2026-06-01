@@ -97,7 +97,7 @@ services:
       S3_FORCE_PATH_STYLE: "true"
       LOCAL_STORAGE_ROOT: /workspace/backend/data/local-files
       PUBLIC_SHARE_BASE_URL: http://localhost:13000/share/s
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:13001/api
+      API_PUBLIC_BASE_URL: http://localhost:13001/api
       DEFAULT_WORKSPACE_ACTOR: Workspace User
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13001/api/health | grep -q '\"status\"'"]
@@ -114,14 +114,13 @@ services:
       context: ..
       dockerfile: deploy/docker/frontend.Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:13001/api
+        VITE_API_BASE_URL: http://localhost:13001/api
     container_name: icedr-web
     depends_on:
       api:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:13001/api
     ports:
       - "13000:13000"
 

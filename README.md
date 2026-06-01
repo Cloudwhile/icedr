@@ -2,7 +2,7 @@
 
 ICEDR is a workspace file drive built as a Node.js monorepo:
 
-- `frontend`: Next.js App Router, React, Chakra UI web client
+- `frontend`: Vite, React, HeroUI web client
 - `backend`: NestJS API organized under `src/modules`
 - `database`: schema and migration entry point
 - `deploy`: Docker Compose, Dockerfiles, and optional Nginx config
@@ -12,10 +12,10 @@ ICEDR is a workspace file drive built as a Node.js monorepo:
 
 ```bash
 copy .env.example .env
-npm.cmd install
-npm.cmd run infra:up
-npm.cmd run dev:api
-npm.cmd run dev:app
+pnpm.cmd install
+pnpm.cmd infra:up
+pnpm.cmd dev:api
+pnpm.cmd dev:app
 ```
 
 The frontend runs at `http://localhost:13000`. The API runs at `http://localhost:13001/api`.
@@ -51,7 +51,8 @@ When `NODE_ENV=production` or `APP_ENV=production`, ICEDR refuses to boot withou
 ```bash
 NODE_ENV=production
 APP_ENV=production
-NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api
+VITE_API_BASE_URL=https://api.example.com/api
+API_PUBLIC_BASE_URL=https://api.example.com/api
 API_HOST=0.0.0.0
 API_PORT=13001
 API_CORS_ORIGIN=https://drive.example.com
@@ -92,9 +93,9 @@ Short-lived email codes, access sessions, preview intents, and download intents 
 ## Quality Gates
 
 ```bash
-npm.cmd run lint
-npm.cmd run build
-npm.cmd run test
+pnpm.cmd lint
+pnpm.cmd build
+pnpm.cmd test
 ```
 
-Use `npm.cmd` on Windows PowerShell if script execution policy blocks `npm.ps1`.
+Use `pnpm.cmd` on Windows PowerShell if script execution policy blocks `pnpm.ps1`.

@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useRouter } from "@/compat/navigation";
+import { useTranslations } from "@/i18n/react";
 import { LocalIcon } from "./drive-primitives";
 import { LegalFooter } from "./legal-footer";
 import { LocalizedDriveShell, type DriveShellState } from "./drive-shell";
@@ -15,7 +15,6 @@ export function NotFoundRoute() {
 function NotFoundContent({
   locale,
   palette,
-  setLocale,
   setThemeMode,
   themeMode
 }: DriveShellState) {
@@ -35,7 +34,7 @@ function NotFoundContent({
     background: palette.canvas,
     color: palette.ink
   }}>
-      <PublicPageNav locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <PublicPageNav palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
 
       <div className="icedr-r-padding-inline icedr-r-padding-block" style={{
       display: "flex",

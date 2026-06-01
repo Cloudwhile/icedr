@@ -1,15 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { ThemeLanguageActions, type DriveShellState } from "./drive-shell";
+import Link from "@/compat/link";
+import { ThemeActions, type DriveShellState } from "./drive-shell";
 import { AppImage } from "@/components/ui/app-image";
+
+type PublicPageNavProps = Pick<DriveShellState, "palette" | "setThemeMode" | "themeMode">;
+
 export function PublicPageNav({
-  locale,
   palette,
-  setLocale,
   setThemeMode,
   themeMode
-}: DriveShellState) {
+}: PublicPageNavProps) {
   return <header style={{
     display: "flex",
     alignItems: "center",
@@ -58,7 +59,7 @@ export function PublicPageNav({
             </span>
           </div>
         </Link>
-        <ThemeLanguageActions locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
       </div>
     </header>;
 }

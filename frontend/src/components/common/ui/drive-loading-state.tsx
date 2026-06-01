@@ -229,7 +229,7 @@ function TableSkeleton({
   }}>
       <div style={{
       display: "grid",
-      gridTemplateColumns: "48px minmax(280px, 1fr) 120px 160px 150px 110px 104px",
+      gridTemplateColumns: "48px minmax(260px, 1fr) 150px 118px 142px 88px",
       gap: "16px",
       alignItems: "center",
       height: "40px",
@@ -254,14 +254,11 @@ function TableSkeleton({
         <SkeletonBlock palette={palette} style={{
         height: "10px"
       }} />
-        <SkeletonBlock palette={palette} style={{
-        height: "10px"
-      }} />
         <div />
       </div>
       {tableRows.map(item => <div key={item} data-skeleton-row style={{
       display: "grid",
-      gridTemplateColumns: "48px minmax(280px, 1fr) 120px 160px 150px 110px 104px",
+      gridTemplateColumns: "48px minmax(260px, 1fr) 150px 118px 142px 88px",
       gap: "16px",
       alignItems: "center",
       height: "56px",
@@ -290,9 +287,6 @@ function TableSkeleton({
           width: "72%"
         }} />
           </div>
-          <SkeletonBlock palette={palette} style={{
-        height: "10px"
-      }} />
           <SkeletonBlock palette={palette} style={{
         height: "10px"
       }} />

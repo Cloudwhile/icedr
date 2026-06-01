@@ -1,13 +1,13 @@
 ﻿"use client";
 
-import { useTranslations } from "next-intl";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "@/compat/navigation";
+import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
 import { completeSetup, fetchSetupStatus, getApiBaseUrl, setStoredAuthToken, testSetupMailSettings, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
-import { type Locale, type Palette, type ThemeMode } from "@/features/file/model";
+import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
-import { LocalizedDriveShell, ThemeLanguageActions } from "./drive-shell";
+import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { AnimatedCheckMark, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
 import { TextArea } from "@heroui/react";
 import { AppImage } from "@/components/ui/app-image";
@@ -112,15 +112,11 @@ export function SetupRoute() {
     </Suspense>;
 }
 function SetupPage({
-  locale,
   palette,
-  setLocale,
   setThemeMode,
   themeMode
 }: {
-  locale: Locale;
   palette: Palette;
-  setLocale: React.Dispatch<React.SetStateAction<Locale>>;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   themeMode: ThemeMode;
 }) {
@@ -401,7 +397,7 @@ function SetupPage({
           }}>{site.siteName}</span>
           </div>
         </div>
-        <ThemeLanguageActions locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
       </div>
 
       <div className="icedr-r-grid-template-columns" style={{

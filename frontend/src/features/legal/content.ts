@@ -19,7 +19,7 @@ export type LegalDocumentText = {
 type LegalDocument = {
   key: LegalDocumentKey;
   route: string;
-  label: Record<Locale, string>;
+  label: Record<LegalTextLocale, string>;
   text: Record<LegalTextLocale, LegalDocumentText>;
 };
 
@@ -404,6 +404,10 @@ export function getLegalDocument(key: LegalDocumentKey) {
   return legalDocuments[key];
 }
 
+export function getLegalTextLocale(locale: Locale): LegalTextLocale {
+  return locale === "zh" || locale.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
 export function getLegalPageLabel(key: LegalDocumentKey, locale: Locale) {
-  return legalDocuments[key].label[locale];
+  return legalDocuments[key].label[getLegalTextLocale(locale)];
 }

@@ -6,7 +6,7 @@ Docker Compose lives at `deploy/docker-compose.yml`.
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-Compose starts PostgreSQL, Redis, MinIO, the Nest API, and the Next.js frontend. The frontend listens on `13000`; the API listens on `13001` and exposes `/api/health`.
+Compose starts PostgreSQL, Redis, MinIO, the Nest API, and the Vite-built frontend. The frontend listens on `13000`; the API listens on `13001` and exposes `/api/health`.
 
 Dockerfiles live in:
 

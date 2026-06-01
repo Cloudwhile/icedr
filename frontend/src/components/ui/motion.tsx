@@ -15,9 +15,9 @@ type MotionSpec = {
 const motionSpecs: Record<MotionPreset, MotionSpec> = {
   dialog: {
     enter: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.975, y: 10 },
-    initial: { opacity: 0, scale: 0.965, y: 18 },
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, scale: 0.972, y: 14 },
+    initial: { opacity: 0, scale: 0.96, y: 22 },
+    transition: { duration: 0.46, ease: [0.16, 1, 0.3, 1] },
   },
   fade: {
     enter: { opacity: 1 },
@@ -27,15 +27,15 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
   },
   drawer: {
     enter: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -24 },
-    initial: { opacity: 0, x: -32 },
-    transition: { duration: 0.34, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, x: -28 },
+    initial: { opacity: 0, x: -40 },
+    transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] },
   },
   list: {
     enter: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.992, y: 8 },
-    initial: { opacity: 0, scale: 0.992, y: 10 },
-    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, scale: 0.992, y: 10 },
+    initial: { opacity: 0, scale: 0.99, y: 14 },
+    transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] },
   },
   menu: {
     enter: { opacity: 1, scale: 1, y: 0 },
@@ -51,15 +51,15 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
   },
   "panel-left": {
     enter: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -24 },
-    initial: { opacity: 0, x: -30 },
-    transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, x: -36 },
+    initial: { opacity: 0, x: -48 },
+    transition: { duration: 0.52, ease: [0.16, 1, 0.3, 1] },
   },
   "panel-right": {
     enter: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: 28 },
-    initial: { opacity: 0, x: 34 },
-    transition: { duration: 0.44, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, x: 42 },
+    initial: { opacity: 0, x: 56 },
+    transition: { duration: 0.54, ease: [0.16, 1, 0.3, 1] },
   },
   pressable: {
     enter: { opacity: 1, scale: 1 },
@@ -69,9 +69,9 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
   },
   surface: {
     enter: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.995, y: 8 },
-    initial: { opacity: 0, scale: 0.992, y: 12 },
-    transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, scale: 0.994, y: 10 },
+    initial: { opacity: 0, scale: 0.988, y: 16 },
+    transition: { duration: 0.44, ease: [0.16, 1, 0.3, 1] },
   },
   toast: {
     enter: { opacity: 1, scale: 1, y: 0 },
@@ -81,9 +81,9 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
   },
   toolbar: {
     enter: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.985, y: 10 },
-    initial: { opacity: 0, scale: 0.985, y: 12 },
-    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
+    exit: { opacity: 0, scale: 0.982, y: 16 },
+    initial: { opacity: 0, scale: 0.97, y: 22 },
+    transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] },
   },
 };
 
@@ -167,10 +167,47 @@ export function MotionList({
   children: ReactNode;
   preset?: MotionPreset;
 } & Omit<ComponentProps<typeof motion.div>, "animate" | "children" | "exit" | "initial" | "variants">) {
+  const [scope, animate] = useAnimate<HTMLDivElement>();
+  const reduce = useReducedMotion();
+  const spec = motionSpecs[preset];
+
+  useEffect(() => {
+    const node = scope.current;
+    if (!node) return;
+    const targets = Array.from(node.querySelectorAll<HTMLElement>("[data-motion-row]"));
+    if (targets.length === 0) return;
+    if (reduce) {
+      void animate(targets, { opacity: 1 }, { duration: 0 });
+      return;
+    }
+
+    void (async () => {
+      await animate(targets, { filter: "blur(7px)", opacity: 0, scale: 0.985, y: 16 }, { duration: 0 });
+      await animate(
+        targets,
+        { filter: "blur(0px)", opacity: 1, scale: 1, y: 0 },
+        {
+          delay: stagger(Math.min(0.045, 0.3 / targets.length)),
+          duration: 0.46,
+          ease: [0.16, 1, 0.3, 1],
+        },
+      );
+    })();
+  }, [animate, reduce, scope]);
+
   return (
-    <MotionSurface layout preset={preset} {...rest}>
+    <motion.div
+      animate="enter"
+      exit="exit"
+      initial="initial"
+      layout
+      ref={scope}
+      transition={reduce ? { duration: 0 } : spec.transition}
+      variants={variantsFor(preset, Boolean(reduce))}
+      {...rest}
+    >
       {children}
-    </MotionSurface>
+    </motion.div>
   );
 }
 

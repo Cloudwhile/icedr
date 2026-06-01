@@ -1,15 +1,15 @@
 ﻿"use client";
 
 import { MotionPresence, useMotionReveal, useMotionStagger } from "@/components/ui/motion";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "@/compat/link";
+import { usePathname, useRouter, useSearchParams } from "@/compat/navigation";
+import { useTranslations } from "@/i18n/react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { clearStoredAuthToken, confirmPasswordReset, DriveApiError, exchangeOAuthCode, fetchAuthSettings, fetchCurrentUser, fetchPublicSiteSettings, fetchSetupStatus, loginLocalUser, logoutLocalUser, registerLocalUser, requestPasswordReset, startOAuthLogin, createPasskeyAuthenticationOptions, verifyPasskeyAuthentication, verifyPasswordReset, setStoredAuthToken, type AuthUser, type AuthSettings, type PublicSiteSettings } from "@/lib/drive-api";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
-import { LocalizedDriveShell, ThemeLanguageActions } from "./drive-shell";
+import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LegalConsentDialog } from "./legal-consent-dialog";
 import { LegalFooter } from "./legal-footer";
 import { LocalIcon, Surface, ToolButton } from "./drive-primitives";
@@ -78,14 +78,12 @@ function AuthPage({
   locale,
   mode,
   palette,
-  setLocale,
   setThemeMode,
   themeMode
 }: {
   locale: Locale;
   mode: AuthPageMode;
   palette: Palette;
-  setLocale: React.Dispatch<React.SetStateAction<Locale>>;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   themeMode: ThemeMode;
 }) {
@@ -280,7 +278,7 @@ function AuthPage({
       displayName: nextDisplayName
     }).then(finishSession) : mode === "forgot" ? passwordResetStep === "request" ? requestPasswordReset({
       email: nextEmail,
-      locale
+      locale: getAuthEmailLocale(locale)
     }).then(() => {
       setCode("");
       setPasswordResetStep("verify");
@@ -358,7 +356,7 @@ function AuthPage({
     setStatusMode(mode);
     void requestPasswordReset({
       email,
-      locale
+      locale: getAuthEmailLocale(locale)
     }).then(() => {
       setCode("");
       setPasswordResetStep("verify");
@@ -405,7 +403,7 @@ function AuthPage({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      <AuthHeader brandLogo={brandLogo} siteName={siteSettings.siteName} locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <AuthHeader brandLogo={brandLogo} siteName={siteSettings.siteName} palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
 
       <main className="icedr-r-grid-template-columns icedr-r-gap icedr-r-padding-inline icedr-r-padding-block icedr-r-padding-bottom" style={{
       display: "grid",
@@ -532,17 +530,13 @@ function AuthWorkspacePanel({
 }
 function AuthHeader({
   brandLogo,
-  locale,
   palette,
-  setLocale,
   setThemeMode,
   siteName,
   themeMode
 }: {
   brandLogo: string;
-  locale: Locale;
   palette: Palette;
-  setLocale: React.Dispatch<React.SetStateAction<Locale>>;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   siteName: string;
   themeMode: ThemeMode;
@@ -591,7 +585,7 @@ function AuthHeader({
           </span>
         </div>
       </div>
-      <ThemeLanguageActions locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
     </header>;
 }
 function AuthFormCard({
@@ -1133,6 +1127,9 @@ function getFormString(formData: FormData, name: string) {
 function resolveAuthNextTarget(next: string) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
   return next.startsWith("/login") ? "/" : next;
+}
+function getAuthEmailLocale(locale: Locale): "en" | "zh" {
+  return locale === "zh" || locale.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 function maskEmail(email: string) {
   const trimmed = email.trim();

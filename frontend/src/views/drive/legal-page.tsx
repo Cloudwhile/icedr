@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import type { Palette } from "@/features/file/model";
-import { getLegalDocument, type LegalDocumentKey, type LegalTextLocale } from "@/features/legal/content";
+import { getLegalDocument, getLegalTextLocale, type LegalDocumentKey, type LegalTextLocale } from "@/features/legal/content";
 import { LocalizedDriveShell, type DriveShellState } from "./drive-shell";
 import { LegalFooter } from "./legal-footer";
 import { LocalIcon } from "./drive-primitives";
@@ -20,14 +20,13 @@ function LegalPage({
   documentKey,
   locale,
   palette,
-  setLocale,
   setThemeMode,
   themeMode
 }: {
   documentKey: LegalDocumentKey;
 } & DriveShellState) {
   const document = getLegalDocument(documentKey);
-  const primaryText = document.text[locale];
+  const primaryText = document.text[getLegalTextLocale(locale)];
   return <div style={{
     display: "flex",
     height: "100dvh",
@@ -38,7 +37,7 @@ function LegalPage({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      <PublicPageNav locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <PublicPageNav palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
 
       <main style={{
       flex: "1 1 auto",

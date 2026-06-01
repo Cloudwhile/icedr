@@ -1,6 +1,5 @@
 "use client";
 
-import NextImage from "next/image";
 import type { CSSProperties, ImgHTMLAttributes } from "react";
 
 export type AppImageProps = ImgHTMLAttributes<HTMLImageElement> & {
@@ -13,10 +12,11 @@ export type AppImageProps = ImgHTMLAttributes<HTMLImageElement> & {
 export function AppImage({
   alt = "",
   height,
+  loading: requestedLoading,
   priority,
   src,
   style,
-  unoptimized = true,
+  unoptimized: _unoptimized = true,
   width,
   ...props
 }: AppImageProps) {
@@ -27,21 +27,15 @@ export function AppImage({
     width: typeof width === "string" ? width : style?.width,
     ...style,
   };
-
-  if (typeof src === "string" && (src.startsWith("data:") || src.startsWith("blob:"))) {
-    // Data/blob previews are already generated client-side and cannot be optimized by Next Image.
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img alt={alt} src={src} style={imageStyle} {...props} />;
-  }
+  const loading = priority ? "eager" : requestedLoading;
 
   return (
-    <NextImage
+    <img
       alt={alt}
       height={numericHeight}
-      priority={priority}
+      loading={loading}
       src={typeof src === "string" ? src : "/logo.png"}
       style={imageStyle}
-      unoptimized={unoptimized}
       width={numericWidth}
       {...props}
     />

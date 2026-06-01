@@ -1,8 +1,8 @@
 ﻿"use client";
 
 import { Input, Modal, TextArea } from "@heroui/react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useLocale, useTranslations } from "next-intl";
+import { useRouter, useSearchParams } from "@/compat/navigation";
+import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import { MotionPresence, useMotionReveal, useMotionStagger } from "@/components/ui/motion";
@@ -10,14 +10,15 @@ import { showAppToast, type AppToastTone } from "@/components/ui/app-toast";
 import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
 import { ExternalSharePageSkeleton, LoadingSpinner, ShareCreationSkeleton } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getChildItems, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type LocalIconName, type Palette, type ThemeMode } from "@/features/file/model";
-import { copyTextToClipboard, createSharedPreviewIntent, createShareUrl, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
-import { fetchAuthSettings, createPasskeyRegistrationOptions, deletePasskey, DriveApiError, getApiBaseUrl, fetchPasskeys, fetchSiteSettings, fetchWorkspaces, fetchIdentityConfig, fetchMailSettings, fetchStorageSettings, fetchWorkspaceShareSettings, sendShareEmailCode, startShareOAuth, testMailSettings, testStorageSettings, updateAuthSettings, updateMailSettings, updateOAuthSettings, updatePasskeySettings, updateSiteSettings, updateStorageSettings, updateWorkspaceShareSettings, verifyPasskeyRegistration, verifyShareEmailCode, type AuthSettings, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeyRecord, type PasskeySettings, type PublicSiteSettings, type ShareAccessSession, type StorageSettings, type StorageSettingsInput, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { copyTextToClipboard, createSharedDriveItemBlobUrl, createSharedPreviewIntent, createShareUrl, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
+import { fetchAuthSettings, createPasskeyRegistrationOptions, deletePasskey, DriveApiError, getApiBaseUrl, fetchPasskeys, fetchSiteSettings, fetchTranslationSettings, fetchWorkspaces, fetchIdentityConfig, fetchMailSettings, fetchStorageSettings, fetchWorkspaceShareSettings, sendShareEmailCode, startShareOAuth, testMailSettings, testStorageSettings, updateAuthSettings, updateMailSettings, updateOAuthSettings, updatePasskeySettings, updateSiteSettings, updateStorageSettings, updateWorkspaceShareSettings, upsertTranslationBundle, verifyPasskeyRegistration, verifyShareEmailCode, type AuthSettings, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeyRecord, type PasskeySettings, type PublicSiteSettings, type ShareAccessSession, type StorageSettings, type StorageSettingsInput, type TranslationBundle, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice } from "./auth-form-primitives";
-import { ThemeLanguageActions } from "./drive-shell";
+import { ThemeActions } from "./drive-shell";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
 import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
 import { collectShareDescendants, createRegisteredShare, fetchRegisteredShare, getRegisteredShareParent, getShareItems, getVisibleRegisteredShareItems, type RegisteredShare, type RegisteredShareItem, type RegisteredSharePolicy } from "@/features/share/registry";
 import { AppImage } from "@/components/ui/app-image";
+import { ReadOnlyFilePreview } from "@/components/ui/read-only-file-preview";
 const buttonTypeAttr: {
   type?: "button";
 } = {
@@ -495,14 +496,12 @@ function ExternalSharePanel({
 export function ExternalShareStandalone({
   initialShare,
   locale,
-  setLocale,
   setThemeMode,
   themeMode,
   token
 }: {
   initialShare?: RegisteredShare;
   locale: Locale;
-  setLocale: React.Dispatch<React.SetStateAction<Locale>>;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   themeMode: ThemeMode;
   token: string;
@@ -564,17 +563,13 @@ export function ExternalShareStandalone({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      {previewLoading || !registeredShare || !collection ? <ExternalSharePageSkeleton palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
+      {previewLoading || !registeredShare || !collection ? <ExternalSharePageSkeleton palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
     </div>;
 }
 export function ExternalShareAdminSettingsPage({
-  locale,
-  setLocale,
   setThemeMode,
   themeMode
 }: {
-  locale: Locale;
-  setLocale: React.Dispatch<React.SetStateAction<Locale>>;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   themeMode: ThemeMode;
 }) {
@@ -627,7 +622,7 @@ export function ExternalShareAdminSettingsPage({
             </span>
           </div>
         </div>
-        <ThemeLanguageActions locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
       </div>
 
       <div style={{
@@ -708,6 +703,7 @@ export function ExternalShareAdminSettingsPanel({
     siteName: "ICEDR",
     authLogoDataUrl: null
   });
+  const [translationBundles, setTranslationBundles] = useState<TranslationBundle[]>([]);
   const [oauthSettings, setOauthSettings] = useState<OAuthSettings | null>(null);
   const [oauthSecret, setOauthSecret] = useState("");
   const [mailSettings, setMailSettings] = useState<MailSettings>(defaultMailSettings);
@@ -731,6 +727,7 @@ export function ExternalShareAdminSettingsPanel({
   const savedMailRef = useRef<MailSettings | null>(null);
   const savedPasskeyRef = useRef<PasskeySettings | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const translationInputRef = useRef<HTMLInputElement | null>(null);
   const currentSystemBaseUrl = useMemo(() => getCurrentSystemBaseUrl(), []);
   const oauthShareRedirectUri = useMemo(() => `${getApiBaseUrl()}/shares/oauth/callback`, []);
   const oauthCallbackBaseUrl = getCallbackBaseUrl(oauthSettings?.redirectUri ?? "", currentSystemBaseUrl);
@@ -773,11 +770,12 @@ export function ExternalShareAdminSettingsPanel({
   }, [applyWorkspaceShareSettings, showToast, t]);
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([fetchAuthSettings(), fetchStorageSettings(), fetchSiteSettings(), fetchMailSettings(), fetchPasskeys()]).then(([auth, storage, adminSettings, mail, passkeyRows]) => {
+    void Promise.all([fetchAuthSettings(), fetchStorageSettings(), fetchSiteSettings(), fetchMailSettings(), fetchPasskeys(), fetchTranslationSettings()]).then(([auth, storage, adminSettings, mail, passkeyRows, translations]) => {
       if (!cancelled) {
         setAuthSettings(auth);
         setStorageSettings(storage);
         setSiteSettings(adminSettings.site);
+        setTranslationBundles(translations.bundles);
         setOauthSettings(adminSettings.oauth);
         setMailSettings(mail);
         setPasskeySettings(adminSettings.passkey);
@@ -987,6 +985,30 @@ export function ExternalShareAdminSettingsPanel({
       }, previous);
     };
     reader.readAsDataURL(file);
+  };
+  const pickTranslationBundle = () => translationInputRef.current?.click();
+  const updateTranslationBundle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const match = file.name.match(/^([a-z]{2,3}_[A-Z0-9]{2,8})\.tsln$/);
+    if (!match) {
+      showToast(t("admin.translationFileInvalid"), "error");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      showToast(t("admin.translationFileTooLarge"), "error");
+      return;
+    }
+    const code = match[1];
+    setSaving(true);
+    void file.text().then(content => upsertTranslationBundle({
+      code,
+      content
+    })).then(bundle => {
+      setTranslationBundles(current => [bundle, ...current.filter(item => item.code !== bundle.code)].sort((left, right) => left.code.localeCompare(right.code)));
+      showToast(t("admin.translationUploaded"));
+    }).catch(error => showToast(getAdminSaveFailedMessage(error, t), "error")).finally(() => setSaving(false));
   };
   const saveOAuthValue = (key: string, next: OAuthSettings, previous: OAuthSettings, recordUndo = true, clientSecret?: string) => {
     if (saving || !clientSecret && !settingChanged(previous, next)) return;
@@ -1274,6 +1296,53 @@ export function ExternalShareAdminSettingsPanel({
         <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={updateLogo} style={{
         display: "none"
       }} />
+      </AdminSection>
+
+      <AdminSection icon={<LocalIcon name="earth" size={16} />} palette={palette} title={t("admin.translationBundles")}>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px"
+        }}>
+          <div style={{
+            minWidth: "0px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px"
+          }}>
+            <span style={{ color: palette.ink, fontWeight: "700" }}>{t("admin.translationUpload")}</span>
+            <span style={{ color: palette.subtle, fontSize: "12px" }}>{t("admin.translationCount", { count: translationBundles.length })}</span>
+          </div>
+          <ToolButton label={t("admin.translationUpload")} palette={palette} disabled={saving} onClick={pickTranslationBundle}>
+            <LocalIcon name="upload" size={17} />
+          </ToolButton>
+        </div>
+        {translationBundles.length > 0 ? <div style={{
+          display: "grid",
+          gap: "6px"
+        }}>
+          {translationBundles.map(bundle => <div key={bundle.code} style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(80px, 120px) minmax(0, 1fr)",
+            gap: "10px",
+            alignItems: "center",
+            minHeight: "34px",
+            paddingInline: "8px",
+            borderRadius: "8px",
+            background: palette.surface2,
+            borderWidth: "1px",
+            borderColor: palette.hairline
+          }}>
+              <span style={{ color: palette.ink, fontWeight: "700" }}>{bundle.code}</span>
+              <span className="icedr-truncate" style={{ color: palette.subtle, fontSize: "12px" }}>{bundle.language}</span>
+            </div>)}
+        </div> : <SettingStatusLine icon="info" palette={palette} tone="neutral">
+            {t("admin.translationEmpty")}
+          </SettingStatusLine>}
+        <input ref={translationInputRef} type="file" accept=".tsln,text/plain" onChange={updateTranslationBundle} style={{
+          display: "none"
+        }} />
       </AdminSection>
 
       <AdminSection icon={<LocalIcon name="lock" size={16} />} palette={palette} title={t("admin.authMethods")}>
@@ -2559,7 +2628,6 @@ function ExternalSharePreview({
   locale,
   palette,
   registeredShare,
-  setLocale,
   setThemeMode,
   sourceItems,
   themeMode,
@@ -2570,7 +2638,6 @@ function ExternalSharePreview({
   locale: Locale;
   palette: Palette;
   registeredShare: RegisteredShare;
-  setLocale: React.Dispatch<React.SetStateAction<Locale>>;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   sourceItems: DriveItem[];
   themeMode: ThemeMode;
@@ -2788,7 +2855,7 @@ function ExternalSharePreview({
           <StatusPill palette={palette} tone={verified ? "accent" : "neutral"}>
             {verified ? t("share.verifiedAccess") : t("share.secureShare")}
           </StatusPill>
-          <ThemeLanguageActions locale={locale} palette={palette} setLocale={setLocale} setThemeMode={setThemeMode} themeMode={themeMode} />
+          <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
         </div>
       </div>
 
@@ -2888,7 +2955,7 @@ function ExternalSharePreview({
       </div>
 
       <ShareAuthDialog action={accessAction} accessExperience={experience} authMethod={authMethod} code={code} accessItem={accessItem} email={email} locale={locale} accountConfigured={icaConfigured} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onEmailChange={setEmail} onMethodChange={selectAuthMethod} onSendCode={sendCode} onVerifyCode={verifyCode} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} setCode={setCode} sourceItems={sourceItems} stage={stage} />
-      <SharePreviewDialog onClose={() => setPreview(null)} open={Boolean(preview)} palette={palette} preview={preview} locale={locale} />
+      <SharePreviewDialog accessSessionId={accessSessionId} onClose={() => setPreview(null)} open={Boolean(preview)} palette={palette} preview={preview} locale={locale} shareToken={registeredShare.token} />
       {feedback ? <div className="icedr-r-right" style={{
       display: "flex",
       position: "fixed",
@@ -2953,6 +3020,7 @@ function VisitorShareBrowser({
   visibleListRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const t = useTranslations();
+  const timeZone = useTimeZone();
   return <Surface palette={palette} className="icedr-r-min-height" style={{
     overflow: "hidden",
     flex: "1 1 auto",
@@ -3063,7 +3131,7 @@ function VisitorShareBrowser({
               }}>
                       <span>{t(`files.kind.${getItemKind(item)}`)}</span>
                       <span>/</span>
-                      <span>{formatDriveItemModified(item, locale)}</span>
+                      <span>{formatDriveItemModified(item, locale, timeZone)}</span>
                     </div>
                   </div>
                 </div>
@@ -3142,12 +3210,15 @@ function VisitorActionsMenu({
     </ActionMenu>;
 }
 function SharePreviewDialog({
+  accessSessionId,
   locale,
   onClose,
   open,
   palette,
-  preview
+  preview,
+  shareToken,
 }: {
+  accessSessionId: string | null;
   locale: Locale;
   onClose: () => void;
   open: boolean;
@@ -3156,13 +3227,15 @@ function SharePreviewDialog({
     item: DriveItem;
     intent: PreviewIntentResponse | null;
   } | null;
+  shareToken: string;
 }) {
   const t = useTranslations();
+  const timeZone = useTimeZone();
   const item = preview?.item ?? null;
   const intent = preview?.intent ?? null;
-  const kind = item ? getItemKind(item) : "doc";
   const size = item ? formatFileSize(sumDriveItemSizes([item], [item]), locale) : "--";
   const statusLabel = intent ? t(`preview.apiStatus.${intent.status}`) : t("preview.notConfigured");
+  const loadBlobUrl = useCallback((targetItem: DriveItem) => createSharedDriveItemBlobUrl(shareToken, targetItem, accessSessionId ?? undefined), [accessSessionId, shareToken]);
   return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && onClose()} style={{
         background: "rgba(0, 0, 0, 0.48)"
       }}>
@@ -3173,8 +3246,8 @@ function SharePreviewDialog({
           borderWidth: "1px",
           borderColor: palette.hairlineStrong,
           borderRadius: "8px",
-          maxWidth: "760px",
-          width: "min(760px, calc(100vw - 24px))",
+          maxWidth: "980px",
+          width: "min(980px, calc(100vw - 24px))",
           overflow: "hidden",
           boxShadow: "0 24px 80px rgba(0, 0, 0, 0.48)"
         }}>
@@ -3211,7 +3284,7 @@ function SharePreviewDialog({
                     fontSize: "12px",
                     marginTop: "4px"
                   }}>
-                      {item ? `${formatDriveItemModified(item, locale)} / ${size}` : statusLabel}
+                      {item ? `${formatDriveItemModified(item, locale, timeZone)} / ${size}` : statusLabel}
                     </span>
                   </div>
                 </div>
@@ -3225,73 +3298,11 @@ function SharePreviewDialog({
             "--r-padding-base": "16px",
             "--r-padding-md": "24px"
           } as React.CSSProperties}>
-              <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-              alignItems: "center",
-              textAlign: "center",
-              minHeight: "360px",
-              justifyContent: "center"
-            }}>
-                {item ? <ItemIcon item={item} palette={palette} size={42} /> : <LocalIcon name="visible" size={42} color={palette.primaryHover} />}
-                <div>
-                  <span style={{
-                  color: palette.ink,
-                  fontWeight: "700",
-                  fontSize: "20px"
-                }}>
-                    {item ? t(`preview.kindTitle.${kind}`) : t("preview.notConfigured")}
-                  </span>
-                  <span style={{
-                  color: palette.subtle,
-                  marginTop: "8px",
-                  maxWidth: "520px"
-                }}>
-                    {kind === "archive" || intent?.status === "unsupported" ? t("preview.unsupportedHint") : t("preview.notConfiguredHint")}
-                  </span>
-                </div>
-                <div style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-                width: "min(420px, 100%)",
-                textAlign: "left"
-              }}>
-                  <PreviewMetric label={t("files.type")} value={t(`files.kind.${kind}`)} palette={palette} />
-                  <PreviewMetric label={t("files.size")} value={size} palette={palette} />
-                  <PreviewMetric label={t("preview.status")} value={statusLabel} palette={palette} />
-                </div>
-              </div>
+              <ReadOnlyFilePreview key={item?.id ?? "empty"} item={item} loadBlobUrl={loadBlobUrl} locale={locale} palette={palette} statusLabel={statusLabel} t={t} />
             </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>;
-}
-function PreviewMetric({
-  label,
-  value,
-  palette
-}: {
-  label: string;
-  value: string;
-  palette: Palette;
-}) {
-  return <div>
-      <span style={{
-      color: palette.subtle,
-      fontSize: "12px"
-    }}>
-        {label}
-      </span>
-      <span style={{
-      color: palette.ink,
-      fontWeight: "700",
-      marginTop: "4px"
-    }}>
-        {value}
-      </span>
-    </div>;
 }
 function ShareAuthDialog({
   accessExperience,

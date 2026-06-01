@@ -1,7 +1,7 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/compat/navigation";
+import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useState } from "react";
 import { completeOAuthCallback, setStoredAuthToken } from "@/lib/drive-api";
 import type { Palette } from "@/features/file/model";

@@ -1,5 +1,5 @@
-import type { useTranslations } from "next-intl";
-import { formatFileSize, type Locale } from "@/features/file/model";
+import type { useTranslations } from "@/i18n/react";
+import { formatFileSize, getIntlLocale, type Locale } from "@/features/file/model";
 import type { TransferRow } from "./drive-types";
 
 type DriveTranslator = ReturnType<typeof useTranslations>;
@@ -35,14 +35,15 @@ export function formatRemainingTime(seconds: number, locale: Locale) {
   return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
 }
 
-export function formatAbsoluteDate(value: string) {
+export function formatAbsoluteDate(value: string, locale: Locale, timeZone?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, {
+  return new Intl.DateTimeFormat(getIntlLocale(locale), {
     month: "short",
     day: "numeric",
     year: "numeric",
-  });
+    ...(timeZone ? { timeZone } : {}),
+  }).format(date);
 }
 
 export function formatAuditAction(action: string) {

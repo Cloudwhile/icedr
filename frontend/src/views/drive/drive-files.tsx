@@ -1,8 +1,11 @@
 "use client";
 
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
+import { useEffect, useState } from "react";
 import { MotionLayoutGroup, MotionList, MotionSurface } from "@/components/ui/motion";
+import { AppContextMenu, type AppContextMenuPosition } from "@/components/ui/app-context-menu";
 import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
+import { InlineRenameInput } from "@/components/ui/inline-rename-input";
 import {
   formatDriveItemModified,
   formatFileSize,
@@ -13,6 +16,8 @@ import {
   type LocalIconName,
   type Palette,
 } from "@/features/file/model";
+import { isImagePreviewFile, isTextEditableFile, isVideoPreviewFile } from "@/features/file/open-with";
+import { createWorkspaceDriveItemSourceUrl } from "@/features/file/actions";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 
 const buttonTypeAttr: { type?: "button" } = {
@@ -21,26 +26,44 @@ const buttonTypeAttr: { type?: "button" } = {
 
 type FileAction = (item: DriveItem) => void;
 
+type FileSelectionHandlers = {
+  onSelectItem: (event: React.MouseEvent, item: DriveItem) => void;
+  onSelectItemCheckbox: (item: DriveItem, checked: boolean) => void;
+  selectSingleItem: (id: string) => void;
+};
+
 export type FilesModuleProps = {
   activeNav: string;
+  createMenuItems: AppMenuItem[];
   currentFolderId: string | null;
   error: string | null;
   goUp: () => void;
   hasQuery: boolean;
   items: DriveItem[];
-  locale: Locale;
   onArchiveItem: FileAction;
+  onBlankGoRoot: () => void;
+  onBlankGoUp: () => void;
+  onBlankSelect: () => void;
+  onBlankRefresh: () => void;
+  onCancelRenameItem: () => void;
+  onCommitRenameItem: (item: DriveItem, name: string) => boolean | Promise<boolean>;
   onCopyItem: FileAction;
+  onCopyNodeItem: FileAction;
   onDownloadItem: FileAction;
+  onEditItem: FileAction;
+  onMoveItem: FileAction;
+  onRenameItem: FileAction;
   onRestoreItem: FileAction;
   onSecurityItem: FileAction;
+  onSetViewMode: (mode: "list" | "grid") => void;
   onShareItem: FileAction;
+  onShowDetailsItem: FileAction;
   openFolder: (id: string) => void;
   openPreview: (id: string) => void;
   palette: Palette;
+  renamingItemId: string | null;
   selected: string[];
   sourceItems: DriveItem[];
-  suggestedItems: DriveItem[];
   toggleSelected: (id: string, checked: boolean) => void;
   toggleStar: (id: string) => void;
   viewMode: "list" | "grid";
@@ -48,66 +71,111 @@ export type FilesModuleProps = {
 
 export function FilesModule({
   activeNav,
+  createMenuItems,
   currentFolderId,
   error,
   goUp,
   hasQuery,
   items,
-  locale,
   onArchiveItem,
+  onBlankGoRoot,
+  onBlankGoUp,
+  onBlankSelect,
+  onBlankRefresh,
+  onCancelRenameItem,
+  onCommitRenameItem,
   onCopyItem,
+  onCopyNodeItem,
   onDownloadItem,
+  onEditItem,
+  onMoveItem,
+  onRenameItem,
   onRestoreItem,
   onSecurityItem,
+  onSetViewMode,
   onShareItem,
+  onShowDetailsItem,
   openFolder,
   openPreview,
   palette,
+  renamingItemId,
   selected,
   sourceItems,
-  suggestedItems,
   toggleSelected,
   toggleStar,
   viewMode,
 }: FilesModuleProps) {
   const t = useTranslations();
-  const showSuggested = activeNav === "drive" && !hasQuery && currentFolderId === null && suggestedItems.length > 0;
+  const [blankContextMenu, setBlankContextMenu] = useState<AppContextMenuPosition | null>(null);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const blankNavigationItems = [
+    currentFolderId ? { icon: <LocalIcon name="arrow_up" size={15} />, label: t("files.parentDirectory"), onClick: onBlankGoUp, value: "go-up" } : null,
+    currentFolderId ? { icon: <LocalIcon name="house" size={15} />, label: t("actions.goRoot"), onClick: onBlankGoRoot, value: "go-root" } : null,
+  ].filter(Boolean) as AppMenuItem[];
+  const blankCreateItems = createMenuItems.map((item, index) => ({
+    ...item,
+    separatorBefore: index === 0 ? blankNavigationItems.length > 0 : item.separatorBefore,
+  }));
+  const blankMenuItems: AppMenuItem[] = [
+    ...blankNavigationItems,
+    ...blankCreateItems,
+    { icon: <LocalIcon name="refresh" size={15} />, label: t("app.refresh"), onClick: onBlankRefresh, value: "refresh" },
+    { icon: <LocalIcon name="menu7" size={15} />, label: t("actions.listView"), onClick: () => onSetViewMode("list"), separatorBefore: true, disabled: viewMode === "list", value: "view-list" },
+    { icon: <LocalIcon name="grid" size={15} />, label: t("actions.gridView"), onClick: () => onSetViewMode("grid"), disabled: viewMode === "grid", value: "view-grid" },
+  ];
+
+  const openBlankContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || isDriveBlankMenuIgnored(target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setBlankContextMenu({ x: event.clientX, y: event.clientY });
+  };
+  const clearBlankSelection = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || isDriveBlankMenuIgnored(target)) return;
+    onBlankSelect();
+    setSelectionAnchorId(null);
+  };
+  const selectSingleItem = (id: string) => {
+    selected.forEach((selectedId) => {
+      if (selectedId !== id) toggleSelected(selectedId, false);
+    });
+    if (!selected.includes(id)) toggleSelected(id, true);
+    setSelectionAnchorId(id);
+  };
+  const handleItemSelection = (event: React.MouseEvent, item: DriveItem) => {
+    const visibleIds = items.map((candidate) => candidate.id);
+    if (event.shiftKey && selectionAnchorId) {
+      const anchorIndex = visibleIds.indexOf(selectionAnchorId);
+      const targetIndex = visibleIds.indexOf(item.id);
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        const [start, end] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+        visibleIds.slice(start, end + 1).forEach((id) => toggleSelected(id, true));
+        return;
+      }
+    }
+    if (event.ctrlKey || event.metaKey) {
+      toggleSelected(item.id, !selected.includes(item.id));
+      setSelectionAnchorId(item.id);
+      return;
+    }
+    selectSingleItem(item.id);
+  };
+  const handleCheckboxSelection = (item: DriveItem, checked: boolean) => {
+    toggleSelected(item.id, checked);
+    setSelectionAnchorId(item.id);
+  };
 
   return (
     <MotionLayoutGroup>
-      <div className="drive-files-module">
+      <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu}>
         {error ? (
           <div className="drive-error-banner">
             <StatusPill palette={palette} tone="risk">
               {error}
             </StatusPill>
           </div>
-        ) : null}
-
-        {showSuggested ? (
-          <section className="drive-suggested-section" aria-label={t("files.suggested")}>
-            <span className="drive-section-label">{t("files.suggested")}</span>
-            <MotionList key={suggestedItems.map((item) => item.id).join("|")} className="drive-suggested-grid">
-              {suggestedItems.map((item) => (
-                <button
-                  {...buttonTypeAttr}
-                  key={item.id}
-                  data-motion-row
-                  className="drive-suggested-card"
-                  onClick={() => openFolder(item.id)}
-                >
-                  <span className="drive-suggested-main">
-                    <ItemIcon item={item} palette={palette} size={22} />
-                    <span className="drive-suggested-copy">
-                      <span className="icedr-truncate">{item.name}</span>
-                      <span>{formatDriveItemModified(item, locale)}</span>
-                    </span>
-                  </span>
-                  <LocalIcon name="arrow_right" size={16} color={palette.subtle} />
-                </button>
-              ))}
-            </MotionList>
-          </section>
         ) : null}
 
         {items.length === 0 && !(activeNav === "drive" && currentFolderId) ? (
@@ -118,16 +186,27 @@ export function FilesModule({
             goUp={goUp}
             items={items}
             onArchiveItem={onArchiveItem}
+            onCancelRenameItem={onCancelRenameItem}
+            onCommitRenameItem={onCommitRenameItem}
             onCopyItem={onCopyItem}
+            onCopyNodeItem={onCopyNodeItem}
             onDownloadItem={onDownloadItem}
+            onEditItem={onEditItem}
+            onMoveItem={onMoveItem}
+            onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
             onSecurityItem={onSecurityItem}
             onShareItem={onShareItem}
+            onShowDetailsItem={onShowDetailsItem}
             openFolder={openFolder}
             openPreview={openPreview}
             palette={palette}
+            renamingItemId={renamingItemId}
             selected={selected}
             sourceItems={sourceItems}
+            onSelectItem={handleItemSelection}
+            onSelectItemCheckbox={handleCheckboxSelection}
+            selectSingleItem={selectSingleItem}
             toggleSelected={toggleSelected}
             toggleStar={toggleStar}
           />
@@ -137,21 +216,63 @@ export function FilesModule({
             goUp={goUp}
             items={items}
             onArchiveItem={onArchiveItem}
+            onCancelRenameItem={onCancelRenameItem}
+            onCommitRenameItem={onCommitRenameItem}
             onCopyItem={onCopyItem}
+            onCopyNodeItem={onCopyNodeItem}
             onDownloadItem={onDownloadItem}
+            onEditItem={onEditItem}
+            onMoveItem={onMoveItem}
+            onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
             onSecurityItem={onSecurityItem}
             onShareItem={onShareItem}
+            onShowDetailsItem={onShowDetailsItem}
             openFolder={openFolder}
             openPreview={openPreview}
             palette={palette}
+            renamingItemId={renamingItemId}
             selected={selected}
+            sourceItems={sourceItems}
+            onSelectItem={handleItemSelection}
+            onSelectItemCheckbox={handleCheckboxSelection}
+            selectSingleItem={selectSingleItem}
             toggleSelected={toggleSelected}
             toggleStar={toggleStar}
           />
         )}
+        <AppContextMenu
+          ariaLabel={t("actions.more")}
+          items={blankMenuItems}
+          onOpenChange={(open) => {
+            if (!open) setBlankContextMenu(null);
+          }}
+          open={Boolean(blankContextMenu)}
+          palette={palette}
+          position={blankContextMenu}
+        />
       </div>
     </MotionLayoutGroup>
+  );
+}
+
+function isDriveBlankMenuIgnored(target: HTMLElement) {
+  return Boolean(
+    target.closest(
+      [
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select",
+        "thead",
+        "[role='button']",
+        "[role='menu']",
+        "[data-drive-entry]",
+        ".icedr-menu",
+        ".icedr-context-menu",
+      ].join(","),
+    ),
   );
 }
 
@@ -221,47 +342,13 @@ function SelectBox({
 }
 
 function MoreActionsMenu({
-  item,
-  isFolder,
-  isStarred,
-  onArchive,
-  onCopy,
-  onDownload,
-  onRestore,
-  onShare,
-  onSecurity,
-  onToggleStar,
+  actionItems,
   palette,
 }: {
-  item: DriveItem;
-  isFolder: boolean;
-  isStarred: boolean;
-  onArchive: FileAction;
-  onCopy: FileAction;
-  onDownload: FileAction;
-  onRestore: FileAction;
-  onShare: FileAction;
-  onSecurity: FileAction;
-  onToggleStar: () => void;
+  actionItems: AppMenuItem[];
   palette: Palette;
 }) {
   const t = useTranslations();
-  const actionItems: AppMenuItem[] = [
-    { icon: <LocalIcon name="share2" size={15} />, label: t("actions.share"), onClick: () => onShare(item), value: "share" },
-    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyLink"), onClick: () => onCopy(item), value: "copy-link" },
-    !isFolder ? { icon: <LocalIcon name="download" size={15} />, label: t("actions.download"), onClick: () => onDownload(item), value: "download" } : null,
-    {
-      icon: <LocalIcon name="star" size={15} color={isStarred ? palette.primaryHover : "currentColor"} />,
-      label: isStarred ? t("actions.unstar") : t("actions.star"),
-      onClick: onToggleStar,
-      value: "star",
-    },
-    { icon: <LocalIcon name="shield" size={15} />, label: t("actions.security"), onClick: () => onSecurity(item), value: "security" },
-    item.archivedAt
-      ? { icon: <LocalIcon name="refresh" size={15} />, label: t("app.refresh"), onClick: () => onRestore(item), value: "restore" }
-      : { icon: <LocalIcon name="file" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), value: "archive" },
-  ].filter(Boolean) as AppMenuItem[];
-
   return (
     <ActionMenu ariaLabel={t("actions.more")} items={actionItems} palette={palette}>
       <button
@@ -284,9 +371,99 @@ function MoreActionsMenu({
   );
 }
 
+function buildFileActionItems({
+  item,
+  onArchive,
+  onCopy,
+  onCopyNode,
+  onDownload,
+  onEdit,
+  onMove,
+  onRename,
+  onRestore,
+  onShare,
+  onShowDetails,
+  onSecurity,
+  onToggleStar,
+  palette,
+  t,
+}: {
+  item: DriveItem;
+  onArchive: FileAction;
+  onCopy: FileAction;
+  onCopyNode: FileAction;
+  onDownload: FileAction;
+  onEdit: FileAction;
+  onMove: FileAction;
+  onRename: FileAction;
+  onRestore: FileAction;
+  onShare: FileAction;
+  onShowDetails: FileAction;
+  onSecurity: FileAction;
+  onToggleStar: () => void;
+  palette: Palette;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const isFolder = getItemKind(item) === "folder";
+  const editable = isTextEditableFile(item);
+  const actionItems: AppMenuItem[] = [
+    { icon: <LocalIcon name="share2" size={15} />, label: t("actions.share"), onClick: () => onShare(item), value: "share" },
+    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyLink"), onClick: () => onCopy(item), value: "copy-link" },
+    !isFolder ? { icon: <LocalIcon name="download" size={15} />, label: t("actions.download"), onClick: () => onDownload(item), value: "download" } : null,
+    { icon: <LocalIcon name="document" size={15} />, label: t("actions.rename"), onClick: () => onRename(item), separatorBefore: true, value: "rename" },
+    editable ? { icon: <LocalIcon name="visible" size={15} />, label: t("actions.edit"), onClick: () => onEdit(item), value: "edit" } : null,
+    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyTo"), onClick: () => onCopyNode(item), value: "copy-node" },
+    { icon: <LocalIcon name="folder" size={15} />, label: t("actions.moveTo"), onClick: () => onMove(item), value: "move-node" },
+    { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), separatorBefore: true, value: "details" },
+    {
+      icon: <LocalIcon name="star" size={15} color={item.starred ? palette.primaryHover : "currentColor"} />,
+      label: item.starred ? t("actions.unstar") : t("actions.star"),
+      onClick: onToggleStar,
+      value: "star",
+    },
+    { icon: <LocalIcon name="shield" size={15} />, label: t("actions.security"), onClick: () => onSecurity(item), value: "security" },
+    item.archivedAt
+      ? { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), value: "restore" }
+      : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), separatorBefore: true, tone: "danger", value: "archive" },
+  ].filter(Boolean) as AppMenuItem[];
+
+  return actionItems;
+}
+
 function openItemSurface(item: DriveItem, openFolder: (id: string) => void, openPreview: (id: string) => void) {
   if (getItemKind(item) === "folder") openFolder(item.id);
   else openPreview(item.id);
+}
+
+function DriveCardPreview({ item, palette }: { item: DriveItem; palette: Palette }) {
+  const previewableImage = isImagePreviewFile(item);
+  const previewableVideo = isVideoPreviewFile(item);
+  const [sourceUrl, setSourceUrl] = useState<{ itemId: string; url: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!previewableImage && !previewableVideo) return;
+    let cancelled = false;
+    void createWorkspaceDriveItemSourceUrl(item, item.workspaceId)
+      .then((url) => {
+        if (!cancelled) setSourceUrl({ itemId: item.id, url });
+      })
+      .catch(() => {
+        if (!cancelled) setSourceUrl({ itemId: item.id, url: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item, previewableImage, previewableVideo]);
+
+  const activeUrl = (previewableImage || previewableVideo) && sourceUrl?.itemId === item.id ? sourceUrl.url : null;
+
+  return (
+    <div className="drive-card-preview">
+      {previewableImage && activeUrl ? <img alt="" className="drive-card-media" src={activeUrl} /> : null}
+      {previewableVideo && activeUrl ? <video aria-label={item.name} className="drive-card-media" muted playsInline preload="metadata" src={activeUrl} /> : null}
+      {(!activeUrl || (!previewableImage && !previewableVideo)) ? <ItemIcon item={item} palette={palette} size={44} /> : null}
+    </div>
+  );
 }
 
 function FileTable({
@@ -294,73 +471,126 @@ function FileTable({
   goUp,
   items,
   onArchiveItem,
+  onCancelRenameItem,
+  onCommitRenameItem,
   onCopyItem,
+  onCopyNodeItem,
   onDownloadItem,
+  onEditItem,
+  onMoveItem,
+  onRenameItem,
   onRestoreItem,
   onSecurityItem,
   onShareItem,
+  onShowDetailsItem,
   openFolder,
   openPreview,
   palette,
+  renamingItemId,
   selected,
   sourceItems,
+  onSelectItem,
+  onSelectItemCheckbox,
+  selectSingleItem,
   toggleSelected,
   toggleStar,
-}: Omit<FilesModuleProps, "activeNav" | "error" | "hasQuery" | "locale" | "suggestedItems" | "viewMode">) {
+}: Omit<
+  FilesModuleProps,
+  | "activeNav"
+  | "createMenuItems"
+  | "error"
+  | "hasQuery"
+  | "onBlankGoRoot"
+  | "onBlankGoUp"
+  | "onBlankSelect"
+  | "onBlankRefresh"
+  | "onSetViewMode"
+  | "viewMode"
+> & FileSelectionHandlers) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
+  const timeZone = useTimeZone();
+  const [contextMenu, setContextMenu] = useState<{ item: DriveItem; position: AppContextMenuPosition } | null>(null);
   const allFileIds = items.map((item) => item.id);
   const allSelected = allFileIds.length > 0 && allFileIds.every((id) => selected.includes(id));
   const indeterminate = !allSelected && allFileIds.some((id) => selected.includes(id));
 
+  const buildActions = (item: DriveItem) => buildFileActionItems({
+    item,
+    onArchive: onArchiveItem,
+    onCopy: onCopyItem,
+    onCopyNode: onCopyNodeItem,
+    onDownload: onDownloadItem,
+    onEdit: onEditItem,
+    onMove: onMoveItem,
+    onRename: onRenameItem,
+    onRestore: onRestoreItem,
+    onSecurity: onSecurityItem,
+    onShare: onShareItem,
+    onShowDetails: onShowDetailsItem,
+    onToggleStar: () => toggleStar(item.id),
+    palette,
+    t,
+  });
+
+  const openContextMenu = (event: React.MouseEvent, item: DriveItem) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selected.includes(item.id)) selectSingleItem(item.id);
+    setContextMenu({ item, position: { x: event.clientX, y: event.clientY } });
+  };
+
   const renderItemRow = (item: DriveItem) => {
     const checked = selected.includes(item.id);
-    const isFolder = getItemKind(item) === "folder";
+    const isRenaming = renamingItemId === item.id;
     const itemSize = formatFileSize(sumDriveItemSizes([item], sourceItems), locale);
+    const actionItems = buildActions(item);
 
     return (
-      <tr key={item.id} data-motion-row data-selected={checked ? "" : undefined} onClick={() => toggleSelected(item.id, !checked)}>
+      <tr
+        key={item.id}
+        data-drive-entry
+        data-motion-row
+        data-selected={checked ? "" : undefined}
+        onClick={(event) => onSelectItem(event, item)}
+        onContextMenu={(event) => openContextMenu(event, item)}
+        onDoubleClick={() => openItemSurface(item, openFolder, openPreview)}
+      >
         <td>
-          <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => toggleSelected(item.id, nextChecked)} />
+          <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
         </td>
         <td>
-          <button
-            {...buttonTypeAttr}
-            onClick={(event) => {
-              event.stopPropagation();
-              openItemSurface(item, openFolder, openPreview);
-            }}
-            className="drive-file-name-button"
-          >
+          <span className="drive-file-name-button" data-renaming={isRenaming ? "" : undefined}>
             <ItemIcon item={item} palette={palette} />
-            <span className="drive-file-name-text icedr-truncate">{item.name}</span>
-            {item.shared ? <LocalIcon name="user_group" size={15} color={palette.subtle} /> : null}
-          </button>
-        </td>
-        <td>
-          {t(`files.kind.${getItemKind(item)}`)}
+            {isRenaming ? (
+              <InlineRenameInput
+                ariaLabel={t("actions.rename")}
+                onCancel={onCancelRenameItem}
+                onCommit={(name) => onCommitRenameItem(item, name)}
+                palette={palette}
+                selectBaseName={Boolean(item.objectKey)}
+                value={item.name}
+              />
+            ) : (
+              <>
+                <span className="drive-file-name-text icedr-truncate">{item.name}</span>
+                {item.shared ? <LocalIcon name="user_group" size={15} color={palette.subtle} /> : null}
+              </>
+            )}
+          </span>
         </td>
         <td>
           <span className="icedr-truncate">{item.owner}</span>
         </td>
-        <td>{formatDriveItemModified(item, locale)}</td>
         <td>{itemSize}</td>
+        <td>{formatDriveItemModified(item, locale, timeZone)}</td>
         <td onClick={(event) => event.stopPropagation()}>
           <div className="drive-row-actions">
             <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
               <LocalIcon name="star" size={16} color={item.starred ? palette.primaryHover : palette.subtle} />
             </ToolButton>
             <MoreActionsMenu
-              item={item}
-              isFolder={isFolder}
-              isStarred={item.starred}
-              onArchive={onArchiveItem}
-              onCopy={onCopyItem}
-              onDownload={onDownloadItem}
-              onRestore={onRestoreItem}
-              onSecurity={onSecurityItem}
-              onShare={onShareItem}
-              onToggleStar={() => toggleStar(item.id)}
+              actionItems={actionItems}
               palette={palette}
             />
           </div>
@@ -370,51 +600,60 @@ function FileTable({
   };
 
   return (
-    <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-table-shell">
-      <table className="drive-table icedr-select-parent">
-        <colgroup>
-          <col className="drive-col-select" />
-          <col className="drive-col-name" />
-          <col className="drive-col-kind" />
-          <col className="drive-col-owner" />
-          <col className="drive-col-modified" />
-          <col className="drive-col-size" />
-          <col className="drive-col-actions" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>
-              <SelectBox checked={allSelected} indeterminate={indeterminate} label={t("files.selectAll")} palette={palette} onChange={(checked) => allFileIds.forEach((id) => toggleSelected(id, checked))} />
-            </th>
-            <th>{t("files.name")}</th>
-            <th>{t("files.type")}</th>
-            <th>{t("files.owner")}</th>
-            <th>{t("files.modified")}</th>
-            <th>{t("files.size")}</th>
-            <th aria-label={t("actions.more")} />
-          </tr>
-        </thead>
-        <tbody>
-          {currentFolderId ? (
-            <tr data-motion-row onClick={goUp}>
-              <td />
-              <td>
-                <span className="drive-file-name-button drive-parent-row-label">
-                  <LocalIcon name="arrow_up" size={18} color={palette.primary} />
-                  <span className="icedr-truncate">{t("files.parentDirectory")}</span>
-                </span>
-              </td>
-              <td>{t("files.kind.folder")}</td>
-              <td>--</td>
-              <td>--</td>
-              <td>--</td>
-              <td />
+    <>
+      <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-table-shell">
+        <table className="drive-table icedr-select-parent">
+          <colgroup>
+            <col className="drive-col-select" />
+            <col className="drive-col-name" />
+            <col className="drive-col-owner" />
+            <col className="drive-col-size" />
+            <col className="drive-col-modified" />
+            <col className="drive-col-actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>
+                <SelectBox checked={allSelected} indeterminate={indeterminate} label={t("files.selectAll")} palette={palette} onChange={(checked) => allFileIds.forEach((id) => toggleSelected(id, checked))} />
+              </th>
+              <th>{t("files.name")}</th>
+              <th>{t("files.owner")}</th>
+              <th>{t("files.size")}</th>
+              <th>{t("files.modified")}</th>
+              <th aria-label={t("actions.more")} />
             </tr>
-          ) : null}
-          {items.map(renderItemRow)}
-        </tbody>
-      </table>
-    </MotionList>
+          </thead>
+          <tbody>
+            {currentFolderId ? (
+              <tr data-drive-entry data-motion-row onDoubleClick={goUp} onContextMenu={(event) => event.preventDefault()}>
+                <td />
+                <td>
+                  <span className="drive-file-name-button drive-parent-row-label">
+                    <LocalIcon name="arrow_up" size={18} color={palette.primary} />
+                    <span className="icedr-truncate">{t("files.parentDirectory")}</span>
+                  </span>
+                </td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td />
+              </tr>
+            ) : null}
+            {items.map(renderItemRow)}
+          </tbody>
+        </table>
+      </MotionList>
+      <AppContextMenu
+        ariaLabel={t("actions.more")}
+        items={contextMenu ? buildActions(contextMenu.item) : []}
+        onOpenChange={(open) => {
+          if (!open) setContextMenu(null);
+        }}
+        open={Boolean(contextMenu)}
+        palette={palette}
+        position={contextMenu?.position ?? null}
+      />
+    </>
   );
 }
 
@@ -423,67 +662,114 @@ function FileGrid({
   goUp,
   items,
   onArchiveItem,
+  onCancelRenameItem,
+  onCommitRenameItem,
   onCopyItem,
+  onCopyNodeItem,
   onDownloadItem,
+  onEditItem,
+  onMoveItem,
+  onRenameItem,
   onRestoreItem,
   onSecurityItem,
   onShareItem,
+  onShowDetailsItem,
   openFolder,
   openPreview,
   palette,
+  renamingItemId,
   selected,
-  toggleSelected,
+  sourceItems,
+  onSelectItem,
+  onSelectItemCheckbox,
+  selectSingleItem,
   toggleStar,
-}: Omit<FilesModuleProps, "activeNav" | "error" | "hasQuery" | "locale" | "sourceItems" | "suggestedItems" | "viewMode">) {
+}: Omit<
+  FilesModuleProps,
+  | "activeNav"
+  | "createMenuItems"
+  | "error"
+  | "hasQuery"
+  | "onBlankGoRoot"
+  | "onBlankGoUp"
+  | "onBlankSelect"
+  | "onBlankRefresh"
+  | "onSetViewMode"
+  | "viewMode"
+> & FileSelectionHandlers) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
+  const [contextMenu, setContextMenu] = useState<{ item: DriveItem; position: AppContextMenuPosition } | null>(null);
+
+  const buildActions = (item: DriveItem) => buildFileActionItems({
+    item,
+    onArchive: onArchiveItem,
+    onCopy: onCopyItem,
+    onCopyNode: onCopyNodeItem,
+    onDownload: onDownloadItem,
+    onEdit: onEditItem,
+    onMove: onMoveItem,
+    onRename: onRenameItem,
+    onRestore: onRestoreItem,
+    onSecurity: onSecurityItem,
+    onShare: onShareItem,
+    onShowDetails: onShowDetailsItem,
+    onToggleStar: () => toggleStar(item.id),
+    palette,
+    t,
+  });
+
+  const openContextMenu = (event: React.MouseEvent, item: DriveItem) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selected.includes(item.id)) selectSingleItem(item.id);
+    setContextMenu({ item, position: { x: event.clientX, y: event.clientY } });
+  };
 
   const renderCard = (item: DriveItem) => {
     const checked = selected.includes(item.id);
-    const isFolder = getItemKind(item) === "folder";
+    const isRenaming = renamingItemId === item.id;
+    const itemSize = formatFileSize(sumDriveItemSizes([item], sourceItems), locale);
+    const actionItems = buildActions(item);
 
     return (
       <div
         key={item.id}
         data-motion-row
+        data-drive-entry
         data-selected={checked ? "" : undefined}
         className="drive-file-card icedr-select-parent"
-        onClick={() => toggleSelected(item.id, !checked)}
+        onClick={(event) => onSelectItem(event, item)}
+        onContextMenu={(event) => openContextMenu(event, item)}
+        onDoubleClick={() => openItemSurface(item, openFolder, openPreview)}
       >
         <div className="drive-card-title">
-          <button
-            {...buttonTypeAttr}
-            onClick={(event) => {
-              event.stopPropagation();
-              openItemSurface(item, openFolder, openPreview);
-            }}
-            className="drive-file-name-button"
-          >
+          <span className="drive-file-name-button" data-renaming={isRenaming ? "" : undefined}>
             <ItemIcon item={item} palette={palette} />
-            <span className="drive-file-name-text icedr-truncate">{item.name}</span>
-          </button>
-          <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => toggleSelected(item.id, nextChecked)} />
+            {isRenaming ? (
+              <InlineRenameInput
+                ariaLabel={t("actions.rename")}
+                onCancel={onCancelRenameItem}
+                onCommit={(name) => onCommitRenameItem(item, name)}
+                palette={palette}
+                selectBaseName={Boolean(item.objectKey)}
+                value={item.name}
+              />
+            ) : (
+              <span className="drive-file-name-text icedr-truncate">{item.name}</span>
+            )}
+          </span>
+          <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
         </div>
-        <div className="drive-card-preview">
-          <ItemIcon item={item} palette={palette} size={44} />
-        </div>
+        <DriveCardPreview item={item} palette={palette} />
         <div className="drive-card-meta">
-          <span className="icedr-truncate">{formatDriveItemModified(item, locale)}</span>
+          <span className="icedr-truncate">{itemSize}</span>
           <div className="drive-card-actions" onClick={(event) => event.stopPropagation()}>
             <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
               <LocalIcon name="star" size={16} color={item.starred ? palette.primaryHover : palette.subtle} />
             </ToolButton>
             <MoreActionsMenu
-              item={item}
-              isFolder={isFolder}
-              isStarred={item.starred}
-              onArchive={onArchiveItem}
-              onCopy={onCopyItem}
-              onDownload={onDownloadItem}
-              onRestore={onRestoreItem}
-              onSecurity={onSecurityItem}
-              onShare={onShareItem}
-              onToggleStar={() => toggleStar(item.id)}
+              actionItems={actionItems}
               palette={palette}
             />
           </div>
@@ -493,24 +779,36 @@ function FileGrid({
   };
 
   return (
-    <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid">
-      {currentFolderId ? (
-        <button {...buttonTypeAttr} data-motion-row className="drive-file-card drive-parent-card" onClick={goUp}>
-          <div className="drive-card-title">
-            <span className="drive-file-name-button drive-parent-row-label">
-              <LocalIcon name="arrow_up" size={18} color={palette.primary} />
-              <span className="icedr-truncate">{t("files.parentDirectory")}</span>
-            </span>
-          </div>
-          <div className="drive-card-preview">
-            <LocalIcon name="arrow_up" size={44} color={palette.primary} />
-          </div>
-          <div className="drive-card-meta">
-            <span>{t("files.kind.folder")}</span>
-          </div>
-        </button>
-      ) : null}
-      {items.map(renderCard)}
-    </MotionList>
+    <>
+      <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid">
+        {currentFolderId ? (
+          <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onDoubleClick={goUp} onContextMenu={(event) => event.preventDefault()}>
+            <div className="drive-card-title">
+              <span className="drive-file-name-button drive-parent-row-label">
+                <LocalIcon name="arrow_up" size={18} color={palette.primary} />
+                <span className="icedr-truncate">{t("files.parentDirectory")}</span>
+              </span>
+            </div>
+            <div className="drive-card-preview">
+              <LocalIcon name="arrow_up" size={44} color={palette.primary} />
+            </div>
+            <div className="drive-card-meta">
+              <span>{t("files.kind.folder")}</span>
+            </div>
+          </button>
+        ) : null}
+        {items.map(renderCard)}
+      </MotionList>
+      <AppContextMenu
+        ariaLabel={t("actions.more")}
+        items={contextMenu ? buildActions(contextMenu.item) : []}
+        onOpenChange={(open) => {
+          if (!open) setContextMenu(null);
+        }}
+        open={Boolean(contextMenu)}
+        palette={palette}
+        position={contextMenu?.position ?? null}
+      />
+    </>
   );
 }

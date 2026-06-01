@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import {
   formatDriveItemModified,
   formatFileSize,
@@ -11,8 +11,8 @@ import {
   type Locale,
   type Palette,
 } from "@/features/file/model";
-import { MotionSurface } from "@/components/ui/motion";
-import { AnimatedCheckMark, ItemIcon, LocalIcon, Surface, ToolButton } from "./drive-primitives";
+import { MotionList, MotionSurface } from "@/components/ui/motion";
+import { AnimatedCheckMark, ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
 
 export type DriveDetailsPanelProps = {
   activeItem?: DriveItem;
@@ -20,10 +20,6 @@ export type DriveDetailsPanelProps = {
   currentFolderId: string | null;
   focusedItem?: DriveItem;
   folderPath: DriveItem[];
-  onCopy: () => void;
-  onDownload: () => void;
-  onShare: () => void;
-  onSecurity: () => void;
   palette: Palette;
   selectedItems: DriveItem[];
   sourceItems: DriveItem[];
@@ -35,29 +31,30 @@ export function DetailsPanel({
   currentFolderId,
   focusedItem,
   folderPath,
-  onCopy,
-  onDownload,
-  onShare,
-  onSecurity,
   palette,
   selectedItems,
   sourceItems,
 }: DriveDetailsPanelProps) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
-  const multiSelect = selectedItems.length > 1;
+  const timeZone = useTimeZone();
+  const multiSelect = !focusedItem && selectedItems.length > 1;
   const currentFolder = folderPath.at(-1);
   const currentDirectoryItems = getChildItems(currentFolderId, sourceItems);
-  const displayItem = activeItem ?? focusedItem;
-  const detailItems = selectedItems.length > 0 ? selectedItems : displayItem ? [displayItem] : currentDirectoryItems;
+  const displayItem = focusedItem ?? activeItem;
+  const detailItems = focusedItem ? [focusedItem] : selectedItems.length > 0 ? selectedItems : displayItem ? [displayItem] : currentDirectoryItems;
   const displayName =
-    selectedItems.length > 0
+    focusedItem
+      ? focusedItem.name
+      : selectedItems.length > 0
       ? multiSelect
         ? t("app.selected", { count: selectedItems.length })
         : selectedItems[0].name
       : displayItem?.name ?? currentFolder?.name ?? t("nav.drive");
   const displayType =
-    selectedItems.length > 0 && multiSelect
+    focusedItem
+      ? t(`files.kind.${getItemKind(focusedItem)}`)
+      : selectedItems.length > 0 && multiSelect
       ? selectedItems.map((item) => item.name).slice(0, 3).join(", ")
       : displayItem
         ? t(`files.kind.${getItemKind(displayItem)}`)
@@ -80,11 +77,8 @@ export function DetailsPanel({
           </ToolButton>
         </div>
 
-        <div className="drive-details-body">
-          <Surface
-            palette={palette}
-            className="drive-details-preview"
-          >
+        <MotionList className="drive-details-body" preset="list">
+          <div data-motion-row className="drive-details-preview">
             {multiSelect ? (
               <div
                 aria-hidden="true"
@@ -102,9 +96,10 @@ export function DetailsPanel({
             ) : (
               <LocalIcon name="file" size={44} color={palette.primaryHover} />
             )}
-          </Surface>
+          </div>
 
-          <div className="drive-details-title-block">
+          <div className="drive-details-title-block" data-motion-row>
+            <span className="drive-details-kicker">{t("app.details")}</span>
             <span
               className="drive-details-title"
             >
@@ -115,17 +110,15 @@ export function DetailsPanel({
             </span>
           </div>
 
-          <hr className="drive-details-separator" />
-
-          <div className="drive-details-list">
+          <div className="drive-details-list" data-motion-row>
             {[
               [t("files.owner"), owner],
               [
                 t("files.modified"),
                 displayItem
-                  ? formatDriveItemModified(displayItem, locale)
+                  ? formatDriveItemModified(displayItem, locale, timeZone)
                   : currentFolder
-                    ? formatDriveItemModified(currentFolder, locale)
+                    ? formatDriveItemModified(currentFolder, locale, timeZone)
                     : "--",
               ],
               [t("files.size"), selectedSize],
@@ -140,24 +133,7 @@ export function DetailsPanel({
               </div>
             ))}
           </div>
-
-          <hr className="drive-details-separator" />
-
-          <div className="drive-details-actions">
-            <ToolButton label={t("actions.share")} palette={palette} onClick={onShare}>
-              <LocalIcon name="share2" size={17} />
-            </ToolButton>
-            <ToolButton label={t("actions.copyLink")} palette={palette} onClick={onCopy}>
-              <LocalIcon name="link" size={17} />
-            </ToolButton>
-            <ToolButton label={t("actions.download")} palette={palette} onClick={onDownload}>
-              <LocalIcon name="download" size={17} />
-            </ToolButton>
-            <ToolButton label={t("actions.security")} palette={palette} onClick={onSecurity}>
-              <LocalIcon name="shield" size={17} />
-            </ToolButton>
-          </div>
-        </div>
+        </MotionList>
       </div>
     </MotionSurface>
   );

@@ -116,6 +116,24 @@ export async function downloadSharedDriveItem(token: string, item: DriveItem, ac
   URL.revokeObjectURL(url);
 }
 
+export async function createSharedDriveItemBlobUrl(token: string, item: DriveItem, accessSessionId?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
+  const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
+    method: "POST",
+    headers,
+  });
+  if (!intentResponse.ok) throw new Error("Download intent failed");
+
+  const intent = (await intentResponse.json()) as DownloadIntentResponse;
+  const response = await fetch(buildApiUrl(intent.downloadUrl), {
+    redirect: "follow",
+  });
+  if (!response.ok) throw new Error("Download failed");
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function downloadWorkspaceDriveItem(item: DriveItem, workspaceId?: string) {
   const intent = await createFileDownloadIntent(item.id, workspaceId);
   const downloadUrl = buildApiUrl(intent.downloadUrl);
@@ -139,6 +157,22 @@ export async function downloadWorkspaceDriveItem(item: DriveItem, workspaceId?: 
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspaceId?: string) {
+  const intent = await createFileDownloadIntent(item.id, workspaceId);
+  const downloadUrl = buildApiUrl(intent.downloadUrl);
+  const response = await fetch(downloadUrl, {
+    redirect: "follow",
+  });
+  if (!response.ok) throw new Error("Download failed");
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+export async function createWorkspaceDriveItemSourceUrl(item: DriveItem, workspaceId?: string) {
+  const intent = await createFileDownloadIntent(item.id, workspaceId);
+  return buildApiUrl(intent.downloadUrl);
 }
 
 export async function uploadDriveFile({
