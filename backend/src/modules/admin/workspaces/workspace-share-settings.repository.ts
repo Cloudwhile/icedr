@@ -1,21 +1,13 @@
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
-import { DatabaseService } from '../../../database/database.service';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../../../database/prisma.service';
+import {
+  Prisma,
+  type WorkspaceShareSetting,
+} from '../../../generated/prisma/client';
 import {
   UpdateWorkspaceShareSettingsDto,
   WorkspaceShareSettings,
 } from './share-settings.dto';
-
-type WorkspaceShareSettingsRow = {
-  workspace_id: string;
-  anonymous_access: WorkspaceShareSettings['anonymousAccess'];
-  email_rule: WorkspaceShareSettings['emailRule'];
-  allowed_domains: string[] | string;
-  default_expires_days: number;
-  max_expires_days: number;
-  allow_permanent: boolean;
-  audit_settings: WorkspaceShareSettings['audit'] | string;
-  updated_at: Date | string;
-};
 
 export const defaultShareSettings: WorkspaceShareSettings = {
   workspaceId: 'workspace-default',
@@ -36,31 +28,14 @@ export const defaultShareSettings: WorkspaceShareSettings = {
 };
 
 @Injectable()
-export class WorkspaceShareSettingsRepository implements OnModuleInit {
-  constructor(private readonly database: DatabaseService) {}
-
-  async onModuleInit() {
-    await this.database.query(`
-      create table if not exists workspace_share_settings (
-        workspace_id text primary key,
-        anonymous_access text not null,
-        email_rule text not null,
-        allowed_domains jsonb not null,
-        default_expires_days integer not null,
-        max_expires_days integer not null,
-        allow_permanent boolean not null,
-        audit_settings jsonb not null,
-        updated_at timestamptz not null default now()
-      )
-    `);
-  }
+export class WorkspaceShareSettingsRepository {
+  constructor(private readonly prisma: PrismaService) {}
 
   async get(workspaceId: string) {
-    const result = await this.database.query<WorkspaceShareSettingsRow>(
-      'select * from workspace_share_settings where workspace_id = $1 limit 1',
-      [workspaceId],
-    );
-    if (result.rows[0]) return this.mapRow(result.rows[0]);
+    const row = await this.prisma.workspaceShareSetting.findUnique({
+      where: { workspaceId },
+    });
+    if (row) return this.mapRow(row);
 
     return this.upsert(workspaceId, {});
   }
@@ -77,55 +52,20 @@ export class WorkspaceShareSettingsRepository implements OnModuleInit {
       updatedAt: new Date().toISOString(),
     });
 
-    const result = await this.database.query<WorkspaceShareSettingsRow>(
-      `
-        insert into workspace_share_settings (
-          workspace_id,
-          anonymous_access,
-          email_rule,
-          allowed_domains,
-          default_expires_days,
-          max_expires_days,
-          allow_permanent,
-          audit_settings,
-          updated_at
-        )
-        values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9)
-        on conflict (workspace_id) do update set
-          anonymous_access = excluded.anonymous_access,
-          email_rule = excluded.email_rule,
-          allowed_domains = excluded.allowed_domains,
-          default_expires_days = excluded.default_expires_days,
-          max_expires_days = excluded.max_expires_days,
-          allow_permanent = excluded.allow_permanent,
-          audit_settings = excluded.audit_settings,
-          updated_at = excluded.updated_at
-        returning *
-      `,
-      [
-        next.workspaceId,
-        next.anonymousAccess,
-        next.emailRule,
-        JSON.stringify(next.allowedDomains),
-        next.defaultExpiresDays,
-        next.maxExpiresDays,
-        next.allowPermanent,
-        JSON.stringify(next.audit),
-        next.updatedAt,
-      ],
-    );
+    const row = await this.prisma.workspaceShareSetting.upsert({
+      where: { workspaceId },
+      create: this.toPrismaWrite(next),
+      update: this.toPrismaWrite(next),
+    });
 
-    return this.mapRow(result.rows[0]);
+    return this.mapRow(row);
   }
 
   private async getForUpdate(workspaceId: string) {
-    const result = await this.database.query<WorkspaceShareSettingsRow>(
-      'select * from workspace_share_settings where workspace_id = $1 limit 1',
-      [workspaceId],
-    );
-    return result.rows[0]
-      ? this.mapRow(result.rows[0])
-      : this.createDefault(workspaceId);
+    const row = await this.prisma.workspaceShareSetting.findUnique({
+      where: { workspaceId },
+    });
+    return row ? this.mapRow(row) : this.createDefault(workspaceId);
   }
 
   private createDefault(workspaceId: string): WorkspaceShareSettings {
@@ -164,31 +104,65 @@ export class WorkspaceShareSettingsRepository implements OnModuleInit {
     ];
   }
 
-  private mapRow(row: WorkspaceShareSettingsRow): WorkspaceShareSettings {
+  private toPrismaWrite(settings: WorkspaceShareSettings) {
     return {
-      workspaceId: row.workspace_id,
-      anonymousAccess: row.anonymous_access,
-      emailRule: row.email_rule,
-      allowedDomains: this.parseStringArray(row.allowed_domains),
-      defaultExpiresDays: row.default_expires_days,
-      maxExpiresDays: row.max_expires_days,
-      allowPermanent: row.allow_permanent,
-      audit:
-        typeof row.audit_settings === 'string'
-          ? (JSON.parse(row.audit_settings) as WorkspaceShareSettings['audit'])
-          : row.audit_settings,
-      updatedAt:
-        row.updated_at instanceof Date
-          ? row.updated_at.toISOString()
-          : new Date(row.updated_at).toISOString(),
+      workspaceId: settings.workspaceId,
+      anonymousAccess: settings.anonymousAccess,
+      emailRule: settings.emailRule,
+      allowedDomains: [...settings.allowedDomains],
+      defaultExpiresDays: settings.defaultExpiresDays,
+      maxExpiresDays: settings.maxExpiresDays,
+      allowPermanent: settings.allowPermanent,
+      auditSettings: this.toAuditJson(settings.audit),
+      updatedAt: new Date(settings.updatedAt),
     };
   }
 
-  private parseStringArray(value: string[] | string) {
-    if (Array.isArray(value)) return value;
+  private toAuditJson(
+    settings: WorkspaceShareSettings['audit'],
+  ): Prisma.InputJsonValue {
+    return {
+      alerts: settings.alerts,
+      anomaly: settings.anomaly,
+      downloads: settings.downloads,
+      ip: settings.ip,
+      userAgent: settings.userAgent,
+    };
+  }
+
+  private mapRow(row: WorkspaceShareSetting): WorkspaceShareSettings {
+    return {
+      workspaceId: row.workspaceId,
+      anonymousAccess:
+        row.anonymousAccess as WorkspaceShareSettings['anonymousAccess'],
+      emailRule: row.emailRule as WorkspaceShareSettings['emailRule'],
+      allowedDomains: this.parseStringArray(row.allowedDomains),
+      defaultExpiresDays: row.defaultExpiresDays,
+      maxExpiresDays: row.maxExpiresDays,
+      allowPermanent: row.allowPermanent,
+      audit: this.parseAuditSettings(row.auditSettings),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private parseStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string');
+    }
+    if (typeof value !== 'string') return [];
     const parsed: unknown = JSON.parse(value);
     return Array.isArray(parsed)
       ? parsed.filter((item): item is string => typeof item === 'string')
       : [];
+  }
+
+  private parseAuditSettings(value: unknown): WorkspaceShareSettings['audit'] {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as WorkspaceShareSettings['audit'];
+    }
+    if (typeof value === 'string') {
+      return JSON.parse(value) as WorkspaceShareSettings['audit'];
+    }
+    return defaultShareSettings.audit;
   }
 }

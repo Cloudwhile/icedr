@@ -39,8 +39,8 @@ export class SharesController {
   }
 
   @Get(':token')
-  getShare(@Param('token') token: string) {
-    return this.sharesService.getShare(token);
+  getShare(@Param('token') token: string, @Req() request: Request) {
+    return this.sharesService.getShare(token, getVisitorAuditMetadata(request));
   }
 
   @Delete(':token')
@@ -52,16 +52,26 @@ export class SharesController {
   sendEmailAccessCode(
     @Param('token') token: string,
     @Body() dto: SendShareEmailCodeDto,
+    @Req() request: Request,
   ) {
-    return this.sharesService.sendEmailAccessCode(token, dto);
+    return this.sharesService.sendEmailAccessCode(
+      token,
+      dto,
+      getVisitorAuditMetadata(request),
+    );
   }
 
   @Post(':token/access-sessions/verify-email')
   verifyEmailAccessCode(
     @Param('token') token: string,
     @Body() dto: VerifyShareEmailCodeDto,
+    @Req() request: Request,
   ) {
-    return this.sharesService.verifyEmailAccessCode(token, dto);
+    return this.sharesService.verifyEmailAccessCode(
+      token,
+      dto,
+      getVisitorAuditMetadata(request),
+    );
   }
 
   @Post(':token/access-sessions/oauth')
@@ -100,11 +110,13 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Headers('x-share-access-session') accessSessionId?: string,
+    @Req() request?: Request,
   ) {
     return this.sharesService.createDownloadIntent(
       token,
       nodeId,
       accessSessionId,
+      request ? getVisitorAuditMetadata(request) : {},
     );
   }
 
@@ -113,12 +125,14 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Query('downloadId') downloadId: string,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
     const download = await this.sharesService.downloadSharedNode(
       token,
       nodeId,
       downloadId,
+      getVisitorAuditMetadata(request),
     );
     if (download.method === 'presigned-url') {
       response.redirect(302, download.redirectUrl);
@@ -138,11 +152,13 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Headers('x-share-access-session') accessSessionId?: string,
+    @Req() request?: Request,
   ) {
     return this.sharesService.createPreviewIntent(
       token,
       nodeId,
       accessSessionId,
+      request ? getVisitorAuditMetadata(request) : {},
     );
   }
 
@@ -154,4 +170,11 @@ export class SharesController {
   ) {
     return this.sharesService.getPreviewStatus(token, nodeId, previewId);
   }
+}
+
+function getVisitorAuditMetadata(request: Request) {
+  return {
+    ip: request.ip,
+    userAgent: request.get('user-agent') ?? '',
+  };
 }

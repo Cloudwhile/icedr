@@ -1,8 +1,9 @@
 import { randomBytes } from 'crypto';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAuditEvent } from '../logs/audit-events';
-import { DatabaseService } from '../../database/database.service';
+import { PrismaService } from '../../database/prisma.service';
+import { Prisma, type ShareLink } from '../../generated/prisma/client';
 import { CreateShareDto, ShareResponse } from './shares.dto';
 
 type StoredShare = ShareResponse;
@@ -17,24 +18,6 @@ export type ShareManagementResponse = ShareResponse & {
   riskLevel: ShareRiskLevel;
 };
 
-type ShareRow = {
-  token: string;
-  workspace_id: string;
-  title: string;
-  mode: ShareResponse['mode'];
-  owner_name: string;
-  root_item_ids: string[] | string;
-  allowed_item_ids: string[] | string;
-  dynamic_root_id: string | null;
-  allow_download: boolean;
-  allow_preview: boolean;
-  expires_days: number;
-  remark: string | null;
-  policy_snapshot: ShareResponse['policy'] | string;
-  created_at: Date | string;
-  revoked_at: Date | string | null;
-};
-
 export type ShareAuditAction =
   | 'share.created'
   | 'share.viewed'
@@ -46,57 +29,11 @@ export type ShareAuditAction =
   | 'share.access_session_created';
 
 @Injectable()
-export class SharesRepository implements OnModuleInit {
+export class SharesRepository {
   constructor(
-    private readonly database: DatabaseService,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
-
-  async onModuleInit() {
-    await this.database.query(`
-      create table if not exists share_links (
-        token text primary key,
-        workspace_id text not null default 'workspace-default',
-        title text not null,
-        mode text not null,
-        owner_name text not null,
-        root_item_ids jsonb not null,
-        allowed_item_ids jsonb not null,
-        dynamic_root_id text,
-        allow_download boolean not null,
-        allow_preview boolean not null,
-        expires_days integer not null,
-        remark text,
-        policy_snapshot jsonb not null,
-        created_at timestamptz not null default now(),
-        revoked_at timestamptz
-      )
-    `);
-    await this.database.query(
-      "alter table share_links add column if not exists workspace_id text not null default 'workspace-default'",
-    );
-
-    await this.database.query(`
-      create table if not exists audit_events (
-        id text primary key,
-        action text not null,
-        actor text not null,
-        target text not null,
-        workspace_id text,
-        share_token text,
-        node_id text,
-        metadata jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(
-      'alter table audit_events add column if not exists workspace_id text',
-    );
-    await this.database.query(
-      'alter table audit_events add column if not exists node_id text',
-    );
-  }
 
   async create(dto: CreateShareDto): Promise<StoredShare> {
     const share: StoredShare = {
@@ -119,67 +56,35 @@ export class SharesRepository implements OnModuleInit {
     };
     share.url = this.buildShareUrl(share.token);
 
-    const result = await this.database.query<ShareRow>(
-      `
-        insert into share_links (
-          token,
-          workspace_id,
-          title,
-          mode,
-          owner_name,
-          root_item_ids,
-          allowed_item_ids,
-          dynamic_root_id,
-          allow_download,
-          allow_preview,
-          expires_days,
-          remark,
-          policy_snapshot,
-          created_at,
-          revoked_at
-        )
-        values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12, $13::jsonb, $14, $15)
-        returning *
-      `,
-      [
-        share.token,
-        share.workspaceId,
-        share.title,
-        share.mode,
-        share.owner,
-        JSON.stringify(share.rootItemIds),
-        JSON.stringify(share.allowedItemIds),
-        share.dynamicRootId,
-        share.allowDownload,
-        share.allowPreview,
-        share.expiresDays,
-        share.remark,
-        JSON.stringify(share.policy),
-        share.createdAt,
-        share.revokedAt,
-      ],
-    );
+    const row = await this.prisma.shareLink.create({
+      data: {
+        token: share.token,
+        workspaceId: share.workspaceId,
+        title: share.title,
+        mode: share.mode,
+        ownerName: share.owner,
+        rootItemIds: [...share.rootItemIds],
+        allowedItemIds: [...share.allowedItemIds],
+        dynamicRootId: share.dynamicRootId,
+        allowDownload: share.allowDownload,
+        allowPreview: share.allowPreview,
+        expiresDays: share.expiresDays,
+        remark: share.remark,
+        policySnapshot: this.toPolicyJson(share.policy),
+        createdAt: new Date(share.createdAt),
+        revokedAt: share.revokedAt ? new Date(share.revokedAt) : null,
+      },
+    });
 
-    return this.mapRow(result.rows[0]);
+    return this.mapRow(row);
   }
 
   async list(workspaceId?: string): Promise<ShareManagementResponse[]> {
-    const clauses: string[] = [];
-    const values: unknown[] = [];
-    if (workspaceId) {
-      values.push(workspaceId);
-      clauses.push(`workspace_id = $${values.length}`);
-    }
-    const result = await this.database.query<ShareRow>(
-      `
-        select *
-        from share_links
-        ${clauses.length > 0 ? `where ${clauses.join(' and ')}` : ''}
-        order by created_at desc
-      `,
-      values,
-    );
-    const shares = result.rows.map((row) => this.mapRow(row));
+    const rows = await this.prisma.shareLink.findMany({
+      where: workspaceId ? { workspaceId } : undefined,
+      orderBy: { createdAt: 'desc' },
+    });
+    const shares = rows.map((row) => this.mapRow(row));
     const stats = await Promise.all(
       shares.map((share) => this.getShareStats(share.token)),
     );
@@ -189,27 +94,21 @@ export class SharesRepository implements OnModuleInit {
   }
 
   async findByToken(token: string): Promise<StoredShare | null> {
-    const result = await this.database.query<ShareRow>(
-      'select * from share_links where token = $1 limit 1',
-      [token],
-    );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    const row = await this.prisma.shareLink.findUnique({ where: { token } });
+    return row ? this.mapRow(row) : null;
   }
 
   async revoke(token: string): Promise<StoredShare | null> {
-    const revokedAt = new Date().toISOString();
+    const existing = await this.prisma.shareLink.findUnique({
+      where: { token },
+    });
+    if (!existing) return null;
+    const row = await this.prisma.shareLink.update({
+      where: { token },
+      data: { revokedAt: existing.revokedAt ?? new Date() },
+    });
 
-    const result = await this.database.query<ShareRow>(
-      `
-        update share_links
-        set revoked_at = coalesce(revoked_at, $2)
-        where token = $1
-        returning *
-      `,
-      [token, revokedAt],
-    );
-
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    return this.mapRow(row);
   }
 
   async recordAudit(
@@ -229,43 +128,34 @@ export class SharesRepository implements OnModuleInit {
       metadata: { source: 'shares-service', ...metadata },
     });
 
-    await this.database.query(
-      `
-        insert into audit_events (
-          id,
-          action,
-          actor,
-          target,
-          workspace_id,
-          share_token,
-          node_id,
-          metadata,
-          created_at
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
-      `,
-      [
-        event.id,
-        event.action,
-        event.actor,
-        event.target,
-        event.workspaceId,
-        event.shareToken,
-        event.nodeId,
-        JSON.stringify(event.metadata),
-        event.createdAt,
-      ],
-    );
+    await this.prisma.auditEvent.create({
+      data: {
+        id: event.id,
+        action: event.action,
+        actor: event.actor,
+        target: event.target,
+        workspaceId: event.workspaceId,
+        shareToken: event.shareToken,
+        nodeId: event.nodeId,
+        metadata: event.metadata as Prisma.InputJsonValue,
+        createdAt: new Date(event.createdAt),
+      },
+    });
   }
 
   async countAuditEvents(action?: ShareAuditAction) {
-    const result = await this.database.query<{ count: string }>(
-      action
-        ? 'select count(*)::text from audit_events where action = $1'
-        : 'select count(*)::text from audit_events',
-      action ? [action] : [],
-    );
-    return Number(result.rows[0]?.count ?? 0);
+    return this.prisma.auditEvent.count({
+      where: action ? { action } : undefined,
+    });
+  }
+
+  async countShareAuditEvents(shareToken: string, action: ShareAuditAction) {
+    return this.prisma.auditEvent.count({
+      where: {
+        action,
+        shareToken,
+      },
+    });
   }
 
   private async createUniqueToken() {
@@ -287,43 +177,39 @@ export class SharesRepository implements OnModuleInit {
     return `${baseUrl.replace(/\/$/, '')}/${token}`;
   }
 
-  private mapRow(row: ShareRow): StoredShare {
+  private mapRow(row: ShareLink): StoredShare {
     return {
       token: row.token,
       url: this.buildShareUrl(row.token),
-      workspaceId: row.workspace_id,
+      workspaceId: row.workspaceId,
       title: row.title,
-      mode: row.mode,
-      owner: row.owner_name,
-      rootItemIds: this.parseJsonArray(row.root_item_ids),
-      allowedItemIds: this.parseJsonArray(row.allowed_item_ids),
-      dynamicRootId: row.dynamic_root_id,
-      allowDownload: row.allow_download,
-      allowPreview: row.allow_preview,
-      expiresDays: row.expires_days,
+      mode: row.mode as ShareResponse['mode'],
+      owner: row.ownerName,
+      rootItemIds: this.parseJsonArray(row.rootItemIds),
+      allowedItemIds: this.parseJsonArray(row.allowedItemIds),
+      dynamicRootId: row.dynamicRootId,
+      allowDownload: row.allowDownload,
+      allowPreview: row.allowPreview,
+      expiresDays: row.expiresDays,
       remark: row.remark ?? '',
-      policy: this.parsePolicy(row.policy_snapshot),
-      createdAt: this.toIsoString(row.created_at),
-      revokedAt: row.revoked_at ? this.toIsoString(row.revoked_at) : null,
+      policy: this.parsePolicy(row.policySnapshot),
+      createdAt: row.createdAt.toISOString(),
+      revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     };
   }
 
   private async getShareStats(token: string) {
-    const result = await this.database.query<{
-      action: string;
-      created_at: Date | string;
-    }>(
-      `
-        select action, created_at
-        from audit_events
-        where share_token = $1
-        order by created_at desc
-      `,
-      [token],
-    );
-    return result.rows.map((row) => ({
+    const rows = await this.prisma.auditEvent.findMany({
+      where: { shareToken: token },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        action: true,
+        createdAt: true,
+      },
+    });
+    return rows.map((row) => ({
       action: row.action,
-      createdAt: this.toIsoString(row.created_at),
+      createdAt: row.createdAt.toISOString(),
     }));
   }
 
@@ -373,23 +259,37 @@ export class SharesRepository implements OnModuleInit {
     return 'normal';
   }
 
-  private parseJsonArray(value: string[] | string) {
-    if (Array.isArray(value)) return value;
+  private parseJsonArray(value: unknown) {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string');
+    }
+    if (typeof value !== 'string') return [];
     const parsed: unknown = JSON.parse(value);
     return Array.isArray(parsed)
       ? parsed.filter((item): item is string => typeof item === 'string')
       : [];
   }
 
-  private parsePolicy(value: ShareResponse['policy'] | string) {
+  private parsePolicy(value: unknown): ShareResponse['policy'] {
     return typeof value === 'string'
       ? (JSON.parse(value) as ShareResponse['policy'])
-      : value;
+      : (value as ShareResponse['policy']);
   }
 
-  private toIsoString(value: Date | string) {
-    return value instanceof Date
-      ? value.toISOString()
-      : new Date(value).toISOString();
+  private toPolicyJson(policy: ShareResponse['policy']): Prisma.InputJsonValue {
+    return {
+      allowedDomain: policy.allowedDomain,
+      downloadLimit: policy.downloadLimit,
+      emailAllowlist: [...(policy.emailAllowlist ?? [])],
+      expiresUnit: policy.expiresUnit,
+      expiresValue: policy.expiresValue,
+      maxDownloads: policy.maxDownloads ?? 0,
+      maxViews: policy.maxViews ?? 0,
+      rateLimitProfile: policy.rateLimitProfile ?? '',
+      speedUnit: policy.speedUnit,
+      speedValue: policy.speedValue,
+      waitUnit: policy.waitUnit,
+      waitValue: policy.waitValue,
+    };
   }
 }

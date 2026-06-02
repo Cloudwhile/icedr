@@ -49,6 +49,27 @@ export class SharePolicyDto {
   @IsString()
   @IsOptional()
   allowedDomain = '';
+
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  @IsOptional()
+  maxViews = 0;
+
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  @IsOptional()
+  maxDownloads = 0;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  emailAllowlist: string[] = [];
+
+  @IsString()
+  @IsOptional()
+  rateLimitProfile = '';
 }
 
 export class CreateShareDto {

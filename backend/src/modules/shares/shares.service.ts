@@ -35,6 +35,11 @@ type DownloadIntent = {
   method: 'presigned-url' | 'backend-manifest';
 };
 
+type VisitorAuditMetadata = {
+  ip?: string;
+  userAgent?: string;
+};
+
 @Injectable()
 export class SharesService {
   private readonly downloadIntents = new Map<string, DownloadIntent>();
@@ -59,7 +64,11 @@ export class SharesService {
     return share;
   }
 
-  async sendEmailAccessCode(token: string, dto: SendShareEmailCodeDto) {
+  async sendEmailAccessCode(
+    token: string,
+    dto: SendShareEmailCodeDto,
+    visitor: VisitorAuditMetadata = {},
+  ) {
     const share = await this.requireActiveShare(token);
     this.assertEmailAllowed(share, dto.email);
     const code = this.createEmailCode();
@@ -77,6 +86,7 @@ export class SharesService {
     });
     await this.sharesRepository.recordAudit('share.access_code_sent', token, {
       email: dto.email,
+      ...visitor,
     });
 
     return {
@@ -86,7 +96,11 @@ export class SharesService {
     };
   }
 
-  async verifyEmailAccessCode(token: string, dto: VerifyShareEmailCodeDto) {
+  async verifyEmailAccessCode(
+    token: string,
+    dto: VerifyShareEmailCodeDto,
+    visitor: VisitorAuditMetadata = {},
+  ) {
     const share = await this.requireActiveShare(token);
     const key = this.emailCodeKey(token, dto.email);
     const pending = this.emailCodes.get(key);
@@ -106,6 +120,7 @@ export class SharesService {
       {
         identityType: 'email',
         email: dto.email,
+        ...visitor,
       },
     );
     return session;
@@ -128,9 +143,13 @@ export class SharesService {
     return this.sharesRepository.list(workspaceId);
   }
 
-  async getShare(token: string): Promise<ShareDetailResponse> {
+  async getShare(
+    token: string,
+    visitor: VisitorAuditMetadata = {},
+  ): Promise<ShareDetailResponse> {
     const share = await this.requireActiveShare(token);
-    await this.sharesRepository.recordAudit('share.viewed', token);
+    await this.assertShareViewLimit(share);
+    await this.sharesRepository.recordAudit('share.viewed', token, visitor);
     return this.withShareItems(share);
   }
 
@@ -146,12 +165,14 @@ export class SharesService {
     token: string,
     nodeId: string,
     accessSessionId?: string,
+    visitor: VisitorAuditMetadata = {},
   ) {
     const { share, node } = await this.requireShareNode(
       token,
       nodeId,
       'download',
     );
+    await this.assertShareDownloadLimit(share);
     this.requireAccessSessionIfNeeded(share, accessSessionId);
     const downloadId = `dl_${randomBytes(12).toString('base64url')}`;
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -170,6 +191,7 @@ export class SharesService {
       token,
       {
         nodeId,
+        ...visitor,
       },
     );
 
@@ -183,7 +205,12 @@ export class SharesService {
     };
   }
 
-  async downloadSharedNode(token: string, nodeId: string, downloadId: string) {
+  async downloadSharedNode(
+    token: string,
+    nodeId: string,
+    downloadId: string,
+    visitor: VisitorAuditMetadata = {},
+  ) {
     const intent = this.downloadIntents.get(downloadId);
     if (
       !intent ||
@@ -195,7 +222,11 @@ export class SharesService {
     }
 
     const { node } = await this.requireShareNode(token, nodeId, 'download');
-    await this.sharesRepository.recordAudit('share.download_started', token);
+    await this.assertShareDownloadLimit(token);
+    await this.sharesRepository.recordAudit('share.download_started', token, {
+      nodeId,
+      ...visitor,
+    });
 
     if (intent.method === 'presigned-url' && node.objectKey) {
       const signed = await this.storageService.createPresignedDownload(
@@ -221,12 +252,14 @@ export class SharesService {
     token: string,
     nodeId: string,
     accessSessionId?: string,
+    visitor: VisitorAuditMetadata = {},
   ) {
     const { share } = await this.requireShareNode(token, nodeId, 'preview');
     this.requireAccessSessionIfNeeded(share, accessSessionId);
     const intent = await this.fileNodesService.createPreviewIntent(nodeId);
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
       nodeId,
+      ...visitor,
     });
 
     return {
@@ -308,6 +341,7 @@ export class SharesService {
   ) {
     if (
       share.policy.allowedDomain ||
+      share.policy.emailAllowlist?.length > 0 ||
       share.policy.waitValue > 0 ||
       share.policy.downloadLimit
     ) {
@@ -329,12 +363,19 @@ export class SharesService {
   }
 
   private assertEmailAllowed(share: ShareResponse, email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const allowlist = this.normalizePolicyEmailAllowlist(
+      share.policy.emailAllowlist ?? [],
+    );
+    if (allowlist.length > 0 && !allowlist.includes(normalizedEmail)) {
+      throw new ForbiddenException('Email address is not allowed');
+    }
     const allowedDomain = share.policy.allowedDomain.trim().toLowerCase();
     if (!allowedDomain) return;
     const normalized = allowedDomain.startsWith('@')
       ? allowedDomain.slice(1)
       : allowedDomain;
-    if (!email.toLowerCase().endsWith(`@${normalized}`)) {
+    if (!normalizedEmail.endsWith(`@${normalized}`)) {
       throw new ForbiddenException('Email domain is not allowed');
     }
   }
@@ -357,6 +398,13 @@ export class SharesService {
     const policy: SharePolicyDto = {
       ...dto.policy,
       allowedDomain: this.normalizePolicyDomain(dto.policy.allowedDomain),
+      downloadLimit: dto.policy.downloadLimit?.trim() ?? '',
+      emailAllowlist: this.normalizePolicyEmailAllowlist(
+        dto.policy.emailAllowlist ?? [],
+      ),
+      maxDownloads: Math.max(0, Math.trunc(dto.policy.maxDownloads ?? 0)),
+      maxViews: Math.max(0, Math.trunc(dto.policy.maxViews ?? 0)),
+      rateLimitProfile: dto.policy.rateLimitProfile?.trim() ?? '',
     };
     if (settings.emailRule === 'domains') {
       const requestedDomain = policy.allowedDomain;
@@ -396,6 +444,16 @@ export class SharesService {
     return normalized.startsWith('@') ? normalized.slice(1) : normalized;
   }
 
+  private normalizePolicyEmailAllowlist(emails: string[]) {
+    return [
+      ...new Set(
+        emails
+          .map((email) => email.trim().toLowerCase())
+          .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
+      ),
+    ];
+  }
+
   private emailCodeKey(token: string, email: string) {
     return `${token}:${email.toLowerCase()}`;
   }
@@ -422,6 +480,41 @@ export class SharesService {
     };
     this.accessSessions.set(session.sessionId, session);
     return session;
+  }
+
+  private async assertShareViewLimit(share: ShareResponse) {
+    const maxViews = Math.max(0, Math.trunc(share.policy.maxViews ?? 0));
+    if (maxViews <= 0) return;
+    const viewCount = await this.sharesRepository.countShareAuditEvents(
+      share.token,
+      'share.viewed',
+    );
+    if (viewCount >= maxViews) {
+      throw new GoneException('Share view limit has been reached');
+    }
+  }
+
+  private async assertShareDownloadLimit(shareOrToken: ShareResponse | string) {
+    const share =
+      typeof shareOrToken === 'string'
+        ? await this.requireActiveShare(shareOrToken)
+        : shareOrToken;
+    const maxDownloads = this.resolveMaxDownloads(share.policy);
+    if (maxDownloads <= 0) return;
+    const downloadCount = await this.sharesRepository.countShareAuditEvents(
+      share.token,
+      'share.download_started',
+    );
+    if (downloadCount >= maxDownloads) {
+      throw new GoneException('Share download limit has been reached');
+    }
+  }
+
+  private resolveMaxDownloads(policy: SharePolicyDto) {
+    const explicit = Math.max(0, Math.trunc(policy.maxDownloads ?? 0));
+    if (explicit > 0) return explicit;
+    const parsed = Number.parseInt(policy.downloadLimit || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
 
   private getWaitSeconds(
