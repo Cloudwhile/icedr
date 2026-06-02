@@ -1,12 +1,12 @@
 import { UnauthorizedException } from '@nestjs/common';
+import { scryptSync } from 'crypto';
 import { AuthService } from './auth.service';
 
 jest.mock('openid-client', () => ({
   __esModule: true,
 }));
 
-const validPasswordHash =
-  'scrypt$auth-service-spec$7ADHp0JEFUDfEZTtT8MeDHOQB1sKssVKmgPobcDu_AvIQipLvBxY5Pt4DwrWyQQ09sY30PSKWt8oMSPh8eatwg';
+const validPasswordHash = createPasswordHash('old-password');
 
 type ResetRecord = {
   tokenHash: string;
@@ -16,6 +16,12 @@ type ResetRecord = {
   attemptCount: number;
   createdAt: string;
 };
+
+function createPasswordHash(password: string) {
+  const salt = 'auth-service-spec';
+  const derivedKey = scryptSync(password, salt, 64);
+  return `scrypt$${salt}$${derivedKey.toString('base64url')}`;
+}
 
 function createUserResponse(locale: string | null = null) {
   return {
@@ -71,13 +77,14 @@ function createService(options: { userLocale?: string | null } = {}) {
       }
       return Promise.resolve(0);
     }),
-    updateUserPassword: jest.fn((userId: string, passwordHash: string) =>
-      Promise.resolve({
+    updateUserPassword: jest.fn((userId: string, passwordHash: string) => {
+      user.passwordHash = passwordHash;
+      return Promise.resolve({
         ...user,
         id: userId,
         passwordHash,
-      }),
-    ),
+      });
+    }),
     markPasswordResetUsed: jest.fn((tokenHash: string) => {
       if (resetRecord?.tokenHash === tokenHash) {
         resetRecord.usedAt = new Date().toISOString();
@@ -248,6 +255,40 @@ describe('AuthService', () => {
       }),
     );
     expect(session.token).toMatch(/^sess_/);
+  });
+
+  it('accepts the new password and rejects the old password after reset', async () => {
+    const { mailService, service } = createService();
+
+    const oldLogin = await service.login({
+      email: 'user@example.com',
+      password: 'old-password',
+    });
+    expect(oldLogin.token).toMatch(/^sess_/);
+
+    await service.requestPasswordReset({
+      email: 'user@example.com',
+      locale: 'en',
+    });
+    const code = mailService.sendPasswordReset.mock.calls[0][0].code as string;
+
+    await service.confirmPasswordReset({
+      email: 'user@example.com',
+      code,
+      password: 'changed-password',
+    });
+
+    await expectInvalidCredentials(
+      service.login({
+        email: 'user@example.com',
+        password: 'old-password',
+      }),
+    );
+    const login = await service.login({
+      email: 'user@example.com',
+      password: 'changed-password',
+    });
+    expect(login.token).toMatch(/^sess_/);
   });
 
   it('increments attempts for an invalid password reset code', async () => {

@@ -6,6 +6,7 @@ coverage
 .env.local
 *.log
 Dockerfile.local
+backend/src/generated/prisma/
 
 .pnpm-store/
 

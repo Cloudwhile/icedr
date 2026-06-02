@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { DatabaseService } from '../../../database/database.service';
+import { PrismaService } from '../../../database/prisma.service';
 import { AuthSettings, AuthUserResponse } from './auth.dto';
 
 const authSettingsKey = 'global';
@@ -182,179 +182,24 @@ type OAuthExchangeCodeRow = {
 
 @Injectable()
 export class AuthRepository implements OnModuleInit {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    await this.database.query(`
-      create table if not exists auth_settings (
-        setting_key text primary key,
-        local_enabled boolean not null,
-        oauth_enabled boolean not null,
-        passkey_enabled boolean not null,
-        updated_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists users (
-        id text primary key,
-        email text not null unique,
-        display_name text not null,
-        role text not null default 'member',
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      alter table users
-      add column if not exists role text not null default 'member'
-    `);
-
-    await this.database.query(`
-      do $$
-      begin
-        if not exists (
-          select 1
-          from pg_constraint
-          where conname = 'users_role_check'
-        ) then
-          alter table users
-          add constraint users_role_check
-          check (role in ('admin', 'member'));
-        end if;
-      end $$;
-    `);
-
-    await this.database.query(`
-      create table if not exists user_meta (
-        user_id text primary key references users(id) on delete cascade,
-        avatar_url text,
-        locale text,
-        theme text,
-        timezone text,
-        preferences jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists user_identities (
-        id text primary key,
-        user_id text not null references users(id) on delete cascade,
-        provider text not null,
-        provider_subject text not null,
-        password_hash text,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now(),
-        unique (provider, provider_subject)
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists auth_sessions (
-        token_hash text primary key,
-        user_id text not null references users(id) on delete cascade,
-        expires_at timestamptz not null,
-        created_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists auth_password_resets (
-        token_hash text primary key,
-        user_id text not null references users(id) on delete cascade,
-        expires_at timestamptz not null,
-        used_at timestamptz,
-        attempt_count integer not null default 0,
-        created_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      alter table auth_password_resets
-      add column if not exists attempt_count integer not null default 0
-    `);
-
-    await this.database.query(`
-      create table if not exists auth_passkeys (
-        id text primary key,
-        user_id text not null references users(id) on delete cascade,
-        credential_id text not null unique,
-        public_key text not null,
-        counter bigint not null default 0,
-        transports jsonb not null default '[]'::jsonb,
-        device_type text not null,
-        backed_up boolean not null default false,
-        name text not null,
-        created_at timestamptz not null default now(),
-        last_used_at timestamptz
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists auth_challenges (
-        id text primary key,
-        flow text not null,
-        challenge text not null,
-        user_id text references users(id) on delete cascade,
-        email text,
-        expires_at timestamptz not null,
-        used_at timestamptz,
-        metadata jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists auth_oauth_states (
-        state text primary key,
-        flow text not null,
-        share_token text,
-        code_verifier text not null,
-        redirect_uri text not null,
-        expires_at timestamptz not null,
-        used_at timestamptz,
-        created_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists auth_oauth_exchange_codes (
-        code_hash text primary key,
-        user_id text not null references users(id) on delete cascade,
-        expires_at timestamptz not null,
-        used_at timestamptz,
-        created_at timestamptz not null default now()
-      )
-    `);
-
     await this.migrateLegacyAuthUsers();
-
-    await this.database.query(
-      `
-        insert into auth_settings (
-          setting_key,
-          local_enabled,
-          oauth_enabled,
-          passkey_enabled,
-          updated_at
-        )
-        values ($1, $2, $3, $4, now())
-        on conflict (setting_key) do nothing
-      `,
-      [
-        authSettingsKey,
-        defaultAuthSettings.localEnabled,
-        defaultAuthSettings.oauthEnabled,
-        defaultAuthSettings.passkeyEnabled,
-      ],
-    );
+    await this.prisma.authSetting.upsert({
+      where: { settingKey: authSettingsKey },
+      update: {},
+      create: {
+        settingKey: authSettingsKey,
+        localEnabled: defaultAuthSettings.localEnabled,
+        oauthEnabled: defaultAuthSettings.oauthEnabled,
+        passkeyEnabled: defaultAuthSettings.passkeyEnabled,
+      },
+    });
   }
 
   async getSettings(): Promise<AuthSettings> {
-    const result = await this.database.query<AuthSettingsRow>(
+    const result = await this.query<AuthSettingsRow>(
       'select * from auth_settings where setting_key = $1 limit 1',
       [authSettingsKey],
     );
@@ -364,7 +209,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async updateSettings(settings: AuthSettings): Promise<AuthSettings> {
-    const result = await this.database.query<AuthSettingsRow>(
+    const result = await this.query<AuthSettingsRow>(
       `
         insert into auth_settings (
           setting_key,
@@ -393,7 +238,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findUserByEmail(email: string): Promise<StoredAuthUser | null> {
-    const result = await this.database.query<UserWithPasswordRow>(
+    const result = await this.query<UserWithPasswordRow>(
       `
         select
           u.*,
@@ -404,10 +249,15 @@ export class AuthRepository implements OnModuleInit {
           i.password_hash
         from users u
         left join user_meta m on m.user_id = u.id
-        left join user_identities i
-          on i.user_id = u.id
-          and i.provider = $2
-          and i.provider_subject = u.email
+        left join lateral (
+          select password_hash
+          from user_identities
+          where user_id = u.id
+            and provider = $2
+            and password_hash is not null
+          order by updated_at desc, created_at desc
+          limit 1
+        ) i on true
         where u.email = $1
         limit 1
       `,
@@ -425,7 +275,7 @@ export class AuthRepository implements OnModuleInit {
     role?: 'admin' | 'member';
   }): Promise<StoredAuthUser> {
     const id = `user_${randomBytes(12).toString('base64url')}`;
-    const result = await this.database.query<UserWithPasswordRow>(
+    const result = await this.query<UserWithPasswordRow>(
       `
         with created_user as (
           insert into users (
@@ -497,7 +347,7 @@ export class AuthRepository implements OnModuleInit {
     const existing = await this.findUserByEmail(input.email);
     if (!existing) return this.createUser(input);
 
-    await this.database.query(
+    await this.query(
       `
         update users
         set role = $2, display_name = $3, updated_at = now()
@@ -517,7 +367,7 @@ export class AuthRepository implements OnModuleInit {
     displayName: string;
     role: 'admin' | 'member';
   }): Promise<StoredAuthUser> {
-    await this.database.query(
+    await this.query(
       `
         update users
         set role = $2, display_name = $3, updated_at = now()
@@ -533,7 +383,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findUserById(userId: string): Promise<AuthUserResponse | null> {
-    const result = await this.database.query<UserRow>(
+    const result = await this.query<UserRow>(
       `
         select
           u.*,
@@ -565,7 +415,7 @@ export class AuthRepository implements OnModuleInit {
     if (!current) throw new Error('User is unavailable');
 
     const displayName = input.displayName ?? current.displayName;
-    await this.database.query(
+    await this.query(
       `
         update users
         set display_name = $2, updated_at = now()
@@ -574,7 +424,7 @@ export class AuthRepository implements OnModuleInit {
       [userId, displayName],
     );
 
-    await this.database.query(
+    await this.query(
       `
         insert into user_meta (
           user_id,
@@ -607,7 +457,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findUserByProviderIdentity(provider: string, subject: string) {
-    const result = await this.database.query<UserRow>(
+    const result = await this.query<UserRow>(
       `
         select
           u.*,
@@ -633,7 +483,7 @@ export class AuthRepository implements OnModuleInit {
     displayName: string;
   }) {
     const id = `user_${randomBytes(12).toString('base64url')}`;
-    const result = await this.database.query<UserRow>(
+    const result = await this.query<UserRow>(
       `
         with created_user as (
           insert into users (
@@ -702,7 +552,7 @@ export class AuthRepository implements OnModuleInit {
     userId: string;
     expiresAt: string;
   }) {
-    await this.database.query(
+    await this.query(
       `
         insert into auth_sessions (
           token_hash,
@@ -719,7 +569,7 @@ export class AuthRepository implements OnModuleInit {
   async findSessionByTokenHash(
     tokenHash: string,
   ): Promise<StoredAuthSession | null> {
-    const result = await this.database.query<AuthSessionRow>(
+    const result = await this.query<AuthSessionRow>(
       `
         select
           s.token_hash,
@@ -746,16 +596,13 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async deleteSessionByTokenHash(tokenHash: string) {
-    await this.database.query(
-      'delete from auth_sessions where token_hash = $1',
-      [tokenHash],
-    );
+    await this.query('delete from auth_sessions where token_hash = $1', [
+      tokenHash,
+    ]);
   }
 
   async deleteSessionsForUser(userId: string) {
-    await this.database.query('delete from auth_sessions where user_id = $1', [
-      userId,
-    ]);
+    await this.query('delete from auth_sessions where user_id = $1', [userId]);
   }
 
   async createPasswordReset(input: {
@@ -763,7 +610,7 @@ export class AuthRepository implements OnModuleInit {
     userId: string;
     expiresAt: string;
   }) {
-    await this.database.query(
+    await this.query(
       `
         update auth_password_resets
         set used_at = coalesce(used_at, now())
@@ -772,7 +619,7 @@ export class AuthRepository implements OnModuleInit {
       [input.userId],
     );
 
-    await this.database.query(
+    await this.query(
       `
         insert into auth_password_resets (
           token_hash,
@@ -789,7 +636,7 @@ export class AuthRepository implements OnModuleInit {
   async findPasswordResetByTokenHash(
     tokenHash: string,
   ): Promise<StoredPasswordReset | null> {
-    const result = await this.database.query<PasswordResetRow>(
+    const result = await this.query<PasswordResetRow>(
       `
         select
           r.token_hash,
@@ -820,7 +667,7 @@ export class AuthRepository implements OnModuleInit {
   async findLatestPasswordResetForUser(
     userId: string,
   ): Promise<StoredPasswordReset | null> {
-    const result = await this.database.query<PasswordResetRow>(
+    const result = await this.query<PasswordResetRow>(
       `
         select
           r.token_hash,
@@ -851,7 +698,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async incrementPasswordResetAttempts(tokenHash: string) {
-    const result = await this.database.query<{
+    const result = await this.query<{
       attempt_count: number | string;
     }>(
       `
@@ -866,7 +713,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async markPasswordResetUsed(tokenHash: string) {
-    await this.database.query(
+    await this.query(
       `
         update auth_password_resets
         set used_at = coalesce(used_at, now())
@@ -877,13 +724,43 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async updateUserPassword(userId: string, passwordHash: string) {
-    const result = await this.database.query<UserWithPasswordRow>(
+    const result = await this.query<UserWithPasswordRow>(
       `
-        with updated_identity as (
+        with target_user as (
+          select *
+          from users
+          where id = $1
+        ),
+        updated_identity as (
           update user_identities
           set password_hash = $2, updated_at = now()
           where user_id = $1 and provider = $3
           returning password_hash
+        ),
+        created_identity as (
+          insert into user_identities (
+            id,
+            user_id,
+            provider,
+            provider_subject,
+            password_hash,
+            created_at,
+            updated_at
+          )
+          select $4, id, $3, email, $2, now(), now()
+          from target_user
+          where not exists (select 1 from updated_identity)
+          on conflict (provider, provider_subject) do update set
+            user_id = excluded.user_id,
+            password_hash = excluded.password_hash,
+            updated_at = excluded.updated_at
+          returning password_hash
+        ),
+        resolved_identity as (
+          select password_hash from updated_identity
+          union all
+          select password_hash from created_identity
+          limit 1
         ),
         touched_user as (
           update users
@@ -900,9 +777,14 @@ export class AuthRepository implements OnModuleInit {
           i.password_hash
         from touched_user u
         left join user_meta m on m.user_id = u.id
-        join updated_identity i on true
+        join resolved_identity i on true
       `,
-      [userId, passwordHash, localIdentityProvider],
+      [
+        userId,
+        passwordHash,
+        localIdentityProvider,
+        `identity_${randomBytes(12).toString('base64url')}`,
+      ],
     );
     return this.mapUserWithPasswordRow(result.rows[0]);
   }
@@ -918,7 +800,7 @@ export class AuthRepository implements OnModuleInit {
     name: string;
   }) {
     const id = `passkey_${randomBytes(12).toString('base64url')}`;
-    const result = await this.database.query<PasskeyRow>(
+    const result = await this.query<PasskeyRow>(
       `
         insert into auth_passkeys (
           id,
@@ -951,7 +833,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async listPasskeysForUser(userId: string) {
-    const result = await this.database.query<PasskeyRow>(
+    const result = await this.query<PasskeyRow>(
       'select * from auth_passkeys where user_id = $1 order by created_at desc',
       [userId],
     );
@@ -959,7 +841,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findPasskeyByCredentialId(credentialId: string) {
-    const result = await this.database.query<PasskeyRow>(
+    const result = await this.query<PasskeyRow>(
       'select * from auth_passkeys where credential_id = $1 limit 1',
       [credentialId],
     );
@@ -967,7 +849,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async updatePasskeyCounter(id: string, counter: number) {
-    const result = await this.database.query<PasskeyRow>(
+    const result = await this.query<PasskeyRow>(
       `
         update auth_passkeys
         set counter = $2, last_used_at = now()
@@ -980,7 +862,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async deletePasskey(userId: string, id: string) {
-    await this.database.query(
+    await this.query(
       'delete from auth_passkeys where user_id = $1 and id = $2',
       [userId, id],
     );
@@ -995,7 +877,7 @@ export class AuthRepository implements OnModuleInit {
     metadata?: Record<string, unknown>;
   }) {
     const id = `challenge_${randomBytes(12).toString('base64url')}`;
-    const result = await this.database.query<AuthChallengeRow>(
+    const result = await this.query<AuthChallengeRow>(
       `
         insert into auth_challenges (
           id,
@@ -1028,7 +910,7 @@ export class AuthRepository implements OnModuleInit {
     userId?: string | null;
     email?: string | null;
   }) {
-    const result = await this.database.query<AuthChallengeRow>(
+    const result = await this.query<AuthChallengeRow>(
       `
         select *
         from auth_challenges
@@ -1046,7 +928,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async markChallengeUsed(id: string) {
-    await this.database.query(
+    await this.query(
       'update auth_challenges set used_at = coalesce(used_at, now()) where id = $1',
       [id],
     );
@@ -1060,7 +942,7 @@ export class AuthRepository implements OnModuleInit {
     redirectUri: string;
     expiresAt: string;
   }) {
-    const result = await this.database.query<OAuthStateRow>(
+    const result = await this.query<OAuthStateRow>(
       `
         insert into auth_oauth_states (
           state,
@@ -1087,7 +969,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findOAuthState(state: string) {
-    const result = await this.database.query<OAuthStateRow>(
+    const result = await this.query<OAuthStateRow>(
       'select * from auth_oauth_states where state = $1 limit 1',
       [state],
     );
@@ -1095,7 +977,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async markOAuthStateUsed(state: string) {
-    await this.database.query(
+    await this.query(
       'update auth_oauth_states set used_at = coalesce(used_at, now()) where state = $1',
       [state],
     );
@@ -1106,7 +988,7 @@ export class AuthRepository implements OnModuleInit {
     userId: string;
     expiresAt: string;
   }) {
-    const result = await this.database.query<OAuthExchangeCodeRow>(
+    const result = await this.query<OAuthExchangeCodeRow>(
       `
         insert into auth_oauth_exchange_codes (
           code_hash,
@@ -1123,7 +1005,7 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findOAuthExchangeCode(codeHash: string) {
-    const result = await this.database.query<OAuthExchangeCodeRow>(
+    const result = await this.query<OAuthExchangeCodeRow>(
       'select * from auth_oauth_exchange_codes where code_hash = $1 limit 1',
       [codeHash],
     );
@@ -1131,14 +1013,14 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async markOAuthExchangeCodeUsed(codeHash: string) {
-    await this.database.query(
+    await this.query(
       'update auth_oauth_exchange_codes set used_at = coalesce(used_at, now()) where code_hash = $1',
       [codeHash],
     );
   }
 
   private async migrateLegacyAuthUsers() {
-    await this.database.query(`
+    await this.query(`
       do $$
       begin
         if to_regclass('public.auth_users') is not null then
@@ -1321,6 +1203,33 @@ export class AuthRepository implements OnModuleInit {
       expiresAt: this.toIsoString(row.expires_at),
       usedAt: row.used_at ? this.toIsoString(row.used_at) : null,
       createdAt: this.toIsoString(row.created_at),
+    };
+  }
+
+  private async query<T>(
+    sql: string,
+    values: unknown[] = [],
+  ): Promise<{ rows: T[] }> {
+    const query = this.toPrismaSql(sql, values);
+    const returnsRows =
+      /^\s*(select|with|insert\b[\s\S]*\breturning\b|update\b[\s\S]*\breturning\b)/i.test(
+        sql,
+      );
+    if (returnsRows) {
+      const rows = await this.prisma.$queryRawUnsafe<T[]>(
+        query.sql,
+        ...query.values,
+      );
+      return { rows };
+    }
+    await this.prisma.$executeRawUnsafe(query.sql, ...query.values);
+    return { rows: [] };
+  }
+
+  private toPrismaSql(sql: string, values: unknown[]) {
+    return {
+      sql,
+      values,
     };
   }
 

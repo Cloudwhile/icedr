@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../../../database/database.service';
+import { PrismaService } from '../../../database/prisma.service';
 import { QueueService } from '../../downloads/queue/queue.service';
 import { StorageService } from '../../storage/storage.service';
 
@@ -8,7 +8,7 @@ import { StorageService } from '../../storage/storage.service';
 export class HealthService {
   constructor(
     private readonly config: ConfigService,
-    private readonly database: DatabaseService,
+    private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly queue: QueueService,
   ) {}
@@ -47,7 +47,8 @@ export class HealthService {
 
   private async checkDatabase() {
     try {
-      return await this.database.ping();
+      await this.prisma.$queryRaw`select 1`;
+      return true;
     } catch {
       return false;
     }

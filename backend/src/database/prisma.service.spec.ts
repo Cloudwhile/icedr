@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from './database.service';
+import { PrismaService } from './prisma.service';
 
 function config(values: Record<string, unknown>) {
   return {
@@ -7,11 +7,11 @@ function config(values: Record<string, unknown>) {
   } as unknown as ConfigService;
 }
 
-describe('DatabaseService', () => {
+describe('PrismaService', () => {
   it('rejects startup without database connection fields', () => {
     expect(
       () =>
-        new DatabaseService(
+        new PrismaService(
           config({
             'database.configured': false,
           }),
@@ -19,8 +19,8 @@ describe('DatabaseService', () => {
     ).toThrow('DATABASE_HOST');
   });
 
-  it('creates a PostgreSQL-backed service when database config is complete', async () => {
-    const service = new DatabaseService(
+  it('creates a Prisma client when database config is complete', async () => {
+    const service = new PrismaService(
       config({
         'database.configured': true,
         'database.host': 'localhost',
@@ -31,8 +31,7 @@ describe('DatabaseService', () => {
       }),
     );
 
-    const query = service.query.bind(service);
-    expect(query).toEqual(expect.any(Function));
+    expect(typeof service.workspace.findMany).toBe('function');
     await service.onModuleDestroy();
   });
 });

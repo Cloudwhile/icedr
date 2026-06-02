@@ -1,79 +1,53 @@
 import { Injectable } from '@nestjs/common';
-import { DatabaseService } from '../../database/database.service';
+import { PrismaService } from '../../database/prisma.service';
+import { Prisma, type AuditEvent } from '../../generated/prisma/client';
 import {
   AuditEventFilters,
   AuditEventRecord,
   clampAuditLimit,
 } from './audit-events';
 
-type AuditEventRow = {
-  id: string;
-  action: string;
-  actor: AuditEventRecord['actor'];
-  target: string;
-  workspace_id: string | null;
-  share_token: string | null;
-  node_id: string | null;
-  metadata: Record<string, unknown> | string;
-  created_at: Date | string;
-};
-
 @Injectable()
 export class AuditService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async listEvents(filters: AuditEventFilters = {}) {
-    const clauses: string[] = [];
-    const values: unknown[] = [];
-    if (filters.workspaceId) {
-      values.push(filters.workspaceId);
-      clauses.push(`workspace_id = $${values.length}`);
-    }
-    if (filters.shareToken) {
-      values.push(filters.shareToken);
-      clauses.push(`share_token = $${values.length}`);
-    }
-    if (filters.nodeId) {
-      values.push(filters.nodeId);
-      clauses.push(`node_id = $${values.length}`);
-    }
-    if (filters.action) {
-      values.push(filters.action);
-      clauses.push(`action = $${values.length}`);
-    }
-    values.push(clampAuditLimit(filters.limit));
+    const where: Prisma.AuditEventWhereInput = {};
+    if (filters.workspaceId) where.workspaceId = filters.workspaceId;
+    if (filters.shareToken) where.shareToken = filters.shareToken;
+    if (filters.nodeId) where.nodeId = filters.nodeId;
+    if (filters.action) where.action = filters.action;
 
-    const result = await this.database.query<AuditEventRow>(
-      `
-        select id, action, actor, target, workspace_id, share_token, node_id, metadata, created_at
-        from audit_events
-        ${clauses.length > 0 ? `where ${clauses.join(' and ')}` : ''}
-        order by created_at desc
-        limit $${values.length}
-      `,
-      values,
-    );
+    const rows = await this.prisma.auditEvent.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: clampAuditLimit(filters.limit),
+    });
 
-    return result.rows.map((row) => this.mapRow(row));
+    return rows.map((row) => this.mapRow(row));
   }
 
-  private mapRow(row: AuditEventRow): AuditEventRecord {
+  private mapRow(row: AuditEvent): AuditEventRecord {
     return {
       id: row.id,
       action: row.action,
-      actor: row.actor,
+      actor: row.actor as AuditEventRecord['actor'],
       target: row.target,
-      workspaceId: row.workspace_id,
-      shareToken: row.share_token,
-      nodeId: row.node_id,
-      metadata:
-        typeof row.metadata === 'string'
-          ? (JSON.parse(row.metadata) as Record<string, unknown>)
-          : row.metadata,
-      createdAt:
-        row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : new Date(row.created_at).toISOString(),
+      workspaceId: row.workspaceId,
+      shareToken: row.shareToken,
+      nodeId: row.nodeId,
+      metadata: this.parseMetadata(row.metadata),
+      createdAt: row.createdAt.toISOString(),
     };
+  }
+
+  private parseMetadata(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    if (typeof value === 'string') {
+      return JSON.parse(value) as Record<string, unknown>;
+    }
+    return {};
   }
 }

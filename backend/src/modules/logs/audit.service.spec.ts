@@ -1,39 +1,43 @@
 import { AuditService } from './audit.service';
-import { DatabaseService } from '../../database/database.service';
+import { PrismaService } from '../../database/prisma.service';
 
 describe('AuditService', () => {
   it('lists database audit events with filters', async () => {
-    const query = jest.fn(() =>
-      Promise.resolve({
-        rows: [
-          {
-            id: 'audit_1',
-            action: 'share.download_started',
-            actor: 'visitor',
-            target: 's_one',
-            workspace_id: 'workspace-default',
-            share_token: 's_one',
-            node_id: 'roadmap',
-            metadata: { source: 'spec' },
-            created_at: new Date(0),
-          },
-        ],
-      }),
+    const findMany = jest.fn(() =>
+      Promise.resolve([
+        {
+          id: 'audit_1',
+          action: 'share.download_started',
+          actor: 'visitor',
+          target: 's_one',
+          workspaceId: 'workspace-default',
+          shareToken: 's_one',
+          nodeId: 'roadmap',
+          metadata: { source: 'spec' },
+          createdAt: new Date(0),
+        },
+      ]),
     );
-    const database = {
-      query,
-    } as unknown as DatabaseService;
-    const service = new AuditService(database);
+    const prisma = {
+      auditEvent: {
+        findMany,
+      },
+    } as unknown as PrismaService;
+    const service = new AuditService(prisma);
 
     const events = await service.listEvents({
       action: 'share.download_started',
       nodeId: 'roadmap',
     });
 
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('from audit_events'),
-      ['roadmap', 'share.download_started', 100],
-    );
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        action: 'share.download_started',
+        nodeId: 'roadmap',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
     expect(events).toEqual([
       expect.objectContaining({
         action: 'share.download_started',

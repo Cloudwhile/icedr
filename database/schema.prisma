@@ -1,12 +1,346 @@
-// ICEDR keeps this file as the recommended database schema entry point.
-// Runtime table creation is still handled by Nest repositories.
-// Add Prisma models here only after introducing Prisma migrations to the project.
-
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../backend/src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+model AuthSetting {
+  settingKey     String   @id @map("setting_key")
+  localEnabled   Boolean  @map("local_enabled")
+  oauthEnabled   Boolean  @map("oauth_enabled")
+  passkeyEnabled Boolean  @map("passkey_enabled")
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("auth_settings")
+}
+
+model User {
+  id           String    @id
+  email        String    @unique
+  displayName  String    @map("display_name")
+  role         String    @default("member")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  meta                UserMeta?
+  identities          UserIdentity[]
+  sessions            AuthSession[]
+  passwordResets      AuthPasswordReset[]
+  passkeys            AuthPasskey[]
+  challenges          AuthChallenge[]
+  oauthExchangeCodes  AuthOAuthExchangeCode[]
+
+  @@map("users")
+}
+
+model UserMeta {
+  userId      String   @id @map("user_id")
+  avatarUrl   String?  @map("avatar_url")
+  locale      String?
+  theme       String?
+  timezone    String?
+  preferences Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_meta")
+}
+
+model UserIdentity {
+  id              String   @id
+  userId          String   @map("user_id")
+  provider        String
+  providerSubject String   @map("provider_subject")
+  passwordHash    String?  @map("password_hash")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  @@map("user_identities")
+}
+
+model AuthSession {
+  tokenHash String   @id @map("token_hash")
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_sessions")
+}
+
+model AuthPasswordReset {
+  tokenHash    String    @id @map("token_hash")
+  userId       String    @map("user_id")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
+  usedAt       DateTime? @map("used_at") @db.Timestamptz
+  attemptCount Int       @default(0) @map("attempt_count")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_password_resets")
+}
+
+model AuthPasskey {
+  id           String    @id
+  userId       String    @map("user_id")
+  credentialId String    @unique @map("credential_id")
+  publicKey    String    @map("public_key")
+  counter      BigInt    @default(0)
+  transports   Json      @default("[]")
+  deviceType   String    @map("device_type")
+  backedUp     Boolean   @default(false) @map("backed_up")
+  name         String
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_passkeys")
+}
+
+model AuthChallenge {
+  id        String    @id
+  flow      String
+  challenge String
+  userId    String?   @map("user_id")
+  email     String?
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  metadata  Json      @default("{}")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_challenges")
+}
+
+model AuthOAuthState {
+  state        String    @id
+  flow         String
+  shareToken   String?   @map("share_token")
+  codeVerifier String    @map("code_verifier")
+  redirectUri  String    @map("redirect_uri")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
+  usedAt       DateTime? @map("used_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("auth_oauth_states")
+}
+
+model AuthOAuthExchangeCode {
+  codeHash  String    @id @map("code_hash")
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_oauth_exchange_codes")
+}
+
+model Setting {
+  parentMeta String   @map("parent_meta")
+  meta       String
+  value      Json     @default("{}")
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@id([parentMeta, meta])
+  @@map("settings")
+}
+
+model Workspace {
+  id          String   @id
+  name        String
+  rootNodeId  String   @map("root_node_id")
+  memberCount Int      @default(1) @map("member_count")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("workspaces")
+}
+
+model WorkspaceShareSetting {
+  workspaceId        String   @id @map("workspace_id")
+  anonymousAccess    String   @map("anonymous_access")
+  emailRule          String   @map("email_rule")
+  allowedDomains     Json     @map("allowed_domains")
+  defaultExpiresDays Int      @map("default_expires_days")
+  maxExpiresDays     Int      @map("max_expires_days")
+  allowPermanent     Boolean  @map("allow_permanent")
+  auditSettings      Json     @map("audit_settings")
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("workspace_share_settings")
+}
+
+model FileNode {
+  id           String    @id
+  workspaceId  String    @map("workspace_id")
+  parentNodeId String?   @map("parent_node_id")
+  name         String
+  kind         String
+  mimeType     String    @map("mime_type")
+  sizeBytes    BigInt?   @map("size_bytes")
+  objectKey    String?   @map("object_key")
+  ownerName    String    @map("owner_name")
+  starred      Boolean   @default(false)
+  archivedAt   DateTime? @map("archived_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("file_nodes")
+}
+
+model PreviewArtifact {
+  id               String   @id
+  nodeId           String   @map("node_id")
+  sourceObjectKey  String?  @map("source_object_key")
+  previewObjectKey String?  @map("preview_object_key")
+  previewType      String   @map("preview_type")
+  status           String
+  error            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("preview_artifacts")
+}
+
+model FileDownloadIntent {
+  id        String   @id
+  nodeId    String   @map("node_id")
+  filename  String
+  method    String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("file_download_intents")
+}
+
+model UploadSession {
+  id                String   @id
+  transferId        String   @map("transfer_id")
+  workspaceId       String   @map("workspace_id")
+  objectKey         String   @map("object_key")
+  multipartUploadId String?  @map("multipart_upload_id")
+  resumeKey         String?  @map("resume_key")
+  fileName          String   @map("file_name")
+  parentNodeId      String?  @map("parent_node_id")
+  mimeType          String   @map("mime_type")
+  sizeBytes         BigInt   @map("size_bytes")
+  chunkSizeBytes    Int      @map("chunk_size_bytes")
+  status            String
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  parts UploadSessionPart[]
+
+  @@map("upload_sessions")
+}
+
+model UploadSessionPart {
+  sessionId String   @map("session_id")
+  partIndex Int      @map("part_index")
+  startByte BigInt   @map("start_byte")
+  endByte   BigInt   @map("end_byte")
+  sizeBytes BigInt   @map("size_bytes")
+  eTag      String?  @map("e_tag")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  session UploadSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, partIndex])
+  @@map("upload_session_parts")
+}
+
+model StorageSetting {
+  settingKey                String   @id @map("setting_key")
+  distributedStorageEnabled Boolean  @map("distributed_storage_enabled")
+  endpoint                  String   @default("")
+  region                    String   @default("us-east-1")
+  bucket                    String   @default("")
+  accessKeyId               String   @default("") @map("access_key_id")
+  secretAccessKey           String   @default("") @map("secret_access_key")
+  forcePathStyle            Boolean  @default(true) @map("force_path_style")
+  updatedAt                 DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("storage_settings")
+}
+
+model TransferTask {
+  id           String   @id
+  workspaceId  String   @map("workspace_id")
+  nodeId       String?  @map("node_id")
+  objectKey    String?  @map("object_key")
+  name         String
+  transferType String   @map("transfer_type")
+  progress     Decimal  @db.Decimal(5, 1)
+  status       String
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("transfer_tasks")
+}
+
+model ShareLink {
+  token          String    @id
+  workspaceId    String    @default("workspace-default") @map("workspace_id")
+  title          String
+  mode           String
+  ownerName      String    @map("owner_name")
+  rootItemIds    Json      @map("root_item_ids")
+  allowedItemIds Json      @map("allowed_item_ids")
+  dynamicRootId  String?   @map("dynamic_root_id")
+  allowDownload  Boolean   @map("allow_download")
+  allowPreview   Boolean   @map("allow_preview")
+  expiresDays    Int       @map("expires_days")
+  remark         String?
+  policySnapshot Json      @map("policy_snapshot")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
+
+  @@map("share_links")
+}
+
+model AuditEvent {
+  id          String   @id
+  action      String
+  actor       String
+  target      String
+  workspaceId String?  @map("workspace_id")
+  shareToken  String?  @map("share_token")
+  nodeId      String?  @map("node_id")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("audit_events")
+}
+
+model BlobReconcileTask {
+  id                 String   @id
+  workspaceId        String?  @map("workspace_id")
+  status             String
+  cleanup            Boolean
+  staleUploadMinutes Int      @map("stale_upload_minutes")
+  missingObjects     Json     @default("[]") @map("missing_objects")
+  orphanObjects      Json     @default("[]") @map("orphan_objects")
+  staleUploads       Json     @default("[]") @map("stale_uploads")
+  deletedObjects     Json     @default("[]") @map("deleted_objects")
+  summary            Json     @default("{}")
+  startedAt          DateTime @map("started_at") @db.Timestamptz
+  finishedAt         DateTime @map("finished_at") @db.Timestamptz
+
+  @@map("blob_reconcile_tasks")
 }

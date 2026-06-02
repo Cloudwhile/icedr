@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { DatabaseService } from '../../../database/database.service';
+import { PrismaService } from '../../../database/prisma.service';
+import type { Workspace } from '../../../generated/prisma/client';
 
 export type WorkspaceResponse = {
   id: string;
@@ -10,67 +11,38 @@ export type WorkspaceResponse = {
   updatedAt: string;
 };
 
-type WorkspaceRow = {
-  id: string;
-  name: string;
-  root_node_id: string;
-  member_count: number;
-  created_at: Date | string;
-  updated_at: Date | string;
-};
-
 @Injectable()
 export class WorkspacesRepository implements OnModuleInit {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    await this.database.query(`
-      create table if not exists workspaces (
-        id text primary key,
-        name text not null,
-        root_node_id text not null,
-        member_count integer not null default 1,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(
-      `
-        insert into workspaces (
-          id,
-          name,
-          root_node_id,
-          member_count
-        )
-        values ($1, $2, $3, $4)
-        on conflict (id) do nothing
-      `,
-      ['workspace-default', 'Default Workspace', 'node-root', 1],
-    );
+    await this.prisma.workspace.upsert({
+      where: { id: 'workspace-default' },
+      update: {},
+      create: {
+        id: 'workspace-default',
+        name: 'Default Workspace',
+        rootNodeId: 'node-root',
+        memberCount: 1,
+      },
+    });
   }
 
   async list() {
-    const result = await this.database.query<WorkspaceRow>(
-      'select * from workspaces order by created_at asc',
-    );
-    return result.rows.map((row) => this.mapRow(row));
+    const rows = await this.prisma.workspace.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((row) => this.mapRow(row));
   }
 
-  private mapRow(row: WorkspaceRow): WorkspaceResponse {
+  private mapRow(row: Workspace): WorkspaceResponse {
     return {
       id: row.id,
       name: row.name,
-      rootNodeId: row.root_node_id,
-      memberCount: row.member_count,
-      createdAt: this.toIsoString(row.created_at),
-      updatedAt: this.toIsoString(row.updated_at),
+      rootNodeId: row.rootNodeId,
+      memberCount: row.memberCount,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
     };
-  }
-
-  private toIsoString(value: Date | string) {
-    return value instanceof Date
-      ? value.toISOString()
-      : new Date(value).toISOString();
   }
 }

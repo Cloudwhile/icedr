@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../../../database/database.service';
+import { PrismaService } from '../../../database/prisma.service';
 import {
   AdminSettingsResponse,
   DatabaseProfile,
@@ -48,7 +48,7 @@ const logoPattern =
 export class SettingsService {
   constructor(
     private readonly config: ConfigService,
-    private readonly database: DatabaseService,
+    private readonly prisma: PrismaService,
     private readonly repository: SettingsRepository,
   ) {}
 
@@ -387,7 +387,8 @@ export class SettingsService {
 
   private async databaseReachable() {
     try {
-      return await this.database.ping();
+      await this.prisma.$queryRaw`select 1`;
+      return true;
     } catch {
       return false;
     }
