@@ -225,7 +225,8 @@ function mapRegisteredShareItemToDriveItem(item: RegisteredShareItem): DriveItem
     shared: true,
     starred: item.starred,
     archivedAt: item.archivedAt,
-    colorKey: item.kind === "sheet" ? "success" : item.kind === "image" ? "secure" : item.kind === "archive" ? "tertiary" : "primary"
+    previewCapability: item.previewCapability,
+    colorKey: item.kind === "sheet" ? "success" : item.kind === "image" || item.kind === "video" ? "secure" : item.kind === "archive" ? "tertiary" : "primary"
   };
 }
 function resolveCreatedShareUrl(token: string, apiUrl?: string) {

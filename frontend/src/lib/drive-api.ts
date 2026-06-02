@@ -268,6 +268,34 @@ export type WorkspaceResponse = {
   updatedAt: string;
 };
 
+export type PreviewRenderMode =
+  | "image"
+  | "video"
+  | "pdf"
+  | "docx"
+  | "markdown"
+  | "text"
+  | "metadata"
+  | "download-only";
+
+export type PreviewCapabilityReason =
+  | "previewable"
+  | "folder"
+  | "archive"
+  | "unknown-type"
+  | "too-large"
+  | "html-disabled"
+  | "missing-object";
+
+export type FilePreviewCapability = {
+  supported: boolean;
+  renderMode: PreviewRenderMode;
+  reason: PreviewCapabilityReason;
+  maxPreviewBytes: number | null;
+  sanitized: boolean;
+  downloadOnly: boolean;
+};
+
 export type FileNodeResponse = {
   id: string;
   workspaceId: string;
@@ -280,6 +308,7 @@ export type FileNodeResponse = {
   owner: string;
   starred: boolean;
   archivedAt: string | null;
+  previewCapability: FilePreviewCapability;
   createdAt: string;
   updatedAt: string;
 };

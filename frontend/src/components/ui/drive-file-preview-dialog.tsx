@@ -23,7 +23,9 @@ import {
 } from "@/features/file/model";
 import {
   getDefaultFileOpenWith,
+  isFileOpenWithAvailable,
   isImagePreviewFile,
+  isMarkdownFile,
   isOfficePreviewFile,
   isTextEditableFile,
   isVideoPreviewFile,
@@ -75,7 +77,7 @@ export function DriveFilePreviewDialog({
   const activeItem = item ?? (resolvedItem?.itemId === targetItemId ? resolvedItem.item : null);
   const itemResolved = Boolean(item) || (Boolean(targetItemId) && resolvedItem?.itemId === targetItemId);
   const effectiveWorkspaceId = workspaceId ?? activeItem?.workspaceId ?? undefined;
-  const effectiveOpenWith = openWith ?? (activeItem ? getDefaultFileOpenWith(activeItem) : null);
+  const effectiveOpenWith = activeItem ? resolveFileOpenWith(activeItem, openWith ?? null) : null;
   const mediaPreview = isMediaDetailsPreview(activeItem, effectiveOpenWith);
 
   useEffect(() => {
@@ -224,6 +226,11 @@ function writeMediaDetailsPreference(open: boolean) {
   window.localStorage.setItem(mediaDetailsPreferenceKey, open ? "true" : "false");
 }
 
+function resolveFileOpenWith(item: DriveItem, requestedOpenWith: FileOpenWithApp | null) {
+  if (requestedOpenWith && isFileOpenWithAvailable(item, requestedOpenWith)) return requestedOpenWith;
+  return getDefaultFileOpenWith(item);
+}
+
 function DriveFilePreviewContent({
   item,
   locale,
@@ -252,11 +259,20 @@ function DriveFilePreviewContent({
   workspaceId: string | null;
 }) {
   const t = useTranslations();
-  const kind = getItemKind(item);
-  const extension = getItemExtension(item);
-  const size = formatFileSize(sumDriveItemSizes([item], [item]), locale);
-  const statusLabel = previewIntent ? t(`preview.apiStatus.${previewIntent.status}`) : t("preview.notConfigured");
-  const openWith = requestedOpenWith ?? getDefaultFileOpenWith(item);
+  const previewCapability = previewIntent?.capability ?? item.previewCapability;
+  const previewItem = useMemo(
+    () => (previewCapability ? { ...item, previewCapability } : item),
+    [item, previewCapability],
+  );
+  const kind = getItemKind(previewItem);
+  const extension = getItemExtension(previewItem);
+  const size = formatFileSize(sumDriveItemSizes([previewItem], [previewItem]), locale);
+  const statusLabel = previewCapability?.downloadOnly
+    ? t("preview.downloadOnlyHint")
+    : previewIntent
+      ? t(`preview.apiStatus.${previewIntent.status}`)
+      : t("preview.notConfigured");
+  const openWith = resolveFileOpenWith(previewItem, requestedOpenWith);
   const [textState, setTextState] = useState<{ content: string; itemId: string | null }>({ content: "", itemId: null });
   const [mediaState, setMediaState] = useState<{ error: boolean; itemId: string | null; openWith: string; url: string | null }>({
     error: false,
@@ -274,53 +290,53 @@ function DriveFilePreviewContent({
     itemId: null,
     openWith: "",
   });
-  const canEditText = isTextEditableFile(item);
-  const canPreviewDocument = isOfficePreviewFile(item);
-  const isMarkdown = openWith === "markdown";
-  const textContent = textState.itemId === item.id ? textState.content : "";
-  const textLoading = canEditText && textState.itemId !== item.id;
-  const mediaUrl = mediaState.itemId === item.id && mediaState.openWith === openWith ? mediaState.url : null;
-  const mediaError = mediaState.itemId === item.id && mediaState.openWith === openWith && mediaState.error;
+  const canEditText = isTextEditableFile(previewItem);
+  const canPreviewDocument = isOfficePreviewFile(previewItem);
+  const isMarkdown = openWith === "markdown" && isMarkdownFile(previewItem);
+  const textContent = textState.itemId === previewItem.id ? textState.content : "";
+  const textLoading = canEditText && textState.itemId !== previewItem.id;
+  const mediaUrl = mediaState.itemId === previewItem.id && mediaState.openWith === openWith ? mediaState.url : null;
+  const mediaError = mediaState.itemId === previewItem.id && mediaState.openWith === openWith && mediaState.error;
   const mediaMetadata =
-    mediaMetadataState.itemId === item.id && mediaMetadataState.openWith === openWith ? mediaMetadataState : {};
-  const documentHtml = documentState.itemId === item.id && documentState.openWith === openWith ? documentState.html : "";
-  const documentUrl = documentState.itemId === item.id && documentState.openWith === openWith ? documentState.url : null;
+    mediaMetadataState.itemId === previewItem.id && mediaMetadataState.openWith === openWith ? mediaMetadataState : {};
+  const documentHtml = documentState.itemId === previewItem.id && documentState.openWith === openWith ? documentState.html : "";
+  const documentUrl = documentState.itemId === previewItem.id && documentState.openWith === openWith ? documentState.url : null;
 
   useEffect(() => {
     if (!canEditText) return;
     let cancelled = false;
-    void fetchFileNodeContent(item.id)
+    void fetchFileNodeContent(previewItem.id)
       .then((content) => {
-        if (!cancelled) setTextState({ content: content.content, itemId: item.id });
+        if (!cancelled) setTextState({ content: content.content, itemId: previewItem.id });
       })
       .catch(() => {
-        if (!cancelled) setTextState({ content: "", itemId: item.id });
+        if (!cancelled) setTextState({ content: "", itemId: previewItem.id });
       });
     return () => {
       cancelled = true;
     };
-  }, [canEditText, item.id]);
+  }, [canEditText, previewItem.id]);
 
   useEffect(() => {
     if (!["image", "video"].includes(openWith)) return;
     let cancelled = false;
-    void createWorkspaceDriveItemSourceUrl(item, workspaceId ?? undefined)
+    void createWorkspaceDriveItemSourceUrl(previewItem, workspaceId ?? undefined)
       .then((url) => {
-        if (!cancelled) setMediaState({ error: false, itemId: item.id, openWith, url });
+        if (!cancelled) setMediaState({ error: false, itemId: previewItem.id, openWith, url });
       })
       .catch(() => {
-        if (!cancelled) setMediaState({ error: true, itemId: item.id, openWith, url: null });
+        if (!cancelled) setMediaState({ error: true, itemId: previewItem.id, openWith, url: null });
       });
     return () => {
       cancelled = true;
     };
-  }, [item, openWith, workspaceId]);
+  }, [openWith, previewItem, workspaceId]);
 
   useEffect(() => {
     if (openWith !== "office" || !canPreviewDocument) return;
     let cancelled = false;
     let createdUrl: string | null = null;
-    void createWorkspaceDriveItemBlobUrl(item, workspaceId ?? undefined)
+    void createWorkspaceDriveItemBlobUrl(previewItem, workspaceId ?? undefined)
       .then(async (url) => {
         createdUrl = url;
         if (cancelled) {
@@ -336,31 +352,31 @@ function DriveFilePreviewContent({
           const cleanHtml = DOMPurify.sanitize(result.value);
           setDocumentState((current) => {
             if (current.url && current.url !== url) URL.revokeObjectURL(current.url);
-            return { html: cleanHtml, itemId: item.id, openWith, url };
+            return { html: cleanHtml, itemId: previewItem.id, openWith, url };
           });
           return;
         }
         setDocumentState((current) => {
           if (current.url && current.url !== url) URL.revokeObjectURL(current.url);
-          return { html: "", itemId: item.id, openWith, url };
+          return { html: "", itemId: previewItem.id, openWith, url };
         });
       })
       .catch(() => {
         setDocumentState((current) => {
           if (current.url) URL.revokeObjectURL(current.url);
-          return { html: "", itemId: item.id, openWith, url: null };
+          return { html: "", itemId: previewItem.id, openWith, url: null };
         });
       });
     return () => {
       cancelled = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [canPreviewDocument, extension, item, openWith, workspaceId]);
+  }, [canPreviewDocument, extension, openWith, previewItem, workspaceId]);
 
   const saveTextContent = () => {
-    void updateFileNodeContent(item.id, textContent)
+    void updateFileNodeContent(previewItem.id, textContent)
       .then((content) => {
-        setTextState({ content: content.content, itemId: item.id });
+        setTextState({ content: content.content, itemId: previewItem.id });
         showAppToast({ title: t("preview.saved"), tone: "success" });
         onSaved?.();
       })
@@ -368,16 +384,16 @@ function DriveFilePreviewContent({
   };
 
   const previewNode =
-    openWith === "image" && isImagePreviewFile(item) ? (
-      <ImagePreview error={mediaError} errorLabel={t("preview.notConfiguredHint")} imageUrl={mediaUrl} item={item} loadingLabel={t("app.loading")} onMetadata={(metadata) => setMediaMetadataState({ ...metadata, itemId: item.id, openWith })} palette={palette} />
-    ) : openWith === "video" && isVideoPreviewFile(item) ? (
-      <VideoPreview error={mediaError} errorLabel={t("preview.notConfiguredHint")} item={item} loadingLabel={t("app.loading")} onMetadata={(metadata) => setMediaMetadataState({ ...metadata, itemId: item.id, openWith })} palette={palette} videoUrl={mediaUrl} />
+    openWith === "image" && isImagePreviewFile(previewItem) ? (
+      <ImagePreview error={mediaError} errorLabel={t("preview.notConfiguredHint")} imageUrl={mediaUrl} item={previewItem} loadingLabel={t("app.loading")} onMetadata={(metadata) => setMediaMetadataState({ ...metadata, itemId: previewItem.id, openWith })} palette={palette} />
+    ) : openWith === "video" && isVideoPreviewFile(previewItem) ? (
+      <VideoPreview error={mediaError} errorLabel={t("preview.notConfiguredHint")} item={previewItem} loadingLabel={t("app.loading")} onMetadata={(metadata) => setMediaMetadataState({ ...metadata, itemId: previewItem.id, openWith })} palette={palette} videoUrl={mediaUrl} />
     ) : canEditText ? (
       <TextPreviewEditor
         content={textContent}
         isMarkdown={isMarkdown}
         loading={textLoading}
-        onChange={(content) => setTextState({ content, itemId: item.id })}
+        onChange={(content) => setTextState({ content, itemId: previewItem.id })}
         onSave={saveTextContent}
         palette={palette}
         t={t}
@@ -387,13 +403,13 @@ function DriveFilePreviewContent({
         documentHtml={documentHtml}
         documentUrl={documentUrl}
         extension={extension}
-        item={item}
+        item={previewItem}
         palette={palette}
         t={t}
       />
     ) : (
       <PreviewStatusPane
-        item={item}
+        item={previewItem}
         message={statusLabel}
         metrics={[
           { label: t("files.type"), value: t(`files.kind.${kind}`) },
@@ -401,7 +417,7 @@ function DriveFilePreviewContent({
           { label: t("preview.status"), value: statusLabel },
         ]}
         palette={palette}
-        title={kind === "archive" || previewIntent?.status === "unsupported" ? t("preview.unsupportedHint") : t("preview.officeHint")}
+        title={previewCapability?.downloadOnly || previewIntent?.status === "unsupported" ? t("preview.unsupportedHint") : t("preview.officeHint")}
       />
     );
 
@@ -424,7 +440,7 @@ function DriveFilePreviewContent({
           </div>
           {mediaDetailsOpen ? (
             <PreviewMetadataPanel
-              item={item}
+              item={previewItem}
               locale={locale}
               mediaMetadata={mediaMetadata}
               onClose={onMediaDetailsClose}

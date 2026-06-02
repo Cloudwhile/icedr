@@ -3,7 +3,9 @@ import {
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
+import type { FileNodeResponse } from '../files/file-nodes.dto';
 import { FileNodesService } from '../files/file-nodes.service';
+import { resolveFilePreviewCapability } from '../files/file-preview-policy';
 import { MailService } from '../admin/mail/mail.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
@@ -33,6 +35,15 @@ const createDto = (): CreateShareDto => ({
     allowedDomain: '',
   },
 });
+
+function createNode(
+  input: Omit<FileNodeResponse, 'previewCapability'>,
+): FileNodeResponse {
+  return {
+    ...input,
+    previewCapability: resolveFilePreviewCapability(input),
+  };
+}
 
 class SharesRepositorySpecDouble {
   private shares = new Map<string, ShareResponse>();
@@ -116,7 +127,7 @@ describe('SharesService', () => {
     fileNodesService = {
       listFileNodes: jest.fn(() =>
         Promise.resolve([
-          {
+          createNode({
             id: 'roadmap',
             workspaceId: 'workspace-default',
             parentNodeId: null,
@@ -131,8 +142,8 @@ describe('SharesService', () => {
             archivedAt: null,
             createdAt: new Date(0).toISOString(),
             updatedAt: new Date(0).toISOString(),
-          },
-          {
+          }),
+          createNode({
             id: 'folder-product',
             workspaceId: 'workspace-default',
             parentNodeId: null,
@@ -146,13 +157,13 @@ describe('SharesService', () => {
             archivedAt: null,
             createdAt: new Date(0).toISOString(),
             updatedAt: new Date(0).toISOString(),
-          },
+          }),
         ]),
       ),
       getFileNode: jest.fn((id: string) =>
         Promise.resolve(
           id === 'roadmap'
-            ? {
+            ? createNode({
                 id: 'roadmap',
                 workspaceId: 'workspace-default',
                 parentNodeId: null,
@@ -167,9 +178,9 @@ describe('SharesService', () => {
                 archivedAt: null,
                 createdAt: new Date(0).toISOString(),
                 updatedAt: new Date(0).toISOString(),
-              }
+              })
             : id === 'folder-product'
-              ? {
+              ? createNode({
                   id: 'folder-product',
                   workspaceId: 'workspace-default',
                   parentNodeId: null,
@@ -183,7 +194,7 @@ describe('SharesService', () => {
                   archivedAt: null,
                   createdAt: new Date(0).toISOString(),
                   updatedAt: new Date(0).toISOString(),
-                }
+                })
               : null,
         ),
       ),
@@ -193,7 +204,16 @@ describe('SharesService', () => {
           nodeId,
           status: 'ready',
           previewType: 'doc',
+          renderMode: 'docx',
           statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
+          capability: resolveFilePreviewCapability({
+            kind: 'doc',
+            mimeType:
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            name: 'ICEDR Roadmap.docx',
+            objectKey: 'seed/workspace-default/roadmap.docx',
+            sizeBytes: 284 * 1024,
+          }),
         }),
       ),
       getPreviewStatus: jest.fn((nodeId: string, previewId: string) => ({
@@ -201,7 +221,16 @@ describe('SharesService', () => {
         nodeId,
         status: 'ready',
         previewType: 'doc',
+        renderMode: 'docx',
         statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
+        capability: resolveFilePreviewCapability({
+          kind: 'doc',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          name: 'ICEDR Roadmap.docx',
+          objectKey: 'seed/workspace-default/roadmap.docx',
+          sizeBytes: 284 * 1024,
+        }),
       })),
     };
     storageService = {
@@ -523,22 +552,24 @@ describe('SharesService', () => {
   });
 
   it('rejects archived file nodes inside a share scope', async () => {
-    jest.spyOn(fileNodesService, 'getFileNode').mockResolvedValueOnce({
-      id: 'roadmap',
-      workspaceId: 'workspace-default',
-      parentNodeId: null,
-      name: 'ICEDR Roadmap.docx',
-      kind: 'doc',
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      sizeBytes: 284 * 1024,
-      objectKey: 'seed/workspace-default/roadmap.docx',
-      owner: 'Mina',
-      starred: false,
-      archivedAt: new Date().toISOString(),
-      createdAt: new Date(0).toISOString(),
-      updatedAt: new Date(0).toISOString(),
-    });
+    jest.spyOn(fileNodesService, 'getFileNode').mockResolvedValueOnce(
+      createNode({
+        id: 'roadmap',
+        workspaceId: 'workspace-default',
+        parentNodeId: null,
+        name: 'ICEDR Roadmap.docx',
+        kind: 'doc',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: 284 * 1024,
+        objectKey: 'seed/workspace-default/roadmap.docx',
+        owner: 'Mina',
+        starred: false,
+        archivedAt: new Date().toISOString(),
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      }),
+    );
     const created = await service.createShare(createDto());
 
     await expect(

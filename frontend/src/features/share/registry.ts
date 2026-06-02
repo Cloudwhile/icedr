@@ -1,5 +1,5 @@
 import { findDriveItem, getChildItems, getItemKind, type DriveItem } from "@/features/file/model";
-import { DriveApiError, getApiBaseUrl } from "@/lib/drive-api";
+import { DriveApiError, getApiBaseUrl, type FilePreviewCapability } from "@/lib/drive-api";
 
 const apiUnavailableMessage = "ICEDR share API is unavailable";
 
@@ -24,12 +24,13 @@ export type RegisteredShareItem = {
   workspaceId: string;
   parentNodeId: string | null;
   name: string;
-  kind: "folder" | "doc" | "sheet" | "image" | "archive";
+  kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive";
   mimeType: string;
   sizeBytes: number | null;
   owner: string;
   starred: boolean;
   archivedAt: string | null;
+  previewCapability?: FilePreviewCapability;
   createdAt: string;
   updatedAt: string;
 };

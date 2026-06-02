@@ -19,6 +19,7 @@ import {
   CreateUploadIntentDto,
   DownloadIntentResponse,
   FileNodeListState,
+  type FileNodeKind,
   MoveFileNodeDto,
   PreviewIntentResponse,
   RenameFileNodeDto,
@@ -34,6 +35,11 @@ import {
   UploadSessionPart,
   UploadSessionsRepository,
 } from './upload-sessions.repository';
+import {
+  isTextContentEditable,
+  resolveFilePreviewCapability,
+  type FilePreviewCapability,
+} from './file-preview-policy';
 import type { Readable } from 'stream';
 
 @Injectable()
@@ -524,22 +530,22 @@ export class FileNodesService {
 
   async createPreviewIntent(nodeId: string) {
     const node = await this.requireActiveNode(nodeId);
-    const status: PreviewIntentResponse['status'] =
-      node.kind === 'archive' ? 'unsupported' : 'pending';
+    const capability = resolveFilePreviewCapability(node);
+    const status: PreviewIntentResponse['status'] = capability.supported
+      ? 'ready'
+      : 'unsupported';
 
     const intent = await this.fileNodesRepository.createPreviewArtifact(
       node,
       status,
-      node.kind,
-      status === 'unsupported'
-        ? 'Preview conversion is not supported for this file type'
-        : null,
+      capability.renderMode,
+      capability.supported ? null : this.getPreviewUnsupportedError(capability),
     );
     await this.fileNodesRepository.recordAudit(
       'file.preview_requested',
       node.id,
     );
-    return intent;
+    return this.withPreviewCapability(intent, capability);
   }
 
   async getPreviewStatus(nodeId: string, previewId: string) {
@@ -548,7 +554,11 @@ export class FileNodesService {
     if (!intent || intent.nodeId !== nodeId) {
       throw new NotFoundException('Preview intent not found');
     }
-    return intent;
+    const node = await this.requireActiveNode(nodeId);
+    return this.withPreviewCapability(
+      intent,
+      resolveFilePreviewCapability(node),
+    );
   }
 
   async getStorageUsage(workspaceId: string, quotaBytes: number | null) {
@@ -749,22 +759,21 @@ export class FileNodesService {
   }
 
   private assertTextEditableNode(node: {
+    kind?: string;
     mimeType: string;
     name: string;
     objectKey: string | null;
     sizeBytes: number | null;
   }) {
-    const extension = node.name.split('.').pop()?.toLowerCase() ?? '';
-    const editable =
-      node.mimeType.startsWith('text/') ||
-      ['txt', 'md', 'markdown', 'json', 'csv', 'log', 'yaml', 'yml'].includes(
-        extension,
-      );
+    const editable = isTextContentEditable({
+      kind: (node.kind ?? 'doc') as FileNodeKind,
+      mimeType: node.mimeType,
+      name: node.name,
+      objectKey: node.objectKey,
+      sizeBytes: node.sizeBytes,
+    });
     if (!editable) {
       throw new BadRequestException('File type cannot be edited as text');
-    }
-    if ((node.sizeBytes ?? 0) > 1024 * 1024) {
-      throw new BadRequestException('File is too large to edit as text');
     }
   }
 
@@ -835,5 +844,37 @@ export class FileNodesService {
     ]
       .map((row) => row.join('\t'))
       .join('\n');
+  }
+
+  private withPreviewCapability(
+    intent: PreviewIntentResponse,
+    capability: FilePreviewCapability,
+  ): PreviewIntentResponse {
+    return {
+      ...intent,
+      previewType: capability.renderMode,
+      renderMode: capability.renderMode,
+      capability,
+      error: capability.supported
+        ? (intent.error ?? null)
+        : (intent.error ?? this.getPreviewUnsupportedError(capability)),
+    };
+  }
+
+  private getPreviewUnsupportedError(capability: FilePreviewCapability) {
+    switch (capability.reason) {
+      case 'archive':
+        return 'Archives are available for download only';
+      case 'folder':
+        return 'Folders do not have file previews';
+      case 'html-disabled':
+        return 'HTML-like files are available for download only';
+      case 'missing-object':
+        return 'File content is not available for preview';
+      case 'too-large':
+        return 'File is too large to preview';
+      default:
+        return 'Preview is not supported for this file type';
+    }
   }
 }
