@@ -88,7 +88,7 @@ Do not set `ALLOW_DEV_MEMORY_STORE=true` or `SEED_DEMO_DATA=true` in production.
 6. Authenticate with email verification. In `dev-log` mode, the code is recorded in audit events for tests and local debugging.
 7. Download the file and check the Audit view for share and download events.
 
-Short-lived email codes, access sessions, preview intents, and download intents are process-local in this first deployable version. Restarting the API invalidates those temporary tokens, but persisted share links remain in PostgreSQL.
+Short-lived email codes, access sessions, preview intents, and download intents are persisted with TTLs in PostgreSQL. API restarts and multiple API instances can continue validating unexpired share access state from the shared database.
 
 ## Quality Gates
 

@@ -26,15 +26,6 @@ import type {
 } from './shares.dto';
 import { SharesRepository } from './shares.repository';
 
-type DownloadIntent = {
-  downloadId: string;
-  token: string;
-  nodeId: string;
-  filename: string;
-  expiresAt: string;
-  method: 'presigned-url' | 'backend-manifest';
-};
-
 type VisitorAuditMetadata = {
   ip?: string;
   userAgent?: string;
@@ -42,13 +33,6 @@ type VisitorAuditMetadata = {
 
 @Injectable()
 export class SharesService {
-  private readonly downloadIntents = new Map<string, DownloadIntent>();
-  private readonly emailCodes = new Map<
-    string,
-    { email: string; code: string; expiresAt: string }
-  >();
-  private readonly accessSessions = new Map<string, ShareAccessSession>();
-
   constructor(
     private readonly sharesRepository: SharesRepository,
     private readonly fileNodesService: FileNodesService,
@@ -79,10 +63,12 @@ export class SharesService {
       expiresAt,
       shareTitle: share.title,
     });
-    this.emailCodes.set(this.emailCodeKey(token, dto.email), {
+    await this.sharesRepository.createEmailAccessCode({
+      token,
       email: dto.email,
       code,
       expiresAt,
+      visitor,
     });
     await this.sharesRepository.recordAudit('share.access_code_sent', token, {
       email: dto.email,
@@ -102,18 +88,21 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
   ) {
     const share = await this.requireActiveShare(token);
-    const key = this.emailCodeKey(token, dto.email);
-    const pending = this.emailCodes.get(key);
-    if (
-      !pending ||
-      pending.code !== dto.code ||
-      new Date(pending.expiresAt).getTime() < Date.now()
-    ) {
+    const pending = await this.sharesRepository.consumeEmailAccessCode({
+      token,
+      email: dto.email,
+      code: dto.code,
+    });
+    if (!pending) {
       throw new ForbiddenException('Email access code is invalid or expired');
     }
 
-    this.emailCodes.delete(key);
-    const session = this.createAccessSession(share, 'email', dto.email);
+    const session = await this.createAccessSession(
+      share,
+      'email',
+      dto.email,
+      visitor,
+    );
     await this.sharesRepository.recordAudit(
       'share.access_session_created',
       token,
@@ -128,7 +117,7 @@ export class SharesService {
 
   async createVerifiedOAuthAccessSession(token: string) {
     const share = await this.requireActiveShare(token);
-    const session = this.createAccessSession(share, 'ica');
+    const session = await this.createAccessSession(share, 'ica');
     await this.sharesRepository.recordAudit(
       'share.access_session_created',
       token,
@@ -173,18 +162,19 @@ export class SharesService {
       'download',
     );
     await this.assertShareDownloadLimit(share);
-    this.requireAccessSessionIfNeeded(share, accessSessionId);
+    await this.requireAccessSessionIfNeeded(share, accessSessionId);
     const downloadId = `dl_${randomBytes(12).toString('base64url')}`;
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
     const method = node.objectKey ? 'presigned-url' : 'backend-manifest';
-    this.downloadIntents.set(downloadId, {
+    await this.sharesRepository.createShareDownloadIntent({
       downloadId,
       token,
       nodeId,
       filename: node.name,
       expiresAt,
       method,
+      visitor,
     });
     await this.sharesRepository.recordAudit(
       'share.download_intent_created',
@@ -211,13 +201,12 @@ export class SharesService {
     downloadId: string,
     visitor: VisitorAuditMetadata = {},
   ) {
-    const intent = this.downloadIntents.get(downloadId);
-    if (
-      !intent ||
-      intent.token !== token ||
-      intent.nodeId !== nodeId ||
-      new Date(intent.expiresAt).getTime() < Date.now()
-    ) {
+    const intent = await this.sharesRepository.consumeShareDownloadIntent({
+      downloadId,
+      token,
+      nodeId,
+    });
+    if (!intent) {
       throw new NotFoundException('Download intent not found');
     }
 
@@ -255,7 +244,7 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
   ) {
     const { share } = await this.requireShareNode(token, nodeId, 'preview');
-    this.requireAccessSessionIfNeeded(share, accessSessionId);
+    await this.requireAccessSessionIfNeeded(share, accessSessionId);
     const intent = await this.fileNodesService.createPreviewIntent(nodeId);
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
       nodeId,
@@ -335,7 +324,7 @@ export class SharesService {
     return { share, node };
   }
 
-  private requireAccessSessionIfNeeded(
+  private async requireAccessSessionIfNeeded(
     share: ShareResponse,
     accessSessionId?: string,
   ) {
@@ -348,7 +337,8 @@ export class SharesService {
       if (!accessSessionId) {
         throw new ForbiddenException('Share access session is required');
       }
-      const session = this.accessSessions.get(accessSessionId);
+      const session =
+        await this.sharesRepository.findAccessSession(accessSessionId);
       if (
         !session ||
         session.shareToken !== share.token ||
@@ -454,15 +444,12 @@ export class SharesService {
     ];
   }
 
-  private emailCodeKey(token: string, email: string) {
-    return `${token}:${email.toLowerCase()}`;
-  }
-
-  private createAccessSession(
+  private async createAccessSession(
     share: ShareResponse,
     identityType: ShareAccessIdentityType,
     email?: string,
-  ): ShareAccessSession {
+    visitor: VisitorAuditMetadata = {},
+  ): Promise<ShareAccessSession> {
     const waitSeconds = this.getWaitSeconds(identityType, share.policy);
     const session: ShareAccessSession = {
       sessionId: `sas_${randomBytes(12).toString('base64url')}`,
@@ -478,8 +465,7 @@ export class SharesService {
           : null,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     };
-    this.accessSessions.set(session.sessionId, session);
-    return session;
+    return this.sharesRepository.createAccessSession({ ...session, visitor });
   }
 
   private async assertShareViewLimit(share: ShareResponse) {

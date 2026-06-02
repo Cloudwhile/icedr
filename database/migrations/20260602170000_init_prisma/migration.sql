@@ -300,6 +300,68 @@ create table if not exists share_links (
 alter table share_links
 add column if not exists workspace_id text not null default 'workspace-default';
 
+create table if not exists share_email_codes (
+  id text primary key,
+  share_token text not null,
+  email text not null,
+  email_domain text not null,
+  code_hash text not null,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  attempt_count integer not null default 0,
+  request_ip_hash text,
+  user_agent_hash text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists share_email_codes_share_token_email_idx
+on share_email_codes (share_token, email);
+
+create index if not exists share_email_codes_expires_at_idx
+on share_email_codes (expires_at);
+
+create table if not exists share_access_sessions (
+  id text primary key,
+  share_token text not null,
+  identity_type text not null,
+  email text,
+  email_domain text,
+  available_at timestamptz not null,
+  wait_seconds integer not null,
+  download_limit text not null default '',
+  speed_limit jsonb,
+  expires_at timestamptz not null,
+  request_ip_hash text,
+  user_agent_hash text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists share_access_sessions_share_token_idx
+on share_access_sessions (share_token);
+
+create index if not exists share_access_sessions_expires_at_idx
+on share_access_sessions (expires_at);
+
+create table if not exists share_download_intents (
+  id text primary key,
+  share_token text not null,
+  node_id text not null,
+  filename text not null,
+  method text not null,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  request_ip_hash text,
+  user_agent_hash text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists share_download_intents_share_token_node_id_idx
+on share_download_intents (share_token, node_id);
+
+create index if not exists share_download_intents_expires_at_idx
+on share_download_intents (expires_at);
+
 create table if not exists audit_events (
   id text primary key,
   action text not null,
