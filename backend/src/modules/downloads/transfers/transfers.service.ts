@@ -4,9 +4,15 @@ import { TransfersRepository } from './transfers.repository';
 
 @Injectable()
 export class TransfersService {
+  private readonly staleRunningTransferMs = 5 * 60 * 1000;
+
   constructor(private readonly transfersRepository: TransfersRepository) {}
 
-  listTransfers(filters: { workspaceId?: string; limit?: number } = {}) {
+  async listTransfers(filters: { workspaceId?: string; limit?: number } = {}) {
+    await this.transfersRepository.failStaleRunning(
+      new Date(Date.now() - this.staleRunningTransferMs),
+      filters.workspaceId,
+    );
     return this.transfersRepository.list(filters.workspaceId, filters.limit);
   }
 
@@ -42,5 +48,11 @@ export class TransfersService {
     const transfer = await this.transfersRepository.update(id, input);
     if (!transfer) throw new NotFoundException('Transfer not found');
     return transfer;
+  }
+
+  async deleteTransfer(id: string) {
+    const deleted = await this.transfersRepository.delete(id);
+    if (!deleted) throw new NotFoundException('Transfer not found');
+    return { ok: true };
   }
 }

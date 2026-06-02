@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Readable } from 'stream';
 import { StorageService } from '../storage/storage.service';
 import {
   CompleteUploadDto,
@@ -7,18 +8,35 @@ import {
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
 import { FileNodesService } from './file-nodes.service';
+import {
+  UploadSession,
+  UploadSessionPart,
+  UploadSessionsRepository,
+} from './upload-sessions.repository';
 
 describe('FileNodesService', () => {
   let repository: FileNodesRepository;
   let service: FileNodesService;
   let storage: Pick<
     StorageService,
-    'createPresignedUpload' | 'assertObjectExists' | 'distributedStorageEnabled'
+    | 'abortMultipartUpload'
+    | 'assertObjectExists'
+    | 'composeUploadSessionParts'
+    | 'completeMultipartUpload'
+    | 'createMultipartUpload'
+    | 'createMultipartUploadPartUrl'
+    | 'createPresignedUpload'
+    | 'deleteUploadSessionParts'
+    | 'distributedStorageEnabled'
+    | 'findMultipartUploadPart'
+    | 'writeUploadSessionPart'
   >;
   let transfers: {
     createUploadTransfer: jest.Mock;
     completeTransfer: jest.Mock;
+    updateTransfer: jest.Mock;
   };
+  let uploadSessions: UploadSessionsRepository;
 
   const seedNodes: FileNodeResponse[] = [
     {
@@ -39,9 +57,22 @@ describe('FileNodesService', () => {
     },
   ];
 
+  async function readStreamSize(stream: Readable) {
+    let sizeBytes = 0;
+    for await (const chunk of stream) {
+      sizeBytes += Buffer.isBuffer(chunk)
+        ? chunk.length
+        : Buffer.byteLength(String(chunk));
+    }
+    return sizeBytes;
+  }
+
   beforeEach(() => {
     const audits = new Map<string, number>();
     const nodes = [...seedNodes];
+    const sessions = new Map<string, UploadSession>();
+    const sessionParts = new Map<string, UploadSessionPart[]>();
+    let sessionCounter = 0;
     repository = {
       list: jest.fn((workspaceId?: string) =>
         Promise.resolve(
@@ -119,6 +150,41 @@ describe('FileNodesService', () => {
         expiresAt: new Date(Date.now() + 900000).toISOString(),
       })),
       assertObjectExists: jest.fn(() => Promise.resolve()),
+      composeUploadSessionParts: jest.fn(() =>
+        Promise.resolve({ objectKey: 'composed', stored: true }),
+      ),
+      createMultipartUpload: jest.fn((key: string) =>
+        Promise.resolve({ key, uploadId: `multipart-${key}` }),
+      ),
+      createMultipartUploadPartUrl: jest.fn(
+        (input: { objectKey: string; partIndex: number; uploadId: string }) =>
+          Promise.resolve({
+            expiresAt: new Date(Date.now() + 900000).toISOString(),
+            expiresInSeconds: 900,
+            headers: {},
+            method: 'PUT',
+            partIndex: input.partIndex,
+            uploadId: input.uploadId,
+            url: `s3://icedr-drive/${input.objectKey}?part=${input.partIndex}`,
+          }),
+      ),
+      completeMultipartUpload: jest.fn(() =>
+        Promise.resolve({ objectKey: 'completed', stored: true }),
+      ),
+      abortMultipartUpload: jest.fn(() => Promise.resolve()),
+      findMultipartUploadPart: jest.fn((input: { partIndex: number }) =>
+        Promise.resolve({
+          eTag: `"etag-${input.partIndex}"`,
+          partIndex: input.partIndex,
+          sizeBytes: null,
+        }),
+      ),
+      deleteUploadSessionParts: jest.fn(() => Promise.resolve()),
+      writeUploadSessionPart: jest.fn(
+        async (_sessionId: string, _partIndex: number, stream: Readable) => ({
+          sizeBytes: await readStreamSize(stream),
+        }),
+      ),
     } as unknown as StorageService;
     transfers = {
       createUploadTransfer: jest.fn(
@@ -137,11 +203,89 @@ describe('FileNodesService', () => {
           }),
       ),
       completeTransfer: jest.fn(() => Promise.resolve()),
+      updateTransfer: jest.fn(() => Promise.resolve()),
     };
+    uploadSessions = {
+      create: jest.fn(
+        (input: Parameters<UploadSessionsRepository['create']>[0]) => {
+          const session: UploadSession = {
+            id: `upload-session-test-${++sessionCounter}`,
+            transferId: input.transferId,
+            workspaceId: input.workspaceId,
+            objectKey: input.objectKey,
+            multipartUploadId: input.multipartUploadId ?? null,
+            resumeKey: input.resumeKey ?? null,
+            fileName: input.fileName,
+            parentNodeId: input.parentNodeId ?? null,
+            mimeType: input.mimeType,
+            sizeBytes: input.sizeBytes,
+            chunkSizeBytes: input.chunkSizeBytes,
+            status: 'running',
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          };
+          sessions.set(session.id, session);
+          return Promise.resolve(session);
+        },
+      ),
+      findReusable: jest.fn(
+        (input: Parameters<UploadSessionsRepository['findReusable']>[0]) => {
+          const session = Array.from(sessions.values()).find(
+            (item) =>
+              item.workspaceId === input.workspaceId &&
+              item.resumeKey === input.resumeKey &&
+              item.fileName === input.fileName &&
+              item.parentNodeId === (input.parentNodeId ?? null) &&
+              item.sizeBytes === input.sizeBytes &&
+              ['running', 'paused', 'failed'].includes(item.status),
+          );
+          return Promise.resolve(session ?? null);
+        },
+      ),
+      findById: jest.fn((id: string) =>
+        Promise.resolve(sessions.get(id) ?? null),
+      ),
+      listParts: jest.fn((sessionId: string) =>
+        Promise.resolve([...(sessionParts.get(sessionId) ?? [])]),
+      ),
+      upsertPart: jest.fn(
+        (input: Parameters<UploadSessionsRepository['upsertPart']>[0]) => {
+          const part: UploadSessionPart = {
+            sessionId: input.sessionId,
+            partIndex: input.partIndex,
+            startByte: input.startByte,
+            endByte: input.endByte,
+            sizeBytes: input.sizeBytes,
+            eTag: input.eTag ?? null,
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          };
+          const parts = (sessionParts.get(input.sessionId) ?? []).filter(
+            (item) => item.partIndex !== input.partIndex,
+          );
+          parts.push(part);
+          parts.sort((left, right) => left.partIndex - right.partIndex);
+          sessionParts.set(input.sessionId, parts);
+          return Promise.resolve(part);
+        },
+      ),
+      updateStatus: jest.fn((id: string, status: UploadSession['status']) => {
+        const session = sessions.get(id);
+        if (!session) return Promise.resolve(null);
+        const updated = {
+          ...session,
+          status,
+          updatedAt: new Date().toISOString(),
+        };
+        sessions.set(id, updated);
+        return Promise.resolve(updated);
+      }),
+    } as unknown as UploadSessionsRepository;
     service = new FileNodesService(
       repository,
       storage as StorageService,
       transfers as never,
+      uploadSessions,
     );
   });
 
@@ -156,6 +300,16 @@ describe('FileNodesService', () => {
       workspaceId: 'workspace-default',
       fileName: 'Customer Notes.pdf',
       mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-customer-notes',
+    });
+    const partIntent = await service.createUploadPartIntent(
+      intent.sessionId ?? '',
+      0,
+    );
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
     });
     const node = await service.completeUpload({
       workspaceId: 'workspace-default',
@@ -165,15 +319,30 @@ describe('FileNodesService', () => {
       parentNodeId: undefined,
       mimeType: 'application/pdf',
       transferId: intent.transferId,
+      uploadSessionId: intent.sessionId,
     });
 
-    expect(intent.uploadMethod).toBe('presigned-url');
+    expect(intent.uploadMethod).toBe('object-multipart');
     expect(intent.transferId).toBe('transfer-test');
-    expect(intent.uploadUrl).toContain(intent.objectKey);
+    expect(intent.uploadUrl).toContain(`/upload-sessions/${intent.sessionId}`);
+    expect(intent.uploadUrl).toContain('/parts');
+    expect(intent.chunkSizeBytes).toBeGreaterThanOrEqual(5 * 1024 * 1024);
+    expect(intent.uploadedPartIndexes).toEqual([]);
+    expect(partIntent.uploadUrl).toContain('s3://icedr-drive/');
     expect(intent.objectKey).toMatch(
-      /^uploads\/workspace-default\/root\/\d{10,}-[A-Za-z0-9_-]{16}-Customer%20Notes\.pdf$/,
+      /^workspaces\/workspace-default\/objects\/original\/\d{4}\/\d{2}\/[A-Za-z0-9_-]{16}\/Customer%20Notes\.pdf$/,
     );
-    expect(intent.headers).toHaveProperty('Content-Type');
+    expect(storage.createMultipartUpload).toHaveBeenCalledWith(
+      intent.objectKey,
+      'application/pdf',
+    );
+    expect(storage.writeUploadSessionPart).not.toHaveBeenCalled();
+    expect(storage.composeUploadSessionParts).not.toHaveBeenCalled();
+    expect(storage.completeMultipartUpload).toHaveBeenCalledWith({
+      objectKey: intent.objectKey,
+      uploadId: `multipart-${intent.objectKey}`,
+      parts: [{ eTag: '"etag-0"', partIndex: 0 }],
+    });
     expect(storage.assertObjectExists).toHaveBeenCalledWith(intent.objectKey);
     expect(node.id).toMatch(/^node_/);
     expect(node.objectKey).toBe(intent.objectKey);
@@ -200,12 +369,98 @@ describe('FileNodesService', () => {
       workspaceId: 'workspace-default',
       fileName: 'Customer Notes.pdf',
       mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-local-notes',
     });
 
-    expect(intent.uploadMethod).toBe('backend-local');
+    expect(intent.uploadMethod).toBe('chunked');
     expect(intent.transferId).toBe('transfer-test');
-    expect(intent.objectKey).toMatch(/^local\/uploads\//);
-    expect(intent.uploadUrl).toContain('/api/storage/local-uploads');
+    expect(intent.objectKey).toMatch(/^local\/workspaces\//);
+    expect(intent.uploadUrl).toContain('/api/file-nodes/upload-sessions/');
+    expect(intent.uploadUrl).toContain('/chunks');
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+  });
+
+  it('reuses resumable upload sessions and reports completed chunks', async () => {
+    const firstIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Resume.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-same-file',
+    });
+    await service.completeUploadPart(firstIntent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+
+    const resumedIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Resume.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-same-file',
+    });
+
+    expect(resumedIntent.sessionId).toBe(firstIntent.sessionId);
+    expect(resumedIntent.transferId).toBe(firstIntent.transferId);
+    expect(resumedIntent.uploadedBytes).toBe(4096);
+    expect(resumedIntent.uploadedPartIndexes).toEqual([0]);
+    expect(transfers.createUploadTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects upload completion until every chunk has arrived', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Missing Chunk.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-missing',
+    });
+
+    await expect(
+      service.completeUpload({
+        workspaceId: 'workspace-default',
+        fileName: 'Missing Chunk.pdf',
+        objectKey: intent.objectKey,
+        sizeBytes: 4096,
+        mimeType: 'application/pdf',
+        transferId: intent.transferId,
+        uploadSessionId: intent.sessionId,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+  });
+
+  it('cancels object multipart sessions by aborting object storage uploads', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Cancel.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-cancel',
+    });
+
+    await expect(
+      service.cancelUploadSession(intent.sessionId ?? ''),
+    ).resolves.toEqual({ ok: true });
+    expect(storage.abortMultipartUpload).toHaveBeenCalledWith({
+      objectKey: intent.objectKey,
+      uploadId: `multipart-${intent.objectKey}`,
+    });
+    expect(storage.deleteUploadSessionParts).not.toHaveBeenCalled();
+    expect(transfers.updateTransfer).toHaveBeenCalledWith(intent.transferId, {
+      status: 'canceled',
+    });
+
+    const nextIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Cancel.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-cancel',
+    });
+    expect(nextIntent.sessionId).not.toBe(intent.sessionId);
   });
 
   it('rejects upload completions with object keys outside the upload intent shape', async () => {

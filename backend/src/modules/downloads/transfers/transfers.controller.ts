@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateTransferDto } from './transfers.dto';
 import { TransfersService } from './transfers.service';
@@ -22,5 +30,10 @@ export class TransfersController {
   @Patch(':id')
   updateTransfer(@Param('id') id: string, @Body() dto: UpdateTransferDto) {
     return this.transfersService.updateTransfer(id, dto);
+  }
+
+  @Delete(':id')
+  deleteTransfer(@Param('id') id: string) {
+    return this.transfersService.deleteTransfer(id);
   }
 }

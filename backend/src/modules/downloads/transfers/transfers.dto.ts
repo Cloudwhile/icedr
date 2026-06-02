@@ -1,7 +1,20 @@
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export type TransferType = 'upload' | 'download';
-export type TransferStatus = 'running' | 'completed' | 'failed';
+export type TransferStatus =
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'canceled';
 
 export class ListTransfersQueryDto {
   @IsString()
@@ -16,10 +29,10 @@ export class ListTransfersQueryDto {
 }
 
 export class UpdateTransferDto {
-  @IsIn(['running', 'completed', 'failed'])
+  @IsIn(['running', 'paused', 'completed', 'failed', 'canceled'])
   status!: TransferStatus;
 
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 1 })
   @Min(0)
   @Max(100)
   @IsOptional()

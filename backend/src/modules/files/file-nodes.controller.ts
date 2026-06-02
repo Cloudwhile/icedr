@@ -6,12 +6,15 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
+  Req,
   Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import {
+  CompleteUploadPartDto,
   CompleteUploadDto,
   CopyFileNodeDto,
   CreateDownloadIntentDto,
@@ -59,6 +62,48 @@ export class FileNodesController {
       ...dto,
       owner: dto.owner ?? workspaceActor,
     });
+  }
+
+  @Post('upload-sessions/:sessionId/parts/:partIndex/upload-intents')
+  createUploadPartIntent(
+    @Param('sessionId') sessionId: string,
+    @Param('partIndex') partIndex: string,
+  ) {
+    return this.fileNodesService.createUploadPartIntent(
+      sessionId,
+      Number(partIndex),
+    );
+  }
+
+  @Post('upload-sessions/:sessionId/parts/:partIndex/completions')
+  completeUploadPart(
+    @Param('sessionId') sessionId: string,
+    @Param('partIndex') partIndex: string,
+    @Body() dto: CompleteUploadPartDto,
+  ) {
+    return this.fileNodesService.completeUploadPart(
+      sessionId,
+      Number(partIndex),
+      dto,
+    );
+  }
+
+  @Put('upload-sessions/:sessionId/chunks/:partIndex')
+  uploadChunk(
+    @Param('sessionId') sessionId: string,
+    @Param('partIndex') partIndex: string,
+    @Req() request: Request,
+  ) {
+    return this.fileNodesService.uploadChunk(
+      sessionId,
+      Number(partIndex),
+      request,
+    );
+  }
+
+  @Post('upload-sessions/:sessionId/cancel')
+  cancelUploadSession(@Param('sessionId') sessionId: string) {
+    return this.fileNodesService.cancelUploadSession(sessionId);
   }
 
   @Post('folders')

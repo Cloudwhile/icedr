@@ -1,6 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../../database/database.service';
+import { PrismaService } from '../../database/prisma.service';
+import { StorageReconcileRepository } from './storage-reconcile.repository';
 import { StorageSettingsRepository } from './storage-settings.repository';
 import { StorageService } from './storage.service';
 import { StorageSettings } from './storage-settings.dto';
@@ -34,22 +35,43 @@ describe('StorageService', () => {
     const config = {
       get: jest.fn((key: string) => values[key]),
     } as unknown as ConfigService;
-    const query = jest.fn(() => Promise.resolve({ rows: [] }));
-    const database = {
-      query,
-    } as unknown as DatabaseService;
+    const deleteMany = jest.fn(() => Promise.resolve({ count: 0 }));
+    const prisma = {
+      fileNode: {
+        aggregate: jest.fn(() =>
+          Promise.resolve({
+            _count: { _all: 0 },
+            _sum: { sizeBytes: 0n },
+          }),
+        ),
+        count: jest.fn(() => Promise.resolve(0)),
+        deleteMany,
+      },
+    } as unknown as PrismaService;
     const get = jest.fn(() => Promise.resolve(baseSettings()));
     const update = jest.fn((settings: unknown) => Promise.resolve(settings));
     const settingsRepository = {
       get,
       update,
     } as unknown as StorageSettingsRepository;
+    const reconcileRepository = {
+      createTask: jest.fn(),
+      listFileObjectReferences: jest.fn(() => Promise.resolve([])),
+      listTasks: jest.fn(() => Promise.resolve([])),
+      listUploadTransferObjectReferences: jest.fn(() => Promise.resolve([])),
+    } as unknown as StorageReconcileRepository;
     const signer = jest.fn(() => Promise.resolve('http://signed.local'));
 
     return {
-      database,
-      query,
-      service: new StorageService(config, database, settingsRepository, signer),
+      deleteMany,
+      prisma,
+      service: new StorageService(
+        config,
+        prisma,
+        settingsRepository,
+        reconcileRepository,
+        signer,
+      ),
       settingsRepository,
       update,
       signer,
@@ -109,7 +131,7 @@ describe('StorageService', () => {
   });
 
   it('purges local file records when switching to distributed storage', async () => {
-    const { query, service, settingsRepository } = createService();
+    const { deleteMany, service, settingsRepository } = createService();
     jest.spyOn(settingsRepository, 'get').mockResolvedValueOnce({
       ...baseSettings(),
       distributedStorageEnabled: false,
@@ -117,9 +139,9 @@ describe('StorageService', () => {
 
     await service.updateSettings({ distributedStorageEnabled: true });
 
-    expect(query).toHaveBeenCalledWith(
-      "delete from file_nodes where object_key like 'local/%'",
-    );
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { objectKey: { startsWith: 'local/' } },
+    });
   });
 
   it('returns resolved object storage settings without exposing the secret', async () => {

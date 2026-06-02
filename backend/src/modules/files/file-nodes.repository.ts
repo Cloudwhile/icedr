@@ -1,7 +1,13 @@
 import { randomBytes } from 'crypto';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { createAuditEvent } from '../logs/audit-events';
-import { DatabaseService } from '../../database/database.service';
+import { PrismaService } from '../../database/prisma.service';
+import {
+  Prisma,
+  type FileDownloadIntent,
+  type FileNode,
+  type PreviewArtifact,
+} from '../../generated/prisma/client';
 import {
   CompleteUploadDto,
   CreateFolderDto,
@@ -11,49 +17,6 @@ import {
   FileNodeResponse,
   PreviewIntentResponse,
 } from './file-nodes.dto';
-
-type FileNodeRow = {
-  id: string;
-  workspace_id: string;
-  parent_node_id: string | null;
-  name: string;
-  kind: FileNodeKind;
-  mime_type: string;
-  size_bytes: number | null;
-  object_key: string | null;
-  owner_name: string;
-  starred: boolean;
-  archived_at: Date | string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-};
-
-type StorageUsageRow = {
-  used_bytes: string | null;
-  file_count: string;
-  folder_count: string;
-};
-
-type PreviewArtifactRow = {
-  id: string;
-  node_id: string;
-  source_object_key: string | null;
-  preview_object_key: string | null;
-  preview_type: FileNodeKind | 'metadata';
-  status: PreviewIntentResponse['status'];
-  error: string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-};
-
-type DownloadIntentRow = {
-  id: string;
-  node_id: string;
-  filename: string;
-  method: DownloadIntentResponse['method'];
-  expires_at: Date | string;
-  created_at: Date | string;
-};
 
 export type FileAuditAction =
   | 'file.folder_created'
@@ -71,210 +34,66 @@ export type FileAuditAction =
   | 'file.preview_requested';
 
 @Injectable()
-export class FileNodesRepository implements OnModuleInit {
-  constructor(private readonly database: DatabaseService) {}
-
-  async onModuleInit() {
-    await this.database.query(`
-      create table if not exists file_nodes (
-        id text primary key,
-        workspace_id text not null,
-        parent_node_id text,
-        name text not null,
-        kind text not null,
-        mime_type text not null,
-        size_bytes bigint,
-        object_key text,
-        owner_name text not null,
-        starred boolean not null default false,
-        archived_at timestamptz,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      )
-    `);
-    await this.database.query(
-      'alter table file_nodes add column if not exists starred boolean not null default false',
-    );
-    await this.database.query(
-      'alter table file_nodes add column if not exists archived_at timestamptz',
-    );
-
-    await this.database.query(`
-      create table if not exists audit_events (
-        id text primary key,
-        action text not null,
-        actor text not null,
-        target text not null,
-        workspace_id text,
-        share_token text,
-        node_id text,
-        metadata jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(
-      'alter table audit_events add column if not exists workspace_id text',
-    );
-    await this.database.query(
-      'alter table audit_events add column if not exists node_id text',
-    );
-
-    await this.database.query(`
-      create table if not exists preview_artifacts (
-        id text primary key,
-        node_id text not null,
-        source_object_key text,
-        preview_object_key text,
-        preview_type text not null,
-        status text not null,
-        error text,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      )
-    `);
-
-    await this.database.query(`
-      create table if not exists file_download_intents (
-        id text primary key,
-        node_id text not null,
-        filename text not null,
-        method text not null,
-        expires_at timestamptz not null,
-        created_at timestamptz not null default now()
-      )
-    `);
-  }
+export class FileNodesRepository {
+  constructor(private readonly prisma: PrismaService) {}
 
   async list(
     workspaceId?: string,
     parentNodeId?: string | null,
     state: FileNodeListState = 'active',
   ) {
-    const clauses: string[] = [];
-    const values: unknown[] = [];
-    if (workspaceId) {
-      values.push(workspaceId);
-      clauses.push(`workspace_id = $${values.length}`);
-    }
-    if (parentNodeId !== undefined) {
-      values.push(parentNodeId);
-      clauses.push(`parent_node_id is not distinct from $${values.length}`);
-    }
-    if (state === 'active') {
-      clauses.push('archived_at is null');
-    } else if (state === 'archived') {
-      clauses.push('archived_at is not null');
-    }
-
-    const result = await this.database.query<FileNodeRow>(
-      `
-        select *
-        from file_nodes
-        ${clauses.length > 0 ? `where ${clauses.join(' and ')}` : ''}
-        order by parent_node_id nulls first, name asc
-      `,
-      values,
-    );
-    return result.rows.map((row) => this.mapRow(row));
+    const rows = await this.prisma.fileNode.findMany({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        ...(parentNodeId !== undefined ? { parentNodeId } : {}),
+        ...(state === 'active' ? { archivedAt: null } : {}),
+        ...(state === 'archived' ? { archivedAt: { not: null } } : {}),
+      },
+      orderBy: [{ parentNodeId: 'asc' }, { name: 'asc' }],
+    });
+    return rows.map((row) => this.mapRow(row));
   }
 
   async findById(id: string) {
-    const result = await this.database.query<FileNodeRow>(
-      'select * from file_nodes where id = $1 limit 1',
-      [id],
-    );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    const row = await this.prisma.fileNode.findUnique({ where: { id } });
+    return row ? this.mapRow(row) : null;
   }
 
   async createFolder(dto: CreateFolderDto) {
-    const now = new Date().toISOString();
-    const node: FileNodeResponse = {
-      id: `node_${randomBytes(12).toString('base64url')}`,
-      workspaceId: dto.workspaceId,
-      parentNodeId: dto.parentNodeId ?? null,
-      name: dto.name,
-      kind: 'folder',
-      mimeType: 'inode/directory',
-      sizeBytes: null,
-      objectKey: null,
-      owner: dto.owner ?? '',
-      starred: false,
-      archivedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const result = await this.database.query<FileNodeRow>(
-      `
-        insert into file_nodes (
-          id,
-          workspace_id,
-          parent_node_id,
-          name,
-          kind,
-          mime_type,
-          size_bytes,
-          object_key,
-          owner_name,
-          starred,
-          archived_at,
-          created_at,
-          updated_at
-        )
-        values ($1, $2, $3, $4, 'folder', 'inode/directory', null, null, $5, false, null, $6, $7)
-        returning *
-      `,
-      [
-        node.id,
-        node.workspaceId,
-        node.parentNodeId,
-        node.name,
-        node.owner,
-        node.createdAt,
-        node.updatedAt,
-      ],
-    );
-    return this.mapRow(result.rows[0]);
+    const now = new Date();
+    const row = await this.prisma.fileNode.create({
+      data: {
+        id: `node_${randomBytes(12).toString('base64url')}`,
+        workspaceId: dto.workspaceId,
+        parentNodeId: dto.parentNodeId ?? null,
+        name: dto.name,
+        kind: 'folder',
+        mimeType: 'inode/directory',
+        sizeBytes: null,
+        objectKey: null,
+        ownerName: dto.owner ?? '',
+        starred: false,
+        archivedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    return this.mapRow(row);
   }
 
   async rename(id: string, name: string) {
-    const result = await this.database.query<FileNodeRow>(
-      `
-        update file_nodes
-        set name = $2, updated_at = now()
-        where id = $1
-        returning *
-      `,
-      [id, name],
-    );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    return this.updateNode(id, { name, updatedAt: new Date() });
   }
 
   async move(id: string, parentNodeId: string | null) {
-    const result = await this.database.query<FileNodeRow>(
-      `
-        update file_nodes
-        set parent_node_id = $2, updated_at = now()
-        where id = $1
-        returning *
-      `,
-      [id, parentNodeId],
-    );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    return this.updateNode(id, { parentNodeId, updatedAt: new Date() });
   }
 
   async updateSize(id: string, sizeBytes: number) {
-    const result = await this.database.query<FileNodeRow>(
-      `
-        update file_nodes
-        set size_bytes = $2, updated_at = now()
-        where id = $1
-        returning *
-      `,
-      [id, sizeBytes],
-    );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    return this.updateNode(id, {
+      sizeBytes: BigInt(sizeBytes),
+      updatedAt: new Date(),
+    });
   }
 
   async copyTree(
@@ -288,7 +107,7 @@ export class FileNodesRepository implements OnModuleInit {
       idMap.set(row.id, `node_${randomBytes(12).toString('base64url')}`);
     });
 
-    const now = new Date().toISOString();
+    const now = new Date();
     const copiedNodes: FileNodeResponse[] = [];
     for (const row of rows) {
       const copiedId = idMap.get(row.id);
@@ -301,41 +120,27 @@ export class FileNodesRepository implements OnModuleInit {
             : null;
       const copiedName =
         row.id === source.id ? options.name?.trim() || row.name : row.name;
-      const result = await this.database.query<FileNodeRow>(
-        `
-          insert into file_nodes (
-            id,
-            workspace_id,
-            parent_node_id,
-            name,
-            kind,
-            mime_type,
-            size_bytes,
-            object_key,
-            owner_name,
-            starred,
-            archived_at,
-            created_at,
-            updated_at
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, null, $10, $11)
-          returning *
-        `,
-        [
-          copiedId,
-          row.workspaceId,
-          copiedParent,
-          copiedName,
-          row.kind,
-          row.mimeType,
-          row.sizeBytes,
-          row.objectKey,
-          row.owner,
-          now,
-          now,
-        ],
-      );
-      copiedNodes.push(this.mapRow(result.rows[0]));
+      const copied = await this.prisma.fileNode.create({
+        data: {
+          id: copiedId,
+          workspaceId: row.workspaceId,
+          parentNodeId: copiedParent,
+          name: copiedName,
+          kind: row.kind,
+          mimeType: row.mimeType,
+          sizeBytes:
+            row.sizeBytes === null || row.sizeBytes === undefined
+              ? null
+              : BigInt(row.sizeBytes),
+          objectKey: row.objectKey,
+          ownerName: row.owner,
+          starred: false,
+          archivedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      copiedNodes.push(this.mapRow(copied));
     }
     return copiedNodes[0] ?? null;
   }
@@ -344,30 +149,19 @@ export class FileNodesRepository implements OnModuleInit {
     id: string,
     state: { starred?: boolean; archived?: boolean },
   ) {
-    const updates: string[] = [];
-    const values: unknown[] = [id];
+    const data: Partial<Pick<FileNode, 'archivedAt' | 'starred'>> & {
+      updatedAt: Date;
+    } = { updatedAt: new Date() };
     if (state.starred !== undefined) {
-      values.push(state.starred);
-      updates.push(`starred = $${values.length}`);
+      data.starred = state.starred;
     }
     if (state.archived !== undefined) {
-      updates.push(
-        state.archived ? 'archived_at = now()' : 'archived_at = null',
-      );
+      data.archivedAt = state.archived ? new Date() : null;
     }
-    if (updates.length === 0) return this.findById(id);
-    updates.push('updated_at = now()');
-
-    const result = await this.database.query<FileNodeRow>(
-      `
-        update file_nodes
-        set ${updates.join(', ')}
-        where id = $1
-        returning *
-      `,
-      values,
-    );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    if (state.starred === undefined && state.archived === undefined) {
+      return this.findById(id);
+    }
+    return this.updateNode(id, data);
   }
 
   async createDownloadIntent(
@@ -376,29 +170,23 @@ export class FileNodesRepository implements OnModuleInit {
   ) {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const id = `fdl_${randomBytes(12).toString('base64url')}`;
-    const result = await this.database.query<DownloadIntentRow>(
-      `
-        insert into file_download_intents (
-          id,
-          node_id,
-          filename,
-          method,
-          expires_at
-        )
-        values ($1, $2, $3, $4, $5)
-        returning *
-      `,
-      [id, node.id, node.name, method, expiresAt],
-    );
-    return this.mapDownloadIntent(result.rows[0]);
+    const row = await this.prisma.fileDownloadIntent.create({
+      data: {
+        id,
+        nodeId: node.id,
+        filename: node.name,
+        method,
+        expiresAt: new Date(expiresAt),
+      },
+    });
+    return this.mapDownloadIntent(row);
   }
 
   async findDownloadIntent(downloadId: string) {
-    const result = await this.database.query<DownloadIntentRow>(
-      'select * from file_download_intents where id = $1 limit 1',
-      [downloadId],
-    );
-    return result.rows[0] ? this.mapDownloadIntent(result.rows[0]) : null;
+    const row = await this.prisma.fileDownloadIntent.findUnique({
+      where: { id: downloadId },
+    });
+    return row ? this.mapDownloadIntent(row) : null;
   }
 
   async createPreviewArtifact(
@@ -408,101 +196,60 @@ export class FileNodesRepository implements OnModuleInit {
     error: string | null = null,
   ) {
     const id = `preview_${randomBytes(12).toString('base64url')}`;
-    const result = await this.database.query<PreviewArtifactRow>(
-      `
-        insert into preview_artifacts (
-          id,
-          node_id,
-          source_object_key,
-          preview_object_key,
-          preview_type,
-          status,
-          error
-        )
-        values ($1, $2, $3, $4, $5, $6, $7)
-        returning *
-      `,
-      [id, node.id, node.objectKey, null, previewType, status, error],
-    );
-    return this.mapPreviewArtifact(result.rows[0]);
+    const row = await this.prisma.previewArtifact.create({
+      data: {
+        id,
+        nodeId: node.id,
+        sourceObjectKey: node.objectKey,
+        previewObjectKey: null,
+        previewType,
+        status,
+        error,
+      },
+    });
+    return this.mapPreviewArtifact(row);
   }
 
   async findPreviewArtifact(previewId: string) {
-    const result = await this.database.query<PreviewArtifactRow>(
-      'select * from preview_artifacts where id = $1 limit 1',
-      [previewId],
-    );
-    return result.rows[0] ? this.mapPreviewArtifact(result.rows[0]) : null;
+    const row = await this.prisma.previewArtifact.findUnique({
+      where: { id: previewId },
+    });
+    return row ? this.mapPreviewArtifact(row) : null;
   }
 
   async completeUpload(dto: CompleteUploadDto) {
-    const now = new Date().toISOString();
-    const node: FileNodeResponse = {
-      id: `node_${randomBytes(12).toString('base64url')}`,
-      workspaceId: dto.workspaceId,
-      parentNodeId: dto.parentNodeId ?? null,
-      name: dto.fileName,
-      kind: this.getKind(dto.fileName, dto.mimeType),
-      mimeType: dto.mimeType ?? 'application/octet-stream',
-      sizeBytes: dto.sizeBytes,
-      objectKey: dto.objectKey,
-      owner: dto.owner ?? '',
-      starred: false,
-      archivedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const result = await this.database.query<FileNodeRow>(
-      `
-        insert into file_nodes (
-          id,
-          workspace_id,
-          parent_node_id,
-          name,
-          kind,
-          mime_type,
-          size_bytes,
-          object_key,
-          owner_name,
-          starred,
-          archived_at,
-          created_at,
-          updated_at
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, null, $10, $11)
-        returning *
-      `,
-      [
-        node.id,
-        node.workspaceId,
-        node.parentNodeId,
-        node.name,
-        node.kind,
-        node.mimeType,
-        node.sizeBytes,
-        node.objectKey,
-        node.owner,
-        node.createdAt,
-        node.updatedAt,
-      ],
-    );
-    return this.mapRow(result.rows[0]);
+    const now = new Date();
+    const row = await this.prisma.fileNode.create({
+      data: {
+        id: `node_${randomBytes(12).toString('base64url')}`,
+        workspaceId: dto.workspaceId,
+        parentNodeId: dto.parentNodeId ?? null,
+        name: dto.fileName,
+        kind: this.getKind(dto.fileName, dto.mimeType),
+        mimeType: dto.mimeType ?? 'application/octet-stream',
+        sizeBytes: BigInt(dto.sizeBytes),
+        objectKey: dto.objectKey,
+        ownerName: dto.owner ?? '',
+        starred: false,
+        archivedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    return this.mapRow(row);
   }
 
   private async collectDescendants(parentId: string) {
     const collected: FileNodeResponse[] = [];
     const visit = async (id: string) => {
-      const result = await this.database.query<FileNodeRow>(
-        `
-          select *
-          from file_nodes
-          where parent_node_id = $1 and archived_at is null
-          order by name asc
-        `,
-        [id],
-      );
-      for (const row of result.rows) {
+      const rows = await this.prisma.fileNode.findMany({
+        where: {
+          archivedAt: null,
+          parentNodeId: id,
+        },
+        orderBy: { name: 'asc' },
+      });
+      for (const row of rows) {
         const node = this.mapRow(row);
         collected.push(node);
         await visit(node.id);
@@ -526,62 +273,50 @@ export class FileNodesRepository implements OnModuleInit {
       metadata: { source: 'file-nodes-service' },
     });
 
-    await this.database.query(
-      `
-        insert into audit_events (
-          id,
-          action,
-          actor,
-          target,
-          workspace_id,
-          share_token,
-          node_id,
-          metadata,
-          created_at
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
-      `,
-      [
-        event.id,
-        event.action,
-        event.actor,
-        event.target,
-        event.workspaceId,
-        event.shareToken,
-        event.nodeId,
-        JSON.stringify(event.metadata),
-        event.createdAt,
-      ],
-    );
+    await this.prisma.auditEvent.create({
+      data: {
+        id: event.id,
+        action: event.action,
+        actor: event.actor,
+        target: event.target,
+        workspaceId: event.workspaceId,
+        shareToken: event.shareToken,
+        nodeId: event.nodeId,
+        metadata: event.metadata as Prisma.InputJsonValue,
+        createdAt: new Date(event.createdAt),
+      },
+    });
   }
 
   async countAuditEvents(action?: FileAuditAction) {
-    const result = await this.database.query<{ count: string }>(
-      action
-        ? 'select count(*)::text from audit_events where action = $1'
-        : 'select count(*)::text from audit_events',
-      action ? [action] : [],
-    );
-    return Number(result.rows[0]?.count ?? 0);
+    return this.prisma.auditEvent.count({
+      where: action ? { action } : undefined,
+    });
   }
 
   async getStorageUsage(workspaceId: string) {
-    const result = await this.database.query<StorageUsageRow>(
-      `
-        select
-          coalesce(sum(case when size_bytes is not null then size_bytes else 0 end), 0)::text as used_bytes,
-          count(*) filter (where size_bytes is not null)::text as file_count,
-          count(*) filter (where size_bytes is null)::text as folder_count
-        from file_nodes
-        where workspace_id = $1 and archived_at is null
-      `,
-      [workspaceId],
-    );
-    const row = result.rows[0];
+    const [fileStats, folderCount] = await Promise.all([
+      this.prisma.fileNode.aggregate({
+        where: {
+          archivedAt: null,
+          sizeBytes: { not: null },
+          workspaceId,
+        },
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.fileNode.count({
+        where: {
+          archivedAt: null,
+          sizeBytes: null,
+          workspaceId,
+        },
+      }),
+    ]);
     return {
-      usedBytes: Number(row?.used_bytes ?? 0),
-      fileCount: Number(row?.file_count ?? 0),
-      folderCount: Number(row?.folder_count ?? 0),
+      usedBytes: Number(fileStats._sum.sizeBytes ?? 0),
+      fileCount: fileStats._count._all,
+      folderCount,
     };
   }
 
@@ -600,52 +335,62 @@ export class FileNodesRepository implements OnModuleInit {
     return 'doc';
   }
 
-  private mapRow(row: FileNodeRow): FileNodeResponse {
+  private async updateNode(
+    id: string,
+    data: Prisma.FileNodeUpdateInput,
+  ): Promise<FileNodeResponse | null> {
+    const existing = await this.prisma.fileNode.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!existing) return null;
+    const row = await this.prisma.fileNode.update({
+      where: { id },
+      data,
+    });
+    return this.mapRow(row);
+  }
+
+  private mapRow(row: FileNode): FileNodeResponse {
     return {
       id: row.id,
-      workspaceId: row.workspace_id,
-      parentNodeId: row.parent_node_id,
+      workspaceId: row.workspaceId,
+      parentNodeId: row.parentNodeId,
       name: row.name,
-      kind: row.kind,
-      mimeType: row.mime_type,
+      kind: row.kind as FileNodeKind,
+      mimeType: row.mimeType,
       sizeBytes:
-        row.size_bytes === null || row.size_bytes === undefined
+        row.sizeBytes === null || row.sizeBytes === undefined
           ? null
-          : Number(row.size_bytes),
-      objectKey: row.object_key,
-      owner: row.owner_name,
+          : Number(row.sizeBytes),
+      objectKey: row.objectKey,
+      owner: row.ownerName,
       starred: row.starred,
-      archivedAt: row.archived_at ? this.toIsoString(row.archived_at) : null,
-      createdAt: this.toIsoString(row.created_at),
-      updatedAt: this.toIsoString(row.updated_at),
+      archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
     };
   }
 
-  private mapDownloadIntent(row: DownloadIntentRow) {
+  private mapDownloadIntent(row: FileDownloadIntent) {
     return {
       downloadId: row.id,
-      nodeId: row.node_id,
+      nodeId: row.nodeId,
       filename: row.filename,
-      method: row.method,
-      expiresAt: this.toIsoString(row.expires_at),
-      createdAt: this.toIsoString(row.created_at),
+      method: row.method as DownloadIntentResponse['method'],
+      expiresAt: row.expiresAt.toISOString(),
+      createdAt: row.createdAt.toISOString(),
     };
   }
 
-  private mapPreviewArtifact(row: PreviewArtifactRow): PreviewIntentResponse {
+  private mapPreviewArtifact(row: PreviewArtifact): PreviewIntentResponse {
     return {
       previewId: row.id,
-      nodeId: row.node_id,
-      status: row.status,
-      previewType: row.preview_type,
-      statusUrl: `/api/file-nodes/${encodeURIComponent(row.node_id)}/preview/status`,
+      nodeId: row.nodeId,
+      status: row.status as PreviewIntentResponse['status'],
+      previewType: row.previewType as PreviewIntentResponse['previewType'],
+      statusUrl: `/api/file-nodes/${encodeURIComponent(row.nodeId)}/preview/status`,
       error: row.error,
     };
-  }
-
-  private toIsoString(value: Date | string) {
-    return value instanceof Date
-      ? value.toISOString()
-      : new Date(value).toISOString();
   }
 }

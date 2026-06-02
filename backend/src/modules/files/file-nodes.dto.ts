@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -38,6 +39,21 @@ export class CreateUploadIntentDto {
   @IsString()
   @IsOptional()
   mimeType?: string;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  fileSizeBytes?: number;
+
+  @IsString()
+  @IsOptional()
+  resumeKey?: string;
+
+  @IsInt()
+  @Min(64 * 1024)
+  @Max(32 * 1024 * 1024)
+  @IsOptional()
+  chunkSizeBytes?: number;
 }
 
 export class CompleteUploadDto {
@@ -72,6 +88,31 @@ export class CompleteUploadDto {
   @IsString()
   @IsOptional()
   transferId?: string;
+
+  @IsString()
+  @IsOptional()
+  uploadSessionId?: string;
+}
+
+export class UploadChunkParamsDto {
+  @IsString()
+  @IsNotEmpty()
+  sessionId!: string;
+
+  @IsInt()
+  @Min(0)
+  partIndex!: number;
+}
+
+export class CompleteUploadPartDto {
+  @IsString()
+  @IsOptional()
+  eTag?: string;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  sizeBytes?: number;
 }
 
 export class CreateFolderDto {
@@ -195,9 +236,34 @@ export type DownloadIntentResponse = {
 export type UploadIntentResponse = {
   objectKey: string;
   transferId: string;
-  uploadMethod: 'presigned-url' | 'backend-local';
+  uploadMethod:
+    | 'presigned-url'
+    | 'backend-local'
+    | 'chunked'
+    | 'object-multipart';
   uploadUrl: string;
   headers: Record<string, string>;
   expiresInSeconds: number;
   expiresAt: string;
+  sessionId?: string;
+  chunkSizeBytes?: number;
+  uploadedBytes?: number;
+  uploadedPartIndexes?: number[];
+};
+
+export type UploadPartIntentResponse = {
+  expiresAt: string;
+  expiresInSeconds: number;
+  headers: Record<string, string>;
+  partIndex: number;
+  sessionId: string;
+  uploadUrl: string;
+};
+
+export type UploadChunkResponse = {
+  sessionId: string;
+  partIndex: number;
+  uploadedBytes: number;
+  uploadedPartIndexes: number[];
+  progress: number;
 };

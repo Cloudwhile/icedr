@@ -1,4 +1,3 @@
-import { randomBytes } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -6,8 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
+import {
+  createFileObjectKey,
+  isUploadObjectKeyForPayload,
+} from '../storage/storage-object-keys';
 import { TransfersService } from '../downloads/transfers/transfers.service';
 import {
+  CompleteUploadPartDto,
   CompleteUploadDto,
   CopyFileNodeDto,
   CreateDownloadIntentDto,
@@ -20,9 +24,17 @@ import {
   RenameFileNodeDto,
   UpdateFileNodeContentDto,
   UpdateFileNodeStateDto,
+  UploadChunkResponse,
   UploadIntentResponse,
+  UploadPartIntentResponse,
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
+import {
+  UploadSession,
+  UploadSessionPart,
+  UploadSessionsRepository,
+} from './upload-sessions.repository';
+import type { Readable } from 'stream';
 
 @Injectable()
 export class FileNodesService {
@@ -30,6 +42,7 @@ export class FileNodesService {
     private readonly fileNodesRepository: FileNodesRepository,
     private readonly storageService: StorageService,
     private readonly transfersService: TransfersService,
+    private readonly uploadSessionsRepository: UploadSessionsRepository,
   ) {}
 
   listFileNodes(
@@ -50,57 +63,270 @@ export class FileNodesService {
   ): Promise<UploadIntentResponse> {
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
-    const objectKey = this.createUploadObjectKey(
-      dto,
-      distributedStorage ? 'uploads' : 'local/uploads',
-    );
+    const sizeBytes = Math.max(0, Math.trunc(dto.fileSizeBytes ?? 0));
+    const chunkSizeBytes = this.normalizeChunkSize(dto.chunkSizeBytes, {
+      distributedStorage,
+    });
+    const resumeKey = dto.resumeKey?.trim() || undefined;
+    if (resumeKey && dto.fileSizeBytes !== undefined) {
+      const reusable = await this.uploadSessionsRepository.findReusable({
+        workspaceId: dto.workspaceId,
+        resumeKey,
+        fileName: dto.fileName,
+        parentNodeId: dto.parentNodeId ?? null,
+        sizeBytes,
+      });
+      if (reusable) {
+        if (!this.canReuseSession(reusable, distributedStorage)) {
+          await this.cancelUploadSession(reusable.id);
+        } else {
+          const parts = await this.uploadSessionsRepository.listParts(
+            reusable.id,
+          );
+          const uploaded = this.getUploadedSessionState(reusable, parts);
+          await this.uploadSessionsRepository.updateStatus(
+            reusable.id,
+            'running',
+          );
+          await this.transfersService.updateTransfer(reusable.transferId, {
+            status: 'running',
+            progress: uploaded.progress,
+          });
+          return this.toUploadIntent(reusable, parts);
+        }
+      }
+    }
+
+    const objectKey = this.createUploadObjectKey(dto, distributedStorage);
     const transfer = await this.transfersService.createUploadTransfer({
       workspaceId: dto.workspaceId,
       objectKey,
       name: dto.fileName,
     });
-
-    if (!distributedStorage) {
+    const multipartUpload = distributedStorage
+      ? await this.storageService.createMultipartUpload(
+          objectKey,
+          dto.mimeType ?? 'application/octet-stream',
+        )
+      : null;
+    try {
+      const session = await this.uploadSessionsRepository.create({
+        workspaceId: dto.workspaceId,
+        transferId: transfer.id,
+        objectKey,
+        multipartUploadId: multipartUpload?.uploadId ?? null,
+        resumeKey: resumeKey ?? null,
+        fileName: dto.fileName,
+        parentNodeId: dto.parentNodeId ?? null,
+        mimeType: dto.mimeType ?? 'application/octet-stream',
+        sizeBytes,
+        chunkSizeBytes,
+      });
       await this.fileNodesRepository.recordAudit(
         'file.upload_intent_created',
         objectKey,
       );
 
-      return {
-        objectKey,
-        transferId: transfer.id,
-        uploadMethod: 'backend-local' as const,
-        uploadUrl: `/api/storage/local-uploads?objectKey=${encodeURIComponent(objectKey)}`,
-        headers: {
-          'Content-Type': dto.mimeType ?? 'application/octet-stream',
-        },
-        expiresInSeconds: 900,
-        expiresAt: new Date(Date.now() + 900000).toISOString(),
-      };
+      return this.toUploadIntent(session, []);
+    } catch (error) {
+      if (multipartUpload?.uploadId) {
+        await this.storageService
+          .abortMultipartUpload({
+            objectKey,
+            uploadId: multipartUpload.uploadId,
+          })
+          .catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
+  async createUploadPartIntent(
+    sessionId: string,
+    partIndex: number,
+  ): Promise<UploadPartIntentResponse> {
+    const session = await this.requireUploadSession(sessionId);
+    this.assertWritableUploadSession(session);
+    if (!session.multipartUploadId) {
+      throw new BadRequestException(
+        'Upload session does not use object storage multipart upload',
+      );
     }
 
-    const upload = await this.storageService.createPresignedUpload(
-      objectKey,
-      dto.mimeType,
-    );
-    await this.fileNodesRepository.recordAudit(
-      'file.upload_intent_created',
-      objectKey,
-    );
+    const normalizedPartIndex = Math.trunc(partIndex);
+    this.getExpectedPartRange(session, normalizedPartIndex);
+    const signed = await this.storageService.createMultipartUploadPartUrl({
+      objectKey: session.objectKey,
+      partIndex: normalizedPartIndex,
+      uploadId: session.multipartUploadId,
+    });
+    return {
+      expiresAt: signed.expiresAt,
+      expiresInSeconds: signed.expiresInSeconds,
+      headers: signed.headers,
+      partIndex: normalizedPartIndex,
+      sessionId: session.id,
+      uploadUrl: signed.url,
+    };
+  }
+
+  async completeUploadPart(
+    sessionId: string,
+    partIndex: number,
+    dto: CompleteUploadPartDto,
+  ): Promise<UploadChunkResponse> {
+    const session = await this.requireUploadSession(sessionId);
+    this.assertWritableUploadSession(session);
+    if (!session.multipartUploadId) {
+      throw new BadRequestException(
+        'Upload session does not use object storage multipart upload',
+      );
+    }
+
+    const normalizedPartIndex = Math.trunc(partIndex);
+    const expected = this.getExpectedPartRange(session, normalizedPartIndex);
+    let eTag = dto.eTag?.trim() || null;
+    let sizeBytes = dto.sizeBytes ?? expected.sizeBytes;
+
+    if (!eTag) {
+      const storedPart = await this.storageService.findMultipartUploadPart({
+        objectKey: session.objectKey,
+        partIndex: normalizedPartIndex,
+        uploadId: session.multipartUploadId,
+      });
+      eTag = storedPart.eTag;
+      sizeBytes = storedPart.sizeBytes ?? sizeBytes;
+    }
+
+    if (sizeBytes !== expected.sizeBytes) {
+      throw new BadRequestException('Upload chunk size does not match session');
+    }
+
+    await this.uploadSessionsRepository.upsertPart({
+      sessionId: session.id,
+      partIndex: normalizedPartIndex,
+      startByte: expected.startByte,
+      endByte: expected.endByte,
+      sizeBytes,
+      eTag,
+    });
+    await this.uploadSessionsRepository.updateStatus(session.id, 'running');
+    const parts = await this.uploadSessionsRepository.listParts(session.id);
+    const uploaded = this.getUploadedSessionState(session, parts);
+    await this.transfersService.updateTransfer(session.transferId, {
+      status: 'running',
+      progress: uploaded.progress,
+    });
 
     return {
-      objectKey,
-      transferId: transfer.id,
-      uploadMethod: 'presigned-url',
-      uploadUrl: upload.url,
-      headers: upload.headers,
-      expiresInSeconds: upload.expiresInSeconds,
-      expiresAt: upload.expiresAt,
+      sessionId: session.id,
+      partIndex: normalizedPartIndex,
+      uploadedBytes: uploaded.uploadedBytes,
+      uploadedPartIndexes: uploaded.uploadedPartIndexes,
+      progress: uploaded.progress,
     };
+  }
+
+  async uploadChunk(
+    sessionId: string,
+    partIndex: number,
+    stream: Readable,
+  ): Promise<UploadChunkResponse> {
+    const session = await this.requireUploadSession(sessionId);
+    this.assertWritableUploadSession(session);
+    if (session.multipartUploadId) {
+      throw new BadRequestException(
+        'Upload session uses object storage multipart upload',
+      );
+    }
+
+    const normalizedPartIndex = Math.trunc(partIndex);
+    const expected = this.getExpectedPartRange(session, normalizedPartIndex);
+    const written = await this.storageService.writeUploadSessionPart(
+      session.id,
+      normalizedPartIndex,
+      stream,
+    );
+    if (written.sizeBytes !== expected.sizeBytes) {
+      throw new BadRequestException('Upload chunk size does not match session');
+    }
+
+    await this.uploadSessionsRepository.upsertPart({
+      sessionId: session.id,
+      partIndex: normalizedPartIndex,
+      startByte: expected.startByte,
+      endByte: expected.endByte,
+      sizeBytes: written.sizeBytes,
+    });
+    await this.uploadSessionsRepository.updateStatus(session.id, 'running');
+    const parts = await this.uploadSessionsRepository.listParts(session.id);
+    const uploaded = this.getUploadedSessionState(session, parts);
+    await this.transfersService.updateTransfer(session.transferId, {
+      status: 'running',
+      progress: uploaded.progress,
+    });
+
+    return {
+      sessionId: session.id,
+      partIndex: normalizedPartIndex,
+      uploadedBytes: uploaded.uploadedBytes,
+      uploadedPartIndexes: uploaded.uploadedPartIndexes,
+      progress: uploaded.progress,
+    };
+  }
+
+  async cancelUploadSession(sessionId: string) {
+    const session = await this.requireUploadSession(sessionId);
+    if (session.status === 'completed') {
+      throw new BadRequestException('Completed upload sessions cannot cancel');
+    }
+    await this.uploadSessionsRepository.updateStatus(session.id, 'canceled');
+    if (session.multipartUploadId) {
+      await this.storageService.abortMultipartUpload({
+        objectKey: session.objectKey,
+        uploadId: session.multipartUploadId,
+      });
+    } else {
+      await this.storageService.deleteUploadSessionParts(session.id);
+    }
+    await this.transfersService.updateTransfer(session.transferId, {
+      status: 'canceled',
+    });
+    return { ok: true };
   }
 
   async completeUpload(dto: CompleteUploadDto) {
     this.assertUploadObjectKey(dto);
+    const uploadSession = dto.uploadSessionId
+      ? await this.requireCompletableUploadSession(dto)
+      : null;
+    if (uploadSession) {
+      const parts = await this.uploadSessionsRepository.listParts(
+        uploadSession.id,
+      );
+      this.assertUploadSessionComplete(uploadSession, parts);
+      if (uploadSession.multipartUploadId) {
+        await this.storageService.completeMultipartUpload({
+          objectKey: dto.objectKey,
+          uploadId: uploadSession.multipartUploadId,
+          parts: parts.map((part) => ({
+            eTag: part.eTag ?? '',
+            partIndex: part.partIndex,
+          })),
+        });
+      } else {
+        await this.storageService.composeUploadSessionParts({
+          sessionId: uploadSession.id,
+          partIndexes: parts.map((part) => part.partIndex),
+          objectKey: dto.objectKey,
+          contentType: dto.mimeType ?? uploadSession.mimeType,
+        });
+      }
+      await this.uploadSessionsRepository.updateStatus(
+        uploadSession.id,
+        'completed',
+      );
+    }
     await this.storageService.assertObjectExists(dto.objectKey);
     const node = await this.fileNodesRepository.completeUpload({
       ...dto,
@@ -110,9 +336,10 @@ export class FileNodesService {
       'file.upload_completed',
       node.id,
     );
-    if (dto.transferId) {
+    const transferId = dto.transferId ?? uploadSession?.transferId;
+    if (transferId) {
       await this.transfersService.completeTransfer({
-        transferId: dto.transferId,
+        transferId,
         nodeId: node.id,
       });
     }
@@ -339,55 +566,167 @@ export class FileNodesService {
     };
   }
 
+  private toUploadIntent(
+    session: UploadSession,
+    parts: UploadSessionPart[],
+  ): UploadIntentResponse {
+    const uploaded = this.getUploadedSessionState(session, parts);
+    const objectMultipart = Boolean(session.multipartUploadId);
+    return {
+      objectKey: session.objectKey,
+      transferId: session.transferId,
+      uploadMethod: objectMultipart ? 'object-multipart' : 'chunked',
+      uploadUrl: objectMultipart
+        ? `/api/file-nodes/upload-sessions/${encodeURIComponent(session.id)}/parts`
+        : `/api/file-nodes/upload-sessions/${encodeURIComponent(session.id)}/chunks`,
+      headers: {},
+      expiresInSeconds: 86400,
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      sessionId: session.id,
+      chunkSizeBytes: session.chunkSizeBytes,
+      uploadedBytes: uploaded.uploadedBytes,
+      uploadedPartIndexes: uploaded.uploadedPartIndexes,
+    };
+  }
+
+  private getUploadedSessionState(
+    session: UploadSession,
+    parts: UploadSessionPart[],
+  ) {
+    const uploadedBytes = parts.reduce(
+      (total, part) => total + part.sizeBytes,
+      0,
+    );
+    const uploadRatio =
+      session.sizeBytes > 0 ? uploadedBytes / session.sizeBytes : 1;
+    return {
+      uploadedBytes,
+      uploadedPartIndexes: parts
+        .map((part) => part.partIndex)
+        .sort((left, right) => left - right),
+      progress: Math.min(95, Math.round((5 + uploadRatio * 90) * 10) / 10),
+    };
+  }
+
+  private getExpectedPartRange(session: UploadSession, partIndex: number) {
+    if (!Number.isInteger(partIndex) || partIndex < 0) {
+      throw new BadRequestException('Upload chunk index is invalid');
+    }
+    const totalParts = this.getUploadSessionPartCount(session);
+    if (partIndex >= totalParts) {
+      throw new BadRequestException('Upload chunk index is outside session');
+    }
+    const startByte = partIndex * session.chunkSizeBytes;
+    const endByte = Math.min(
+      session.sizeBytes - 1,
+      startByte + session.chunkSizeBytes - 1,
+    );
+    return {
+      startByte,
+      endByte,
+      sizeBytes: endByte - startByte + 1,
+    };
+  }
+
+  private assertUploadSessionComplete(
+    session: UploadSession,
+    parts: UploadSessionPart[],
+  ) {
+    const totalParts = this.getUploadSessionPartCount(session);
+    if (parts.length !== totalParts) {
+      throw new BadRequestException('Upload session is missing chunks');
+    }
+    const expectedIndexes = new Set(
+      Array.from({ length: totalParts }, (_, index) => index),
+    );
+    for (const part of parts) {
+      const expected = this.getExpectedPartRange(session, part.partIndex);
+      if (
+        !expectedIndexes.delete(part.partIndex) ||
+        part.startByte !== expected.startByte ||
+        part.endByte !== expected.endByte ||
+        part.sizeBytes !== expected.sizeBytes ||
+        (Boolean(session.multipartUploadId) && !part.eTag)
+      ) {
+        throw new BadRequestException('Upload session chunks are invalid');
+      }
+    }
+    if (expectedIndexes.size > 0) {
+      throw new BadRequestException('Upload session is missing chunks');
+    }
+  }
+
+  private getUploadSessionPartCount(session: UploadSession) {
+    if (session.sizeBytes === 0) return 0;
+    return Math.ceil(session.sizeBytes / session.chunkSizeBytes);
+  }
+
+  private assertWritableUploadSession(session: UploadSession) {
+    if (session.status === 'completed' || session.status === 'canceled') {
+      throw new BadRequestException('Upload session is not writable');
+    }
+  }
+
+  private canReuseSession(session: UploadSession, distributedStorage: boolean) {
+    return distributedStorage
+      ? Boolean(session.multipartUploadId)
+      : !session.multipartUploadId;
+  }
+
+  private async requireUploadSession(sessionId: string) {
+    const session = await this.uploadSessionsRepository.findById(sessionId);
+    if (!session) throw new NotFoundException('Upload session not found');
+    return session;
+  }
+
+  private async requireCompletableUploadSession(dto: CompleteUploadDto) {
+    const session = await this.requireUploadSession(dto.uploadSessionId ?? '');
+    if (
+      session.workspaceId !== dto.workspaceId ||
+      session.objectKey !== dto.objectKey ||
+      session.fileName !== dto.fileName ||
+      session.sizeBytes !== dto.sizeBytes ||
+      (session.parentNodeId ?? null) !== (dto.parentNodeId ?? null)
+    ) {
+      throw new BadRequestException(
+        'Upload session does not match completion payload',
+      );
+    }
+    if (session.status === 'canceled') {
+      throw new BadRequestException('Upload session was canceled');
+    }
+    return session;
+  }
+
+  private normalizeChunkSize(
+    value: number | undefined,
+    options: { distributedStorage: boolean },
+  ) {
+    const minimum = options.distributedStorage ? 5 * 1024 * 1024 : 64 * 1024;
+    const fallback = options.distributedStorage
+      ? 8 * 1024 * 1024
+      : 4 * 1024 * 1024;
+    const raw = Math.trunc(value ?? fallback);
+    return Math.min(Math.max(raw, minimum), 32 * 1024 * 1024);
+  }
+
   private createUploadObjectKey(
     dto: CreateUploadIntentDto,
-    prefix = 'uploads',
+    distributedStorage: boolean,
   ) {
-    const workspaceSegment = this.encodeObjectKeySegment(dto.workspaceId);
-    const parentSegment = dto.parentNodeId
-      ? this.encodeObjectKeySegment(dto.parentNodeId)
-      : 'root';
-    const fileSegment = this.encodeObjectKeySegment(dto.fileName);
-    const nonce = randomBytes(12).toString('base64url');
-
-    return [
-      prefix,
-      workspaceSegment,
-      parentSegment,
-      `${Date.now()}-${nonce}-${fileSegment}`,
-    ].join('/');
+    return createFileObjectKey({
+      distributedStorage,
+      fileName: dto.fileName,
+      workspaceId: dto.workspaceId,
+    });
   }
 
   private assertUploadObjectKey(dto: CompleteUploadDto) {
-    const parts = dto.objectKey.split('/');
-    const isLocal = parts[0] === 'local' && parts[1] === 'uploads';
-    const prefixLength = isLocal ? 2 : 1;
-    const expectedWorkspace = this.encodeObjectKeySegment(dto.workspaceId);
-    const expectedParent = dto.parentNodeId
-      ? this.encodeObjectKeySegment(dto.parentNodeId)
-      : 'root';
-    const expectedFileName = this.encodeObjectKeySegment(dto.fileName);
-    const fileSegment = parts[prefixLength + 2] ?? '';
-
-    if (
-      parts.length !== prefixLength + 3 ||
-      (!isLocal && parts[0] !== 'uploads') ||
-      parts[prefixLength] !== expectedWorkspace ||
-      parts[prefixLength + 1] !== expectedParent ||
-      !/^\d{10,}-[A-Za-z0-9_-]{16}-.+$/.test(fileSegment) ||
-      !fileSegment.endsWith(`-${expectedFileName}`) ||
-      fileSegment.includes('\\')
-    ) {
+    if (!isUploadObjectKeyForPayload(dto)) {
       throw new BadRequestException(
         'Upload object key does not match a valid upload intent',
       );
     }
-  }
-
-  private encodeObjectKeySegment(value: string) {
-    const trimmed = value.trim();
-    if (!trimmed) throw new BadRequestException('Upload key segment is empty');
-    return encodeURIComponent(trimmed);
   }
 
   private normalizeListState(value?: string): FileNodeListState {

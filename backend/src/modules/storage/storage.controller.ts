@@ -9,10 +9,12 @@ import {
   Query,
   Req,
   Res,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
+import { RunBlobReconcileDto } from './storage-reconcile.dto';
 import { UpdateStorageSettingsDto } from './storage-settings.dto';
 import { StorageService } from './storage.service';
 
@@ -37,6 +39,26 @@ export class StorageController {
   @Get('usage')
   getUsage(@Query('workspaceId') workspaceId = 'workspace-default') {
     return this.storageService.getUsage(workspaceId);
+  }
+
+  @Get('reconcile/tasks')
+  async listReconcileTasks(
+    @Query('limit') limit?: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.storageService.listReconcileTasks(
+      limit ? Number(limit) : undefined,
+    );
+  }
+
+  @Post('reconcile')
+  async reconcileObjects(
+    @Body() dto: RunBlobReconcileDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.storageService.reconcileObjects(dto);
   }
 
   @Patch('settings')
@@ -80,6 +102,6 @@ export class StorageController {
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(localFile.filename)}"`,
     );
-    return localFile.stream;
+    return new StreamableFile(localFile.stream);
   }
 }
