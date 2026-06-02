@@ -31,7 +31,10 @@ describe('StorageService', () => {
     ...overrides,
   });
 
-  function createService(values = configuredValues) {
+  function createService(
+    values = configuredValues,
+    signedUrl = 'http://signed.local',
+  ) {
     const config = {
       get: jest.fn((key: string) => values[key]),
     } as unknown as ConfigService;
@@ -60,7 +63,7 @@ describe('StorageService', () => {
       listTasks: jest.fn(() => Promise.resolve([])),
       listUploadTransferObjectReferences: jest.fn(() => Promise.resolve([])),
     } as unknown as StorageReconcileRepository;
-    const signer = jest.fn(() => Promise.resolve('http://signed.local'));
+    const signer = jest.fn(() => Promise.resolve(signedUrl));
 
     return {
       deleteMany,
@@ -113,6 +116,25 @@ describe('StorageService', () => {
       url: 'http://signed.local',
       expiresInSeconds: 300,
     });
+  });
+
+  it('rewrites presigned object urls to the public storage endpoint', async () => {
+    const { service } = createService(
+      {
+        ...configuredValues,
+        'storage.publicEndpoint': 'https://drive.example.com/objects',
+      },
+      'http://minio:9000/icedr-drive/workspace-default/root/file.pdf?X-Amz-Signature=test',
+    );
+
+    const intent = await service.createPresignedDownload(
+      'workspace-default/root/file.pdf',
+      'file.pdf',
+    );
+
+    expect(intent.url).toBe(
+      'https://drive.example.com/objects/icedr-drive/workspace-default/root/file.pdf?X-Amz-Signature=test',
+    );
   });
 
   it('rejects switching to distributed storage until object storage is configured', async () => {
