@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import { AppDialogShell } from "./app-dialog-shell";
 import { showAppToast } from "./app-toast";
+import { cn } from "./cn";
 import { ItemIcon, LocalIcon } from "./local-icon";
 import { ToolButton } from "./tool-button";
 import { useTimeZone, useTranslations } from "@/i18n/react";
@@ -36,6 +37,8 @@ import {
 } from "@/features/file/actions";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
 import { fetchFileNode, fetchFileNodeContent, updateFileNodeContent } from "@/lib/drive-api";
+
+const mediaDetailsPreferenceKey = "icedr.preview.mediaDetailsOpen";
 
 export type DriveFilePreviewDialogProps = {
   item?: DriveItem | null;
@@ -68,9 +71,12 @@ export function DriveFilePreviewDialog({
     itemId: string;
     intent: PreviewIntentResponse | null;
   } | null>(null);
+  const [mediaDetailsOpen, setMediaDetailsOpen] = useState(() => readMediaDetailsPreference());
   const activeItem = item ?? (resolvedItem?.itemId === targetItemId ? resolvedItem.item : null);
   const itemResolved = Boolean(item) || (Boolean(targetItemId) && resolvedItem?.itemId === targetItemId);
   const effectiveWorkspaceId = workspaceId ?? activeItem?.workspaceId ?? undefined;
+  const effectiveOpenWith = openWith ?? (activeItem ? getDefaultFileOpenWith(activeItem) : null);
+  const mediaPreview = isMediaDetailsPreview(activeItem, effectiveOpenWith);
 
   useEffect(() => {
     if (!open || item || !targetItemId) return;
@@ -102,13 +108,19 @@ export function DriveFilePreviewDialog({
     };
   }, [activeItem, open]);
 
+  const updateMediaDetailsOpen = (nextOpen: boolean) => {
+    setMediaDetailsOpen(nextOpen);
+    writeMediaDetailsPreference(nextOpen);
+  };
+
   const previewIntent =
     resolvedPreviewIntent && resolvedPreviewIntent.itemId === activeItem?.id ? resolvedPreviewIntent.intent : null;
   const sizeLabel = activeItem ? formatFileSize(sumDriveItemSizes([activeItem], [activeItem]), locale) : "--";
 
   return (
     <AppDialogShell
-      className="icedr-file-preview-dialog"
+      className={cn("icedr-file-preview-dialog", mediaPreview && "icedr-file-preview-dialog-media")}
+      containerClassName={mediaPreview ? "icedr-dialog-container-media" : undefined}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose();
       }}
@@ -117,55 +129,57 @@ export function DriveFilePreviewDialog({
       scroll="inside"
       size="full"
       style={{
-        "--file-preview-dialog-height": "min(800px, calc(100dvh - 24px))",
-        "--file-preview-dialog-width": "min(1120px, calc(100vw - 24px))",
+        "--file-preview-dialog-height": mediaPreview ? "100dvh" : "min(820px, calc(100dvh - 48px))",
+        "--file-preview-dialog-width": mediaPreview ? "100vw" : "min(1160px, calc(100vw - 48px))",
       } as CSSProperties}
     >
       <div className="icedr-file-preview-frame">
-        <header
-          className="icedr-r-padding-inline"
-          style={{
-            alignItems: "center",
-            borderBottom: `1px solid ${palette.hairline}`,
-            display: "flex",
-            flexShrink: 0,
-            gap: "12px",
-            justifyContent: "space-between",
-            minHeight: "58px",
-            "--r-padding-inline-base": "12px",
-            "--r-padding-inline-md": "16px",
-          } as CSSProperties}
-        >
-          <div style={{ alignItems: "center", display: "flex", gap: "12px", minWidth: "0px" }}>
-            {activeItem ? (
-              <ItemIcon item={activeItem} palette={palette} size={22} />
-            ) : (
-              <LocalIcon name="visible" size={22} color={palette.primaryHover} />
-            )}
-            <div style={{ minWidth: "0px" }}>
-              <span
-                className="icedr-truncate"
-                style={{ color: palette.ink, fontSize: "14px", fontWeight: 720, lineHeight: 1.35 }}
-              >
-                {activeItem?.name ?? t(itemResolved ? "preview.missing" : "preview.title")}
-              </span>
-              <span
-                className="icedr-truncate"
-                style={{ color: palette.subtle, fontSize: "12px", lineHeight: 1.35 }}
-              >
-                {activeItem ? sizeLabel : itemResolved ? t("preview.missingHint") : t("app.loading")}
-              </span>
+        {!mediaPreview ? (
+          <header
+            className="icedr-r-padding-inline"
+            style={{
+              alignItems: "center",
+              borderBottom: `1px solid ${palette.hairline}`,
+              display: "flex",
+              flexShrink: 0,
+              gap: "12px",
+              justifyContent: "space-between",
+              minHeight: "58px",
+              "--r-padding-inline-base": "12px",
+              "--r-padding-inline-md": "16px",
+            } as CSSProperties}
+          >
+            <div style={{ alignItems: "center", display: "flex", gap: "12px", minWidth: "0px" }}>
+              {activeItem ? (
+                <ItemIcon item={activeItem} palette={palette} size={22} />
+              ) : (
+                <LocalIcon name="visible" size={22} color={palette.primaryHover} />
+              )}
+              <div style={{ minWidth: "0px" }}>
+                <span
+                  className="icedr-truncate"
+                  style={{ color: palette.ink, fontSize: "14px", fontWeight: 720, lineHeight: 1.35 }}
+                >
+                  {activeItem?.name ?? t(itemResolved ? "preview.missing" : "preview.title")}
+                </span>
+                <span
+                  className="icedr-truncate"
+                  style={{ color: palette.subtle, fontSize: "12px", lineHeight: 1.35 }}
+                >
+                  {activeItem ? sizeLabel : itemResolved ? t("preview.missingHint") : t("app.loading")}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div style={{ alignItems: "center", display: "flex", flexShrink: 0, gap: "4px" }}>
-            <ToolButton label={t("app.close")} palette={palette} onClick={onClose}>
-              <LocalIcon name="cross" size={17} />
-            </ToolButton>
-          </div>
-        </header>
+            <div style={{ alignItems: "center", display: "flex", flexShrink: 0, gap: "4px" }}>
+              <ToolButton label={t("app.close")} palette={palette} onClick={onClose}>
+                <LocalIcon name="cross" size={17} />
+              </ToolButton>
+            </div>
+          </header>
+        ) : null}
 
-        <div className={isMediaDetailsPreview(activeItem, openWith ?? null) ? "icedr-file-preview-body icedr-file-preview-body-media" : "icedr-file-preview-body"}>
+        <div className={cn("icedr-file-preview-body", mediaPreview && "icedr-file-preview-body-media")}>
           <div className="icedr-file-preview-stage">
             {activeItem ? (
               <DriveFilePreviewContent
@@ -173,8 +187,12 @@ export function DriveFilePreviewDialog({
                 item={activeItem}
                 locale={locale}
                 onSaved={onSaved}
+                onClose={onClose}
+                onMediaDetailsClose={() => updateMediaDetailsOpen(false)}
+                onMediaDetailsOpen={() => updateMediaDetailsOpen(true)}
                 openWith={openWith ?? null}
                 palette={palette}
+                mediaDetailsOpen={mediaDetailsOpen}
                 previewIntent={previewIntent}
                 timeZone={timeZone}
                 workspaceId={effectiveWorkspaceId ?? null}
@@ -196,9 +214,23 @@ export function DriveFilePreviewDialog({
   );
 }
 
+function readMediaDetailsPreference() {
+  if (typeof window === "undefined") return true;
+  return window.localStorage.getItem(mediaDetailsPreferenceKey) !== "false";
+}
+
+function writeMediaDetailsPreference(open: boolean) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(mediaDetailsPreferenceKey, open ? "true" : "false");
+}
+
 function DriveFilePreviewContent({
   item,
   locale,
+  mediaDetailsOpen,
+  onClose,
+  onMediaDetailsClose,
+  onMediaDetailsOpen,
   onSaved,
   openWith: requestedOpenWith,
   palette,
@@ -208,6 +240,10 @@ function DriveFilePreviewContent({
 }: {
   item: DriveItem;
   locale: Locale;
+  mediaDetailsOpen: boolean;
+  onClose: () => void;
+  onMediaDetailsClose: () => void;
+  onMediaDetailsOpen: () => void;
   onSaved?: () => void;
   openWith: FileOpenWithApp | null;
   palette: Palette;
@@ -374,16 +410,29 @@ function DriveFilePreviewContent({
   return (
     <div style={{ display: "flex", flex: "1 1 auto", minHeight: "0px", width: "100%" }}>
       {showMetadata ? (
-        <div className="icedr-preview-media-layout">
-          <div className="icedr-preview-media-stage">{previewNode}</div>
-          <PreviewMetadataPanel
-            item={item}
-            locale={locale}
-            mediaMetadata={mediaMetadata}
-            openWith={openWith}
-            palette={palette}
-            timeZone={timeZone}
-          />
+        <div className="icedr-preview-media-layout" data-details-open={mediaDetailsOpen ? "true" : "false"}>
+          <div className="icedr-preview-media-stage">
+            <div className="icedr-preview-media-toolbar">
+              <ToolButton active={mediaDetailsOpen} className="icedr-preview-media-action" label={t("app.details")} palette={palette} onClick={onMediaDetailsOpen} tooltipPlacement="bottom end">
+                <LocalIcon name="info" size={17} />
+              </ToolButton>
+              <ToolButton className="icedr-preview-media-action" label={t("app.close")} palette={palette} onClick={onClose} tooltipPlacement="bottom end">
+                <LocalIcon name="cross" size={17} />
+              </ToolButton>
+            </div>
+            {previewNode}
+          </div>
+          {mediaDetailsOpen ? (
+            <PreviewMetadataPanel
+              item={item}
+              locale={locale}
+              mediaMetadata={mediaMetadata}
+              onClose={onMediaDetailsClose}
+              openWith={openWith}
+              palette={palette}
+              timeZone={timeZone}
+            />
+          ) : null}
         </div>
       ) : (
         previewNode
@@ -455,6 +504,7 @@ function PreviewMetadataPanel({
   item,
   locale,
   mediaMetadata,
+  onClose,
   openWith,
   palette,
   timeZone,
@@ -462,6 +512,7 @@ function PreviewMetadataPanel({
   item: DriveItem;
   locale: Locale;
   mediaMetadata: PreviewMediaMetadata;
+  onClose: () => void;
   openWith: FileOpenWithApp;
   palette: Palette;
   timeZone?: string;
@@ -487,8 +538,13 @@ function PreviewMetadataPanel({
   return (
     <aside className="icedr-preview-metadata-panel">
       <div className="icedr-preview-metadata-heading">
-        <ItemIcon item={item} palette={palette} size={20} />
-        <span>{t("app.details")}</span>
+        <div className="icedr-preview-metadata-title">
+          <ItemIcon item={item} palette={palette} size={20} />
+          <span>{t("app.details")}</span>
+        </div>
+        <ToolButton label={t("app.close")} palette={palette} onClick={onClose} visual="surface">
+          <LocalIcon name="cross" size={16} />
+        </ToolButton>
       </div>
       <div className="icedr-preview-metadata-list">
         {rows.map((row) => (
@@ -716,12 +772,18 @@ function TextPreviewEditor({
     <div
       className="icedr-preview-editor-grid"
       style={{
+        "--preview-editor-bg": palette.surface1,
+        "--preview-editor-border": palette.hairline,
         "--preview-editor-columns": isMarkdown ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)",
+        "--preview-editor-focus": palette.focusRing,
+        "--preview-editor-muted": palette.subtle,
+        "--preview-editor-panel": palette.surface2,
+        "--preview-editor-text": palette.ink,
       } as CSSProperties}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px", minWidth: "0px" }}>
-        <div style={{ alignItems: "center", display: "flex", gap: "8px", justifyContent: "space-between" }}>
-          <span style={{ color: palette.subtle, fontSize: "12px", fontWeight: 720 }}>
+      <div className="icedr-preview-editor-pane">
+        <div className="icedr-preview-editor-toolbar">
+          <span className="icedr-preview-editor-title">
             {isMarkdown ? t("preview.editor") : t("preview.plainText")}
           </span>
           <ToolButton label={t("preview.save")} palette={palette} onClick={onSave}>
@@ -730,23 +792,9 @@ function TextPreviewEditor({
         </div>
         <textarea
           aria-label={t("preview.editor")}
+          className="icedr-preview-editor-textarea"
           onChange={(event) => onChange(event.target.value)}
           spellCheck={false}
-          style={{
-            background: palette.surface2,
-            border: `1px solid ${palette.hairline}`,
-            borderRadius: "8px",
-            color: palette.ink,
-            flex: "1 1 auto",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-            fontSize: "13px",
-            lineHeight: 1.6,
-            minHeight: "370px",
-            outline: "none",
-            padding: "12px",
-            resize: "vertical",
-            width: "100%",
-          }}
           value={loading ? "" : content}
         />
       </div>
@@ -758,17 +806,12 @@ function TextPreviewEditor({
 function MarkdownPreview({ html, palette }: { html: string; palette: Palette }) {
   return (
     <div
+      className="icedr-preview-markdown-pane"
       style={{
-        background: palette.surface2,
-        border: `1px solid ${palette.hairline}`,
-        borderRadius: "8px",
-        color: palette.ink,
-        lineHeight: 1.7,
-        minHeight: "420px",
-        minWidth: "0px",
-        overflow: "auto",
-        padding: "18px",
-      }}
+        "--preview-editor-border": palette.hairline,
+        "--preview-editor-panel": palette.surface2,
+        "--preview-editor-text": palette.ink,
+      } as CSSProperties}
     >
       <div className="icedr-preview-markdown" dangerouslySetInnerHTML={{ __html: html || "" }} />
     </div>

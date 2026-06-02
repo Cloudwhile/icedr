@@ -302,7 +302,7 @@ export type TransferResponse = {
   name: string;
   type: "upload" | "download";
   progress: number;
-  status: "running" | "completed" | "failed";
+  status: "running" | "paused" | "completed" | "failed" | "canceled";
   createdAt: string;
   updatedAt: string;
 };
@@ -816,5 +816,11 @@ export function updateTransfer(id: string, input: { status: TransferResponse["st
   return requestDriveApi<TransferResponse>(`/transfers/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteTransfer(id: string) {
+  return requestDriveApi<{ ok: boolean }>(`/transfers/${encodeURIComponent(id)}`, {
+    method: "DELETE",
   });
 }

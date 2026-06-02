@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/react";
 import type { ReactNode } from "react";
-import { AppTooltip } from "./app-tooltip";
+import { AppTooltip, type AppTooltipPlacement } from "./app-tooltip";
 import { cn } from "./cn";
 import type { Palette } from "@/features/file/model";
 
@@ -19,6 +19,7 @@ export type ToolButtonProps = {
   palette: Palette;
   size?: "sm" | "md" | "lg";
   tone?: "neutral" | "accent" | "danger" | "success";
+  tooltipPlacement?: AppTooltipPlacement;
   type?: "button" | "submit" | "reset";
   visual?: "quiet" | "surface";
 };
@@ -36,6 +37,7 @@ export function ToolButton({
   palette,
   size = "md",
   tone = "neutral",
+  tooltipPlacement,
   type = "button",
   visual = "quiet",
 }: ToolButtonProps) {
@@ -44,7 +46,7 @@ export function ToolButton({
   const surfaceBg = palette.canvas === "#010102" ? palette.surface1 : "transparent";
 
   return (
-    <AppTooltip content={label} palette={palette}>
+    <AppTooltip content={label} palette={palette} placement={tooltipPlacement}>
       <Button
         aria-label={label}
         className={cn("icedr-tool-button", `icedr-tool-button-${size}`, `icedr-tool-button-${visual}`, active && "is-active", className)}

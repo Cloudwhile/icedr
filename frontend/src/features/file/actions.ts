@@ -1,5 +1,5 @@
 import type { DriveItem } from "@/features/file/model";
-import { buildApiUrl, createFileDownloadIntent, getApiBaseUrl, updateTransfer } from "@/lib/drive-api";
+import { buildApiUrl, createFileDownloadIntent, getApiBaseUrl, updateTransfer, type FileNodeResponse } from "@/lib/drive-api";
 
 type DownloadIntentResponse = {
   downloadId: string;
@@ -13,11 +13,32 @@ type DownloadIntentResponse = {
 type UploadIntentResponse = {
   objectKey: string;
   transferId: string;
-  uploadMethod: "presigned-url" | "backend-local";
+  uploadMethod: "presigned-url" | "backend-local" | "chunked" | "object-multipart";
   uploadUrl: string;
   headers: Record<string, string>;
   expiresInSeconds: number;
   expiresAt: string;
+  sessionId?: string;
+  chunkSizeBytes?: number;
+  uploadedBytes?: number;
+  uploadedPartIndexes?: number[];
+};
+
+type UploadChunkResponse = {
+  sessionId: string;
+  partIndex: number;
+  uploadedBytes: number;
+  uploadedPartIndexes: number[];
+  progress: number;
+};
+
+type UploadPartIntentResponse = {
+  expiresAt: string;
+  expiresInSeconds: number;
+  headers: Record<string, string>;
+  partIndex: number;
+  sessionId: string;
+  uploadUrl: string;
 };
 
 export type UploadDriveFileProgress = {
@@ -26,11 +47,39 @@ export type UploadDriveFileProgress = {
   progress: number;
   remainingSeconds: number | null;
   speedBytesPerSecond: number | null;
-  status: "running" | "completed" | "failed";
+  status: "running" | "paused" | "completed" | "failed" | "canceled";
   totalBytes: number;
   transferId: string;
   workspaceId: string;
 };
+
+export type UploadDriveFileTaskStatus = "idle" | UploadDriveFileProgress["status"];
+
+export type UploadDriveFileTaskSnapshot = {
+  loadedBytes: number;
+  progress: number;
+  status: UploadDriveFileTaskStatus;
+  transferId: string | null;
+};
+
+export type UploadDriveFileTask = {
+  cancel: () => void;
+  getState: () => UploadDriveFileTaskSnapshot;
+  pause: () => void;
+  resume: () => Promise<FileNodeResponse>;
+  start: () => Promise<FileNodeResponse>;
+};
+
+export class UploadDriveFileControlError extends Error {
+  constructor(readonly control: "paused" | "canceled") {
+    super(control === "paused" ? "Upload paused" : "Upload canceled");
+    this.name = "UploadDriveFileControlError";
+  }
+}
+
+export function isUploadDriveFileControlError(error: unknown) {
+  return error instanceof UploadDriveFileControlError;
+}
 
 export type PreviewIntentResponse = {
   previewId: string;
@@ -93,27 +142,7 @@ export async function downloadSharedDriveItem(token: string, item: DriveItem, ac
   if (!intentResponse.ok) throw new Error("Download intent failed");
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
-  const downloadUrl = buildApiUrl(intent.downloadUrl);
-  if (intent.method === "presigned-url") {
-    openDownloadUrl(downloadUrl);
-    return;
-  }
-
-  const downloadResponse = await fetch(downloadUrl);
-  if (!downloadResponse.ok) throw new Error("Download failed");
-
-  const blob = await downloadResponse.blob();
-  const filename = intent.filename.endsWith(".txt") ? intent.filename : `${intent.filename}.txt`;
-
-  if (typeof document === "undefined" || typeof URL === "undefined") return;
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  openDownloadUrl(buildApiUrl(intent.downloadUrl));
 }
 
 export async function createSharedDriveItemBlobUrl(token: string, item: DriveItem, accessSessionId?: string) {
@@ -136,27 +165,7 @@ export async function createSharedDriveItemBlobUrl(token: string, item: DriveIte
 
 export async function downloadWorkspaceDriveItem(item: DriveItem, workspaceId?: string) {
   const intent = await createFileDownloadIntent(item.id, workspaceId);
-  const downloadUrl = buildApiUrl(intent.downloadUrl);
-  if (intent.method === "presigned-url") {
-    openDownloadUrl(downloadUrl);
-    return;
-  }
-
-  const downloadResponse = await fetch(downloadUrl);
-  if (!downloadResponse.ok) throw new Error("Download failed");
-
-  const blob = await downloadResponse.blob();
-  const filename = intent.filename.endsWith(".txt") ? intent.filename : `${intent.filename}.txt`;
-
-  if (typeof document === "undefined" || typeof URL === "undefined") return;
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  openDownloadUrl(buildApiUrl(intent.downloadUrl));
 }
 
 export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspaceId?: string) {
@@ -175,7 +184,7 @@ export async function createWorkspaceDriveItemSourceUrl(item: DriveItem, workspa
   return buildApiUrl(intent.downloadUrl);
 }
 
-export async function uploadDriveFile({
+export function createUploadDriveFileTask({
   file,
   onProgress,
   parentNodeId,
@@ -187,50 +196,59 @@ export async function uploadDriveFile({
   parentNodeId?: string | null;
   workspaceActor?: string;
   workspaceId: string;
-}) {
-  const intentResponse = await fetch(`${getApiBaseUrl()}/file-nodes/upload-intents`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      workspaceId,
-      fileName: file.name,
-      parentNodeId: parentNodeId ?? undefined,
-      mimeType: file.type || "application/octet-stream",
-    }),
-  });
-  if (!intentResponse.ok) throw new Error("Upload intent failed");
-  const intent = (await intentResponse.json()) as UploadIntentResponse;
+}): UploadDriveFileTask {
+  let activeCompletionAbort: AbortController | null = null;
+  let activePromise: Promise<FileNodeResponse> | null = null;
+  let activeRequest: XMLHttpRequest | null = null;
+  let controlReason: "paused" | "canceled" | null = null;
+  let intent: UploadIntentResponse | null = null;
+  let lastLoadedBytes = 0;
   let lastTransferSyncAt = 0;
   let lastTransferSyncProgress = 5;
-  const uploadStartedAt = performance.now();
+  let lastProgress = 5;
+  let status: UploadDriveFileTaskStatus = "idle";
+  let uploadedPartIndexes = new Set<number>();
+  let uploadStartedAt = getMonotonicNow();
+  const resumeKey = createUploadResumeKey({ file, parentNodeId, workspaceId });
+
+  const normalizeProgress = (progress: number) => Math.min(100, Math.max(0, Math.round(progress * 10) / 10));
+
+  const getUploadProgress = (loadedBytes: number) => {
+    if (file.size === 0) return 95;
+    return 5 + Math.min(1, loadedBytes / file.size) * 90;
+  };
 
   const emitProgress = (
     loadedBytes: number,
     progress: number,
-    status: UploadDriveFileProgress["status"] = "running",
+    nextStatus: UploadDriveFileProgress["status"] = "running",
   ) => {
-    const elapsedSeconds = Math.max((performance.now() - uploadStartedAt) / 1000, 0.001);
-    const speedBytesPerSecond = loadedBytes > 0 ? loadedBytes / elapsedSeconds : null;
+    if (!intent) return;
+    const elapsedSeconds = Math.max((getMonotonicNow() - uploadStartedAt) / 1000, 0.001);
+    const speedBytesPerSecond = nextStatus === "running" && loadedBytes > 0 ? loadedBytes / elapsedSeconds : null;
     const remainingSeconds =
-      status === "running" && speedBytesPerSecond && speedBytesPerSecond > 0
+      nextStatus === "running" && speedBytesPerSecond && speedBytesPerSecond > 0
         ? Math.max(0, (file.size - loadedBytes) / speedBytesPerSecond)
         : null;
-    const normalizedProgress = Math.min(100, Math.max(0, Math.round(progress)));
+    const normalizedProgress = normalizeProgress(progress);
+    lastLoadedBytes = loadedBytes;
+    lastProgress = normalizedProgress;
+    status = nextStatus;
     onProgress?.({
       fileName: file.name,
       loadedBytes,
       progress: normalizedProgress,
       remainingSeconds,
       speedBytesPerSecond,
-      status,
+      status: nextStatus,
       totalBytes: file.size,
       transferId: intent.transferId,
       workspaceId,
     });
 
-    const now = performance.now();
+    const now = getMonotonicNow();
     if (
-      status === "running" &&
+      nextStatus === "running" &&
       (now - lastTransferSyncAt > 900 || Math.abs(normalizedProgress - lastTransferSyncProgress) >= 5)
     ) {
       lastTransferSyncAt = now;
@@ -239,81 +257,497 @@ export async function uploadDriveFile({
     }
   };
 
-  emitProgress(0, 5);
+  const syncTransfer = (nextStatus: UploadDriveFileProgress["status"], progress = lastProgress) => {
+    if (!intent) return Promise.resolve();
+    return updateTransfer(intent.transferId, { status: nextStatus, progress }).catch(() => undefined);
+  };
 
-  try {
-    await uploadObjectWithProgress({
-      file,
-      headers: intent.headers,
-      onProgress: (loadedBytes, totalBytes) => {
-        const uploadRatio = totalBytes > 0 ? loadedBytes / totalBytes : 0;
-        emitProgress(loadedBytes, 5 + uploadRatio * 90);
-      },
-      url: intent.uploadMethod === "backend-local" ? buildApiUrl(intent.uploadUrl) : intent.uploadUrl,
+  const createIntent = async () => {
+    if (intent && (intent.uploadMethod === "chunked" || intent.uploadMethod === "object-multipart" || !isUploadIntentExpired(intent))) return intent;
+    if (intent) {
+      emitProgress(lastLoadedBytes, lastProgress, "failed");
+      await syncTransfer("failed", lastProgress);
+    }
+
+    const intentResponse = await fetch(`${getApiBaseUrl()}/file-nodes/upload-intents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        parentNodeId: parentNodeId ?? undefined,
+        mimeType: file.type || "application/octet-stream",
+        resumeKey,
+      }),
     });
-    emitProgress(file.size, 96);
-  } catch {
-    emitProgress(0, 0, "failed");
-    await updateTransfer(intent.transferId, { status: "failed", progress: 0 }).catch(() => undefined);
-    throw new Error("Object upload failed");
+    if (!intentResponse.ok) throw new Error("Upload intent failed");
+
+    intent = (await intentResponse.json()) as UploadIntentResponse;
+    uploadedPartIndexes = new Set(intent.uploadedPartIndexes ?? []);
+    lastTransferSyncAt = 0;
+    lastTransferSyncProgress = 5;
+    lastLoadedBytes = Math.min(file.size, intent.uploadedBytes ?? getUploadedPartBytes(uploadedPartIndexes, file, intent.chunkSizeBytes));
+    lastProgress = normalizeProgress(getUploadProgress(lastLoadedBytes));
+    uploadStartedAt = getMonotonicNow();
+    emitProgress(lastLoadedBytes, lastProgress);
+    return intent;
+  };
+
+  const throwIfControlled = () => {
+    if (controlReason === "paused" || status === "paused") throw new UploadDriveFileControlError("paused");
+    if (controlReason === "canceled" || status === "canceled") throw new UploadDriveFileControlError("canceled");
+  };
+
+  const executeUpload = async (): Promise<FileNodeResponse> => {
+    status = "running";
+    controlReason = null;
+    const currentIntent = await createIntent();
+    throwIfControlled();
+
+    try {
+      if (currentIntent.uploadMethod === "chunked" || currentIntent.uploadMethod === "object-multipart") {
+        await uploadChunks(currentIntent);
+      } else {
+        await uploadObjectWithProgress({
+          file,
+          headers: currentIntent.headers,
+          onProgress: (loadedBytes, totalBytes) => {
+            const uploadRatio = totalBytes > 0 ? loadedBytes / totalBytes : 0;
+            emitProgress(loadedBytes, 5 + uploadRatio * 90);
+          },
+          onRequest: (request) => {
+            activeRequest = request;
+          },
+          url: currentIntent.uploadMethod === "backend-local" ? buildApiUrl(currentIntent.uploadUrl) : currentIntent.uploadUrl,
+        });
+      }
+      activeRequest = null;
+      emitProgress(file.size, 96);
+      throwIfControlled();
+    } catch (error) {
+      activeRequest = null;
+      if (controlReason === "paused" || controlReason === "canceled") {
+        const controlledStatus = controlReason;
+        emitProgress(lastLoadedBytes, lastProgress, controlledStatus);
+        await syncTransfer(controlledStatus, lastProgress);
+        throw new UploadDriveFileControlError(controlledStatus);
+      }
+      emitProgress(lastLoadedBytes, lastProgress, "failed");
+      await updateTransfer(currentIntent.transferId, { status: "failed", progress: lastProgress }).catch(() => undefined);
+      throw error instanceof Error ? error : new Error("Object upload failed");
+    }
+
+    let completionResponse: Response;
+    try {
+      activeCompletionAbort = new AbortController();
+      completionResponse = await fetch(`${getApiBaseUrl()}/file-nodes/upload-completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(workspaceActor ? { "X-Workspace-Actor": workspaceActor } : {}),
+        },
+        signal: activeCompletionAbort.signal,
+        body: JSON.stringify({
+          workspaceId,
+          fileName: file.name,
+          objectKey: currentIntent.objectKey,
+          sizeBytes: file.size,
+          parentNodeId: parentNodeId ?? undefined,
+          mimeType: file.type || "application/octet-stream",
+          transferId: currentIntent.transferId,
+          uploadSessionId: currentIntent.sessionId,
+        }),
+      });
+    } catch (error) {
+      activeCompletionAbort = null;
+      if (controlReason === "paused" || controlReason === "canceled") {
+        throw new UploadDriveFileControlError(controlReason);
+      }
+      emitProgress(file.size, lastProgress, "failed");
+      await updateTransfer(currentIntent.transferId, { status: "failed", progress: lastProgress }).catch(() => undefined);
+      throw error;
+    }
+    activeCompletionAbort = null;
+    throwIfControlled();
+
+    if (!completionResponse.ok) {
+      emitProgress(file.size, 96, "failed");
+      await updateTransfer(currentIntent.transferId, { status: "failed", progress: 96 }).catch(() => undefined);
+      throw new Error("Upload completion failed");
+    }
+    emitProgress(file.size, 100, "completed");
+    status = "completed";
+    return (await completionResponse.json()) as FileNodeResponse;
+  };
+
+  const start = () => {
+    if (activePromise && status === "running") return activePromise;
+    const promise = executeUpload();
+    activePromise = promise;
+    void promise.finally(() => {
+      if (activePromise === promise) activePromise = null;
+    }).catch(() => undefined);
+    return promise;
+  };
+
+  return {
+    cancel: () => {
+      if (status === "completed" || status === "canceled") return;
+      controlReason = "canceled";
+      status = "canceled";
+      activeRequest?.abort();
+      activeCompletionAbort?.abort();
+      emitProgress(lastLoadedBytes, lastProgress, "canceled");
+      void syncTransfer("canceled", lastProgress);
+      if (intent?.sessionId) {
+        void cancelUploadSession(intent.sessionId);
+      }
+    },
+    getState: () => ({
+      loadedBytes: lastLoadedBytes,
+      progress: lastProgress,
+      status,
+      transferId: intent?.transferId ?? null,
+    }),
+    pause: () => {
+      if (status !== "running") return;
+      controlReason = "paused";
+      status = "paused";
+      activeRequest?.abort();
+      activeCompletionAbort?.abort();
+      emitProgress(lastLoadedBytes, lastProgress, "paused");
+      void syncTransfer("paused", lastProgress);
+    },
+    resume: () => {
+      if (status !== "paused") return start();
+      controlReason = null;
+      status = "running";
+      void syncTransfer("running", lastProgress);
+      if (activePromise) {
+        return activePromise.catch(() => undefined).then(() => start());
+      }
+      return start();
+    },
+    start,
+  };
+
+  async function uploadChunks(currentIntent: UploadIntentResponse) {
+    if (!currentIntent.sessionId || !currentIntent.chunkSizeBytes) {
+      throw new Error("Chunk upload intent is incomplete");
+    }
+    const totalParts = file.size === 0 ? 0 : Math.ceil(file.size / currentIntent.chunkSizeBytes);
+    for (let partIndex = 0; partIndex < totalParts; partIndex += 1) {
+      throwIfControlled();
+      if (uploadedPartIndexes.has(partIndex)) continue;
+
+      const startByte = partIndex * currentIntent.chunkSizeBytes;
+      const endByte = Math.min(file.size, startByte + currentIntent.chunkSizeBytes);
+      const chunk = file.slice(startByte, endByte);
+      const completedBefore = getUploadedPartBytes(uploadedPartIndexes, file, currentIntent.chunkSizeBytes);
+      const response =
+        currentIntent.uploadMethod === "object-multipart"
+          ? await uploadObjectMultipartPart({
+              chunk,
+              completedBefore,
+              currentIntent,
+              partIndex,
+            })
+          : await uploadChunkWithProgress({
+              chunk,
+              onProgress: loadedBytes => {
+                const loaded = Math.min(file.size, completedBefore + loadedBytes);
+                emitProgress(loaded, getUploadProgress(loaded));
+              },
+              onRequest: request => {
+                activeRequest = request;
+              },
+              url: buildApiUrl(`${currentIntent.uploadUrl}/${partIndex}`),
+            });
+      uploadedPartIndexes = new Set(response.uploadedPartIndexes);
+      lastLoadedBytes = Math.min(file.size, response.uploadedBytes);
+      emitProgress(lastLoadedBytes, getUploadProgress(lastLoadedBytes));
+    }
   }
 
-  const completionResponse = await fetch(`${getApiBaseUrl()}/file-nodes/upload-completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(workspaceActor ? { "X-Workspace-Actor": workspaceActor } : {}),
-    },
-    body: JSON.stringify({
-      workspaceId,
-      fileName: file.name,
-      objectKey: intent.objectKey,
-      sizeBytes: file.size,
-      parentNodeId: parentNodeId ?? undefined,
-      mimeType: file.type || "application/octet-stream",
-      transferId: intent.transferId,
-    }),
-  });
-  if (!completionResponse.ok) {
-    emitProgress(file.size, 0, "failed");
-    await updateTransfer(intent.transferId, { status: "failed", progress: 0 }).catch(() => undefined);
-    throw new Error("Upload completion failed");
+  async function uploadObjectMultipartPart({
+    chunk,
+    completedBefore,
+    currentIntent,
+    partIndex,
+  }: {
+    chunk: Blob;
+    completedBefore: number;
+    currentIntent: UploadIntentResponse;
+    partIndex: number;
+  }) {
+    if (!currentIntent.sessionId) throw new Error("Chunk upload intent is incomplete");
+    const partIntent = await createUploadPartIntent(currentIntent.sessionId, partIndex);
+    throwIfControlled();
+    const uploaded = await uploadRawChunkWithProgress({
+      chunk,
+      headers: partIntent.headers,
+      onProgress: loadedBytes => {
+        const loaded = Math.min(file.size, completedBefore + loadedBytes);
+        emitProgress(loaded, getUploadProgress(loaded));
+      },
+      onRequest: request => {
+        activeRequest = request;
+      },
+      url: partIntent.uploadUrl,
+    });
+    throwIfControlled();
+    return completeUploadPart(currentIntent.sessionId, partIndex, {
+      eTag: uploaded.eTag ?? undefined,
+      sizeBytes: chunk.size,
+    });
   }
-  emitProgress(file.size, 100, "completed");
-  return completionResponse.json();
+}
+
+export async function uploadDriveFile(input: Parameters<typeof createUploadDriveFileTask>[0]) {
+  return createUploadDriveFileTask(input).start();
 }
 
 function uploadObjectWithProgress({
   file,
   headers,
+  onRequest,
   onProgress,
   url,
 }: {
   file: File;
   headers: Record<string, string>;
+  onRequest?: (request: XMLHttpRequest | null) => void;
   onProgress: (loadedBytes: number, totalBytes: number) => void;
   url: string;
 }) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
+    let settled = false;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (stallTimer) clearTimeout(stallTimer);
+      onRequest?.(null);
+      callback();
+    };
+    const armStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        request.abort();
+        settle(() => reject(new Error("Object upload stalled")));
+      }, 45000);
+    };
+
     request.open("PUT", url);
+    request.timeout = 120000;
     Object.entries(headers).forEach(([key, value]) => request.setRequestHeader(key, value));
     request.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
+      armStallTimer();
       onProgress(event.loaded, event.total || file.size);
     };
     request.onload = () => {
       if (request.status >= 200 && request.status < 300) {
         onProgress(file.size, file.size);
-        resolve();
+        settle(resolve);
         return;
       }
-      reject(new Error("Object upload failed"));
+      settle(() => reject(new Error("Object upload failed")));
     };
-    request.onerror = () => reject(new Error("Object upload failed"));
-    request.onabort = () => reject(new Error("Object upload aborted"));
+    request.onerror = () => settle(() => reject(new Error("Object upload failed")));
+    request.onabort = () => settle(() => reject(new Error("Object upload aborted")));
+    request.ontimeout = () => settle(() => reject(new Error("Object upload timed out")));
+    onRequest?.(request);
+    armStallTimer();
     request.send(file);
   });
+}
+
+function uploadChunkWithProgress({
+  chunk,
+  onRequest,
+  onProgress,
+  url,
+}: {
+  chunk: Blob;
+  onRequest?: (request: XMLHttpRequest | null) => void;
+  onProgress: (loadedBytes: number) => void;
+  url: string;
+}) {
+  return new Promise<UploadChunkResponse>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    let settled = false;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (stallTimer) clearTimeout(stallTimer);
+      onRequest?.(null);
+      callback();
+    };
+    const armStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        request.abort();
+        settle(() => reject(new Error("Upload chunk stalled")));
+      }, 45000);
+    };
+
+    request.open("PUT", url);
+    request.timeout = 120000;
+    request.setRequestHeader("Content-Type", "application/octet-stream");
+    request.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      armStallTimer();
+      onProgress(event.loaded);
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(chunk.size);
+        try {
+          const response = JSON.parse(request.responseText) as UploadChunkResponse;
+          settle(() => resolve(response));
+        } catch {
+          settle(() => reject(new Error("Upload chunk response failed")));
+        }
+        return;
+      }
+      settle(() => reject(new Error("Upload chunk failed")));
+    };
+    request.onerror = () => settle(() => reject(new Error("Upload chunk failed")));
+    request.onabort = () => settle(() => reject(new Error("Upload chunk aborted")));
+    request.ontimeout = () => settle(() => reject(new Error("Upload chunk timed out")));
+    onRequest?.(request);
+    armStallTimer();
+    request.send(chunk);
+  });
+}
+
+function uploadRawChunkWithProgress({
+  chunk,
+  headers,
+  onRequest,
+  onProgress,
+  url,
+}: {
+  chunk: Blob;
+  headers: Record<string, string>;
+  onRequest?: (request: XMLHttpRequest | null) => void;
+  onProgress: (loadedBytes: number) => void;
+  url: string;
+}) {
+  return new Promise<{ eTag: string | null }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    let settled = false;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (stallTimer) clearTimeout(stallTimer);
+      onRequest?.(null);
+      callback();
+    };
+    const armStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        request.abort();
+        settle(() => reject(new Error("Upload chunk stalled")));
+      }, 45000);
+    };
+
+    request.open("PUT", url);
+    request.timeout = 120000;
+    Object.entries(headers).forEach(([key, value]) => request.setRequestHeader(key, value));
+    request.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      armStallTimer();
+      onProgress(event.loaded);
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(chunk.size);
+        settle(() => resolve({ eTag: request.getResponseHeader("ETag") }));
+        return;
+      }
+      settle(() => reject(new Error("Upload chunk failed")));
+    };
+    request.onerror = () => settle(() => reject(new Error("Upload chunk failed")));
+    request.onabort = () => settle(() => reject(new Error("Upload chunk aborted")));
+    request.ontimeout = () => settle(() => reject(new Error("Upload chunk timed out")));
+    onRequest?.(request);
+    armStallTimer();
+    request.send(chunk);
+  });
+}
+
+function createUploadResumeKey({
+  file,
+  parentNodeId,
+  workspaceId,
+}: {
+  file: File;
+  parentNodeId?: string | null;
+  workspaceId: string;
+}) {
+  return [
+    "drive-upload-v1",
+    workspaceId,
+    parentNodeId ?? "root",
+    file.name,
+    file.size,
+    file.lastModified,
+    file.type || "application/octet-stream",
+  ].join("|");
+}
+
+function getUploadedPartBytes(partIndexes: Set<number>, file: File, chunkSizeBytes?: number) {
+  if (!chunkSizeBytes || chunkSizeBytes <= 0) return 0;
+  let uploadedBytes = 0;
+  partIndexes.forEach(partIndex => {
+    const startByte = partIndex * chunkSizeBytes;
+    const endByte = Math.min(file.size, startByte + chunkSizeBytes);
+    uploadedBytes += Math.max(0, endByte - startByte);
+  });
+  return uploadedBytes;
+}
+
+function cancelUploadSession(sessionId: string) {
+  return fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/cancel`, {
+    method: "POST",
+  }).catch(() => undefined);
+}
+
+async function createUploadPartIntent(sessionId: string, partIndex: number) {
+  const response = await fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/upload-intents`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error("Upload part intent failed");
+  return (await response.json()) as UploadPartIntentResponse;
+}
+
+async function completeUploadPart(
+  sessionId: string,
+  partIndex: number,
+  input: { eTag?: string; sizeBytes: number },
+) {
+  const response = await fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Upload part completion failed");
+  return (await response.json()) as UploadChunkResponse;
+}
+
+function getMonotonicNow() {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
+}
+
+function isUploadIntentExpired(intent: UploadIntentResponse) {
+  const expiresAt = new Date(intent.expiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt - Date.now() < 30000;
 }
 
 export async function createFilePreviewIntent(itemId: DriveItem["id"]) {

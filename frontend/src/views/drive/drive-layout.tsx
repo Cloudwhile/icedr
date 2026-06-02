@@ -60,7 +60,7 @@ export function AppHeader({
     <header className="drive-header">
       <div className="drive-header-brand">
         <div className="drive-mobile-only">
-          <ToolButton label={t("app.menu")} palette={palette} onClick={openSidebar}>
+          <ToolButton label={t("app.menu")} palette={palette} tooltipPlacement="bottom start" onClick={openSidebar}>
             <LocalIcon name="menu" size={17} />
           </ToolButton>
         </div>
@@ -89,11 +89,11 @@ export function AppHeader({
             variant="secondary"
           />
           {query ? (
-            <ToolButton label={t("app.searchClear")} palette={palette} size="sm" onClick={() => setQuery("")}>
+            <ToolButton label={t("app.searchClear")} palette={palette} size="sm" tooltipPlacement="bottom" onClick={() => setQuery("")}>
               <LocalIcon name="cross" size={15} />
             </ToolButton>
           ) : (
-            <ToolButton label={t("app.filter")} active={filtersActive} palette={palette} size="sm" onClick={onToggleFilters}>
+            <ToolButton label={t("app.filter")} active={filtersActive} palette={palette} size="sm" tooltipPlacement="bottom" onClick={onToggleFilters}>
               <LocalIcon name="slider" size={15} />
             </ToolButton>
           )}
@@ -102,10 +102,10 @@ export function AppHeader({
 
       <div className="drive-header-actions">
         <div className="drive-header-secondary">
-          <ToolButton label={t("app.refresh")} palette={palette} onClick={onRefresh}>
+          <ToolButton label={t("app.refresh")} palette={palette} tooltipPlacement="bottom" onClick={onRefresh}>
             <LocalIcon name="refresh" size={17} />
           </ToolButton>
-          <ToolButton label={t("app.activity")} palette={palette} onClick={onActivity}>
+          <ToolButton label={t("app.activity")} palette={palette} tooltipPlacement="bottom" onClick={onActivity}>
             <LocalIcon name="notification" size={17} />
           </ToolButton>
         </div>

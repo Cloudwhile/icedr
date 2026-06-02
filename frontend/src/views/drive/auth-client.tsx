@@ -1,19 +1,20 @@
 ﻿"use client";
 
-import { MotionPresence, useMotionReveal, useMotionStagger } from "@/components/ui/motion";
+import { MotionLayoutGroup, MotionPresence, useMotionReveal, useMotionStagger } from "@/components/ui/motion";
 import Link from "@/compat/link";
 import { usePathname, useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { clearStoredAuthToken, confirmPasswordReset, DriveApiError, exchangeOAuthCode, fetchAuthSettings, fetchCurrentUser, fetchPublicSiteSettings, fetchSetupStatus, loginLocalUser, logoutLocalUser, registerLocalUser, requestPasswordReset, startOAuthLogin, createPasskeyAuthenticationOptions, verifyPasskeyAuthentication, verifyPasswordReset, setStoredAuthToken, type AuthUser, type AuthSettings, type PublicSiteSettings } from "@/lib/drive-api";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
+import { normalizeAuthCodeValue } from "@/components/auth/auth-code-utils";
+import { AuthCodePanel, AuthCurrentUserRow, AuthFormTitleBlock, AuthPasswordStrengthHint } from "@/components/auth/auth-page-parts";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LegalConsentDialog } from "./legal-consent-dialog";
 import { LegalFooter } from "./legal-footer";
-import { LocalIcon, Surface, ToolButton } from "./drive-primitives";
-import { Input } from "@heroui/react";
+import { Surface } from "./drive-primitives";
 import { AppImage } from "@/components/ui/app-image";
 export function AuthGate({
   children
@@ -93,14 +94,16 @@ function AuthPage({
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
   const oauthCode = searchParams.get("oauthCode") || "";
+  const queryEmail = searchParams.get("email") || "";
+  const queryResetCode = normalizeAuthCodeValue(searchParams.get("code") || searchParams.get("token") || "", passwordResetCodeLength);
   const pageRef = useMotionReveal<HTMLDivElement>("fade", []);
-  const panelRef = useMotionReveal<HTMLDivElement>("panel-left", [mode, themeMode, locale]);
-  const formRef = useMotionReveal<HTMLDivElement>("panel-right", [mode, themeMode, locale]);
-  const [email, setEmail] = useState(searchParams.get("email") || "");
+  const formRef = useMotionReveal<HTMLDivElement>("surface", [mode, themeMode, locale]);
+  const [email, setEmail] = useState(queryEmail);
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [code, setCode] = useState(normalizePasswordResetCodeValue(searchParams.get("code") || searchParams.get("token") || ""));
+  const [code, setCode] = useState(queryResetCode);
+  const [verifiedResetCode, setVerifiedResetCode] = useState<string | null>(null);
   const [passwordResetStep, setPasswordResetStep] = useState<PasswordResetStep>(mode === "reset" ? "verify" : "request");
   const [resetCooldown, setResetCooldown] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -156,6 +159,30 @@ function AuthPage({
     setStoredAuthToken(session.token);
     router.replace(resolveAuthNextTarget(next));
   }, [next, router]);
+  useEffect(() => {
+    let cancelled = false;
+    window.queueMicrotask(() => {
+      if (cancelled) return;
+      setBusy(false);
+      setStatusMode(mode);
+      setStatus(null);
+      setDisplayName("");
+      setPassword("");
+      setConfirmPassword("");
+      setVerifiedResetCode(null);
+      if (queryEmail) setEmail(queryEmail);
+      if (mode === "reset") {
+        setCode(queryResetCode);
+        setPasswordResetStep("verify");
+        return;
+      }
+      setCode("");
+      setPasswordResetStep("request");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, queryEmail, queryResetCode]);
   const continueCurrentSession = () => {
     if (busy) return;
     router.replace(resolveAuthNextTarget(next));
@@ -233,12 +260,13 @@ function AuthPage({
   };
   const runAuthAction = (codeOverride?: string, formValues: AuthFormValues = {}, legalConfirmed = false) => {
     if (busy) return;
-    const effectiveCode = normalizePasswordResetCodeValue(codeOverride ?? code);
+    const effectiveCode = normalizeAuthCodeValue(codeOverride ?? code, passwordResetCodeLength);
     const nextEmail = formValues.email ?? email;
     const nextPassword = formValues.password ?? password;
     const nextConfirmPassword = formValues.confirmPassword ?? confirmPassword;
     const nextDisplayName = formValues.displayName ?? displayName;
     const passwordResetting = (mode === "forgot" || mode === "reset") && passwordResetStep === "reset";
+    const resetCodeForConfirm = verifiedResetCode ?? effectiveCode;
     const settingPassword = mode === "register" || passwordResetting;
     if (settingPassword && !passwordIsValidLength(nextPassword)) {
       setStatusMode(mode);
@@ -281,6 +309,7 @@ function AuthPage({
       locale: getAuthEmailLocale(locale)
     }).then(() => {
       setCode("");
+      setVerifiedResetCode(null);
       setPasswordResetStep("verify");
       setResetCooldown(passwordResetResendSeconds);
       setStatusMode(mode);
@@ -292,6 +321,9 @@ function AuthPage({
       email: nextEmail,
       code: effectiveCode
     }).then(() => {
+      setVerifiedResetCode(effectiveCode);
+      setPassword("");
+      setConfirmPassword("");
       setPasswordResetStep("reset");
       setResetCooldown(0);
       setStatusMode(mode);
@@ -302,11 +334,14 @@ function AuthPage({
     }) : confirmPasswordReset({
       email: nextEmail,
       password: nextPassword,
-      code: effectiveCode
+      code: resetCodeForConfirm
     }).then(finishSession) : mode === "reset" ? passwordResetStep === "verify" ? verifyPasswordReset({
       email: nextEmail,
       code: effectiveCode
     }).then(() => {
+      setVerifiedResetCode(effectiveCode);
+      setPassword("");
+      setConfirmPassword("");
       setPasswordResetStep("reset");
       setResetCooldown(0);
       setStatusMode(mode);
@@ -317,7 +352,7 @@ function AuthPage({
     }) : confirmPasswordReset({
       email: nextEmail,
       password: nextPassword,
-      code: effectiveCode
+      code: resetCodeForConfirm
     }).then(finishSession) : loginLocalUser({
       email: nextEmail,
       password: nextPassword
@@ -359,6 +394,7 @@ function AuthPage({
       locale: getAuthEmailLocale(locale)
     }).then(() => {
       setCode("");
+      setVerifiedResetCode(null);
       setPasswordResetStep("verify");
       setResetCooldown(passwordResetResendSeconds);
       setStatus({
@@ -372,6 +408,7 @@ function AuthPage({
   const backToResetEmail = () => {
     if (busy) return;
     setCode("");
+    setVerifiedResetCode(null);
     setPasswordResetStep("request");
     setStatusMode(mode);
     setStatus(null);
@@ -389,7 +426,22 @@ function AuthPage({
       });
     });
   };
-  return <div ref={pageRef} style={{
+  return <div ref={pageRef} className="icedr-auth-page" style={{
+    "--auth-canvas": palette.canvas,
+    "--auth-surface": palette.surface1,
+    "--auth-surface-2": palette.surface2,
+    "--auth-surface-3": palette.surface3,
+    "--auth-border": palette.hairline,
+    "--auth-border-strong": palette.hairlineStrong,
+    "--auth-ink": palette.ink,
+    "--auth-muted": palette.muted,
+    "--auth-subtle": palette.subtle,
+    "--auth-tertiary": palette.tertiary,
+    "--auth-accent": palette.primary,
+    "--auth-accent-hover": palette.primaryHover,
+    "--auth-accent-soft": palette.selected,
+    "--auth-focus": palette.focusRing,
+    "--auth-danger": palette.danger,
     WebkitOverflowScrolling: "touch",
     display: "flex",
     flexDirection: "column",
@@ -402,49 +454,28 @@ function AuthPage({
     color: palette.ink,
     fontSize: "14px",
     letterSpacing: "0px"
-  }}>
+  } as React.CSSProperties}>
       <AuthHeader brandLogo={brandLogo} siteName={siteSettings.siteName} palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
 
-      <main className="icedr-r-grid-template-columns icedr-r-gap icedr-r-padding-inline icedr-r-padding-block icedr-r-padding-bottom" style={{
-      display: "grid",
-      flex: "1 1 auto",
-      width: "100%",
-      minHeight: "0px",
-      "--r-grid-template-columns-base": "minmax(0, 1fr)",
-      "--r-grid-template-columns-lg": "minmax(360px, 1fr) minmax(420px, 472px)",
-      alignItems: "center",
-      justifyContent: "center",
-      "--r-gap-base": "20px",
-      "--r-gap-lg": "32px",
-      "--r-gap-xl": "56px",
-      maxWidth: "1180px",
-      marginInline: "auto",
-      boxSizing: "border-box",
-      "--r-padding-inline-base": "16px",
-      "--r-padding-inline-sm": "20px",
-      "--r-padding-inline-md": "32px",
-      "--r-padding-inline-xl": "32px",
-      "--r-padding-block-base": "16px",
-      "--r-padding-block-sm": "24px",
-      "--r-padding-block-md": "32px",
-      "--r-padding-block-lg": "36px",
-      "--r-padding-bottom-base": "32px",
-      "--r-padding-bottom-md": "40px"
-    } as React.CSSProperties}>
-        <div ref={panelRef} className="icedr-r-display" style={{
-        "--r-display-base": "none",
-        "--r-display-lg": "block",
-        minWidth: "0px"
-      } as React.CSSProperties}>
-          <AuthWorkspacePanel authCopy={authCopy} brandLogo={brandLogo} siteName={siteSettings.siteName} locale={locale} mode={mode} palette={palette} themeMode={themeMode} />
-        </div>
-
-        <div ref={formRef} className="icedr-r-justify-self" style={{
-        width: "100%",
-        "--r-justify-self-base": "center",
-        "--r-justify-self-lg": "end"
-      } as React.CSSProperties}>
-          <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} mode={mode} next={next} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={setDisplayName} onEmailChange={setEmail} onLogout={logout} onPasskeyLogin={loginWithPasskey} onConfirmPasswordChange={setConfirmPassword} onPasswordChange={setPassword} onBackToResetEmail={backToResetEmail} onCodeComplete={value => runAuthAction(value)} onResendCode={resendPasswordResetCode} onSubmit={submit} onCodeChange={value => setCode(normalizePasswordResetCodeValue(value))} palette={palette} password={password} passwordResetStep={passwordResetStep} resetCooldown={resetCooldown} status={visibleStatus} code={code} />
+      <main className="icedr-auth-main">
+        <div ref={formRef} className="icedr-auth-form-slot">
+          <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} mode={mode} next={next} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={value => {
+        setDisplayName(value);
+        clearAuthInputError(status, setStatus);
+      }} onEmailChange={value => {
+        setEmail(value);
+        clearAuthInputError(status, setStatus);
+      }} onLogout={logout} onPasskeyLogin={loginWithPasskey} onConfirmPasswordChange={value => {
+        setConfirmPassword(value);
+        clearAuthInputError(status, setStatus);
+      }} onPasswordChange={value => {
+        setPassword(value);
+        clearAuthInputError(status, setStatus);
+      }} onBackToResetEmail={backToResetEmail} onCodeComplete={value => runAuthAction(value)} onResendCode={resendPasswordResetCode} onSubmit={submit} onCodeChange={value => {
+        setVerifiedResetCode(null);
+        setCode(normalizeAuthCodeValue(value, passwordResetCodeLength));
+        clearAuthInputError(status, setStatus);
+      }} palette={palette} password={password} passwordResetStep={passwordResetStep} resetCooldown={resetCooldown} status={visibleStatus} code={code} />
         </div>
       </main>
 
@@ -453,79 +484,6 @@ function AuthPage({
       setLegalDialogOpen(false);
       setPendingRegistrationValues(null);
     }} open={legalDialogOpen} palette={palette} />
-    </div>;
-}
-function AuthWorkspacePanel({
-  authCopy,
-  brandLogo,
-  locale,
-  mode,
-  palette,
-  siteName,
-  themeMode
-}: {
-  authCopy: ReturnType<typeof getAuthCopy>;
-  brandLogo: string;
-  locale: Locale;
-  mode: AuthPageMode;
-  palette: Palette;
-  siteName: string;
-  themeMode: ThemeMode;
-}) {
-  const t = useTranslations();
-  const brandMotionRef = useMotionStagger<HTMLDivElement>([mode, themeMode, locale], "[data-auth-brand-row]");
-  return <div ref={brandMotionRef} style={{
-    display: "flex",
-    flexDirection: "column",
-    gap: "24px",
-    minWidth: "0px",
-    maxWidth: "620px",
-    color: palette.ink
-  }}>
-      <AppImage data-auth-brand-row src={brandLogo} alt="" style={{
-      width: "64px",
-      height: "64px",
-      objectFit: "contain",
-      flexShrink: "0"
-    }} />
-
-      <div data-auth-brand-row style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-      maxWidth: "560px"
-    }}>
-        <span style={{
-        fontSize: "44px",
-        fontWeight: "780",
-        lineHeight: "1",
-        letterSpacing: "0px"
-      }}>
-          {siteName}
-        </span>
-        <span style={{
-        fontSize: "20px",
-        fontWeight: "650",
-        lineHeight: "1.45",
-        letterSpacing: "0px",
-        color: palette.muted
-      }}>
-          {authCopy.description}
-        </span>
-      </div>
-
-      <div data-auth-brand-row style={{
-      alignItems: "center",
-      display: "flex",
-      gap: "12px",
-      color: palette.subtle,
-      fontSize: "13px",
-      lineHeight: "1.6",
-      maxWidth: "520px"
-    }}>
-        <LocalIcon name="shield" size={18} color={palette.secure} />
-        <span>{t("auth.previewAuditDetail")}</span>
-      </div>
     </div>;
 }
 function AuthHeader({
@@ -541,20 +499,9 @@ function AuthHeader({
   siteName: string;
   themeMode: ThemeMode;
 }) {
-  const t = useTranslations();
-  return <header className="icedr-r-padding-inline" style={{
-    display: "flex",
-    position: "sticky",
-    top: "0px",
-    zIndex: "10",
-    alignItems: "center",
-    justifyContent: "space-between",
-    height: "64px",
-    "--r-padding-inline-base": "16px",
-    "--r-padding-inline-md": "24px",
-    borderBottomWidth: "1px",
-    borderColor: palette.hairline,
-    background: palette.surface1
+  return <header className="icedr-auth-header" style={{
+    "--auth-header-border": palette.hairline,
+    "--auth-header-bg": `color-mix(in srgb, ${palette.surface1} 92%, transparent)`
   } as React.CSSProperties}>
       <div style={{
       alignItems: "center",
@@ -562,28 +509,17 @@ function AuthHeader({
       gap: "10px"
     }}>
         <AppImage src={brandLogo} alt="" style={{
-        width: "34px",
-        height: "34px",
+        width: "28px",
+        height: "28px",
         objectFit: "contain",
         flexShrink: "0"
       }} />
-        <div>
-          <span style={{
+        <span style={{
           fontWeight: "760",
           lineHeight: "1"
         }}>
-            {siteName}
-          </span>
-          <span className="icedr-r-display" style={{
-          "--r-display-base": "none",
-          "--r-display-sm": "block",
-          color: palette.subtle,
-          fontSize: "11px",
-          marginTop: "4px"
-        } as React.CSSProperties}>
-            {t("auth.headerCaption")}
-          </span>
-        </div>
+          {siteName}
+        </span>
       </div>
       <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
     </header>;
@@ -658,44 +594,26 @@ function AuthFormCard({
   const emailLocked = mode === "forgot" && passwordResetStep !== "request" || mode === "reset" && passwordResetStep === "reset";
   const showsEmailField = !showsCodeField || mode === "reset";
   const submitLabel = inPasswordResetFlow && passwordResetStep === "verify" ? t("auth.verifyCode") : inPasswordResetFlow && passwordResetStep === "reset" ? t("auth.resetPassword") : authCopy.submit;
-  const submitDisabled = busy || mode === "login" && authSettings?.localEnabled === false || showsCodeField && (code.length !== passwordResetCodeLength || !email.trim());
-  return <Surface palette={palette} className="icedr-r-width icedr-r-padding icedr-r-border-radius" style={{
-    "--r-width-base": "100%",
-    "--r-width-sm": "min(430px, 100%)",
-    "--r-width-lg": "min(472px, 100%)",
-    "--r-padding-base": "16px",
-    "--r-padding-sm": "20px",
-    "--r-padding-md": "24px",
-    "--r-border-radius-base": "10px",
-    "--r-border-radius-md": "12px",
-    borderColor: palette.hairlineStrong
+  const resetPasswordIncomplete = inPasswordResetFlow && passwordResetStep === "reset" && (!passwordIsValidLength(password) || !confirmPassword || confirmPasswordInvalid);
+  const submitDisabled = busy || mode === "login" && authSettings?.localEnabled === false || showsCodeField && (code.length !== passwordResetCodeLength || !email.trim()) || resetPasswordIncomplete;
+  return <Surface palette={palette} data-auth-mode={mode} className="icedr-auth-form-card" style={{
+    "--auth-card-highlight": `color-mix(in srgb, ${palette.ink} 6%, transparent)`,
+    borderColor: palette.hairline
   } as React.CSSProperties}>
-      <div ref={formMotionRef} className="icedr-r-gap" style={{
+    <MotionLayoutGroup>
+      <div ref={formMotionRef} className="icedr-auth-form-stack" style={{
       display: "flex",
-      flexDirection: "column",
-      "--r-gap-base": "16px",
-      "--r-gap-md": "20px"
-    } as React.CSSProperties}>
-        <div data-auth-form-row style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: "8px"
-      }}>
-          <h1 style={{
-          fontSize: "28px",
-          fontWeight: "780",
-          lineHeight: "1.12"
-        }}>
-            {authCopy.title}
-          </h1>
+      flexDirection: "column"
+    }}>
+        <div data-auth-form-row>
+          <AuthFormTitleBlock authCopy={authCopy} mode={mode} palette={palette} />
         </div>
 
-        <MotionPresence data-auth-form-row show={Boolean(currentUser)} preset="surface">
-          {currentUser ? <CurrentUserCard busy={busy} currentUser={currentUser} onLogout={onLogout} palette={palette} /> : null}
+        <MotionPresence data-auth-form-row layout show={Boolean(currentUser)} preset="surface">
+          {currentUser ? <AuthCurrentUserRow busy={busy} currentUser={currentUser} onLogout={onLogout} palette={palette} /> : null}
         </MotionPresence>
 
-        <MotionPresence show={Boolean(status)} preset="menu">
+        <MotionPresence layout show={Boolean(status)} preset="menu">
           {status ? <AuthStatusNotice palette={palette} status={status} /> : null}
         </MotionPresence>
 
@@ -705,14 +623,12 @@ function AuthFormCard({
             </AuthPrimaryButton>
           </div> : null}
 
-        <MotionPresence key={mode} show={!continuingCurrentSession} preset="surface">
+        <MotionPresence key={`${mode}-${passwordResetStep}`} layout show={!continuingCurrentSession} preset="surface">
           <form onSubmit={onSubmit}>
-            <div className="icedr-r-gap" style={{
+            <div className="icedr-auth-fields-stack" style={{
             display: "flex",
-            flexDirection: "column",
-            "--r-gap-base": "14px",
-            "--r-gap-md": "16px"
-          } as React.CSSProperties}>
+            flexDirection: "column"
+          }}>
               {mode === "register" ? <div data-auth-form-row>
                   <AuthField label={t("auth.displayName")} palette={palette} required>
                     <AuthInput name="displayName" value={displayName} onChange={event => onDisplayNameChange(event.target.value)} palette={palette} autoComplete="name" />
@@ -726,13 +642,13 @@ function AuthFormCard({
                 </div> : null}
 
               {showsCodeField ? <div data-auth-form-row>
-                  <PasswordResetCodePanel busy={busy} code={code} email={email} onBack={mode === "forgot" ? onBackToResetEmail : undefined} onChange={onCodeChange} onComplete={onCodeComplete} onResend={onResendCode} palette={palette} resetCooldown={resetCooldown} />
+                  <AuthCodePanel busy={busy} code={code} codeLength={passwordResetCodeLength} email={email} onBack={mode === "forgot" ? onBackToResetEmail : undefined} onChange={onCodeChange} onComplete={onCodeComplete} onResend={onResendCode} palette={palette} resetCooldown={resetCooldown} />
                 </div> : null}
 
               {showsPasswordFields ? <div data-auth-form-row>
                   <AuthField label={t("auth.password")} palette={palette} required>
                     <AuthInput name="password" type="password" value={password} onChange={event => onPasswordChange(event.target.value)} palette={palette} autoComplete={mode === "login" ? "current-password" : "new-password"} />
-                    {mode === "register" ? <PasswordStrengthHint palette={palette} password={password} /> : null}
+                    {mode === "register" ? <AuthPasswordStrengthHint palette={palette} password={password} /> : null}
                   </AuthField>
                 </div> : null}
 
@@ -751,11 +667,7 @@ function AuthFormCard({
           </form>
         </MotionPresence>
 
-        {mode === "login" && !continuingCurrentSession ? <div data-auth-form-row style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px"
-      }}>
+      {mode === "login" && !continuingCurrentSession ? <div data-auth-form-row className="icedr-auth-provider-stack">
             {authSettings?.oauthEnabled && authSettings.oauthConfigured ? <AuthPrimaryButton icon="key" palette={palette} disabled={busy} busy={busy} onClick={onOAuthLogin}>
                 {t("auth.oauthLogin")}
               </AuthPrimaryButton> : null}
@@ -768,327 +680,8 @@ function AuthFormCard({
             <AuthLinks mode={mode} next={next} palette={palette} />
           </div> : null}
       </div>
+    </MotionLayoutGroup>
     </Surface>;
-}
-function PasswordResetCodePanel({
-  busy,
-  code,
-  email,
-  onBack,
-  onChange,
-  onComplete,
-  onResend,
-  palette,
-  resetCooldown
-}: {
-  busy: boolean;
-  code: string;
-  email: string;
-  onBack?: () => void;
-  onChange: (value: string) => void;
-  onComplete: (value: string) => void;
-  onResend: () => void;
-  palette: Palette;
-  resetCooldown: number;
-}) {
-  const t = useTranslations();
-  const resendDisabled = busy || resetCooldown > 0 || !email.trim();
-  return <div style={{
-    display: "flex",
-    flexDirection: "column",
-    gap: "14px"
-  }}>
-      <div style={{
-      alignItems: "center",
-      display: "flex",
-      justifyContent: "space-between",
-      gap: "12px",
-      minHeight: "40px"
-    }}>
-        <div style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "10px",
-        minWidth: "0px"
-      }}>
-          {onBack ? <ToolButton label={t("auth.changeResetEmail")} palette={palette} disabled={busy} onClick={onBack}>
-              <LocalIcon name="arrow_left" size={17} />
-            </ToolButton> : null}
-          <span className="icedr-truncate" style={{
-          color: palette.ink,
-          fontSize: "15px",
-          fontWeight: "700",
-          lineHeight: "1.35"
-        }}>
-            {maskEmail(email) || t("auth.email")}
-          </span>
-        </div>
-      </div>
-
-      <VerificationCodeInput ariaLabelBase={t("auth.codeDigitLabel")} busy={busy} code={code} onChange={onChange} onComplete={email.trim() ? onComplete : undefined} palette={palette} />
-
-      <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: "28px"
-    }}>
-        <button type="button" disabled={resendDisabled} onClick={onResend} style={{
-        alignItems: "center",
-        background: "transparent",
-        border: 0,
-        color: resendDisabled ? palette.tertiary : palette.primaryHover,
-        cursor: resendDisabled ? "default" : "pointer",
-        display: "inline-flex",
-        font: "inherit",
-        fontSize: "13px",
-        fontWeight: 700,
-        lineHeight: 1,
-        opacity: resendDisabled && resetCooldown <= 0 ? 0.56 : 1,
-        padding: 0
-      }}>
-          <div style={{
-          alignItems: "center",
-          display: "flex",
-          gap: "6px"
-        }}>
-            <LocalIcon name="refresh" size={14} />
-            <span>
-              {resetCooldown > 0 ? t("auth.resendRemaining", {
-              seconds: resetCooldown
-            }) : t("auth.resendCode")}
-            </span>
-          </div>
-        </button>
-      </div>
-    </div>;
-}
-function VerificationCodeInput({
-  ariaLabelBase,
-  busy,
-  code,
-  onChange,
-  onComplete,
-  palette
-}: {
-  ariaLabelBase: string;
-  busy: boolean;
-  code: string;
-  onChange: (value: string) => void;
-  onComplete?: (value: string) => void;
-  palette: Palette;
-}) {
-  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const chars = Array.from({
-    length: passwordResetCodeLength
-  }, (_, index) => code[index] ?? "");
-  useEffect(() => {
-    if (busy) return;
-    inputRefs.current[0]?.focus();
-  }, [busy]);
-  const commitCode = (value: string, focusIndex?: number) => {
-    const next = normalizePasswordResetCodeValue(value);
-    onChange(next);
-    if (focusIndex !== undefined) {
-      window.requestAnimationFrame(() => inputRefs.current[Math.min(Math.max(focusIndex, 0), passwordResetCodeLength - 1)]?.focus());
-    }
-    if (next.length === passwordResetCodeLength && !busy) {
-      onComplete?.(next);
-    }
-  };
-  const replaceAt = (index: number, value: string) => {
-    const nextChars = [...chars];
-    nextChars[index] = value;
-    return nextChars.join("");
-  };
-  return <div className="icedr-r-gap" style={{
-    alignItems: "center",
-    display: "flex",
-    "--r-gap-base": "8px",
-    "--r-gap-sm": "10px",
-    justifyContent: "center"
-  } as React.CSSProperties}>
-      {chars.map((char, index) => <Input key={index} ref={node => {
-      inputRefs.current[index] = node;
-    }} value={char} aria-label={`${ariaLabelBase} ${index + 1}`} autoCapitalize="characters" autoComplete={index === 0 ? "one-time-code" : "off"} disabled={busy} inputMode="text" maxLength={1} pattern="[A-Za-z0-9]*" onChange={event => {
-      const normalized = normalizePasswordResetCodeValue(event.target.value);
-      if (normalized.length > 1) {
-        const next = `${code.slice(0, index)}${normalized}${code.slice(index + normalized.length)}`;
-        commitCode(next, Math.min(index + normalized.length, passwordResetCodeLength - 1));
-        return;
-      }
-      commitCode(replaceAt(index, normalized), normalized ? index + 1 : index);
-    }} onKeyDown={event => {
-      if (event.key === "ArrowLeft" && index > 0) {
-        event.preventDefault();
-        inputRefs.current[index - 1]?.focus();
-      }
-      if (event.key === "ArrowRight" && index < passwordResetCodeLength - 1) {
-        event.preventDefault();
-        inputRefs.current[index + 1]?.focus();
-      }
-      if (event.key === "Backspace" && !char && index > 0) {
-        event.preventDefault();
-        commitCode(replaceAt(index - 1, ""), index - 1);
-      }
-    }} onPaste={event => {
-      const pasted = normalizePasswordResetCodeValue(event.clipboardData.getData("text"));
-      if (!pasted) return;
-      event.preventDefault();
-      const next = `${code.slice(0, index)}${pasted}${code.slice(index + pasted.length)}`;
-      commitCode(next, Math.min(index + pasted.length, passwordResetCodeLength - 1));
-    }} className="icedr-r-height icedr-r-width icedr-has-focus icedr-has-hover" style={{
-      background: palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
-      borderColor: palette.hairlineStrong,
-      borderWidth: "1px",
-      caretColor: palette.primaryHover,
-      color: palette.ink,
-      fontFamily: "ui-monospace, SFMono-Regular, Consolas, Liberation Mono, monospace",
-      fontSize: "22px",
-      fontWeight: "780",
-      "--r-height-base": "46px",
-      "--r-height-sm": "52px",
-      letterSpacing: "0px",
-      lineHeight: "1",
-      minWidth: "0px",
-      paddingInline: "0px",
-      borderRadius: "8px",
-      textAlign: "center",
-      textTransform: "uppercase",
-      "--r-width-base": "42px",
-      "--r-width-sm": "48px",
-      "--focus-border-color": palette.primary,
-      "--focus-box-shadow": `0 0 0 2px ${palette.focusRing}`,
-      "--hover-border-color": palette.hairlineStrong
-    } as React.CSSProperties} />)}
-    </div>;
-}
-function PasswordStrengthHint({
-  palette,
-  password
-}: {
-  palette: Palette;
-  password: string;
-}) {
-  const t = useTranslations();
-  const strength = getPasswordStrength(password, palette);
-  if (!password) return null;
-  return <div role="meter" aria-label={t("auth.passwordStrengthLabel")} aria-valuemin={0} aria-valuemax={4} aria-valuenow={strength.score} style={{
-    display: "flex",
-    flexDirection: "column",
-    marginTop: "10px",
-    gap: "8px"
-  }}>
-      <div aria-hidden="true" style={{
-      height: "5px",
-      borderRadius: "100%",
-      background: strength.trackColor,
-      overflow: "hidden"
-    }}>
-        <div style={{
-        height: "100%",
-        width: `${strength.score * 25}%`,
-        borderRadius: "100%",
-        background: strength.barColor,
-        transition: "width var(--motion-base) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease)"
-      }} />
-      </div>
-      <div style={{
-      display: "flex",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      gap: "12px",
-      fontSize: "12px",
-      lineHeight: "1.45"
-    }}>
-        <div style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "6px",
-        color: strength.textColor,
-        minWidth: "max-content"
-      }}>
-          <div style={{
-          width: "6px",
-          height: "6px",
-          borderRadius: "100%",
-          background: strength.dotColor,
-          flexShrink: "0"
-        }} />
-          <span style={{
-          fontWeight: "700"
-        }}>{t(strength.labelKey)}</span>
-        </div>
-        <span style={{
-        color: palette.subtle,
-        textAlign: "right"
-      }}>
-          {t(strength.hintKey)}
-        </span>
-      </div>
-    </div>;
-}
-function CurrentUserCard({
-  busy,
-  currentUser,
-  onLogout,
-  palette
-}: {
-  busy: boolean;
-  currentUser: AuthUser;
-  onLogout: () => void;
-  palette: Palette;
-}) {
-  const t = useTranslations();
-  return <div style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-    padding: "12px",
-    borderRadius: "8px",
-    background: palette.surface2,
-    borderWidth: "1px",
-    borderColor: palette.hairline
-  }}>
-      <div style={{
-      alignItems: "center",
-      display: "flex",
-      gap: "10px",
-      minWidth: "0px"
-    }}>
-        <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "34px",
-        height: "34px",
-        borderRadius: "100%",
-        background: palette.selected,
-        color: palette.primaryHover
-      }}>
-          <LocalIcon name="user_avatar" size={21} />
-        </div>
-        <div style={{
-        minWidth: "0px"
-      }}>
-          <span className="icedr-truncate" style={{
-          fontWeight: "720"
-        }}>
-            {currentUser.displayName}
-          </span>
-          <span className="icedr-truncate" style={{
-          color: palette.subtle,
-          fontSize: "12px"
-        }}>
-            {currentUser.email}
-          </span>
-        </div>
-      </div>
-      <ToolButton label={t("auth.logout")} palette={palette} disabled={busy} onClick={onLogout}>
-        <LocalIcon name="cross" size={17} />
-      </ToolButton>
-    </div>;
 }
 function getAuthFailureStatus(mode: AuthPageMode, error: unknown, t: ReturnType<typeof useTranslations>): NonNullable<AuthStatus> {
   if (mode === "login" && error instanceof DriveApiError && (error.code === "AUTH_INVALID_CREDENTIALS" || error.status === 400)) {
@@ -1114,11 +707,11 @@ function getAuthFailureStatus(mode: AuthPageMode, error: unknown, t: ReturnType<
     tone: "error"
   };
 }
+function clearAuthInputError(status: AuthStatus, setStatus: React.Dispatch<React.SetStateAction<AuthStatus>>) {
+  if (status?.tone === "error") setStatus(null);
+}
 function passwordIsValidLength(password: string) {
   return password.length >= 8 && password.length <= 128;
-}
-function normalizePasswordResetCodeValue(value: string) {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, passwordResetCodeLength);
 }
 function getFormString(formData: FormData, name: string) {
   const value = formData.get(name);
@@ -1130,65 +723,6 @@ function resolveAuthNextTarget(next: string) {
 }
 function getAuthEmailLocale(locale: Locale): "en" | "zh" {
   return locale === "zh" || locale.toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-function maskEmail(email: string) {
-  const trimmed = email.trim();
-  const [local, domain] = trimmed.split("@");
-  if (!local || !domain) return email.trim();
-  const maskedLocal = local.length === 1 ? "*" : local.length === 2 ? `${local[0]}*` : `${local[0]}${"*".repeat(Math.max(2, local.length - 2))}${local.slice(-1)}`;
-  const [domainName, ...suffixParts] = domain.split(".");
-  const suffix = suffixParts.join(".");
-  const maskedDomain = domainName ? `${domainName[0]}***` : "***";
-  return `${maskedLocal}@${maskedDomain}${suffix ? `.${suffix}` : ""}`;
-}
-function getPasswordStrength(password: string, palette: Palette) {
-  const lengthScore = password.length >= 14 ? 2 : password.length >= 10 ? 1 : 0;
-  const varietyScore = [/[a-z]/.test(password) || /[A-Z]/.test(password), /[0-9]/.test(password), /[^A-Za-z0-9]/.test(password)].filter(Boolean).length;
-  const mixedCaseBonus = /[a-z]/.test(password) && /[A-Z]/.test(password) ? 1 : 0;
-  const rawScore = Math.min(4, Math.max(1, lengthScore + varietyScore + mixedCaseBonus));
-  const trackColor = `color-mix(in srgb, ${palette.subtle} 16%, transparent)`;
-  if (rawScore >= 4) {
-    return {
-      barColor: `linear-gradient(90deg, ${palette.primary} 0%, ${palette.success} 100%)`,
-      dotColor: palette.success,
-      hintKey: "auth.passwordStrengthHintStrong",
-      labelKey: "auth.passwordStrengthStrong",
-      score: 4,
-      textColor: palette.success,
-      trackColor
-    };
-  }
-  if (rawScore === 3) {
-    return {
-      barColor: `linear-gradient(90deg, ${palette.primary} 0%, ${palette.primaryHover} 100%)`,
-      dotColor: palette.primaryHover,
-      hintKey: "auth.passwordStrengthHintGood",
-      labelKey: "auth.passwordStrengthGood",
-      score: 3,
-      textColor: palette.primaryHover,
-      trackColor
-    };
-  }
-  if (rawScore === 2) {
-    return {
-      barColor: `linear-gradient(90deg, ${palette.secure} 0%, ${palette.info} 100%)`,
-      dotColor: palette.info,
-      hintKey: "auth.passwordStrengthHintFair",
-      labelKey: "auth.passwordStrengthFair",
-      score: 2,
-      textColor: palette.info,
-      trackColor
-    };
-  }
-  return {
-    barColor: `linear-gradient(90deg, ${palette.secure} 0%, ${palette.warning} 100%)`,
-    dotColor: palette.warning,
-    hintKey: "auth.passwordStrengthHintWeak",
-    labelKey: "auth.passwordStrengthWeak",
-    score: 1,
-    textColor: palette.warning,
-    trackColor
-  };
 }
 function AuthLinks({
   mode,
@@ -1202,44 +736,25 @@ function AuthLinks({
   const t = useTranslations();
   const loginHref = `/login?next=${encodeURIComponent(next)}`;
   const registerHref = `/register?next=${encodeURIComponent(next)}`;
-  const linkStyle = {
-    color: palette.subtle,
-    fontSize: "13px",
-    transition: "color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)"
-  };
-  return <div className="icedr-r-padding-top" style={{
+  const linkVars = {
+    "--auth-link-color": palette.subtle,
+    "--auth-link-hover": palette.primaryHover
+  } as React.CSSProperties;
+  return <div className="icedr-auth-links" style={{
     display: "flex",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    gap: "12px",
-    "--r-padding-top-base": "0px",
-    "--r-padding-top-md": "4px"
-  } as React.CSSProperties}>
+    gap: "10px"
+  }}>
       {mode !== "login" ? <Link href={loginHref}>
-          <span {...linkStyle} className="icedr-has-hover" style={{
-        display: "inline-block",
-        "--hover-color": palette.primaryHover,
-        "--hover-transform": "translateY(-1px)"
-      } as React.CSSProperties}>{t("auth.backToLogin")}</span>
+          <span className="icedr-auth-link icedr-has-hover" style={linkVars}>{t("auth.backToLogin")}</span>
         </Link> : <Link href={registerHref}>
-          <span {...linkStyle} className="icedr-has-hover" style={{
-        display: "inline-block",
-        "--hover-color": palette.primaryHover,
-        "--hover-transform": "translateY(-1px)"
-      } as React.CSSProperties}>{t("auth.createInstead")}</span>
+          <span className="icedr-auth-link icedr-has-hover" style={linkVars}>{t("auth.createInstead")}</span>
         </Link>}
       {mode !== "forgot" ? <Link href="/forgot-password">
-          <span {...linkStyle} className="icedr-has-hover" style={{
-        display: "inline-block",
-        "--hover-color": palette.primaryHover,
-        "--hover-transform": "translateY(-1px)"
-      } as React.CSSProperties}>{t("auth.forgot")}</span>
+          <span className="icedr-auth-link icedr-has-hover" style={linkVars}>{t("auth.forgot")}</span>
         </Link> : <Link href={registerHref}>
-          <span {...linkStyle} className="icedr-has-hover" style={{
-        display: "inline-block",
-        "--hover-color": palette.primaryHover,
-        "--hover-transform": "translateY(-1px)"
-      } as React.CSSProperties}>{t("auth.register")}</span>
+          <span className="icedr-auth-link icedr-has-hover" style={linkVars}>{t("auth.register")}</span>
         </Link>}
     </div>;
 }

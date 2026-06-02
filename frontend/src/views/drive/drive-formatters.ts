@@ -6,19 +6,15 @@ type DriveTranslator = ReturnType<typeof useTranslations>;
 
 export function getTransferMetricLine(row: TransferRow, locale: Locale, t: DriveTranslator) {
   if (row.status === "completed") return row.totalBytes ? formatFileSize(row.totalBytes, locale) : null;
-  if (row.status === "failed") return null;
+  if (row.status === "failed" || row.status === "canceled") return null;
 
   const parts: string[] = [];
-  if (row.speedBytesPerSecond && row.speedBytesPerSecond > 0) {
-    parts.push(t("transfers.speedValue", {
-      speed: formatFileSize(row.speedBytesPerSecond, locale),
-    }));
-  }
-  if (row.remainingSeconds !== undefined && row.remainingSeconds !== null) {
-    parts.push(t("transfers.remainingValue", {
-      time: formatRemainingTime(row.remainingSeconds, locale),
-    }));
-  }
+  parts.push(t("transfers.speedValue", {
+    speed: row.speedBytesPerSecond && row.speedBytesPerSecond > 0 ? formatFileSize(row.speedBytesPerSecond, locale) : "--",
+  }));
+  parts.push(t("transfers.remainingValue", {
+    time: row.remainingSeconds !== undefined && row.remainingSeconds !== null ? formatRemainingTime(row.remainingSeconds, locale) : "--",
+  }));
   return parts.join(" / ") || null;
 }
 

@@ -125,6 +125,8 @@ export function AppTooltip({
 
   if (isDisabled || !content) return <>{children}</>;
 
+  const [basePlacement, alignment] = effectivePlacement.split(" ") as [string, string | undefined];
+
   return (
     <>
       <TooltipTrigger onClose={close} onOpen={openTooltip} triggerRef={triggerRef}>
@@ -133,8 +135,9 @@ export function AppTooltip({
       {open && position ? createPortal(
         <div
           className={cn("icedr-tooltip-content", className)}
+          data-align={alignment}
           data-arrow={showArrow ? "true" : undefined}
-          data-placement={effectivePlacement.split(" ")[0]}
+          data-placement={basePlacement}
           role="tooltip"
           style={{
             "--tooltip-border": palette.hairlineStrong,

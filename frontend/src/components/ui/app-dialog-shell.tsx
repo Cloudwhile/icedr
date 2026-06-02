@@ -8,6 +8,7 @@ import type { Palette } from "@/features/file/model";
 export type AppDialogShellProps = {
   children: ReactNode;
   className?: string;
+  containerClassName?: string;
   onOpenChange?: (open: boolean) => void;
   open: boolean;
   palette: Palette;
@@ -20,6 +21,7 @@ export type AppDialogShellProps = {
 export function AppDialogShell({
   children,
   className,
+  containerClassName,
   onOpenChange,
   open,
   palette,
@@ -35,7 +37,7 @@ export function AppDialogShell({
       onOpenChange={onOpenChange}
       style={{ "--dialog-backdrop": "rgba(0, 0, 0, 0.48)" } as CSSProperties}
     >
-      <Modal.Container placement={placement} scroll={scroll} size={size}>
+      <Modal.Container className={cn("icedr-dialog-container", containerClassName)} placement={placement} scroll={scroll} size={size}>
         <Modal.Dialog
           className={cn("icedr-dialog", className)}
           style={{

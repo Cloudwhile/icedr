@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { ProgressMeter } from "@/components/ui/progress-meter";
 import { MotionList } from "@/components/ui/motion";
@@ -226,9 +227,28 @@ function MetaIcon({ children, icon }: { children: React.ReactNode; icon: "calend
   );
 }
 
-export function TransfersModule({ palette, rows }: { palette: Palette; rows: TransferRow[] }) {
+export type TransfersModuleProps = {
+  controllableTransferIds?: string[];
+  onCancelTransfer?: (id: string) => void;
+  onDeleteTransfer?: (id: string) => void;
+  onPauseTransfer?: (id: string) => void;
+  onResumeTransfer?: (id: string) => void;
+  palette: Palette;
+  rows: TransferRow[];
+};
+
+export function TransfersModule({
+  controllableTransferIds = [],
+  onCancelTransfer,
+  onDeleteTransfer,
+  onPauseTransfer,
+  onResumeTransfer,
+  palette,
+  rows,
+}: TransfersModuleProps) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
+  const controllableTransferIdSet = useMemo(() => new Set(controllableTransferIds), [controllableTransferIds]);
 
   return (
     <Surface palette={palette} style={{ overflow: "hidden" }}>
@@ -239,6 +259,19 @@ export function TransfersModule({ palette, rows }: { palette: Palette; rows: Tra
         {rows.length === 0 ? <EmptyModuleState icon={<LocalIcon name="upload" size={24} color={palette.primary} />} palette={palette} title={t("transfers.emptyTitle")} hint={t("transfers.emptyHint")} /> : null}
         {rows.map((row) => {
           const metricLine = getTransferMetricLine(row, locale, t);
+          const controllable = controllableTransferIdSet.has(row.id);
+          const canPause = controllable && row.type === "upload" && row.status === "running";
+          const canResume = controllable && row.type === "upload" && row.status === "paused";
+          const canCancel = controllable && row.type === "upload" && (row.status === "queued" || row.status === "running" || row.status === "paused");
+          const canDelete = Boolean(onDeleteTransfer);
+          const progressColor =
+            row.status === "failed" || row.status === "canceled"
+              ? palette.primaryHover
+              : row.status === "completed"
+                ? palette.success
+                : row.status === "paused"
+                  ? palette.secure
+                  : palette.primary;
           return (
             <div
               key={row.id}
@@ -263,7 +296,7 @@ export function TransfersModule({ palette, rows }: { palette: Palette; rows: Tra
                     <AnimatedCheckMark size={18} />
                   </div>
                 ) : (
-                  <LocalIcon name={row.status === "failed" ? "exclamation" : row.type === "upload" ? "upload" : "download"} size={18} color={row.status === "failed" ? palette.primaryHover : palette.primary} />
+                  <LocalIcon name={row.status === "failed" ? "exclamation" : row.status === "queued" ? "clock" : row.status === "paused" ? "pause" : row.status === "canceled" ? "stop" : row.type === "upload" ? "upload" : "download"} size={18} color={progressColor} />
                 )}
                 <div style={{ minWidth: "0px" }}>
                   <span className="icedr-truncate" style={{ color: palette.ink, display: "block", fontWeight: "500" }}>
@@ -273,7 +306,7 @@ export function TransfersModule({ palette, rows }: { palette: Palette; rows: Tra
                     {t(`transfers.${row.type}`)} - {t(`transfers.${row.status}`)}
                   </span>
                   {metricLine ? (
-                    <span className="icedr-truncate" style={{ color: palette.tertiary, display: "block", fontSize: "12px", marginTop: "4px" }}>
+                    <span style={{ color: palette.tertiary, display: "block", fontSize: "12px", lineHeight: "1.45", marginTop: "4px" }}>
                       {metricLine}
                     </span>
                   ) : null}
@@ -306,7 +339,31 @@ export function TransfersModule({ palette, rows }: { palette: Palette; rows: Tra
                     </span>
                   ) : null}
                 </div>
-                <ProgressMeter ariaLabel={row.name} color={row.status === "failed" ? palette.primaryHover : row.status === "completed" ? palette.success : palette.primary} palette={palette} value={row.progress} />
+                <ProgressMeter ariaLabel={row.name} color={progressColor} palette={palette} value={row.progress} />
+                {canPause || canResume || canCancel || canDelete ? (
+                  <div style={{ alignItems: "center", display: "flex", gap: "4px", justifyContent: "flex-end", minHeight: "34px" }}>
+                    {canPause ? (
+                      <ToolButton label={t("transfers.pause")} palette={palette} size="sm" onClick={() => onPauseTransfer?.(row.id)}>
+                        <LocalIcon name="pause" size={15} />
+                      </ToolButton>
+                    ) : null}
+                    {canResume ? (
+                      <ToolButton label={t("transfers.resume")} palette={palette} size="sm" onClick={() => onResumeTransfer?.(row.id)}>
+                        <LocalIcon name="play" size={15} />
+                      </ToolButton>
+                    ) : null}
+                    {canCancel ? (
+                      <ToolButton label={t("transfers.cancel")} palette={palette} size="sm" onClick={() => onCancelTransfer?.(row.id)}>
+                        <LocalIcon name="stop" size={15} />
+                      </ToolButton>
+                    ) : null}
+                    {canDelete ? (
+                      <ToolButton label={t("transfers.deleteRecord")} palette={palette} size="sm" tone="danger" onClick={() => onDeleteTransfer?.(row.id)}>
+                        <LocalIcon name="trash" size={15} />
+                      </ToolButton>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           );

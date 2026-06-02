@@ -8,7 +8,7 @@ import { startRegistration } from "@simplewebauthn/browser";
 import { MotionPresence, useMotionReveal, useMotionStagger } from "@/components/ui/motion";
 import { showAppToast, type AppToastTone } from "@/components/ui/app-toast";
 import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
-import { ExternalSharePageSkeleton, LoadingSpinner, ShareCreationSkeleton } from "@/components/common/ui/loading-state";
+import { ExternalSharePageLoading, LoadingSpinner, ShareCreationLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getChildItems, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type LocalIconName, type Palette, type ThemeMode } from "@/features/file/model";
 import { copyTextToClipboard, createSharedDriveItemBlobUrl, createSharedPreviewIntent, createShareUrl, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
 import { fetchAuthSettings, createPasskeyRegistrationOptions, deletePasskey, DriveApiError, getApiBaseUrl, fetchPasskeys, fetchSiteSettings, fetchTranslationSettings, fetchWorkspaces, fetchIdentityConfig, fetchMailSettings, fetchStorageSettings, fetchWorkspaceShareSettings, sendShareEmailCode, startShareOAuth, testMailSettings, testStorageSettings, updateAuthSettings, updateMailSettings, updateOAuthSettings, updatePasskeySettings, updateSiteSettings, updateStorageSettings, updateWorkspaceShareSettings, upsertTranslationBundle, verifyPasskeyRegistration, verifyShareEmailCode, type AuthSettings, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeyRecord, type PasskeySettings, type PublicSiteSettings, type ShareAccessSession, type StorageSettings, type StorageSettingsInput, type TranslationBundle, type WorkspaceShareSettings } from "@/lib/drive-api";
@@ -364,13 +364,14 @@ export function ExternalShareDialog({
           paddingInline: "16px",
           borderBottomWidth: "1px",
           borderColor: palette.hairline
-        }}>
+      }}>
             <div style={{
-            alignItems: "center",
-            display: "flex",
-            gap: "12px",
-            minWidth: "0px"
-          }}>
+        alignItems: "center",
+        display: "flex",
+        gap: "12px",
+        minWidth: "0px",
+        flex: "1 1 auto"
+      }}>
               <LocalIcon name="link" size={18} color={palette.primaryHover} />
               <div style={{
               minWidth: "0px"
@@ -406,7 +407,7 @@ export function ExternalShareDialog({
               {createdToken ? <ShareCreatedPanel openSharePreview={() => router.push(routeShareUrl)} palette={palette} shareUrl={shareUrl} /> : null}
             </MotionPresence>
             <MotionPresence show={!created && creating} preset="surface">
-              <ShareCreationSkeleton palette={palette} />
+              <ShareCreationLoading label={t("share.creating")} palette={palette} />
             </MotionPresence>
             <MotionPresence show={!created && !creating} preset="surface">
               <>
@@ -563,7 +564,7 @@ export function ExternalShareStandalone({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      {previewLoading || !registeredShare || !collection ? <ExternalSharePageSkeleton palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
+      {previewLoading || !registeredShare || !collection ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
     </div>;
 }
 export function ExternalShareAdminSettingsPage({
@@ -2300,7 +2301,8 @@ function ShareCollectionPanel({
               </span>
               <ItemIcon item={item} palette={palette} size={18} />
               <div style={{
-            minWidth: "0px"
+            minWidth: "0px",
+            flex: "1 1 auto"
           }}>
                 <span className="icedr-truncate" style={{
               color: palette.ink,
@@ -2319,6 +2321,8 @@ function ShareCollectionPanel({
             <span style={{
           color: palette.subtle,
           fontSize: "12px",
+          marginLeft: "12px",
+          flexShrink: "0",
           whiteSpace: "nowrap"
         }}>
               {formatFileSize(sumDriveItemSizes([item], sourceItems), locale)}
@@ -3104,6 +3108,7 @@ function VisitorShareBrowser({
                   <ItemIcon item={item} palette={palette} size={20} />
                   <div {...canOpen ? buttonTypeAttr : {}} onClick={canOpen ? () => onOpenFolder(item.id) : undefined} style={{
               minWidth: "0px",
+              flex: "1 1 auto",
               textAlign: "left",
               transition: "color var(--motion-fast) var(--motion-ease)"
             } as React.CSSProperties}>
@@ -3140,6 +3145,7 @@ function VisitorShareBrowser({
             alignItems: "center",
             display: "flex",
             gap: "8px",
+            marginLeft: "12px",
             flexShrink: "0"
           }}>
                   <span className="icedr-r-display" style={{

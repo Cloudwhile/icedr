@@ -12,6 +12,10 @@ export type AppContextMenuPosition = {
   y: number;
 };
 
+type ResolvedContextMenuPosition = AppContextMenuPosition & {
+  sourceKey: string;
+};
+
 export type AppContextMenuProps = {
   anchorRef?: RefObject<HTMLElement | null>;
   ariaLabel?: string;
@@ -42,17 +46,28 @@ export function AppContextMenu({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const restoreFocusRef = useRef(true);
-  const [resolvedPosition, setResolvedPosition] = useState<AppContextMenuPosition | null>(position);
+  const [resolvedPosition, setResolvedPosition] = useState<ResolvedContextMenuPosition | null>(null);
+
+  const getBasePosition = useCallback(() => {
+    const anchor = anchorRef?.current;
+    if (!anchor) return position;
+    const rect = anchor.getBoundingClientRect();
+    return {
+      x: rect.left,
+      y: rect.bottom + 6,
+    };
+  }, [anchorRef, position]);
 
   const resolvePosition = useCallback(() => {
-    if (!position) {
+    const basePosition = getBasePosition();
+    if (!basePosition) {
       setResolvedPosition(null);
       return;
     }
 
     const menu = menuRef.current;
     if (!menu) {
-      setResolvedPosition(position);
+      setResolvedPosition({ ...basePosition, sourceKey: getPositionKey(position) });
       return;
     }
 
@@ -60,10 +75,11 @@ export function AppContextMenu({
     const maxX = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
     const maxY = Math.max(viewportPadding, window.innerHeight - rect.height - viewportPadding);
     setResolvedPosition({
-      x: Math.max(viewportPadding, Math.min(position.x, maxX)),
-      y: Math.max(viewportPadding, Math.min(position.y, maxY)),
+      sourceKey: getPositionKey(position),
+      x: Math.max(viewportPadding, Math.min(basePosition.x, maxX)),
+      y: Math.max(viewportPadding, Math.min(basePosition.y, maxY)),
     });
-  }, [position]);
+  }, [getBasePosition, position]);
 
   useEffect(() => {
     if (!open) return;
@@ -150,7 +166,10 @@ export function AppContextMenu({
     firstEnabledItem?.focus({ preventScroll: true });
   }, [autoFocus, items, open]);
 
-  if (!open || !position || !resolvedPosition) return null;
+  if (!open || !position) return null;
+
+  const activeResolvedPosition = resolvedPosition?.sourceKey === getPositionKey(position) ? resolvedPosition : null;
+  const renderPosition = activeResolvedPosition ?? position;
 
   return createPortal(
     <div
@@ -165,8 +184,9 @@ export function AppContextMenu({
         "--menu-danger": palette.danger,
         "--menu-hover": palette.surface3,
         "--menu-focus": palette.focusRing,
-        left: resolvedPosition.x,
-        top: resolvedPosition.y,
+        left: renderPosition.x,
+        top: renderPosition.y,
+        visibility: activeResolvedPosition ? undefined : "hidden",
       } as CSSProperties}
     >
       {items.map((item) => (
@@ -197,4 +217,9 @@ export function AppContextMenu({
     </div>,
     document.body,
   );
+}
+
+function getPositionKey(position: AppContextMenuPosition | null) {
+  if (!position) return "";
+  return `${Math.round(position.x)}:${Math.round(position.y)}`;
 }

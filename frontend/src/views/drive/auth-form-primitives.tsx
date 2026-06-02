@@ -44,8 +44,8 @@ export function AuthInput({
   palette: Palette;
 } & React.ComponentProps<typeof Input>) {
   const style = {
-    "--r-height-base": "38px",
-    "--r-height-md": "40px",
+    "--r-height-base": "42px",
+    "--r-height-md": "42px",
     ...(inputStyle as React.CSSProperties | undefined)
   } as React.CSSProperties & Record<string, string>;
 
@@ -72,27 +72,16 @@ export function AuthPrimaryButton({
   palette: Palette;
   type?: "button" | "submit" | "reset";
 }) {
-  return <Button type={type} isDisabled={disabled || isDisabled || busy} aria-busy={busy} onPress={onClick ?? onPress} style={{
-    height: "42px",
-    width: "100%",
-    borderRadius: "8px",
-    background: palette.primary,
-    color: "#ffffff",
-    borderWidth: "1px",
-    borderColor: palette.primary,
-    fontSize: "14px",
-    fontWeight: "720",
-    letterSpacing: "0px",
-    transition: "background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease)"
+  return <Button type={type} fullWidth isDisabled={disabled || isDisabled || busy} aria-busy={busy} data-busy={busy ? "true" : undefined} className="icedr-auth-primary-button" onPress={onClick ?? onPress} style={{
+    "--auth-primary-bg": palette.primary,
+    "--auth-primary-border": palette.primary,
+    "--auth-primary-focus": palette.focusRing,
+    "--auth-primary-hover": palette.primaryHover,
+    "--auth-primary-text": "#ffffff"
   } as React.CSSProperties}>
-      <div style={{
-      alignItems: "center",
-      display: "flex",
-      gap: "8px",
-      justifyContent: "center"
-    }}>
+      <div className="icedr-auth-button-content">
         {busy ? <AuthButtonLoader /> : null}
-        <span>{children}</span>
+        <span className="icedr-auth-button-label">{children}</span>
         {!busy && icon ? <LocalIcon name={icon} size={16} /> : null}
       </div>
     </Button>;
