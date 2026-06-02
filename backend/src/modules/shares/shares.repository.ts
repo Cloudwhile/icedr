@@ -5,6 +5,7 @@ import { createAuditEvent } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma, type ShareLink } from '../../generated/prisma/client';
 import { CreateShareDto, ShareResponse } from './shares.dto';
+import { resolveShareDownloadPolicy } from './share-download-policy';
 
 type StoredShare = ShareResponse;
 
@@ -51,6 +52,7 @@ export class SharesRepository {
       expiresDays: dto.expiresDays,
       remark: dto.remark ?? '',
       policy: dto.policy,
+      downloadPolicy: resolveShareDownloadPolicy(dto.policy),
       createdAt: new Date().toISOString(),
       revokedAt: null,
     };
@@ -178,6 +180,7 @@ export class SharesRepository {
   }
 
   private mapRow(row: ShareLink): StoredShare {
+    const policy = this.parsePolicy(row.policySnapshot);
     return {
       token: row.token,
       url: this.buildShareUrl(row.token),
@@ -192,7 +195,8 @@ export class SharesRepository {
       allowPreview: row.allowPreview,
       expiresDays: row.expiresDays,
       remark: row.remark ?? '',
-      policy: this.parsePolicy(row.policySnapshot),
+      policy,
+      downloadPolicy: resolveShareDownloadPolicy(policy),
       createdAt: row.createdAt.toISOString(),
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     };

@@ -15,16 +15,49 @@ export type AuditEventResponse = {
   createdAt: string;
 };
 
+export type ShareAccessIdentityType = "anonymous" | "email" | "ica" | "workspace";
+
 export type ShareAccessSession = {
   sessionId: string;
   shareToken: string;
-  identityType: "anonymous" | "email" | "ica" | "workspace";
+  identityType: ShareAccessIdentityType;
   email?: string;
   availableAt: string;
   waitSeconds: number;
   downloadLimit: string;
   speedLimit: { value: number; unit: "KB/s" | "MB/s" } | null;
+  policyDecision: ShareDownloadPolicyDecision;
   expiresAt: string;
+};
+
+export type ShareDownloadSpeedLimit = { value: number; unit: "KB/s" | "MB/s" } | null;
+
+export type ShareDownloadRule = {
+  identityType: ShareAccessIdentityType;
+  waitSeconds: number;
+  speedLimit: ShareDownloadSpeedLimit;
+  bypassWait: boolean;
+  bypassSpeedLimit: boolean;
+};
+
+export type ShareDownloadPolicy = {
+  requiresAccessSession: boolean;
+  requiresEmailVerification: boolean;
+  allowedDomain: string;
+  emailAllowlist: string[];
+  maxDownloads: number;
+  maxViews: number;
+  downloadLimit: string;
+  rateLimitProfile: string;
+  rules: Record<ShareAccessIdentityType, ShareDownloadRule>;
+};
+
+export type ShareDownloadPolicyDecision = ShareDownloadRule & {
+  downloadLimit: string;
+  maxDownloads: number;
+  remainingDownloads: number | null;
+  requiresAccessSession: boolean;
+  requiresEmailVerification: boolean;
 };
 
 export type IdentityConfigResponse = {

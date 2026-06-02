@@ -14,6 +14,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { FileNodeResponse } from '../files/file-nodes.dto';
+import type { ShareDownloadPolicy } from './share-download-policy';
 
 export type ShareMode = 'single-file' | 'multi-file' | 'folder';
 export type ShareWaitUnit = 'seconds' | 'minutes';
@@ -138,6 +139,7 @@ export type ShareResponse = {
   expiresDays: number;
   remark: string;
   policy: SharePolicyDto;
+  downloadPolicy: ShareDownloadPolicy;
   createdAt: string;
   revokedAt: string | null;
 };
