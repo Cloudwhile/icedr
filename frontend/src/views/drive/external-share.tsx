@@ -1047,6 +1047,7 @@ export function ExternalShareAdminSettingsPanel({
     setOauthSettings({
       ...previous,
       ...icetowneBlogOAuthPreset,
+      providerMode: "compatibility",
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     });
     setOauthConfigOpen(true);
@@ -1054,13 +1055,15 @@ export function ExternalShareAdminSettingsPanel({
   };
   const setOAuthProfile = (providerProfile: OAuthSettings["providerProfile"]) => {
     if (!oauthSettings || saving) return;
-    const next = providerProfile === "icetowne-blog" ? {
+    const next: OAuthSettings = providerProfile === "icetowne-blog" ? {
       ...oauthSettings,
       ...icetowneBlogOAuthPreset,
+      providerMode: "compatibility",
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     } : {
       ...oauthSettings,
-      providerProfile
+      providerProfile,
+      providerMode: "standard"
     };
     setOauthSettings(next);
     setOauthConfigOpen(true);
@@ -1483,6 +1486,11 @@ export function ExternalShareAdminSettingsPanel({
               <PolicyCheck checked={oauthSettings?.providerProfile === "oidc"} label={t("admin.providerOidc")} onToggle={() => setOAuthProfile("oidc")} palette={palette} />
               <PolicyCheck checked={oauthSettings?.providerProfile === "icetowne-blog"} label={t("admin.providerIcetowneBlog")} onToggle={() => setOAuthProfile("icetowne-blog")} palette={palette} />
             </div>
+            <StatusPill palette={palette} tone={oauthSettings?.providerMode === "compatibility" ? "risk" : "secure"} style={{
+            alignSelf: "flex-start"
+          }}>
+              {oauthSettings?.providerMode === "compatibility" ? t("admin.oauthCompatibilityMode") : t("admin.oauthStandardMode")}
+            </StatusPill>
             <InlineConfigPanel palette={palette}>
               <div className="icedr-r-grid-template-columns" style={{
               display: "grid",

@@ -24,7 +24,6 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from '@simplewebauthn/server';
-import * as oidc from 'openid-client';
 import { MailService } from '../../admin/mail/mail.service';
 import { SettingsService } from '../../admin/settings/settings.service';
 import type { OAuthSettings } from '../../admin/settings/settings.dto';
@@ -52,6 +51,10 @@ import {
   UpdateCurrentUserDto,
 } from './auth.dto';
 import { AuthRepository, StoredAuthUser } from './auth.repository';
+import {
+  createOAuthProviderAdapter,
+  createOAuthRequestState,
+} from './oauth-provider-adapters';
 
 const scryptAsync = promisify(scrypt);
 const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -66,11 +69,6 @@ const oauthExchangeTtlMs = 2 * 60 * 1000;
 const invalidCredentialsCode = 'AUTH_INVALID_CREDENTIALS';
 const invalidCredentialsPasswordHash =
   'scrypt$icedr-auth-invalid$5m3ozKIOc8ztEI2scnbBUoChYL6g8J2r8wIcRIgbsUSqFB3aJyC9v6VmxtTqUsoUxNQqR5Fe61bLEJO55CpWPA';
-type OAuthTokenResponse = Record<string, unknown> & {
-  access_token?: string;
-  refresh_token?: string;
-  id_token?: string;
-};
 
 @Injectable()
 export class AuthService {
@@ -309,29 +307,23 @@ export class AuthService {
     }
 
     const oauth = await this.settingsService.getOAuthSettings();
-    const oauthUser =
-      oauth.providerProfile === 'icetowne-blog'
-        ? await this.exchangeIcetowneBlogCode(
-            oauth,
-            storedState.redirectUri,
-            url,
-          )
-        : await this.exchangeOidcCode(
-            oauth,
-            storedState.redirectUri,
-            url,
-            state,
-            storedState.codeVerifier,
-          );
+    const oauthAdapter = this.createOAuthProviderAdapter(oauth);
+    const oauthUser = await oauthAdapter.exchangeCode({
+      oauth,
+      redirectUri: storedState.redirectUri,
+      url,
+      state,
+      codeVerifier: storedState.codeVerifier,
+    });
     await this.authRepository.markOAuthStateUsed(state);
 
     let user = await this.authRepository.findUserByProviderIdentity(
-      this.oauthProviderKey(oauth),
+      oauthUser.provider,
       oauthUser.subject,
     );
     if (!user) {
       user = await this.authRepository.createOAuthUser({
-        provider: this.oauthProviderKey(oauth),
+        provider: oauthUser.provider,
         subject: oauthUser.subject,
         email: this.normalizeEmail(oauthUser.email),
         displayName: oauthUser.displayName,
@@ -586,19 +578,17 @@ export class AuthService {
     if (!this.settingsService.oauthConfigured(oauth)) {
       throw new ServiceUnavailableException('OAuth is not configured');
     }
-    const codeVerifier = oidc.randomPKCECodeVerifier();
-    const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
-    const state = oidc.randomState();
+    const { codeChallenge, codeVerifier, state } =
+      await createOAuthRequestState();
     const redirectUri = this.resolveOAuthRedirectUri(oauth, flow);
-    const authorizationUrl =
-      oauth.providerProfile === 'icetowne-blog'
-        ? await this.buildIcetowneBlogAuthorizationUrl(oauth, state)
-        : await this.buildOidcAuthorizationUrl(
-            oauth,
-            redirectUri,
-            state,
-            codeChallenge,
-          );
+    const authorizationUrl = await this.createOAuthProviderAdapter(
+      oauth,
+    ).buildAuthorizationUrl({
+      oauth,
+      redirectUri,
+      state,
+      codeChallenge,
+    });
     await this.authRepository.createOAuthState({
       state,
       flow,
@@ -608,235 +598,6 @@ export class AuthService {
       expiresAt: new Date(Date.now() + oauthStateTtlMs).toISOString(),
     });
     return { authorizationUrl: authorizationUrl.toString() };
-  }
-
-  private async buildOidcAuthorizationUrl(
-    oauth: OAuthSettings,
-    redirectUri: string,
-    state: string,
-    codeChallenge: string,
-  ) {
-    const client = await this.createOAuthClient(oidc, oauth, redirectUri);
-    return oidc.buildAuthorizationUrl(client, {
-      redirect_uri: redirectUri,
-      scope: oauth.scopes || 'openid email profile',
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
-      state,
-      ...(oauth.audience ? { audience: oauth.audience } : {}),
-    });
-  }
-
-  private async buildIcetowneBlogAuthorizationUrl(
-    oauth: OAuthSettings,
-    state: string,
-  ) {
-    const response = await this.postOAuthForm(
-      this.joinOAuthUrl(oauth.issuerUrl, '/oauth/request-auth-token'),
-      {
-        client_id: oauth.clientId,
-        client_secret: oauth.clientSecret ?? '',
-        scope: oauth.scopes || 'basic',
-        state,
-      },
-    );
-    const authUrl = this.readStringField(response, 'auth_url');
-    if (!authUrl) {
-      throw new ServiceUnavailableException(
-        'ICETOWNE BLOG OAuth did not return an authorization URL',
-      );
-    }
-    return new URL(authUrl);
-  }
-
-  private async exchangeOidcCode(
-    oauth: OAuthSettings,
-    redirectUri: string,
-    url: URL,
-    state: string,
-    codeVerifier: string,
-  ) {
-    const client = await this.createOAuthClient(oidc, oauth, redirectUri);
-    const tokens = await oidc.authorizationCodeGrant(client, url, {
-      expectedState: state,
-      pkceCodeVerifier: codeVerifier,
-    });
-    const claims = tokens.claims();
-    const subject = claims?.sub;
-    const accessToken = tokens.access_token;
-    let email = typeof claims?.email === 'string' ? claims.email : '';
-    let displayName =
-      typeof claims?.name === 'string' ? claims.name : email || 'OAuth User';
-
-    if ((!email || !displayName) && accessToken) {
-      const userInfo = await oidc.fetchUserInfo(
-        client,
-        accessToken,
-        subject ?? oidc.skipSubjectCheck,
-      );
-      if (!email && typeof userInfo.email === 'string') email = userInfo.email;
-      if (typeof userInfo.name === 'string') displayName = userInfo.name;
-    }
-
-    if (!subject) throw new UnauthorizedException('OAuth subject is missing');
-    if (!email) email = `${subject}@oauth.local`;
-    return { subject, email, displayName };
-  }
-
-  private async exchangeIcetowneBlogCode(
-    oauth: OAuthSettings,
-    redirectUri: string,
-    url: URL,
-  ) {
-    const code = url.searchParams.get('code');
-    if (!code) throw new UnauthorizedException('OAuth code is required');
-    const tokenResponse = await this.postOAuthForm(
-      this.joinOAuthUrl(oauth.issuerUrl, '/oauth/token'),
-      {
-        grant_type: 'authorization_code',
-        code,
-        client_id: oauth.clientId,
-        client_secret: oauth.clientSecret ?? '',
-        redirect_uri: redirectUri,
-      },
-    );
-    const accessToken = this.readStringField(tokenResponse, 'access_token');
-    if (!accessToken) {
-      throw new UnauthorizedException('ICETOWNE BLOG access token is missing');
-    }
-    const userInfo = await this.fetchOAuthJson(
-      this.joinOAuthUrl(oauth.issuerUrl, '/oauth/userinfo'),
-      {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    );
-    return this.parseIcetowneBlogUser(userInfo, tokenResponse);
-  }
-
-  private parseIcetowneBlogUser(
-    userInfo: Record<string, unknown>,
-    tokenResponse: OAuthTokenResponse,
-  ) {
-    const nestedUser = this.readRecordField(userInfo, 'user');
-    const subject =
-      this.firstStringField(userInfo, [
-        'sub',
-        'id',
-        'ID',
-        'user_id',
-        'userId',
-      ]) ||
-      this.firstStringField(nestedUser, [
-        'sub',
-        'id',
-        'ID',
-        'user_id',
-        'userId',
-      ]) ||
-      this.firstStringField(tokenResponse, ['sub', 'user_id', 'userId']);
-    if (!subject) {
-      throw new UnauthorizedException('ICETOWNE BLOG user id is missing');
-    }
-
-    const email =
-      this.firstStringField(userInfo, ['email', 'user_email']) ||
-      this.firstStringField(nestedUser, ['email', 'user_email']) ||
-      `${subject}@icetowne-blog.local`;
-    const displayName =
-      this.firstStringField(userInfo, [
-        'name',
-        'display_name',
-        'displayName',
-        'nickname',
-        'user_login',
-        'login',
-        'username',
-      ]) ||
-      this.firstStringField(nestedUser, [
-        'name',
-        'display_name',
-        'displayName',
-        'nickname',
-        'user_login',
-        'login',
-        'username',
-      ]) ||
-      email;
-
-    return { subject, email, displayName };
-  }
-
-  private async postOAuthForm(
-    targetUrl: string,
-    fields: Record<string, string>,
-  ) {
-    return this.fetchOAuthJson(
-      targetUrl,
-      {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      new URLSearchParams(fields),
-    );
-  }
-
-  private async fetchOAuthJson(
-    targetUrl: string,
-    headers: Record<string, string>,
-    body?: URLSearchParams,
-  ) {
-    let response: globalThis.Response;
-    try {
-      response = await fetch(targetUrl, {
-        method: body ? 'POST' : 'GET',
-        headers: { Accept: 'application/json', ...headers },
-        body,
-      });
-    } catch (error) {
-      throw new ServiceUnavailableException(
-        `OAuth provider request failed: ${error instanceof Error ? error.message : 'network error'}`,
-      );
-    }
-    if (!response.ok) {
-      const message = await response.text().catch(() => response.statusText);
-      throw new ServiceUnavailableException(
-        `OAuth provider returned ${response.status}: ${message}`,
-      );
-    }
-    return (await response.json()) as Record<string, unknown>;
-  }
-
-  private joinOAuthUrl(baseUrl: string, path: string) {
-    return `${baseUrl.replace(/\/$/, '')}${path}`;
-  }
-
-  private oauthProviderKey(oauth: OAuthSettings) {
-    return oauth.providerProfile === 'icetowne-blog'
-      ? 'icetowne-blog'
-      : 'oauth';
-  }
-
-  private readRecordField(source: Record<string, unknown>, key: string) {
-    const value = source[key];
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  }
-
-  private firstStringField(source: Record<string, unknown>, keys: string[]) {
-    for (const key of keys) {
-      const value = this.readStringField(source, key);
-      if (value) return value;
-    }
-    return '';
-  }
-
-  private readStringField(source: Record<string, unknown>, key: string) {
-    const value = source[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-    return '';
   }
 
   private async promoteExistingSetupAdmin(
@@ -857,31 +618,10 @@ export class AuthService {
     });
   }
 
-  private async createOAuthClient(
-    oidc: typeof import('openid-client'),
-    oauth: {
-      issuerUrl: string;
-      clientId: string;
-      clientSecret?: string;
-      redirectUri: string;
-    },
-    redirectUri = this.resolveOAuthRedirectUri(oauth, 'login'),
-  ) {
-    const issuer = new URL(oauth.issuerUrl);
-    return oidc.discovery(
-      issuer,
-      oauth.clientId,
-      {
-        redirect_uris: [redirectUri],
-        response_types: ['code'],
-      },
-      oauth.clientSecret
-        ? oidc.ClientSecretPost(oauth.clientSecret)
-        : oidc.None(),
-      issuer.protocol === 'http:' && !this.production
-        ? { execute: [oidc.allowInsecureRequests] }
-        : undefined,
-    );
+  private createOAuthProviderAdapter(oauth: OAuthSettings) {
+    return createOAuthProviderAdapter(oauth.providerProfile, {
+      production: this.production,
+    });
   }
 
   private resolveOAuthRedirectUri(

@@ -141,6 +141,7 @@ export type TranslationSettings = {
 export type OAuthSettings = {
   enabled: boolean;
   providerProfile: "oidc" | "icetowne-blog";
+  providerMode: "standard" | "compatibility";
   issuerUrl: string;
   clientId: string;
   audience: string;

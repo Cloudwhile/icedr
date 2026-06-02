@@ -53,8 +53,11 @@ export type OAuthSettings = {
   redirectUri: string;
 };
 
+export type OAuthProviderMode = 'standard' | 'compatibility';
+
 export type OAuthSettingsResponse = Omit<OAuthSettings, 'clientSecret'> & {
   clientSecretConfigured: boolean;
+  providerMode: OAuthProviderMode;
 };
 
 export type PasskeySettings = {

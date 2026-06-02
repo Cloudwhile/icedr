@@ -78,6 +78,11 @@ SHARE_EMAIL_PROVIDER=your-provider
 
 Do not set `ALLOW_DEV_MEMORY_STORE=true` or `SEED_DEMO_DATA=true` in production. Production file nodes and share links must come from PostgreSQL, and uploaded objects must exist in S3 or MinIO.
 
+External login should prefer the standard `oidc` provider profile. The
+`icetowne-blog` profile is kept as a compatibility mode for the legacy Blog
+OAuth shape. See `docs/identity-providers.md` for the adapter boundary and user
+field mapping rules.
+
 ## Verification Flow
 
 1. Open `http://localhost:13000`.

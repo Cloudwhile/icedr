@@ -135,6 +135,7 @@ function SetupPage({
   const [oauth, setOAuth] = useState<OAuthSettings>({
     enabled: false,
     providerProfile: "oidc",
+    providerMode: "standard",
     issuerUrl: "",
     clientId: "",
     audience: "icedr-api",
@@ -288,6 +289,7 @@ function SetupPage({
     setOAuth(value => ({
       ...value,
       ...icetowneBlogOAuthPreset,
+      providerMode: "compatibility",
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     }));
     setOAuthEnabled(true);
@@ -511,10 +513,16 @@ function SetupPage({
             } as React.CSSProperties}>
                   <SelectButton active={oauth.providerProfile === "oidc"} label={t("setup.providerOidc")} onClick={() => setOAuth(value => ({
                 ...value,
-                providerProfile: "oidc"
+                providerProfile: "oidc",
+                providerMode: "standard"
               }))} palette={palette} />
                   <SelectButton active={oauth.providerProfile === "icetowne-blog"} label={t("setup.providerIcetowneBlog")} onClick={applyIcetowneBlogOAuthPreset} palette={palette} />
                 </div>
+                <StatusPill palette={palette} tone={oauth.providerMode === "compatibility" ? "risk" : "secure"} style={{
+              alignSelf: "flex-start"
+            }}>
+                  {oauth.providerMode === "compatibility" ? t("setup.oauthCompatibilityMode") : t("setup.oauthStandardMode")}
+                </StatusPill>
                 <div className="icedr-r-grid-template-columns" style={{
               display: "grid",
               "--r-grid-template-columns-base": "1fr",
