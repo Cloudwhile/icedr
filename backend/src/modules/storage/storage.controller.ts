@@ -27,17 +27,23 @@ export class StorageController {
   ) {}
 
   @Get('profile')
-  async getProfile() {
+  async getProfile(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requirePermission(authorization, 'storage', 'read');
     return this.storageService.getProfile();
   }
 
   @Get('settings')
-  getSettings() {
+  async getSettings(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
     return this.storageService.getSettings();
   }
 
   @Get('usage')
-  getUsage(@Query('workspaceId') workspaceId = 'workspace-default') {
+  async getUsage(
+    @Query('workspaceId') workspaceId = 'workspace-default',
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'storage', 'read');
     return this.storageService.getUsage(workspaceId);
   }
 
@@ -46,7 +52,7 @@ export class StorageController {
     @Query('limit') limit?: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
     return this.storageService.listReconcileTasks(
       limit ? Number(limit) : undefined,
     );
@@ -57,7 +63,7 @@ export class StorageController {
     @Body() dto: RunBlobReconcileDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
     return this.storageService.reconcileObjects(dto);
   }
 
@@ -66,7 +72,7 @@ export class StorageController {
     @Body() dto: UpdateStorageSettingsDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
     return this.storageService.updateSettings(dto);
   }
 
@@ -75,7 +81,7 @@ export class StorageController {
     @Body() dto: UpdateStorageSettingsDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
     return this.storageService.testSettings(dto);
   }
 

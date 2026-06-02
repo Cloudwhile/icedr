@@ -14,4 +14,11 @@ Core endpoint groups:
 - `/api/transfers`: upload/download transfer status.
 - `/api/audit`: audit event listing.
 
+Authentication and authorization boundaries are documented in
+`docs/permissions.md`. Workspace control-plane endpoints require a bearer
+session, while administrator endpoints such as audit records, storage settings,
+site settings, identity settings, mail settings, and workspace share-policy
+updates require administrator permission. Public share visitor flows remain
+token-based.
+
 Swagger is mounted at `/api/docs` by `backend/src/main.ts`.

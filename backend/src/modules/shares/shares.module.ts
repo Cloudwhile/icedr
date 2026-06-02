@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthCoreModule } from '../auth/core/auth-core.module';
 import { AuthModule } from '../auth/core/auth.module';
 import { FileNodesModule } from '../files/file-nodes.module';
 import { MailModule } from '../admin/mail/mail.module';
@@ -10,6 +11,7 @@ import { SharesService } from './shares.service';
 
 @Module({
   imports: [
+    AuthCoreModule,
     AuthModule,
     FileNodesModule,
     MailModule,

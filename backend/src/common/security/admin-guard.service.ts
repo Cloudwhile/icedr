@@ -5,12 +5,36 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { AuthRepository } from '../../modules/auth/core/auth.repository';
+import {
+  canAccessResource,
+  formatPermission,
+  type PermissionAction,
+  type PermissionResource,
+} from './permission-policy';
 
 @Injectable()
 export class AdminGuardService {
   constructor(private readonly authRepository: AuthRepository) {}
 
   async requireAdminSession(authorization?: string) {
+    return this.requirePermission(authorization, 'settings', 'manage');
+  }
+
+  async requirePermission(
+    authorization: string | undefined,
+    resource: PermissionResource,
+    action: PermissionAction,
+  ) {
+    const session = await this.requireSession(authorization);
+    if (!canAccessResource(session.user.role, resource, action)) {
+      throw new ForbiddenException(
+        `${formatPermission(resource, action)} permission is required`,
+      );
+    }
+    return session;
+  }
+
+  async requireSession(authorization?: string) {
     const token = this.extractBearerToken(authorization);
     if (!token) throw new UnauthorizedException('Authentication is required');
     const session = await this.authRepository.findSessionByTokenHash(
@@ -20,9 +44,6 @@ export class AdminGuardService {
     if (new Date(session.expiresAt).getTime() < Date.now()) {
       await this.authRepository.deleteSessionByTokenHash(session.tokenHash);
       throw new UnauthorizedException('Session has expired');
-    }
-    if (session.user.role !== 'admin') {
-      throw new ForbiddenException('Administrator access is required');
     }
     return session;
   }

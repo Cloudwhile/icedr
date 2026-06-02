@@ -9,6 +9,7 @@ import { DirectoryPickerDialog } from "@/components/ui/directory-picker-dialog";
 import { DriveFilePreviewDialog } from "@/components/ui/drive-file-preview-dialog";
 import { FileOpenWithDialog } from "@/components/ui/file-open-with-dialog";
 import { AppLoading, LdrsLoadingState, WorkspaceSkeleton } from "@/components/common/ui/loading-state";
+import { canAccessDriveModule } from "@/features/auth/permissions";
 import { compareByModified, findDriveItem, getChildItems, getFolderPath, getItemKind, type DriveItem, type DriveModule, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
 import { copyTextToClipboard, createPreviewUrl, createShareUrl, createUploadDriveFileTask, downloadWorkspaceDriveItem, isUploadDriveFileControlError, type UploadDriveFileProgress, type UploadDriveFileTask } from "@/features/file/actions";
 import { createGeneratedFileTemplate, type GeneratedFileKind } from "@/features/file/generated-files";
@@ -203,6 +204,7 @@ export function DriveWorkbench({
   const activeUserTheme = activeUser?.theme;
   const activeUserTimeZone = activeUser?.timezone;
   const uploadActor = activeUser?.displayName || activeUser?.email || undefined;
+  const canViewAudit = canAccessDriveModule(activeUser, "audit");
   const brandLogo = siteSettings.authLogoDataUrl || "/logo.png";
   const currentWorkspaceName = workspaces.find(workspace => workspace.id === workspaceId)?.name || t("app.workspaceSpace");
   const allKnownItems = useMemo(() => [...driveItems, ...archivedItems], [archivedItems, driveItems]);
@@ -215,7 +217,8 @@ export function DriveWorkbench({
   const currentDirectoryItems = useMemo(() => getChildItems(currentFolderId, driveItems), [currentFolderId, driveItems]);
   const linkRows = useMemo(() => registeredShares.filter(share => share.status !== "revoked" && !share.revokedAt), [registeredShares]);
   const visibleTransferRows = useMemo(() => mergeTransferRows(transferRows, Object.values(uploadTelemetry)), [transferRows, uploadTelemetry]);
-  const activeModule: DriveModule | "settings" = ["links", "transfers", "audit", "settings"].includes(activeNav) ? activeNav as DriveModule | "settings" : "drive";
+  const requestedModule: DriveModule | "settings" = ["links", "transfers", "audit", "settings"].includes(activeNav) ? activeNav as DriveModule | "settings" : "drive";
+  const activeModule: DriveModule | "settings" = canAccessDriveModule(activeUser, requestedModule) ? requestedModule : "drive";
   const showDetailsPanel = detailsOpen && activeModule !== "settings";
   const workspaceRefreshLoading = workspaceLoading || bootLoading;
   const showSettingsSkeleton = workspaceRefreshLoading && activeModule === "settings";
@@ -228,6 +231,22 @@ export function DriveWorkbench({
     if (isThemePreferenceValue(activeUserTheme)) setThemePreference(activeUserTheme);
     if (isTimeZonePreferenceValue(activeUserTimeZone)) setTimeZonePreference(activeUserTimeZone);
   }, [activeUserId, activeUserLocale, activeUserTheme, activeUserTimeZone, setLocale, setThemePreference, setTimeZonePreference]);
+
+  useEffect(() => {
+    if (!activeUser || activeModule === requestedModule) return;
+    let cancelled = false;
+    window.queueMicrotask(() => {
+      if (cancelled) return;
+      setActiveNav("drive");
+      setCurrentFolderId(null);
+      setSelected([]);
+      setFocusedItemId(null);
+      setDetailsOpen(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeModule, activeUser, requestedModule]);
 
   const directoryPickerDisabledIds = useMemo(() => {
     if (!directoryPicker || getItemKind(directoryPicker.item) !== "folder") return [];
@@ -331,6 +350,11 @@ export function DriveWorkbench({
     }
   }, [t]);
   const refreshAuditEvents = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
+    if (!canViewAudit) {
+      setAuditEvents([]);
+      setAuditError(null);
+      return;
+    }
     if (!targetWorkspaceId) return;
     try {
       const events = await fetchAuditEvents({
@@ -343,7 +367,7 @@ export function DriveWorkbench({
       setAuditEvents([]);
       setAuditError(t("audit.loadFailed"));
     }
-  }, [t]);
+  }, [canViewAudit, t]);
   const refreshShareSettings = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return;
     try {
@@ -489,6 +513,7 @@ export function DriveWorkbench({
     });
   };
   const openActivity = () => {
+    if (!canViewAudit) return;
     setActiveNav("audit");
     setCurrentFolderId(null);
     setSelected([]);
@@ -977,10 +1002,11 @@ export function DriveWorkbench({
       <div className="drive-main-grid" style={{
       "--drive-grid-columns": showDetailsPanel ? "232px minmax(0, 1fr) 328px" : "232px minmax(0, 1fr)"
     } as React.CSSProperties}>
-        <Sidebar activeNav={activeNav} currentFolderId={currentFolderId} directoryItems={driveItems} folderPath={folderPath} rootLabel={currentWorkspaceName} onNavigateFolder={id => {
+        <Sidebar activeNav={activeNav} currentFolderId={currentFolderId} currentUser={activeUser} directoryItems={driveItems} folderPath={folderPath} rootLabel={currentWorkspaceName} onNavigateFolder={id => {
         navigateFolderPath(id);
         setSidebarOpen(false);
       }} onNavigateRoot={openRoot} palette={palette} sidebarOpen={sidebarOpen} spaceScope="workspace" storageUsage={storageUsage} onSelectWorkspaceSpace={openRoot} setActiveNav={id => {
+        if (id === "audit" && !canViewAudit) return;
         if (id !== activeNav && id !== "transfers") queueWorkspaceLoading();
         if (id === "transfers") {
           if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
