@@ -5,8 +5,12 @@ import { createAuditEvent } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma, type ShareLink } from '../../generated/prisma/client';
 import { CreateShareDto, ShareResponse } from './shares.dto';
+import { resolveShareDownloadPolicy } from './share-download-policy';
 
 type StoredShare = ShareResponse;
+type DownloadStartedMetadataFactory = (
+  downloadCount: number,
+) => Record<string, unknown> | null;
 
 export type ShareStatus = 'active' | 'revoked' | 'expired';
 export type ShareRiskLevel = 'normal' | 'attention' | 'high';
@@ -51,6 +55,7 @@ export class SharesRepository {
       expiresDays: dto.expiresDays,
       remark: dto.remark ?? '',
       policy: dto.policy,
+      downloadPolicy: resolveShareDownloadPolicy(dto.policy),
       createdAt: new Date().toISOString(),
       revokedAt: null,
     };
@@ -143,6 +148,103 @@ export class SharesRepository {
     });
   }
 
+  async recordDownloadStarted(
+    shareToken: string,
+    metadataForDownloadCount: DownloadStartedMetadataFactory,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const lockedRows = await tx.$queryRaw<
+        Array<{
+          createdAt: Date | string;
+          expiresDays: number;
+          revokedAt: Date | string | null;
+          workspaceId: string;
+        }>
+      >`
+        select
+          workspace_id as "workspaceId",
+          revoked_at as "revokedAt",
+          created_at as "createdAt",
+          expires_days as "expiresDays"
+        from share_links
+        where token = ${shareToken}
+        for update
+      `;
+      const lockedShare = lockedRows[0];
+      if (!lockedShare) {
+        return {
+          downloadCount: 0,
+          expired: false,
+          missingShare: true,
+          recorded: false,
+          revoked: false,
+        };
+      }
+      const expiresAt =
+        new Date(lockedShare.createdAt).getTime() +
+        Math.max(0, Math.trunc(Number(lockedShare.expiresDays))) * 86400000;
+      if (lockedShare.revokedAt || expiresAt < Date.now()) {
+        return {
+          downloadCount: 0,
+          expired: !lockedShare.revokedAt,
+          missingShare: false,
+          recorded: false,
+          revoked: Boolean(lockedShare.revokedAt),
+        };
+      }
+
+      const downloadCount = await tx.auditEvent.count({
+        where: {
+          action: 'share.download_started',
+          shareToken,
+        },
+      });
+      const metadata = metadataForDownloadCount(downloadCount);
+      if (!metadata) {
+        return {
+          downloadCount,
+          expired: false,
+          missingShare: false,
+          recorded: false,
+          revoked: false,
+        };
+      }
+
+      const event = createAuditEvent({
+        action: 'share.download_started',
+        actor: 'visitor',
+        target: shareToken,
+        workspaceId: lockedShare.workspaceId,
+        shareToken,
+        nodeId:
+          typeof metadata.nodeId === 'string' ? metadata.nodeId : undefined,
+        metadata: { source: 'shares-service', ...metadata },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          id: event.id,
+          action: event.action,
+          actor: event.actor,
+          target: event.target,
+          workspaceId: event.workspaceId,
+          shareToken: event.shareToken,
+          nodeId: event.nodeId,
+          metadata: event.metadata as Prisma.InputJsonValue,
+          createdAt: new Date(event.createdAt),
+        },
+      });
+
+      return {
+        downloadCount,
+        expired: false,
+        missingShare: false,
+        recorded: true,
+        revoked: false,
+      };
+    });
+  }
+
   async countAuditEvents(action?: ShareAuditAction) {
     return this.prisma.auditEvent.count({
       where: action ? { action } : undefined,
@@ -178,6 +280,7 @@ export class SharesRepository {
   }
 
   private mapRow(row: ShareLink): StoredShare {
+    const policy = this.parsePolicy(row.policySnapshot);
     return {
       token: row.token,
       url: this.buildShareUrl(row.token),
@@ -192,7 +295,8 @@ export class SharesRepository {
       allowPreview: row.allowPreview,
       expiresDays: row.expiresDays,
       remark: row.remark ?? '',
-      policy: this.parsePolicy(row.policySnapshot),
+      policy,
+      downloadPolicy: resolveShareDownloadPolicy(policy),
       createdAt: row.createdAt.toISOString(),
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     };

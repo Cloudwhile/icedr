@@ -86,7 +86,9 @@ Do not set `ALLOW_DEV_MEMORY_STORE=true` or `SEED_DEMO_DATA=true` in production.
 4. Select it and create an external share.
 5. Open the generated `/share/s/:token` link.
 6. Authenticate with email verification. In `dev-log` mode, the code is recorded in audit events for tests and local debugging.
-7. Download the file and check the Audit view for share and download events.
+7. Download the file and check the Audit view for share, download, and matched policy events.
+
+External shares resolve one download policy for anonymous visitors, email-verified visitors, and authenticated account visitors. That policy controls wait time, speed hints, domain or allowlist requirements, and per-link download limits; each access session and download intent carries the policy decision that was applied.
 
 Short-lived email codes, access sessions, preview intents, and download intents are process-local in this first deployable version. Restarting the API invalidates those temporary tokens, but persisted share links remain in PostgreSQL.
 
