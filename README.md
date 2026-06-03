@@ -111,6 +111,20 @@ Short-lived email codes, access sessions, preview intents, and download intents 
 pnpm.cmd lint
 pnpm.cmd build
 pnpm.cmd test
+pnpm.cmd test:e2e
 ```
 
 Use `pnpm.cmd` on Windows PowerShell if script execution policy blocks `pnpm.ps1`.
+
+`pnpm.cmd test` runs the backend Jest suite and the frontend Vitest suite. The frontend also has an independent test command:
+
+```bash
+pnpm.cmd --filter frontend test
+```
+
+The end-to-end smoke suite uses Playwright against the built frontend and mocks API responses for the core share flow: drive load, external link creation, email-code verification, file download, and audit viewing. Install the browser once before running it locally:
+
+```bash
+pnpm.cmd --filter frontend exec playwright install chromium
+pnpm.cmd test:e2e
+```

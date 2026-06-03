@@ -9,7 +9,8 @@
     "dev:api": "pnpm --filter backend start:dev",
     "build": "pnpm --filter frontend build && pnpm --filter backend build",
     "lint": "pnpm --filter frontend lint && pnpm --filter backend lint",
-    "test": "pnpm --filter backend test",
+    "test": "pnpm --filter backend test && pnpm --filter frontend test",
+    "test:e2e": "pnpm --filter frontend test:e2e",
     "infra:up": "docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml up -d postgres redis minio minio-init",
     "infra:down": "docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml down"
   },
