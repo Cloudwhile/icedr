@@ -1,5 +1,10 @@
 import { findDriveItem, getChildItems, getItemKind, type DriveItem } from "@/features/file/model";
-import { DriveApiError, getApiBaseUrl, type FilePreviewCapability } from "@/lib/drive-api";
+import {
+  DriveApiError,
+  getApiBaseUrl,
+  type FilePreviewCapability,
+  type ShareDownloadPolicy,
+} from "@/lib/drive-api";
 
 const apiUnavailableMessage = "ICEDR share API is unavailable";
 
@@ -17,6 +22,10 @@ export type RegisteredSharePolicy = {
   expiresUnit: RegisteredShareExpiryUnit;
   downloadLimit: string;
   allowedDomain: string;
+  emailAllowlist?: string[];
+  maxDownloads?: number;
+  maxViews?: number;
+  rateLimitProfile?: string;
 };
 
 export type RegisteredShareItem = {
@@ -49,6 +58,7 @@ export type RegisteredShare = {
   expiresDays: number;
   remark: string;
   policy: RegisteredSharePolicy;
+  downloadPolicy?: ShareDownloadPolicy;
   createdAt: string;
   url?: string;
   revokedAt?: string | null;
@@ -94,6 +104,7 @@ function mapShareApiResponse(response: ShareApiResponse): RegisteredShare {
     expiresDays: response.expiresDays,
     remark: response.remark,
     policy: response.policy,
+    downloadPolicy: response.downloadPolicy,
     createdAt: response.createdAt,
     url: response.url,
     revokedAt: response.revokedAt,

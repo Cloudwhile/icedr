@@ -7,7 +7,7 @@ Current persisted areas:
 - auth settings, users, user metadata, identities, sessions, password resets, passkeys, OAuth states, and OAuth exchange codes.
 - workspaces and workspace share settings.
 - file nodes, preview artifacts, and file download intents.
-- share links and audit events.
+- share links, share email codes, share access sessions, share download intents, and audit events.
 - storage settings, upload sessions, transfer tasks, and blob reconcile tasks.
 - generic settings records for bootstrap, site, OAuth, passkey, mail, and database verification state.
 

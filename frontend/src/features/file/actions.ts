@@ -1,5 +1,14 @@
 import type { DriveItem } from "@/features/file/model";
-import { buildApiUrl, createFileDownloadIntent, getApiBaseUrl, updateTransfer, type FileNodeResponse, type FilePreviewCapability, type PreviewRenderMode } from "@/lib/drive-api";
+import {
+  buildApiUrl,
+  createFileDownloadIntent,
+  getApiBaseUrl,
+  updateTransfer,
+  type FileNodeResponse,
+  type FilePreviewCapability,
+  type PreviewRenderMode,
+  type ShareDownloadPolicyDecision,
+} from "@/lib/drive-api";
 
 type DownloadIntentResponse = {
   downloadId: string;
@@ -8,6 +17,7 @@ type DownloadIntentResponse = {
   method: "presigned-url" | "backend-manifest";
   availableAt: string;
   expiresAt: string;
+  policyDecision?: ShareDownloadPolicyDecision;
 };
 
 type UploadIntentResponse = {
