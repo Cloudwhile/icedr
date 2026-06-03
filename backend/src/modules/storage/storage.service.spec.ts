@@ -137,6 +137,31 @@ describe('StorageService', () => {
     );
   });
 
+  it('preserves public storage endpoint query parameters when rewriting urls', async () => {
+    const { service } = createService(
+      {
+        ...configuredValues,
+        'storage.publicEndpoint':
+          'https://drive.example.com/objects?gateway=cdn&X-Amz-Signature=public',
+      },
+      'http://minio:9000/icedr-drive/workspace-default/root/file.pdf?X-Amz-Signature=signed&X-Amz-Expires=300',
+    );
+
+    const intent = await service.createPresignedDownload(
+      'workspace-default/root/file.pdf',
+      'file.pdf',
+    );
+
+    const url = new URL(intent.url);
+    expect(url.origin).toBe('https://drive.example.com');
+    expect(url.pathname).toBe(
+      '/objects/icedr-drive/workspace-default/root/file.pdf',
+    );
+    expect(url.searchParams.get('X-Amz-Signature')).toBe('signed');
+    expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
+    expect(url.searchParams.get('gateway')).toBe('cdn');
+  });
+
   it('rejects switching to distributed storage until object storage is configured', async () => {
     const { service, settingsRepository, update } = createService({
       'storage.localRoot': 'backend/.tmp/storage-service-spec-local-files',

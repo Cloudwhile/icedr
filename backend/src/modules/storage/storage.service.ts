@@ -853,8 +853,14 @@ export class StorageService {
       const signed = new URL(signedUrl);
       const publicUrl = new URL(publicEndpoint);
       publicUrl.pathname = `${publicUrl.pathname.replace(/\/$/, '')}${signed.pathname}`;
-      publicUrl.search = signed.search;
-      publicUrl.hash = signed.hash;
+      const mergedParams = new URLSearchParams(signed.search);
+      new URLSearchParams(publicUrl.search).forEach((value, key) => {
+        if (!mergedParams.has(key)) {
+          mergedParams.set(key, value);
+        }
+      });
+      publicUrl.search = mergedParams.toString();
+      publicUrl.hash = signed.hash || publicUrl.hash;
       return publicUrl.toString();
     } catch {
       return signedUrl;
