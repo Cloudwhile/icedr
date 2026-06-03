@@ -12,6 +12,9 @@ export function canAccessDriveModule(
   module: DrivePermissionModule,
 ) {
   if (!user) return false;
-  if (module === "audit") return isAdminUser(user);
-  return true;
+  if (user.role === "admin") return true;
+  if (user.role === "member") {
+    return ["drive", "links", "transfers", "settings"].includes(module);
+  }
+  return false;
 }

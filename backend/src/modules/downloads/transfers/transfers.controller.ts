@@ -30,7 +30,7 @@ export class TransfersController {
     await this.adminGuard.requirePermission(authorization, 'transfer', 'read');
     return this.transfersService.listTransfers({
       workspaceId,
-      limit: limit ? Number(limit) : undefined,
+      limit: parseLimit(limit),
     });
   }
 
@@ -56,4 +56,11 @@ export class TransfersController {
     );
     return this.transfersService.deleteTransfer(id);
   }
+}
+
+function parseLimit(limit?: string) {
+  const normalized = limit?.trim();
+  if (!normalized || !/^\d+$/.test(normalized)) return undefined;
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
