@@ -13,7 +13,7 @@ ICEDR is a Node.js monorepo with a Vite frontend and a NestJS backend.
 
 - `modules/auth`: local auth, OAuth, passkeys, sessions, and identity configuration.
 - `modules/files`: file node listing, upload intents, preview intents, and download intents.
-- `modules/shares`: external share links, visitor sessions, access codes, and share audit records.
+- `modules/shares`: external share links, visitor sessions, access codes, normalized download policy decisions, and share audit records.
 - `modules/storage`: S3/MinIO/local storage profile, presigned URLs, and storage settings.
 - `modules/downloads`: transfer tasks, queue status, and worker-facing endpoints.
 - `modules/logs`: audit event queries.

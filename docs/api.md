@@ -10,7 +10,7 @@ Core endpoint groups:
 - `/api/site/settings`: public and admin site settings.
 - `/api/file-nodes`: file listing, upload completion, state changes, preview intents, and download intents.
 - `/api/storage`: storage profile, local upload/download fallback, and storage settings.
-- `/api/shares`: external link creation, visitor access, email verification, preview, and download flows.
+- `/api/shares`: external link creation, visitor access, email verification, preview, and download flows. Share responses include a normalized download policy, and access sessions/download intents include the policy decision for the current visitor identity.
 - `/api/transfers`: upload/download transfer status.
 - `/api/audit`: audit event listing.
 

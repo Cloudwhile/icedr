@@ -8,8 +8,10 @@ import { MailService } from '../admin/mail/mail.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import { CreateShareDto, ShareResponse } from './shares.dto';
+import { ShareAccessSession } from './share-access.dto';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
+import { resolveShareDownloadPolicy } from './share-download-policy';
 
 const createDto = (): CreateShareDto => ({
   title: 'ICEDR Roadmap.docx',
@@ -36,6 +38,31 @@ const createDto = (): CreateShareDto => ({
 
 class SharesRepositorySpecDouble {
   private shares = new Map<string, ShareResponse>();
+  private emailCodes = new Map<
+    string,
+    {
+      code: string;
+      consumedAt: string | null;
+      email: string;
+      expiresAt: string;
+      shareToken: string;
+    }
+  >();
+  private accessSessions = new Map<string, ShareAccessSession>();
+  private downloadIntents = new Map<
+    string,
+    {
+      consumedAt: string | null;
+      downloadId: string;
+      expiresAt: string;
+      filename: string;
+      identityType: 'anonymous' | 'email' | 'ica';
+      email?: string;
+      method: 'presigned-url' | 'backend-manifest';
+      nodeId: string;
+      token: string;
+    }
+  >();
   readonly auditEvents: Array<{
     action: string;
     target: string;
@@ -59,6 +86,7 @@ class SharesRepositorySpecDouble {
       expiresDays: dto.expiresDays,
       remark: dto.remark,
       policy: dto.policy,
+      downloadPolicy: resolveShareDownloadPolicy(dto.policy),
       createdAt: new Date().toISOString(),
       revokedAt: null,
     };
@@ -90,10 +118,155 @@ class SharesRepositorySpecDouble {
     this.auditEvents.push({ action, target, metadata });
   }
 
+  recordDownloadStarted(
+    token: string,
+    metadataForDownloadCount: (
+      downloadCount: number,
+    ) => Record<string, unknown> | null,
+  ) {
+    const share = this.shares.get(token);
+    if (!share) {
+      return Promise.resolve({
+        downloadCount: 0,
+        expired: false,
+        missingShare: true,
+        recorded: false,
+        revoked: false,
+      });
+    }
+    const expiresAt =
+      new Date(share.createdAt).getTime() + share.expiresDays * 86400000;
+    if (share.revokedAt || expiresAt < Date.now()) {
+      return Promise.resolve({
+        downloadCount: 0,
+        expired: !share.revokedAt,
+        missingShare: false,
+        recorded: false,
+        revoked: Boolean(share.revokedAt),
+      });
+    }
+    const downloadCount = this.auditEvents.filter(
+      (event) =>
+        event.target === token && event.action === 'share.download_started',
+    ).length;
+    const metadata = metadataForDownloadCount(downloadCount);
+    if (!metadata) {
+      return Promise.resolve({
+        downloadCount,
+        expired: false,
+        missingShare: false,
+        recorded: false,
+        revoked: false,
+      });
+    }
+    this.auditEvents.push({
+      action: 'share.download_started',
+      target: token,
+      metadata,
+    });
+    return Promise.resolve({
+      downloadCount,
+      expired: false,
+      missingShare: false,
+      recorded: true,
+      revoked: false,
+    });
+  }
+
   countAuditEvents(action: string) {
     return Promise.resolve(
       this.auditEvents.filter((event) => event.action === action).length,
     );
+  }
+
+  countShareAuditEvents(token: string, action: string) {
+    return Promise.resolve(
+      this.auditEvents.filter(
+        (event) => event.target === token && event.action === action,
+      ).length,
+    );
+  }
+
+  createEmailAccessCode(input: {
+    code: string;
+    email: string;
+    expiresAt: string;
+    token: string;
+  }) {
+    const email = input.email.toLowerCase();
+    const key = `${input.token}:${email}`;
+    this.emailCodes.set(key, {
+      code: input.code,
+      consumedAt: null,
+      email,
+      expiresAt: input.expiresAt,
+      shareToken: input.token,
+    });
+    return Promise.resolve(this.emailCodes.get(key));
+  }
+
+  consumeEmailAccessCode(input: {
+    code: string;
+    email: string;
+    token: string;
+  }) {
+    const key = `${input.token}:${input.email.toLowerCase()}`;
+    const code = this.emailCodes.get(key);
+    if (
+      !code ||
+      code.consumedAt ||
+      code.code !== input.code ||
+      new Date(code.expiresAt).getTime() < Date.now()
+    ) {
+      return Promise.resolve(null);
+    }
+    code.consumedAt = new Date().toISOString();
+    return Promise.resolve(code);
+  }
+
+  createAccessSession(input: ShareAccessSession) {
+    this.accessSessions.set(input.sessionId, input);
+    return Promise.resolve(input);
+  }
+
+  findAccessSession(sessionId: string) {
+    return Promise.resolve(this.accessSessions.get(sessionId) ?? null);
+  }
+
+  createShareDownloadIntent(input: {
+    downloadId: string;
+    expiresAt: string;
+    filename: string;
+    identityType: 'anonymous' | 'email' | 'ica';
+    email?: string;
+    method: 'presigned-url' | 'backend-manifest';
+    nodeId: string;
+    token: string;
+  }) {
+    this.downloadIntents.set(input.downloadId, {
+      ...input,
+      consumedAt: null,
+    });
+    return Promise.resolve(this.downloadIntents.get(input.downloadId));
+  }
+
+  consumeShareDownloadIntent(input: {
+    downloadId: string;
+    nodeId: string;
+    token: string;
+  }) {
+    const intent = this.downloadIntents.get(input.downloadId);
+    if (
+      !intent ||
+      intent.consumedAt ||
+      intent.token !== input.token ||
+      intent.nodeId !== input.nodeId ||
+      new Date(intent.expiresAt).getTime() < Date.now()
+    ) {
+      return Promise.resolve(null);
+    }
+    intent.consumedAt = new Date().toISOString();
+    return Promise.resolve(intent);
   }
 }
 
@@ -345,6 +518,172 @@ describe('SharesService', () => {
     ).resolves.toBe(1);
   });
 
+  it('returns a unified download policy and policy decisions for email visitors', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: {
+        ...createDto().policy,
+        waitValue: 30,
+        speedValue: 256,
+        downloadLimit: '2',
+        maxDownloads: 2,
+      },
+    });
+    const found = await service.getShare(created.token);
+    const session = await createEmailSession(created.token);
+
+    expect(found.downloadPolicy).toMatchObject({
+      requiresAccessSession: true,
+      maxDownloads: 2,
+      rules: {
+        anonymous: {
+          identityType: 'anonymous',
+          waitSeconds: 30,
+          speedLimit: { value: 256, unit: 'KB/s' },
+        },
+        email: {
+          identityType: 'email',
+          waitSeconds: 30,
+          speedLimit: { value: 256, unit: 'KB/s' },
+        },
+        ica: {
+          identityType: 'ica',
+          waitSeconds: 0,
+          speedLimit: null,
+          bypassWait: true,
+          bypassSpeedLimit: true,
+        },
+      },
+    });
+    expect(session).toMatchObject({
+      identityType: 'email',
+      waitSeconds: 30,
+      speedLimit: { value: 256, unit: 'KB/s' },
+      policyDecision: {
+        identityType: 'email',
+        waitSeconds: 30,
+        maxDownloads: 2,
+        remainingDownloads: 2,
+      },
+    });
+    const audit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents
+      .filter((event) => event.action === 'share.access_session_created')
+      .at(-1);
+    expect(audit?.metadata.policyDecision).toMatchObject({
+      identityType: 'email',
+      waitSeconds: 30,
+      maxDownloads: 2,
+    });
+  });
+
+  it('records download policy hits and enforces share download limits', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: {
+        ...createDto().policy,
+        downloadLimit: '1',
+        maxDownloads: 1,
+      },
+    });
+    const session = await createEmailSession(created.token);
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const competingIntent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+
+    expect(intent.policyDecision).toMatchObject({
+      identityType: 'email',
+      maxDownloads: 1,
+      remainingDownloads: 1,
+    });
+    await service.downloadSharedNode(
+      created.token,
+      'roadmap',
+      intent.downloadId,
+    );
+    const startedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents
+      .filter((event) => event.action === 'share.download_started')
+      .at(-1);
+    expect(startedAudit?.metadata.policyDecision).toMatchObject({
+      identityType: 'email',
+      maxDownloads: 1,
+      remainingDownloads: 0,
+    });
+    await expect(
+      service.downloadSharedNode(
+        created.token,
+        'roadmap',
+        competingIntent.downloadId,
+      ),
+    ).rejects.toThrow('Share download limit has been reached');
+  });
+
+  it('rechecks share state while recording download starts', async () => {
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const repositoryDouble =
+      repository as unknown as SharesRepositorySpecDouble;
+    const recordDownloadStarted =
+      repositoryDouble.recordDownloadStarted.bind(repositoryDouble);
+    jest
+      .spyOn(repositoryDouble, 'recordDownloadStarted')
+      .mockImplementation((token, metadataForDownloadCount) => {
+        const share = repositoryDouble.findByToken(token);
+        if (share) share.revokedAt = new Date().toISOString();
+        return recordDownloadStarted(token, metadataForDownloadCount);
+      });
+
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
+    ).rejects.toThrow('Share link is revoked');
+    expect(storageService.createPresignedDownload).not.toHaveBeenCalled();
+    await expect(
+      repository.countAuditEvents('share.download_started'),
+    ).resolves.toBe(0);
+  });
+
+  it('uses account access sessions to bypass visitor wait and speed limits', async () => {
+    const created = await service.createShare(createDto());
+    const session = await service.createVerifiedOAuthAccessSession(
+      created.token,
+    );
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+
+    expect(session.policyDecision).toMatchObject({
+      identityType: 'ica',
+      waitSeconds: 0,
+      speedLimit: null,
+      bypassWait: true,
+      bypassSpeedLimit: true,
+    });
+    expect(intent.policyDecision).toMatchObject({
+      identityType: 'ica',
+      waitSeconds: 0,
+      speedLimit: null,
+      bypassWait: true,
+      bypassSpeedLimit: true,
+    });
+  });
+
   it('returns backend manifest downloads for folders without object keys', async () => {
     const created = await service.createShare({
       ...createDto(),
@@ -434,6 +773,54 @@ describe('SharesService', () => {
     await expect(
       repository.countAuditEvents('share.access_code_sent'),
     ).resolves.toBe(1);
+  });
+
+  it('keeps email sessions and download intents usable across service instances', async () => {
+    const created = await service.createShare(createDto());
+    const email = 'reviewer@example.com';
+    await service.sendEmailAccessCode(created.token, { email });
+    const code = sentCodes.get(email);
+    expect(code).toBeDefined();
+
+    const restartedService = new SharesService(
+      repository,
+      fileNodesService as FileNodesService,
+      storageService as StorageService,
+      workspacesService as WorkspacesService,
+      mailService as MailService,
+    );
+    const session = await restartedService.verifyEmailAccessCode(
+      created.token,
+      { email, code: code! },
+    );
+    const intent = await restartedService.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const download = await restartedService.downloadSharedNode(
+      created.token,
+      'roadmap',
+      intent.downloadId,
+    );
+
+    expect(download).toMatchObject({
+      method: 'presigned-url',
+      filename: 'ICEDR Roadmap.docx',
+    });
+    await expect(
+      restartedService.verifyEmailAccessCode(created.token, {
+        email,
+        code: code!,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      restartedService.downloadSharedNode(
+        created.token,
+        'roadmap',
+        intent.downloadId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('does not create email access codes when mail delivery fails', async () => {

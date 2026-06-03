@@ -25,15 +25,13 @@ import type {
   ShareResponse,
 } from './shares.dto';
 import { SharesRepository } from './shares.repository';
-
-type DownloadIntent = {
-  downloadId: string;
-  token: string;
-  nodeId: string;
-  filename: string;
-  expiresAt: string;
-  method: 'presigned-url' | 'backend-manifest';
-};
+import {
+  normalizePolicyDomain,
+  normalizePolicyEmailAllowlist,
+  resolveShareDownloadDecision,
+  toSharePolicyAuditMetadata,
+  type ShareDownloadPolicyDecision,
+} from './share-download-policy';
 
 type VisitorAuditMetadata = {
   ip?: string;
@@ -42,13 +40,6 @@ type VisitorAuditMetadata = {
 
 @Injectable()
 export class SharesService {
-  private readonly downloadIntents = new Map<string, DownloadIntent>();
-  private readonly emailCodes = new Map<
-    string,
-    { email: string; code: string; expiresAt: string }
-  >();
-  private readonly accessSessions = new Map<string, ShareAccessSession>();
-
   constructor(
     private readonly sharesRepository: SharesRepository,
     private readonly fileNodesService: FileNodesService,
@@ -79,10 +70,12 @@ export class SharesService {
       expiresAt,
       shareTitle: share.title,
     });
-    this.emailCodes.set(this.emailCodeKey(token, dto.email), {
+    await this.sharesRepository.createEmailAccessCode({
+      token,
       email: dto.email,
       code,
       expiresAt,
+      visitor,
     });
     await this.sharesRepository.recordAudit('share.access_code_sent', token, {
       email: dto.email,
@@ -102,24 +95,28 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
   ) {
     const share = await this.requireActiveShare(token);
-    const key = this.emailCodeKey(token, dto.email);
-    const pending = this.emailCodes.get(key);
-    if (
-      !pending ||
-      pending.code !== dto.code ||
-      new Date(pending.expiresAt).getTime() < Date.now()
-    ) {
+    const pending = await this.sharesRepository.consumeEmailAccessCode({
+      token,
+      email: dto.email,
+      code: dto.code,
+    });
+    if (!pending) {
       throw new ForbiddenException('Email access code is invalid or expired');
     }
 
-    this.emailCodes.delete(key);
-    const session = this.createAccessSession(share, 'email', dto.email);
+    const session = await this.createAccessSession(
+      share,
+      'email',
+      dto.email,
+      visitor,
+    );
     await this.sharesRepository.recordAudit(
       'share.access_session_created',
       token,
       {
         identityType: 'email',
         email: dto.email,
+        policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
         ...visitor,
       },
     );
@@ -128,12 +125,13 @@ export class SharesService {
 
   async createVerifiedOAuthAccessSession(token: string) {
     const share = await this.requireActiveShare(token);
-    const session = this.createAccessSession(share, 'ica');
+    const session = await this.createAccessSession(share, 'ica');
     await this.sharesRepository.recordAudit(
       'share.access_session_created',
       token,
       {
         identityType: 'ica',
+        policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
       },
     );
     return session;
@@ -172,25 +170,38 @@ export class SharesService {
       nodeId,
       'download',
     );
-    await this.assertShareDownloadLimit(share);
-    this.requireAccessSessionIfNeeded(share, accessSessionId);
+    const accessSession = await this.requireAccessSessionIfNeeded(
+      share,
+      accessSessionId,
+    );
+    const identityType = accessSession?.identityType ?? 'anonymous';
+    const policyDecision = await this.resolveDownloadDecision(
+      share,
+      identityType,
+    );
     const downloadId = `dl_${randomBytes(12).toString('base64url')}`;
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
     const method = node.objectKey ? 'presigned-url' : 'backend-manifest';
-    this.downloadIntents.set(downloadId, {
+    await this.sharesRepository.createShareDownloadIntent({
       downloadId,
       token,
       nodeId,
       filename: node.name,
       expiresAt,
       method,
+      identityType,
+      email: accessSession?.email,
+      visitor,
     });
     await this.sharesRepository.recordAudit(
       'share.download_intent_created',
       token,
       {
         nodeId,
+        identityType,
+        email: accessSession?.email,
+        policyDecision: toSharePolicyAuditMetadata(policyDecision),
         ...visitor,
       },
     );
@@ -201,6 +212,7 @@ export class SharesService {
       filename: node.name,
       availableAt: new Date().toISOString(),
       expiresAt,
+      policyDecision,
       downloadUrl: `/api/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(nodeId)}/download?downloadId=${encodeURIComponent(downloadId)}`,
     };
   }
@@ -211,22 +223,52 @@ export class SharesService {
     downloadId: string,
     visitor: VisitorAuditMetadata = {},
   ) {
-    const intent = this.downloadIntents.get(downloadId);
-    if (
-      !intent ||
-      intent.token !== token ||
-      intent.nodeId !== nodeId ||
-      new Date(intent.expiresAt).getTime() < Date.now()
-    ) {
+    const intent = await this.sharesRepository.consumeShareDownloadIntent({
+      downloadId,
+      token,
+      nodeId,
+    });
+    if (!intent) {
       throw new NotFoundException('Download intent not found');
     }
 
-    const { node } = await this.requireShareNode(token, nodeId, 'download');
-    await this.assertShareDownloadLimit(token);
-    await this.sharesRepository.recordAudit('share.download_started', token, {
+    const { share, node } = await this.requireShareNode(
+      token,
       nodeId,
-      ...visitor,
-    });
+      'download',
+    );
+    const downloadRecord = await this.sharesRepository.recordDownloadStarted(
+      token,
+      (downloadCount) => {
+        const policyDecision = this.getDownloadDecisionForCount(
+          share,
+          intent.identityType,
+          downloadCount,
+        );
+        if (policyDecision.remainingDownloads === 0) return null;
+        return {
+          nodeId,
+          identityType: intent.identityType,
+          email: intent.email,
+          policyDecision: toSharePolicyAuditMetadata(
+            this.toStartedPolicyDecision(policyDecision),
+          ),
+          ...visitor,
+        };
+      },
+    );
+    if (downloadRecord.missingShare) {
+      throw new NotFoundException('Share link not found');
+    }
+    if (downloadRecord.revoked) {
+      throw new GoneException('Share link is revoked');
+    }
+    if (downloadRecord.expired) {
+      throw new GoneException('Share link is expired');
+    }
+    if (!downloadRecord.recorded) {
+      throw new GoneException('Share download limit has been reached');
+    }
 
     if (intent.method === 'presigned-url' && node.objectKey) {
       const signed = await this.storageService.createPresignedDownload(
@@ -255,7 +297,7 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
   ) {
     const { share } = await this.requireShareNode(token, nodeId, 'preview');
-    this.requireAccessSessionIfNeeded(share, accessSessionId);
+    await this.requireAccessSessionIfNeeded(share, accessSessionId);
     const intent = await this.fileNodesService.createPreviewIntent(nodeId);
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
       nodeId,
@@ -335,20 +377,16 @@ export class SharesService {
     return { share, node };
   }
 
-  private requireAccessSessionIfNeeded(
+  private async requireAccessSessionIfNeeded(
     share: ShareResponse,
     accessSessionId?: string,
-  ) {
-    if (
-      share.policy.allowedDomain ||
-      share.policy.emailAllowlist?.length > 0 ||
-      share.policy.waitValue > 0 ||
-      share.policy.downloadLimit
-    ) {
+  ): Promise<ShareAccessSession | null> {
+    if (share.downloadPolicy.requiresAccessSession || accessSessionId) {
       if (!accessSessionId) {
         throw new ForbiddenException('Share access session is required');
       }
-      const session = this.accessSessions.get(accessSessionId);
+      const session =
+        await this.sharesRepository.findAccessSession(accessSessionId);
       if (
         !session ||
         session.shareToken !== share.token ||
@@ -359,23 +397,22 @@ export class SharesService {
       if (new Date(session.availableAt).getTime() > Date.now()) {
         throw new ForbiddenException('Share access wait time has not elapsed');
       }
+      return session;
     }
+    return null;
   }
 
   private assertEmailAllowed(share: ShareResponse, email: string) {
     const normalizedEmail = email.trim().toLowerCase();
-    const allowlist = this.normalizePolicyEmailAllowlist(
-      share.policy.emailAllowlist ?? [],
+    const allowlist = normalizePolicyEmailAllowlist(
+      share.policy.emailAllowlist,
     );
     if (allowlist.length > 0 && !allowlist.includes(normalizedEmail)) {
       throw new ForbiddenException('Email address is not allowed');
     }
-    const allowedDomain = share.policy.allowedDomain.trim().toLowerCase();
+    const allowedDomain = normalizePolicyDomain(share.policy.allowedDomain);
     if (!allowedDomain) return;
-    const normalized = allowedDomain.startsWith('@')
-      ? allowedDomain.slice(1)
-      : allowedDomain;
-    if (!normalizedEmail.endsWith(`@${normalized}`)) {
+    if (!normalizedEmail.endsWith(`@${allowedDomain}`)) {
       throw new ForbiddenException('Email domain is not allowed');
     }
   }
@@ -397,11 +434,9 @@ export class SharesService {
 
     const policy: SharePolicyDto = {
       ...dto.policy,
-      allowedDomain: this.normalizePolicyDomain(dto.policy.allowedDomain),
+      allowedDomain: normalizePolicyDomain(dto.policy.allowedDomain),
       downloadLimit: dto.policy.downloadLimit?.trim() ?? '',
-      emailAllowlist: this.normalizePolicyEmailAllowlist(
-        dto.policy.emailAllowlist ?? [],
-      ),
+      emailAllowlist: normalizePolicyEmailAllowlist(dto.policy.emailAllowlist),
       maxDownloads: Math.max(0, Math.trunc(dto.policy.maxDownloads ?? 0)),
       maxViews: Math.max(0, Math.trunc(dto.policy.maxViews ?? 0)),
       rateLimitProfile: dto.policy.rateLimitProfile?.trim() ?? '',
@@ -439,47 +474,32 @@ export class SharesService {
     };
   }
 
-  private normalizePolicyDomain(domain: string) {
-    const normalized = domain.trim().toLowerCase();
-    return normalized.startsWith('@') ? normalized.slice(1) : normalized;
-  }
-
-  private normalizePolicyEmailAllowlist(emails: string[]) {
-    return [
-      ...new Set(
-        emails
-          .map((email) => email.trim().toLowerCase())
-          .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
-      ),
-    ];
-  }
-
-  private emailCodeKey(token: string, email: string) {
-    return `${token}:${email.toLowerCase()}`;
-  }
-
-  private createAccessSession(
+  private async createAccessSession(
     share: ShareResponse,
     identityType: ShareAccessIdentityType,
     email?: string,
-  ): ShareAccessSession {
-    const waitSeconds = this.getWaitSeconds(identityType, share.policy);
+    visitor: VisitorAuditMetadata = {},
+  ): Promise<ShareAccessSession> {
+    const policyDecision = resolveShareDownloadDecision({
+      downloadCount: 0,
+      identityType,
+      share,
+    });
     const session: ShareAccessSession = {
       sessionId: `sas_${randomBytes(12).toString('base64url')}`,
       shareToken: share.token,
       identityType,
       email,
-      availableAt: new Date(Date.now() + waitSeconds * 1000).toISOString(),
-      waitSeconds,
-      downloadLimit: share.policy.downloadLimit,
-      speedLimit:
-        share.policy.speedValue > 0
-          ? { value: share.policy.speedValue, unit: share.policy.speedUnit }
-          : null,
+      availableAt: new Date(
+        Date.now() + policyDecision.waitSeconds * 1000,
+      ).toISOString(),
+      waitSeconds: policyDecision.waitSeconds,
+      downloadLimit: policyDecision.downloadLimit,
+      speedLimit: policyDecision.speedLimit,
+      policyDecision,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     };
-    this.accessSessions.set(session.sessionId, session);
-    return session;
+    return this.sharesRepository.createAccessSession({ ...session, visitor });
   }
 
   private async assertShareViewLimit(share: ShareResponse) {
@@ -494,37 +514,49 @@ export class SharesService {
     }
   }
 
-  private async assertShareDownloadLimit(shareOrToken: ShareResponse | string) {
-    const share =
-      typeof shareOrToken === 'string'
-        ? await this.requireActiveShare(shareOrToken)
-        : shareOrToken;
-    const maxDownloads = this.resolveMaxDownloads(share.policy);
-    if (maxDownloads <= 0) return;
+  private async resolveDownloadDecision(
+    share: ShareResponse,
+    identityType: ShareAccessIdentityType,
+  ) {
     const downloadCount = await this.sharesRepository.countShareAuditEvents(
       share.token,
       'share.download_started',
     );
-    if (downloadCount >= maxDownloads) {
+    const decision = this.getDownloadDecisionForCount(
+      share,
+      identityType,
+      downloadCount,
+    );
+    this.assertDownloadLimitAvailable(decision);
+    return decision;
+  }
+
+  private getDownloadDecisionForCount(
+    share: ShareResponse,
+    identityType: ShareAccessIdentityType,
+    downloadCount: number,
+  ) {
+    return resolveShareDownloadDecision({
+      downloadCount,
+      identityType,
+      share,
+    });
+  }
+
+  private assertDownloadLimitAvailable(decision: ShareDownloadPolicyDecision) {
+    if (decision.remainingDownloads === 0) {
       throw new GoneException('Share download limit has been reached');
     }
   }
 
-  private resolveMaxDownloads(policy: SharePolicyDto) {
-    const explicit = Math.max(0, Math.trunc(policy.maxDownloads ?? 0));
-    if (explicit > 0) return explicit;
-    const parsed = Number.parseInt(policy.downloadLimit || '', 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-  }
-
-  private getWaitSeconds(
-    identityType: ShareAccessIdentityType,
-    policy: SharePolicyDto,
-  ) {
-    if (identityType === 'ica' || identityType === 'workspace') return 0;
-    return policy.waitUnit === 'minutes'
-      ? policy.waitValue * 60
-      : policy.waitValue;
+  private toStartedPolicyDecision(decision: ShareDownloadPolicyDecision) {
+    return {
+      ...decision,
+      remainingDownloads:
+        decision.remainingDownloads === null
+          ? null
+          : Math.max(0, decision.remainingDownloads - 1),
+    };
   }
 
   private buildDownloadManifest(node: FileNodeResponse) {
