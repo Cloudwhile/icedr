@@ -1,3 +1,5 @@
+import type { FilePreviewCapability } from "@/lib/drive-api";
+
 export type Locale = string;
 export type LanguageOption = {
   label: string;
@@ -74,6 +76,7 @@ export type DriveItem = {
   shared: boolean;
   starred: boolean;
   archivedAt?: string | null;
+  previewCapability?: FilePreviewCapability;
   colorKey: "primary" | "success" | "secure" | "tertiary";
 };
 

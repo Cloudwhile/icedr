@@ -84,6 +84,7 @@ export default () => {
     },
     storage: {
       endpoint: process.env.S3_ENDPOINT ?? '',
+      publicEndpoint: process.env.S3_PUBLIC_ENDPOINT ?? '',
       region: process.env.S3_REGION ?? 'us-east-1',
       bucket: process.env.S3_BUCKET ?? 'icedr-drive',
       accessKeyId: process.env.S3_ACCESS_KEY_ID ?? '',
@@ -97,6 +98,7 @@ export default () => {
         process.env.PUBLIC_SHARE_BASE_URL ?? 'http://localhost:13000/share/s',
       emailProvider:
         process.env.SHARE_EMAIL_PROVIDER ?? (isProduction() ? '' : 'dev-log'),
+      visitorHashSecret: process.env.SHARE_VISITOR_HASH_SECRET ?? '',
     },
     mail: {
       enabled: readBoolean(

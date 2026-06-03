@@ -311,7 +311,76 @@ model ShareLink {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
 
+  emailCodes      ShareEmailCode[]
+  accessSessions  ShareAccessSession[]
+  downloadIntents ShareDownloadIntent[]
+
   @@map("share_links")
+}
+
+model ShareEmailCode {
+  id            String    @id
+  shareToken    String    @map("share_token")
+  email         String
+  emailDomain   String    @map("email_domain")
+  codeHash      String    @map("code_hash")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
+  attemptCount  Int       @default(0) @map("attempt_count")
+  requestIpHash String?   @map("request_ip_hash")
+  userAgentHash String?   @map("user_agent_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
+
+  @@index([shareToken, email])
+  @@index([expiresAt])
+  @@map("share_email_codes")
+}
+
+model ShareAccessSession {
+  id            String   @id
+  shareToken    String   @map("share_token")
+  identityType  String   @map("identity_type")
+  email         String?
+  emailDomain   String?  @map("email_domain")
+  availableAt   DateTime @map("available_at") @db.Timestamptz
+  waitSeconds   Int      @map("wait_seconds")
+  downloadLimit String   @default("") @map("download_limit")
+  speedLimit    Json?    @map("speed_limit")
+  policyDecision Json?   @map("policy_decision")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz
+  requestIpHash String?  @map("request_ip_hash")
+  userAgentHash String?  @map("user_agent_hash")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
+
+  @@index([shareToken])
+  @@index([expiresAt])
+  @@map("share_access_sessions")
+}
+
+model ShareDownloadIntent {
+  id            String    @id
+  shareToken    String    @map("share_token")
+  nodeId        String    @map("node_id")
+  filename      String
+  method        String
+  identityType  String    @default("anonymous") @map("identity_type")
+  email         String?
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
+  requestIpHash String?   @map("request_ip_hash")
+  userAgentHash String?   @map("user_agent_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
+
+  @@index([shareToken, nodeId])
+  @@index([expiresAt])
+  @@map("share_download_intents")
 }
 
 model AuditEvent {

@@ -19,6 +19,13 @@ ICEDR is a Node.js monorepo with a Vite frontend and a NestJS backend.
 - `modules/logs`: audit event queries.
 - `modules/admin`: setup, site settings, mail settings, workspace settings, and health checks.
 
+## Permissions
+
+The signed-in workspace and administrator backend share an explicit permission
+matrix documented in `docs/permissions.md`. Backend controllers use
+`AdminGuardService.requirePermission(...)` for protected resources, while the
+frontend uses the same role boundary to hide administrator-only navigation.
+
 ## Notes
 
 The backend keeps Nest feature modules grouped by domain instead of splitting every controller, service, DTO, and repository into global folders. That keeps related behavior close while still matching the recommended `src/modules/*` structure.

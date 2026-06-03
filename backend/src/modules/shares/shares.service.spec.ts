@@ -3,11 +3,14 @@ import {
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
+import type { FileNodeResponse } from '../files/file-nodes.dto';
 import { FileNodesService } from '../files/file-nodes.service';
+import { resolveFilePreviewCapability } from '../files/file-preview-policy';
 import { MailService } from '../admin/mail/mail.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import { CreateShareDto, ShareResponse } from './shares.dto';
+import { ShareAccessSession } from './share-access.dto';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
 import { resolveShareDownloadPolicy } from './share-download-policy';
@@ -35,8 +38,42 @@ const createDto = (): CreateShareDto => ({
   },
 });
 
+function createNode(
+  input: Omit<FileNodeResponse, 'previewCapability'>,
+): FileNodeResponse {
+  return {
+    ...input,
+    previewCapability: resolveFilePreviewCapability(input),
+  };
+}
+
 class SharesRepositorySpecDouble {
   private shares = new Map<string, ShareResponse>();
+  private emailCodes = new Map<
+    string,
+    {
+      code: string;
+      consumedAt: string | null;
+      email: string;
+      expiresAt: string;
+      shareToken: string;
+    }
+  >();
+  private accessSessions = new Map<string, ShareAccessSession>();
+  private downloadIntents = new Map<
+    string,
+    {
+      consumedAt: string | null;
+      downloadId: string;
+      expiresAt: string;
+      filename: string;
+      identityType: 'anonymous' | 'email' | 'ica';
+      email?: string;
+      method: 'presigned-url' | 'backend-manifest';
+      nodeId: string;
+      token: string;
+    }
+  >();
   readonly auditEvents: Array<{
     action: string;
     target: string;
@@ -160,6 +197,88 @@ class SharesRepositorySpecDouble {
       ).length,
     );
   }
+
+  createEmailAccessCode(input: {
+    code: string;
+    email: string;
+    expiresAt: string;
+    token: string;
+  }) {
+    const email = input.email.toLowerCase();
+    const key = `${input.token}:${email}`;
+    this.emailCodes.set(key, {
+      code: input.code,
+      consumedAt: null,
+      email,
+      expiresAt: input.expiresAt,
+      shareToken: input.token,
+    });
+    return Promise.resolve(this.emailCodes.get(key));
+  }
+
+  consumeEmailAccessCode(input: {
+    code: string;
+    email: string;
+    token: string;
+  }) {
+    const key = `${input.token}:${input.email.toLowerCase()}`;
+    const code = this.emailCodes.get(key);
+    if (
+      !code ||
+      code.consumedAt ||
+      code.code !== input.code ||
+      new Date(code.expiresAt).getTime() < Date.now()
+    ) {
+      return Promise.resolve(null);
+    }
+    code.consumedAt = new Date().toISOString();
+    return Promise.resolve(code);
+  }
+
+  createAccessSession(input: ShareAccessSession) {
+    this.accessSessions.set(input.sessionId, input);
+    return Promise.resolve(input);
+  }
+
+  findAccessSession(sessionId: string) {
+    return Promise.resolve(this.accessSessions.get(sessionId) ?? null);
+  }
+
+  createShareDownloadIntent(input: {
+    downloadId: string;
+    expiresAt: string;
+    filename: string;
+    identityType: 'anonymous' | 'email' | 'ica';
+    email?: string;
+    method: 'presigned-url' | 'backend-manifest';
+    nodeId: string;
+    token: string;
+  }) {
+    this.downloadIntents.set(input.downloadId, {
+      ...input,
+      consumedAt: null,
+    });
+    return Promise.resolve(this.downloadIntents.get(input.downloadId));
+  }
+
+  consumeShareDownloadIntent(input: {
+    downloadId: string;
+    nodeId: string;
+    token: string;
+  }) {
+    const intent = this.downloadIntents.get(input.downloadId);
+    if (
+      !intent ||
+      intent.consumedAt ||
+      intent.token !== input.token ||
+      intent.nodeId !== input.nodeId ||
+      new Date(intent.expiresAt).getTime() < Date.now()
+    ) {
+      return Promise.resolve(null);
+    }
+    intent.consumedAt = new Date().toISOString();
+    return Promise.resolve(intent);
+  }
 }
 
 describe('SharesService', () => {
@@ -181,7 +300,7 @@ describe('SharesService', () => {
     fileNodesService = {
       listFileNodes: jest.fn(() =>
         Promise.resolve([
-          {
+          createNode({
             id: 'roadmap',
             workspaceId: 'workspace-default',
             parentNodeId: null,
@@ -196,8 +315,8 @@ describe('SharesService', () => {
             archivedAt: null,
             createdAt: new Date(0).toISOString(),
             updatedAt: new Date(0).toISOString(),
-          },
-          {
+          }),
+          createNode({
             id: 'folder-product',
             workspaceId: 'workspace-default',
             parentNodeId: null,
@@ -211,13 +330,13 @@ describe('SharesService', () => {
             archivedAt: null,
             createdAt: new Date(0).toISOString(),
             updatedAt: new Date(0).toISOString(),
-          },
+          }),
         ]),
       ),
       getFileNode: jest.fn((id: string) =>
         Promise.resolve(
           id === 'roadmap'
-            ? {
+            ? createNode({
                 id: 'roadmap',
                 workspaceId: 'workspace-default',
                 parentNodeId: null,
@@ -232,9 +351,9 @@ describe('SharesService', () => {
                 archivedAt: null,
                 createdAt: new Date(0).toISOString(),
                 updatedAt: new Date(0).toISOString(),
-              }
+              })
             : id === 'folder-product'
-              ? {
+              ? createNode({
                   id: 'folder-product',
                   workspaceId: 'workspace-default',
                   parentNodeId: null,
@@ -248,7 +367,7 @@ describe('SharesService', () => {
                   archivedAt: null,
                   createdAt: new Date(0).toISOString(),
                   updatedAt: new Date(0).toISOString(),
-                }
+                })
               : null,
         ),
       ),
@@ -258,7 +377,16 @@ describe('SharesService', () => {
           nodeId,
           status: 'ready',
           previewType: 'doc',
+          renderMode: 'docx',
           statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
+          capability: resolveFilePreviewCapability({
+            kind: 'doc',
+            mimeType:
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            name: 'ICEDR Roadmap.docx',
+            objectKey: 'seed/workspace-default/roadmap.docx',
+            sizeBytes: 284 * 1024,
+          }),
         }),
       ),
       getPreviewStatus: jest.fn((nodeId: string, previewId: string) => ({
@@ -266,7 +394,16 @@ describe('SharesService', () => {
         nodeId,
         status: 'ready',
         previewType: 'doc',
+        renderMode: 'docx',
         statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
+        capability: resolveFilePreviewCapability({
+          kind: 'doc',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          name: 'ICEDR Roadmap.docx',
+          objectKey: 'seed/workspace-default/roadmap.docx',
+          sizeBytes: 284 * 1024,
+        }),
       })),
     };
     storageService = {
@@ -667,6 +804,54 @@ describe('SharesService', () => {
     ).resolves.toBe(1);
   });
 
+  it('keeps email sessions and download intents usable across service instances', async () => {
+    const created = await service.createShare(createDto());
+    const email = 'reviewer@example.com';
+    await service.sendEmailAccessCode(created.token, { email });
+    const code = sentCodes.get(email);
+    expect(code).toBeDefined();
+
+    const restartedService = new SharesService(
+      repository,
+      fileNodesService as FileNodesService,
+      storageService as StorageService,
+      workspacesService as WorkspacesService,
+      mailService as MailService,
+    );
+    const session = await restartedService.verifyEmailAccessCode(
+      created.token,
+      { email, code: code! },
+    );
+    const intent = await restartedService.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const download = await restartedService.downloadSharedNode(
+      created.token,
+      'roadmap',
+      intent.downloadId,
+    );
+
+    expect(download).toMatchObject({
+      method: 'presigned-url',
+      filename: 'ICEDR Roadmap.docx',
+    });
+    await expect(
+      restartedService.verifyEmailAccessCode(created.token, {
+        email,
+        code: code!,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      restartedService.downloadSharedNode(
+        created.token,
+        'roadmap',
+        intent.downloadId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('does not create email access codes when mail delivery fails', async () => {
     jest
       .spyOn(mailService, 'sendShareAccessCode')
@@ -754,22 +939,24 @@ describe('SharesService', () => {
   });
 
   it('rejects archived file nodes inside a share scope', async () => {
-    jest.spyOn(fileNodesService, 'getFileNode').mockResolvedValueOnce({
-      id: 'roadmap',
-      workspaceId: 'workspace-default',
-      parentNodeId: null,
-      name: 'ICEDR Roadmap.docx',
-      kind: 'doc',
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      sizeBytes: 284 * 1024,
-      objectKey: 'seed/workspace-default/roadmap.docx',
-      owner: 'Mina',
-      starred: false,
-      archivedAt: new Date().toISOString(),
-      createdAt: new Date(0).toISOString(),
-      updatedAt: new Date(0).toISOString(),
-    });
+    jest.spyOn(fileNodesService, 'getFileNode').mockResolvedValueOnce(
+      createNode({
+        id: 'roadmap',
+        workspaceId: 'workspace-default',
+        parentNodeId: null,
+        name: 'ICEDR Roadmap.docx',
+        kind: 'doc',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: 284 * 1024,
+        objectKey: 'seed/workspace-default/roadmap.docx',
+        owner: 'Mina',
+        starred: false,
+        archivedAt: new Date().toISOString(),
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      }),
+    );
     const created = await service.createShare(createDto());
 
     await expect(

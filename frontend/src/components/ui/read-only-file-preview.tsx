@@ -3,7 +3,8 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useEffect, useMemo, useState } from "react";
-import { formatDriveItemModified, formatFileSize, getItemExtension, getItemKind, sumDriveItemSizes, type DriveItem, type Locale, type Palette } from "@/features/file/model";
+import { getPreviewRenderMode } from "@/features/file/open-with";
+import { formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, type DriveItem, type Locale, type Palette } from "@/features/file/model";
 import { ItemIcon, LocalIcon } from "@/components/ui/local-icon";
 import { useTimeZone } from "@/i18n/react";
 
@@ -28,10 +29,11 @@ type PreviewState = {
 export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, statusLabel, t }: ReadOnlyFilePreviewProps) {
   const timeZone = useTimeZone();
   const kind = item ? getItemKind(item) : "doc";
-  const extension = item ? getItemExtension(item) : "";
-  const canRenderText = item ? isTextPreviewable(item) : false;
-  const canRenderDocument = extension === "docx" || extension === "pdf";
-  const canRenderBlob = Boolean(item && (kind === "image" || canRenderText || canRenderDocument));
+  const renderMode = item ? getPreviewRenderMode(item) : "download-only";
+  const canRenderText = renderMode === "markdown" || renderMode === "text";
+  const canRenderDocument = renderMode === "docx" || renderMode === "pdf";
+  const canRenderMedia = renderMode === "image" || renderMode === "video";
+  const canRenderBlob = Boolean(item && item.previewCapability?.supported !== false && (canRenderMedia || canRenderText || canRenderDocument));
   const [state, setState] = useState<PreviewState>(() => ({
     content: "",
     error: false,
@@ -46,9 +48,9 @@ export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, status
   const loading = Boolean(item && canRenderBlob && (state.itemId !== item.id || state.loading));
   const error = state.itemId === item?.id && state.error;
   const markdownHtml = useMemo(() => {
-    if (!canRenderText || extension !== "md") return "";
+    if (renderMode !== "markdown") return "";
     return DOMPurify.sanitize(marked.parse(activeContent || "", { async: false }) as string);
-  }, [activeContent, canRenderText, extension]);
+  }, [activeContent, renderMode]);
 
   useEffect(() => {
     if (!item || !canRenderBlob) return;
@@ -77,7 +79,7 @@ export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, status
         return;
       }
 
-      if (extension === "docx") {
+      if (renderMode === "docx") {
         const response = await fetch(url);
         if (!response.ok) throw new Error("Preview failed");
         const arrayBuffer = await response.arrayBuffer();
@@ -120,7 +122,7 @@ export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, status
       cancelled = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [canRenderBlob, canRenderText, extension, item, loadBlobUrl]);
+  }, [canRenderBlob, canRenderText, item, loadBlobUrl, renderMode]);
 
   useEffect(() => {
     return () => {
@@ -140,7 +142,7 @@ export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, status
     return <PreviewFallback item={item} message={statusLabel} palette={palette} title={t(`preview.kindTitle.${kind}`)} />;
   }
 
-  if (kind === "image" && activeUrl) {
+  if (renderMode === "image" && activeUrl) {
     return (
       <div className="icedr-readonly-preview-frame">
         <img alt={item.name} src={activeUrl} className="icedr-readonly-preview-image" />
@@ -148,11 +150,19 @@ export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, status
     );
   }
 
-  if (extension === "pdf" && activeUrl) {
+  if (renderMode === "video" && activeUrl) {
+    return (
+      <div className="icedr-readonly-preview-frame">
+        <video className="icedr-readonly-preview-image" controls playsInline preload="metadata" src={activeUrl} title={item.name} />
+      </div>
+    );
+  }
+
+  if (renderMode === "pdf" && activeUrl) {
     return <iframe className="icedr-readonly-preview-frame icedr-readonly-preview-iframe" src={activeUrl} title={item.name} />;
   }
 
-  if (extension === "docx" && activeHtml) {
+  if (renderMode === "docx" && activeHtml) {
     return (
       <div className="icedr-readonly-preview-document">
         <div className="icedr-preview-document" dangerouslySetInnerHTML={{ __html: activeHtml }} />
@@ -161,7 +171,7 @@ export function ReadOnlyFilePreview({ item, loadBlobUrl, locale, palette, status
   }
 
   if (canRenderText) {
-    if (extension === "md" || extension === "markdown") {
+    if (renderMode === "markdown") {
       return (
         <div className="icedr-readonly-preview-document">
           <div className="icedr-preview-markdown" dangerouslySetInnerHTML={{ __html: markdownHtml }} />
@@ -203,7 +213,7 @@ function PreviewMetadataFallback({
       <div>
         <span className="icedr-readonly-preview-title">{t(`preview.kindTitle.${kind}`)}</span>
         <span className="icedr-readonly-preview-description">
-          {kind === "archive" ? t("preview.unsupportedHint") : t("preview.notConfiguredHint")}
+          {getPreviewFallbackHint(item, t)}
         </span>
       </div>
       <div className="icedr-readonly-preview-metrics">
@@ -253,10 +263,9 @@ function PreviewMetric({ label, palette, value }: { label: string; palette: Pale
   );
 }
 
-function isTextPreviewable(item: DriveItem) {
-  const extension = getItemExtension(item);
-  return Boolean(
-    item.mimeType?.startsWith("text/") ||
-      ["txt", "md", "markdown", "json", "csv", "log", "yaml", "yml"].includes(extension),
-  );
+function getPreviewFallbackHint(item: DriveItem, t: ReadOnlyFilePreviewProps["t"]) {
+  if (item.previewCapability?.downloadOnly || getItemKind(item) === "archive") {
+    return t("preview.downloadOnlyHint");
+  }
+  return t("preview.notConfiguredHint");
 }
