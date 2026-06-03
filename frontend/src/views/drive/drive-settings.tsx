@@ -8,17 +8,20 @@ import { AppSelect } from "@/components/ui/app-select";
 import { AvatarCropDialog } from "@/components/ui/avatar-crop-dialog";
 import { showAppToast } from "@/components/ui/app-toast";
 import { useTranslations } from "@/i18n/react";
+import { isAdminUser } from "@/features/auth/permissions";
 import { formatFileSize, getIntlLocale, type LanguageOption, type Locale, type Palette, type ThemePreference } from "@/features/file/model";
 import { updateCurrentUserProfile, type AuthUser, type StorageUsage } from "@/lib/drive-api";
 import { LocalIcon, ToolButton } from "./drive-primitives";
+import { DriveSystemSettings } from "./drive-system-settings";
 
-type UserSettingsTab = "profile" | "preferences" | "security" | "storage";
+type UserSettingsTab = "profile" | "preferences" | "security" | "storage" | "system";
 
 export type DriveSettingsWorkspaceProps = {
   currentUser: AuthUser | null;
   languageOptions: LanguageOption[];
   locale: Locale;
   onUserUpdated: (user: AuthUser) => void;
+  onStorageUsageUpdated: (usage: StorageUsage) => void;
   palette: Palette;
   setLocale: Dispatch<SetStateAction<Locale>>;
   setThemePreference: Dispatch<SetStateAction<ThemePreference>>;
@@ -27,6 +30,7 @@ export type DriveSettingsWorkspaceProps = {
   themePreference: ThemePreference;
   timeZone: string;
   timeZonePreference: string;
+  workspaceId: string | null;
 };
 
 const settingsTabs: Array<{ icon: ReactNode; id: UserSettingsTab; labelKey: string }> = [
@@ -34,12 +38,14 @@ const settingsTabs: Array<{ icon: ReactNode; id: UserSettingsTab; labelKey: stri
   { icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.preferences" },
   { icon: <LocalIcon name="lock" size={15} />, id: "security", labelKey: "settings.passwordSecurity" },
   { icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageSpace" },
+  { icon: <LocalIcon name="settings" size={15} />, id: "system", labelKey: "settings.systemSettings" },
 ];
 
 export function DriveSettingsWorkspace({
   currentUser,
   languageOptions,
   locale,
+  onStorageUsageUpdated,
   onUserUpdated,
   palette,
   setLocale,
@@ -49,9 +55,11 @@ export function DriveSettingsWorkspace({
   themePreference,
   timeZone,
   timeZonePreference,
+  workspaceId,
 }: DriveSettingsWorkspaceProps) {
   const t = useTranslations();
   const [selectedUserTab, setSelectedUserTab] = useState<UserSettingsTab>("profile");
+  const visibleTabs = settingsTabs.filter((tab) => tab.id !== "system" || isAdminUser(currentUser));
 
   return (
     <div className="drive-settings-workspace">
@@ -61,7 +69,7 @@ export function DriveSettingsWorkspace({
 
       <div className="drive-settings-user">
         <div className="drive-settings-tab-list" role="tablist" aria-label={t("settings.userSettings")}>
-          {settingsTabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const active = selectedUserTab === tab.id;
             return (
               <button
@@ -100,6 +108,15 @@ export function DriveSettingsWorkspace({
           ) : null}
           {selectedUserTab === "security" ? <SettingsPlaceholder icon="lock" label={t("settings.passwordSecurity")} palette={palette} /> : null}
           {selectedUserTab === "storage" ? <StorageSettingsPanel locale={locale} palette={palette} storageUsage={storageUsage} /> : null}
+          {selectedUserTab === "system" && isAdminUser(currentUser) ? (
+            <DriveSystemSettings
+              locale={locale}
+              onStorageUsageUpdated={onStorageUsageUpdated}
+              palette={palette}
+              storageUsage={storageUsage}
+              workspaceId={workspaceId}
+            />
+          ) : null}
         </div>
       </div>
     </div>

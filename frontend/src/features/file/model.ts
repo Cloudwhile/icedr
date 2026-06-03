@@ -8,7 +8,7 @@ export type LanguageOption = {
 export type ThemeMode = "dark" | "light";
 export type ThemePreference = "system" | ThemeMode;
 export type DriveModule = "drive" | "links" | "transfers" | "audit";
-export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "video" | "archive";
+export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
 export type LocalIconName =
   | "abc"
   | "arrow_down"
@@ -76,6 +76,10 @@ export type DriveItem = {
   shared: boolean;
   starred: boolean;
   archivedAt?: string | null;
+  archivedBy?: string | null;
+  originalParentNodeId?: string | null;
+  originalPath?: string | null;
+  searchPath?: string | null;
   previewCapability?: FilePreviewCapability;
   colorKey: "primary" | "success" | "secure" | "tertiary";
 };
@@ -168,6 +172,7 @@ export const kindIcons: Record<DriveItemKind, LocalIconName> = {
   image: "image",
   video: "visible",
   archive: "file",
+  other: "file",
 };
 
 const extensionKinds: Record<string, DriveItemKind> = {

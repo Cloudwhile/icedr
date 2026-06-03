@@ -1,6 +1,7 @@
 "use client";
 
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
+import { useEffect, useState } from "react";
 import {
   formatDriveItemModified,
   formatFileSize,
@@ -11,6 +12,8 @@ import {
   type Locale,
   type Palette,
 } from "@/features/file/model";
+import { downloadWorkspaceFileVersion } from "@/features/file/actions";
+import { fetchFileVersions, restoreFileVersion, type FileVersionResponse } from "@/lib/drive-api";
 import { MotionList, MotionSurface } from "@/components/ui/motion";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
 
@@ -21,6 +24,7 @@ export type DriveDetailsPanelProps = {
   focusedItem?: DriveItem;
   folderPath: DriveItem[];
   palette: Palette;
+  onVersionRestored?: () => void;
   selectedItems: DriveItem[];
   sourceItems: DriveItem[];
 };
@@ -31,6 +35,7 @@ export function DetailsPanel({
   currentFolderId,
   focusedItem,
   folderPath,
+  onVersionRestored,
   palette,
   selectedItems,
   sourceItems,
@@ -62,6 +67,56 @@ export function DetailsPanel({
   const selectedSize = formatFileSize(sumDriveItemSizes(detailItems, sourceItems), locale);
   const owner = displayItem?.owner ?? currentFolder?.owner ?? "--";
   const shared = displayItem?.shared ?? currentFolder?.shared;
+  const versionItem = !multiSelect && displayItem?.objectKey && !displayItem.archivedAt ? displayItem : null;
+  const [versionState, setVersionState] = useState<{ itemId: string | null; versions: FileVersionResponse[] }>({
+    itemId: null,
+    versions: [],
+  });
+  const [versionError, setVersionError] = useState<string | null>(null);
+  const versions = versionState.itemId === versionItem?.id ? versionState.versions : [];
+
+  useEffect(() => {
+    if (!versionItem) {
+      return;
+    }
+    let cancelled = false;
+    void fetchFileVersions(versionItem.id).then((items) => {
+      if (!cancelled) {
+        setVersionState({ itemId: versionItem.id, versions: items });
+        setVersionError(null);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setVersionState({ itemId: versionItem.id, versions: [] });
+        setVersionError(t("files.versionsLoadFailed"));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [t, versionItem]);
+
+  const downloadVersion = (version: FileVersionResponse) => {
+    if (!versionItem) return;
+    void downloadWorkspaceFileVersion(versionItem, version.id).catch(() => setVersionError(t("share.downloadFailed")));
+  };
+
+  const restoreVersion = (version: FileVersionResponse) => {
+    if (!versionItem) return;
+    void restoreFileVersion(versionItem.id, version.id).then(() => {
+      onVersionRestored?.();
+    }).catch(() => setVersionError(t("app.uploadFailed")));
+  };
+  const formatVersionDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "--";
+    return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale.replace(/_/g, "-"), {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      ...(timeZone ? { timeZone } : {}),
+    }).format(date);
+  };
 
   return (
     <MotionSurface
@@ -126,6 +181,9 @@ export function DetailsPanel({
                 t("files.shared"),
                 multiSelect ? `${selectedItems.filter((item) => item.shared).length}/${selectedItems.length}` : shared ? t("files.yes") : t("files.no"),
               ],
+              ...(displayItem?.originalPath ? [[t("files.originalPath"), displayItem.originalPath]] : []),
+              ...(displayItem?.archivedAt ? [[t("files.deletedAt"), formatDriveItemModified({ ...displayItem, modifiedAt: displayItem.archivedAt }, locale, timeZone)]] : []),
+              ...(displayItem?.archivedBy ? [[t("files.deletedBy"), displayItem.archivedBy]] : []),
             ].map(([label, value]) => (
               <div key={label}>
                 <span>{label}</span>
@@ -133,6 +191,35 @@ export function DetailsPanel({
               </div>
             ))}
           </div>
+
+          {versionItem ? (
+            <div className="drive-version-list" data-motion-row>
+              <div className="drive-version-list-header">
+                <span>{t("files.versions")}</span>
+                <span>{versions.length}</span>
+              </div>
+              {versionError ? <span className="drive-version-error">{versionError}</span> : null}
+              {versions.length === 0 && !versionError ? <span className="drive-version-empty">{t("files.noVersions")}</span> : null}
+              {versions.map((version) => (
+                <div key={version.id} className="drive-version-row">
+                  <div className="drive-version-meta">
+                    <span>{t("files.versionNumber", { number: version.versionNumber })}</span>
+                    <span>{formatFileSize(version.sizeBytes, locale)} · {formatVersionDate(version.createdAt)}</span>
+                    {version.uploadedBy ? <span>{version.uploadedBy}</span> : null}
+                    {version.remark ? <span>{version.remark}</span> : null}
+                  </div>
+                  <div className="drive-version-actions">
+                    <ToolButton label={t("actions.download")} palette={palette} size="sm" onClick={() => downloadVersion(version)}>
+                      <LocalIcon name="download" size={15} />
+                    </ToolButton>
+                    <ToolButton label={t("actions.restore")} palette={palette} size="sm" onClick={() => restoreVersion(version)}>
+                      <LocalIcon name="refresh" size={15} />
+                    </ToolButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </MotionList>
       </div>
     </MotionSurface>

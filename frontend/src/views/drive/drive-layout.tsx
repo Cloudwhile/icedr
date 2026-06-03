@@ -94,11 +94,10 @@ export function AppHeader({
             <ToolButton label={t("app.searchClear")} palette={palette} size="sm" tooltipPlacement="bottom" onClick={() => setQuery("")}>
               <LocalIcon name="cross" size={15} />
             </ToolButton>
-          ) : (
-            <ToolButton label={t("app.filter")} active={filtersActive} palette={palette} size="sm" tooltipPlacement="bottom" onClick={onToggleFilters}>
-              <LocalIcon name="slider" size={15} />
-            </ToolButton>
-          )}
+          ) : null}
+          <ToolButton label={t("app.filter")} active={filtersActive} palette={palette} size="sm" tooltipPlacement="bottom" onClick={onToggleFilters}>
+            <LocalIcon name="slider" size={15} />
+          </ToolButton>
         </div>
       </div>
 
@@ -168,6 +167,7 @@ export function Sidebar({
     : storageUsage
       ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${storageUsage.fileCount} files`
       : t("app.storageUsage");
+  const storageProgress = Math.max(0, Math.min(100, storageUsage?.usagePercent ?? 0));
 
   const navById = new Map(navItems.map((item) => [item.id, item]));
   const activeSpaceLabel = spaceScope === "personal" ? t("app.personalSpace") : rootLabel;
@@ -264,7 +264,7 @@ export function Sidebar({
           <span>{t("app.storage")}</span>
           <LocalIcon name="file" size={15} color={palette.subtle} />
         </div>
-        <ProgressMeter ariaLabel={t("app.storage")} palette={palette} value={storageUsage?.usagePercent ?? 0} />
+        <ProgressMeter ariaLabel={t("app.storage")} className="drive-sidebar-storage-meter" palette={palette} value={storageProgress} />
         <span className="drive-sidebar-storage-meta">{storageLabel}</span>
       </div>
     </div>

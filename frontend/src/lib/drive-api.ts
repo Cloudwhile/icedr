@@ -116,11 +116,53 @@ export type StorageTestResponse = {
 
 export type StorageUsage = {
   workspaceId: string;
+  activeBytes: number;
+  defaultUserQuotaBytes: number | null;
   usedBytes: number;
   fileCount: number;
   folderCount: number;
   quotaBytes: number | null;
+  trashBytes: number;
+  trashFileCount: number;
   usagePercent: number | null;
+  versionBytes: number;
+  versionCount: number;
+  updatedAt: string;
+};
+
+export type StorageUsageBreakdownBucket = {
+  bytes: number;
+  count: number;
+  id: string;
+  label: string;
+};
+
+export type StorageUsageTrendPoint = {
+  bytes: number;
+  count: number;
+  date: string;
+};
+
+export type StorageUsageBreakdown = {
+  byDirectory: StorageUsageBreakdownBucket[];
+  byType: StorageUsageBreakdownBucket[];
+  byUser: StorageUsageBreakdownBucket[];
+  trend: StorageUsageTrendPoint[];
+  updatedAt: string;
+  workspaceId: string;
+};
+
+export type UserStorageQuota = {
+  email: string;
+  quotaBytes: number | null;
+  updatedAt: string;
+  userId: string;
+};
+
+export type FilePolicySettings = {
+  trashRetentionDays: number;
+  versionRetentionCount: number;
+  versionRetentionDays: number;
   updatedAt: string;
 };
 
@@ -342,19 +384,51 @@ export type FileNodeResponse = {
   workspaceId: string;
   parentNodeId: string | null;
   name: string;
-  kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive";
+  kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
   mimeType: string;
   sizeBytes: number | null;
   objectKey: string | null;
   owner: string;
   starred: boolean;
   archivedAt: string | null;
+  archivedBy: string | null;
+  originalParentNodeId: string | null;
+  originalPath: string | null;
   previewCapability: FilePreviewCapability;
   createdAt: string;
   updatedAt: string;
 };
 
 export type FileNodeListState = "active" | "archived" | "all";
+
+export type FileNodeSearchQuery = Partial<{
+  workspaceId: string;
+  query: string;
+  type: "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
+  state: FileNodeListState;
+  shared: "shared" | "unshared" | "all";
+  createdFrom: string;
+  createdTo: string;
+  updatedFrom: string;
+  updatedTo: string;
+  minSizeBytes: number;
+  maxSizeBytes: number;
+  sortBy: "name" | "createdAt" | "updatedAt" | "sizeBytes";
+  sortDirection: "asc" | "desc";
+  limit: number;
+  offset: number;
+}>;
+
+export type FileNodeSearchResponse = FileNodeResponse & {
+  path: string;
+};
+
+export type FileNodeSearchResultResponse = {
+  items: FileNodeSearchResponse[];
+  limit: number;
+  offset: number;
+  total: number;
+};
 
 export type FileNodeContentResponse = {
   content: string;
@@ -385,6 +459,38 @@ export type DownloadIntentResponse = {
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
+};
+
+export type FileVersionResponse = {
+  id: string;
+  nodeId: string;
+  versionNumber: number;
+  sizeBytes: number;
+  objectKey: string;
+  mimeType: string;
+  uploadedBy: string;
+  remark: string;
+  createdAt: string;
+};
+
+export type BatchFileNodeOperationResponse = {
+  failed: Array<{ id: string; message: string }>;
+  succeeded: FileNodeResponse[];
+  summary: {
+    failed: number;
+    requested: number;
+    succeeded: number;
+  };
+};
+
+export type BatchDownloadIntentResponse = {
+  failed: Array<{ id: string; message: string }>;
+  succeeded: DownloadIntentResponse[];
+  summary: {
+    failed: number;
+    requested: number;
+    succeeded: number;
+  };
 };
 
 export class DriveApiError extends Error {
@@ -520,6 +626,15 @@ export async function fetchFileNodesByState(
   return requestDriveApi<FileNodeResponse[]>(`/file-nodes${suffix}`);
 }
 
+export async function searchFileNodes(filters: FileNodeSearchQuery = {}) {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return requestDriveApi<FileNodeSearchResultResponse>(`/file-nodes/search${suffix}`);
+}
+
 export function fetchFileNode(id: string) {
   return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}`);
 }
@@ -528,6 +643,47 @@ export function updateFileNodeState(id: string, state: { starred?: boolean; arch
   return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/state`, {
     method: "PATCH",
     body: JSON.stringify(state),
+  });
+}
+
+export function restoreFileNode(id: string, input: { parentNodeId?: string | null; name?: string } = {}) {
+  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/restore`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function permanentlyDeleteFileNode(id: string) {
+  return requestDriveApi<{ deleted: number; id: string; ok: true }>(`/file-nodes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function batchArchiveFileNodes(ids: string[]) {
+  return requestDriveApi<BatchFileNodeOperationResponse>("/file-nodes/batch/archive", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function batchRestoreFileNodes(ids: string[]) {
+  return requestDriveApi<BatchFileNodeOperationResponse>("/file-nodes/batch/restore", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function batchMoveFileNodes(ids: string[], parentNodeId: string | null) {
+  return requestDriveApi<BatchFileNodeOperationResponse>("/file-nodes/batch/move", {
+    method: "POST",
+    body: JSON.stringify({ ids, parentNodeId }),
+  });
+}
+
+export function createBatchFileDownloadIntents(ids: string[]) {
+  return requestDriveApi<BatchDownloadIntentResponse>("/file-nodes/batch/download-intents", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
   });
 }
 
@@ -583,6 +739,28 @@ export function createFileDownloadIntent(id: string, workspaceId?: string) {
     method: "POST",
     body: JSON.stringify({ workspaceId }),
   });
+}
+
+export function fetchFileVersions(id: string) {
+  return requestDriveApi<FileVersionResponse[]>(`/file-nodes/${encodeURIComponent(id)}/versions`);
+}
+
+export function createFileVersionDownloadIntent(id: string, versionId: string) {
+  return requestDriveApi<DownloadIntentResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/download-intents`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function restoreFileVersion(id: string, versionId: string) {
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function sendShareEmailCode(token: string, email: string) {
@@ -863,6 +1041,43 @@ export function fetchStorageSettings() {
 
 export function fetchStorageUsage(workspaceId: string) {
   return requestDriveApi<StorageUsage>(`/storage/usage?workspaceId=${encodeURIComponent(workspaceId)}`);
+}
+
+export function fetchStorageUsageBreakdown(workspaceId: string) {
+  return requestDriveApi<StorageUsageBreakdown>(`/storage/usage/breakdown?workspaceId=${encodeURIComponent(workspaceId)}`);
+}
+
+export function updateWorkspaceStorageQuota(input: {
+  workspaceId: string;
+  quotaBytes?: number | null;
+  defaultUserQuotaBytes?: number | null;
+}) {
+  return requestDriveApi<StorageUsage>("/storage/usage/quota", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateUserStorageQuota(input: {
+  email?: string;
+  quotaBytes?: number | null;
+  userId?: string;
+}) {
+  return requestDriveApi<UserStorageQuota>("/storage/usage/user-quota", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchFilePolicySettings() {
+  return requestDriveApi<FilePolicySettings>("/file-nodes/trash-policy");
+}
+
+export function updateFilePolicySettings(settings: Partial<Omit<FilePolicySettings, "updatedAt">>) {
+  return requestDriveApi<FilePolicySettings>("/file-nodes/trash-policy", {
+    method: "PATCH",
+    body: JSON.stringify(settings),
+  });
 }
 
 export function updateStorageSettings(settings: StorageSettingsInput) {
