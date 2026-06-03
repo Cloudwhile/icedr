@@ -32,6 +32,9 @@ const icetowneBlogOAuthPreset = {
   audience: "",
   scopes: "basic vip_info"
 } satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
+function deriveProviderMode(providerProfile: OAuthSettings["providerProfile"]) {
+  return providerProfile === "icetowne-blog" ? "compatibility" : "standard";
+}
 function getCurrentSystemBaseUrl() {
   if (typeof window === "undefined") return "";
   return window.location.origin;
@@ -1047,7 +1050,7 @@ export function ExternalShareAdminSettingsPanel({
     setOauthSettings({
       ...previous,
       ...icetowneBlogOAuthPreset,
-      providerMode: "compatibility",
+      providerMode: deriveProviderMode(icetowneBlogOAuthPreset.providerProfile),
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     });
     setOauthConfigOpen(true);
@@ -1058,12 +1061,12 @@ export function ExternalShareAdminSettingsPanel({
     const next: OAuthSettings = providerProfile === "icetowne-blog" ? {
       ...oauthSettings,
       ...icetowneBlogOAuthPreset,
-      providerMode: "compatibility",
+      providerMode: deriveProviderMode(providerProfile),
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     } : {
       ...oauthSettings,
       providerProfile,
-      providerMode: "standard"
+      providerMode: deriveProviderMode(providerProfile)
     };
     setOauthSettings(next);
     setOauthConfigOpen(true);
