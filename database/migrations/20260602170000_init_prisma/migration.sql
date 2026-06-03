@@ -321,6 +321,28 @@ on share_email_codes (share_token, email);
 create index if not exists share_email_codes_expires_at_idx
 on share_email_codes (expires_at);
 
+delete from share_email_codes c
+where not exists (
+  select 1
+  from share_links s
+  where s.token = c.share_token
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'share_email_codes_share_token_fkey'
+  ) then
+    alter table share_email_codes
+    add constraint share_email_codes_share_token_fkey
+    foreign key (share_token)
+    references share_links(token)
+    on delete cascade;
+  end if;
+end $$;
+
 create table if not exists share_access_sessions (
   id text primary key,
   share_token text not null,
@@ -343,6 +365,28 @@ on share_access_sessions (share_token);
 create index if not exists share_access_sessions_expires_at_idx
 on share_access_sessions (expires_at);
 
+delete from share_access_sessions a
+where not exists (
+  select 1
+  from share_links s
+  where s.token = a.share_token
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'share_access_sessions_share_token_fkey'
+  ) then
+    alter table share_access_sessions
+    add constraint share_access_sessions_share_token_fkey
+    foreign key (share_token)
+    references share_links(token)
+    on delete cascade;
+  end if;
+end $$;
+
 create table if not exists share_download_intents (
   id text primary key,
   share_token text not null,
@@ -361,6 +405,28 @@ on share_download_intents (share_token, node_id);
 
 create index if not exists share_download_intents_expires_at_idx
 on share_download_intents (expires_at);
+
+delete from share_download_intents d
+where not exists (
+  select 1
+  from share_links s
+  where s.token = d.share_token
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'share_download_intents_share_token_fkey'
+  ) then
+    alter table share_download_intents
+    add constraint share_download_intents_share_token_fkey
+    foreign key (share_token)
+    references share_links(token)
+    on delete cascade;
+  end if;
+end $$;
 
 create table if not exists audit_events (
   id text primary key,

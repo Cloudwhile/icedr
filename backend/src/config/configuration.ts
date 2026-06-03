@@ -126,6 +126,7 @@ export default () => {
         process.env.PUBLIC_SHARE_BASE_URL ?? 'http://localhost:13000/share/s',
       emailProvider:
         process.env.SHARE_EMAIL_PROVIDER ?? (isProduction() ? '' : 'dev-log'),
+      visitorHashSecret: process.env.SHARE_VISITOR_HASH_SECRET ?? '',
     },
     mail: {
       enabled: readBoolean(

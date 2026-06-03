@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAuditEvent } from '../logs/audit-events';
@@ -83,6 +83,8 @@ type CreateDownloadIntentInput = {
   method: ShareDownloadIntentRecord['method'];
   visitor?: ShareVisitorFingerprint;
 };
+
+const shareEmailCodeMaxAttempts = 5;
 
 @Injectable()
 export class SharesRepository {
@@ -248,7 +250,12 @@ export class SharesRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (!row || row.consumedAt || row.expiresAt.getTime() < Date.now()) {
+    if (
+      !row ||
+      row.consumedAt ||
+      row.expiresAt.getTime() < Date.now() ||
+      row.attemptCount >= shareEmailCodeMaxAttempts
+    ) {
       return null;
     }
 
@@ -553,7 +560,18 @@ export class SharesRepository {
   private hashVisitorValue(value: string | undefined) {
     const normalized = value?.trim();
     if (!normalized) return null;
-    return createHash('sha256').update(normalized).digest('hex');
+    return createHmac('sha256', this.resolveVisitorHashSecret())
+      .update(normalized)
+      .digest('hex');
+  }
+
+  private resolveVisitorHashSecret() {
+    return (
+      this.config.get<string>('share.visitorHashSecret')?.trim() ||
+      this.config.get<string>('storage.secretAccessKey')?.trim() ||
+      this.config.get<string>('database.password')?.trim() ||
+      'icedr-dev-share-visitor-hash-secret'
+    );
   }
 
   private parseJsonArray(value: unknown) {

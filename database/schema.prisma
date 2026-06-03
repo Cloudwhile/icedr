@@ -311,6 +311,10 @@ model ShareLink {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
 
+  emailCodes      ShareEmailCode[]
+  accessSessions  ShareAccessSession[]
+  downloadIntents ShareDownloadIntent[]
+
   @@map("share_links")
 }
 
@@ -327,6 +331,8 @@ model ShareEmailCode {
   userAgentHash String?   @map("user_agent_hash")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
 
   @@index([shareToken, email])
   @@index([expiresAt])
@@ -348,6 +354,8 @@ model ShareAccessSession {
   userAgentHash String?  @map("user_agent_hash")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
+
   @@index([shareToken])
   @@index([expiresAt])
   @@map("share_access_sessions")
@@ -364,6 +372,8 @@ model ShareDownloadIntent {
   requestIpHash String?   @map("request_ip_hash")
   userAgentHash String?   @map("user_agent_hash")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
 
   @@index([shareToken, nodeId])
   @@index([expiresAt])
