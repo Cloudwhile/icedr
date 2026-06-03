@@ -1,11 +1,24 @@
-import { randomBytes } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAuditEvent } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
-import { Prisma, type ShareLink } from '../../generated/prisma/client';
+import {
+  Prisma,
+  type ShareAccessSession as StoredShareAccessSession,
+  type ShareDownloadIntent,
+  type ShareEmailCode,
+  type ShareLink,
+} from '../../generated/prisma/client';
 import { CreateShareDto, ShareResponse } from './shares.dto';
-import { resolveShareDownloadPolicy } from './share-download-policy';
+import {
+  ShareAccessIdentityType,
+  ShareAccessSession,
+} from './share-access.dto';
+import {
+  resolveShareDownloadPolicy,
+  type ShareDownloadPolicyDecision,
+} from './share-download-policy';
 
 type StoredShare = ShareResponse;
 type DownloadStartedMetadataFactory = (
@@ -31,6 +44,59 @@ export type ShareAuditAction =
   | 'share.preview_requested'
   | 'share.access_code_sent'
   | 'share.access_session_created';
+
+export type ShareVisitorFingerprint = {
+  ip?: string;
+  userAgent?: string;
+};
+
+export type ShareDownloadIntentRecord = {
+  downloadId: string;
+  token: string;
+  nodeId: string;
+  filename: string;
+  expiresAt: string;
+  method: 'presigned-url' | 'backend-manifest';
+  identityType: ShareAccessIdentityType;
+  email?: string;
+  consumedAt: string | null;
+};
+
+type CreateEmailCodeInput = {
+  token: string;
+  email: string;
+  code: string;
+  expiresAt: string;
+  visitor?: ShareVisitorFingerprint;
+};
+
+type CreateAccessSessionInput = {
+  sessionId: string;
+  shareToken: string;
+  identityType: ShareAccessIdentityType;
+  email?: string;
+  availableAt: string;
+  waitSeconds: number;
+  downloadLimit: string;
+  speedLimit: ShareAccessSession['speedLimit'];
+  policyDecision: ShareDownloadPolicyDecision;
+  expiresAt: string;
+  visitor?: ShareVisitorFingerprint;
+};
+
+type CreateDownloadIntentInput = {
+  downloadId: string;
+  token: string;
+  nodeId: string;
+  filename: string;
+  expiresAt: string;
+  method: ShareDownloadIntentRecord['method'];
+  identityType: ShareAccessIdentityType;
+  email?: string;
+  visitor?: ShareVisitorFingerprint;
+};
+
+const shareEmailCodeMaxAttempts = 5;
 
 @Injectable()
 export class SharesRepository {
@@ -260,6 +326,174 @@ export class SharesRepository {
     });
   }
 
+  async createEmailAccessCode(input: CreateEmailCodeInput) {
+    const normalizedEmail = this.normalizeEmail(input.email);
+    const row = await this.prisma.shareEmailCode.create({
+      data: {
+        id: `sec_${randomBytes(12).toString('base64url')}`,
+        shareToken: input.token,
+        email: normalizedEmail,
+        emailDomain: this.getEmailDomain(normalizedEmail),
+        codeHash: this.hashShareSecret(
+          input.token,
+          normalizedEmail,
+          input.code,
+        ),
+        expiresAt: new Date(input.expiresAt),
+        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
+        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
+      },
+    });
+    return this.mapEmailCode(row);
+  }
+
+  async consumeEmailAccessCode(input: {
+    token: string;
+    email: string;
+    code: string;
+  }) {
+    const normalizedEmail = this.normalizeEmail(input.email);
+    const row = await this.prisma.shareEmailCode.findFirst({
+      where: {
+        shareToken: input.token,
+        email: normalizedEmail,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (
+      !row ||
+      row.consumedAt ||
+      row.expiresAt.getTime() < Date.now() ||
+      row.attemptCount >= shareEmailCodeMaxAttempts
+    ) {
+      return null;
+    }
+
+    const codeHash = this.hashShareSecret(
+      input.token,
+      normalizedEmail,
+      input.code,
+    );
+    if (row.codeHash !== codeHash) {
+      await this.prisma.shareEmailCode.update({
+        where: { id: row.id },
+        data: { attemptCount: { increment: 1 }, updatedAt: new Date() },
+      });
+      return null;
+    }
+
+    const consumedAt = new Date();
+    const result = await this.prisma.shareEmailCode.updateMany({
+      where: { id: row.id, consumedAt: null },
+      data: { consumedAt, updatedAt: consumedAt },
+    });
+    if (result.count !== 1) return null;
+    return this.mapEmailCode({ ...row, consumedAt, updatedAt: consumedAt });
+  }
+
+  async createAccessSession(
+    input: CreateAccessSessionInput,
+  ): Promise<ShareAccessSession> {
+    const normalizedEmail = input.email
+      ? this.normalizeEmail(input.email)
+      : null;
+    const row = await this.prisma.shareAccessSession.create({
+      data: {
+        id: input.sessionId,
+        shareToken: input.shareToken,
+        identityType: input.identityType,
+        email: normalizedEmail,
+        emailDomain: normalizedEmail
+          ? this.getEmailDomain(normalizedEmail)
+          : null,
+        availableAt: new Date(input.availableAt),
+        waitSeconds: input.waitSeconds,
+        downloadLimit: input.downloadLimit,
+        speedLimit: input.speedLimit
+          ? (input.speedLimit as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        policyDecision: input.policyDecision,
+        expiresAt: new Date(input.expiresAt),
+        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
+        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
+      },
+    });
+    return this.mapAccessSession(row);
+  }
+
+  async findAccessSession(sessionId: string) {
+    const row = await this.prisma.shareAccessSession.findUnique({
+      where: { id: sessionId },
+    });
+    return row ? this.mapAccessSession(row) : null;
+  }
+
+  async createShareDownloadIntent(
+    input: CreateDownloadIntentInput,
+  ): Promise<ShareDownloadIntentRecord> {
+    const row = await this.prisma.shareDownloadIntent.create({
+      data: {
+        id: input.downloadId,
+        shareToken: input.token,
+        nodeId: input.nodeId,
+        filename: input.filename,
+        method: input.method,
+        identityType: input.identityType,
+        email: input.email ? this.normalizeEmail(input.email) : null,
+        expiresAt: new Date(input.expiresAt),
+        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
+        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
+      },
+    });
+    return this.mapDownloadIntent(row);
+  }
+
+  async consumeShareDownloadIntent(input: {
+    downloadId: string;
+    token: string;
+    nodeId: string;
+  }) {
+    const row = await this.prisma.shareDownloadIntent.findUnique({
+      where: { id: input.downloadId },
+    });
+    if (
+      !row ||
+      row.shareToken !== input.token ||
+      row.nodeId !== input.nodeId ||
+      row.consumedAt ||
+      row.expiresAt.getTime() < Date.now()
+    ) {
+      return null;
+    }
+
+    const consumedAt = new Date();
+    const result = await this.prisma.shareDownloadIntent.updateMany({
+      where: { id: row.id, consumedAt: null },
+      data: { consumedAt },
+    });
+    if (result.count !== 1) return null;
+    return this.mapDownloadIntent({ ...row, consumedAt });
+  }
+
+  async pruneExpiredTransientShareState(now = new Date()) {
+    const [emailCodes, accessSessions, downloadIntents] = await Promise.all([
+      this.prisma.shareEmailCode.deleteMany({
+        where: { expiresAt: { lt: now } },
+      }),
+      this.prisma.shareAccessSession.deleteMany({
+        where: { expiresAt: { lt: now } },
+      }),
+      this.prisma.shareDownloadIntent.deleteMany({
+        where: { expiresAt: { lt: now } },
+      }),
+    ]);
+    return {
+      emailCodes: emailCodes.count,
+      accessSessions: accessSessions.count,
+      downloadIntents: downloadIntents.count,
+    };
+  }
+
   private async createUniqueToken() {
     let token = this.createToken();
     while (await this.findByToken(token)) {
@@ -361,6 +595,183 @@ export class SharesRepository {
     if (downloadCount >= 50 || visitCount >= 200) return 'high';
     if (downloadCount >= 10 || visitCount >= 50) return 'attention';
     return 'normal';
+  }
+
+  private mapEmailCode(row: ShareEmailCode) {
+    return {
+      id: row.id,
+      shareToken: row.shareToken,
+      email: row.email,
+      emailDomain: row.emailDomain,
+      expiresAt: row.expiresAt.toISOString(),
+      consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
+      attemptCount: row.attemptCount,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mapAccessSession(row: StoredShareAccessSession): ShareAccessSession {
+    const identityType = row.identityType as ShareAccessIdentityType;
+    const speedLimit = this.parseSpeedLimit(row.speedLimit);
+    return {
+      sessionId: row.id,
+      shareToken: row.shareToken,
+      identityType,
+      ...(row.email ? { email: row.email } : {}),
+      availableAt: row.availableAt.toISOString(),
+      waitSeconds: row.waitSeconds,
+      downloadLimit: row.downloadLimit,
+      speedLimit,
+      policyDecision: this.parsePolicyDecision(row.policyDecision, {
+        downloadLimit: row.downloadLimit,
+        identityType,
+        speedLimit,
+        waitSeconds: row.waitSeconds,
+      }),
+      expiresAt: row.expiresAt.toISOString(),
+    };
+  }
+
+  private mapDownloadIntent(
+    row: ShareDownloadIntent,
+  ): ShareDownloadIntentRecord {
+    return {
+      downloadId: row.id,
+      token: row.shareToken,
+      nodeId: row.nodeId,
+      filename: row.filename,
+      method: row.method as ShareDownloadIntentRecord['method'],
+      identityType: row.identityType as ShareAccessIdentityType,
+      ...(row.email ? { email: row.email } : {}),
+      expiresAt: row.expiresAt.toISOString(),
+      consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
+    };
+  }
+
+  private parseSpeedLimit(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    const unit = record.unit;
+    const speedValue = record.value;
+    if (
+      (unit !== 'KB/s' && unit !== 'MB/s') ||
+      typeof speedValue !== 'number' ||
+      !Number.isFinite(speedValue)
+    ) {
+      return null;
+    }
+    return {
+      value: speedValue,
+      unit,
+    } satisfies ShareAccessSession['speedLimit'];
+  }
+
+  private parsePolicyDecision(
+    value: Prisma.JsonValue,
+    fallback: Pick<
+      ShareDownloadPolicyDecision,
+      'downloadLimit' | 'identityType' | 'speedLimit' | 'waitSeconds'
+    >,
+  ): ShareDownloadPolicyDecision {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return this.createFallbackPolicyDecision(fallback);
+    }
+    const record = value as Record<string, unknown>;
+    return {
+      identityType: this.parseIdentityType(
+        record.identityType,
+        fallback.identityType,
+      ),
+      waitSeconds: this.parseNonNegativeInteger(
+        record.waitSeconds,
+        fallback.waitSeconds,
+      ),
+      speedLimit: this.parseSpeedLimit(record.speedLimit as Prisma.JsonValue),
+      bypassWait: record.bypassWait === true,
+      bypassSpeedLimit: record.bypassSpeedLimit === true,
+      downloadLimit:
+        typeof record.downloadLimit === 'string'
+          ? record.downloadLimit
+          : fallback.downloadLimit,
+      maxDownloads: this.parseNonNegativeInteger(record.maxDownloads, 0),
+      remainingDownloads:
+        record.remainingDownloads === null
+          ? null
+          : this.parseNonNegativeInteger(record.remainingDownloads, 0),
+      requiresAccessSession: record.requiresAccessSession === true,
+      requiresEmailVerification: record.requiresEmailVerification === true,
+    };
+  }
+
+  private createFallbackPolicyDecision(
+    fallback: Pick<
+      ShareDownloadPolicyDecision,
+      'downloadLimit' | 'identityType' | 'speedLimit' | 'waitSeconds'
+    >,
+  ): ShareDownloadPolicyDecision {
+    return {
+      identityType: fallback.identityType,
+      waitSeconds: fallback.waitSeconds,
+      speedLimit: fallback.speedLimit,
+      bypassWait: false,
+      bypassSpeedLimit: false,
+      downloadLimit: fallback.downloadLimit,
+      maxDownloads: 0,
+      remainingDownloads: null,
+      requiresAccessSession: true,
+      requiresEmailVerification: fallback.identityType === 'email',
+    };
+  }
+
+  private parseIdentityType(
+    value: unknown,
+    fallback: ShareAccessIdentityType,
+  ): ShareAccessIdentityType {
+    return value === 'anonymous' ||
+      value === 'email' ||
+      value === 'ica' ||
+      value === 'workspace'
+      ? value
+      : fallback;
+  }
+
+  private parseNonNegativeInteger(value: unknown, fallback: number) {
+    return typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, Math.trunc(value))
+      : fallback;
+  }
+
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+  }
+
+  private getEmailDomain(email: string) {
+    return email.split('@').at(-1) ?? '';
+  }
+
+  private hashShareSecret(token: string, email: string, code: string) {
+    return createHash('sha256')
+      .update(`share-email-code:${token}:${email}:${code.trim()}`)
+      .digest('hex');
+  }
+
+  private hashVisitorValue(value: string | undefined) {
+    const normalized = value?.trim();
+    if (!normalized) return null;
+    return createHmac('sha256', this.resolveVisitorHashSecret())
+      .update(normalized)
+      .digest('hex');
+  }
+
+  private resolveVisitorHashSecret() {
+    return (
+      this.config.get<string>('share.visitorHashSecret')?.trim() ||
+      this.config.get<string>('storage.secretAccessKey')?.trim() ||
+      this.config.get<string>('database.password')?.trim() ||
+      'icedr-dev-share-visitor-hash-secret'
+    );
   }
 
   private parseJsonArray(value: unknown) {

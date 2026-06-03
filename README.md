@@ -101,7 +101,7 @@ The backend validates production environment variables during startup. Missing r
 
 External shares resolve one download policy for anonymous visitors, email-verified visitors, and authenticated account visitors. That policy controls wait time, speed hints, domain or allowlist requirements, and per-link download limits; each access session and download intent carries the policy decision that was applied.
 
-Short-lived email codes, access sessions, preview intents, and download intents are process-local in this first deployable version. Restarting the API invalidates those temporary tokens, but persisted share links remain in PostgreSQL.
+Short-lived email codes, access sessions, preview intents, and download intents are persisted with TTLs in PostgreSQL. API restarts and multiple API instances can continue validating unexpired share access state from the shared database.
 
 ## Quality Gates
 

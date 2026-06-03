@@ -8,6 +8,7 @@ import { MailService } from '../admin/mail/mail.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import { CreateShareDto, ShareResponse } from './shares.dto';
+import { ShareAccessSession } from './share-access.dto';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
 import { resolveShareDownloadPolicy } from './share-download-policy';
@@ -37,6 +38,31 @@ const createDto = (): CreateShareDto => ({
 
 class SharesRepositorySpecDouble {
   private shares = new Map<string, ShareResponse>();
+  private emailCodes = new Map<
+    string,
+    {
+      code: string;
+      consumedAt: string | null;
+      email: string;
+      expiresAt: string;
+      shareToken: string;
+    }
+  >();
+  private accessSessions = new Map<string, ShareAccessSession>();
+  private downloadIntents = new Map<
+    string,
+    {
+      consumedAt: string | null;
+      downloadId: string;
+      expiresAt: string;
+      filename: string;
+      identityType: 'anonymous' | 'email' | 'ica';
+      email?: string;
+      method: 'presigned-url' | 'backend-manifest';
+      nodeId: string;
+      token: string;
+    }
+  >();
   readonly auditEvents: Array<{
     action: string;
     target: string;
@@ -159,6 +185,88 @@ class SharesRepositorySpecDouble {
         (event) => event.target === token && event.action === action,
       ).length,
     );
+  }
+
+  createEmailAccessCode(input: {
+    code: string;
+    email: string;
+    expiresAt: string;
+    token: string;
+  }) {
+    const email = input.email.toLowerCase();
+    const key = `${input.token}:${email}`;
+    this.emailCodes.set(key, {
+      code: input.code,
+      consumedAt: null,
+      email,
+      expiresAt: input.expiresAt,
+      shareToken: input.token,
+    });
+    return Promise.resolve(this.emailCodes.get(key));
+  }
+
+  consumeEmailAccessCode(input: {
+    code: string;
+    email: string;
+    token: string;
+  }) {
+    const key = `${input.token}:${input.email.toLowerCase()}`;
+    const code = this.emailCodes.get(key);
+    if (
+      !code ||
+      code.consumedAt ||
+      code.code !== input.code ||
+      new Date(code.expiresAt).getTime() < Date.now()
+    ) {
+      return Promise.resolve(null);
+    }
+    code.consumedAt = new Date().toISOString();
+    return Promise.resolve(code);
+  }
+
+  createAccessSession(input: ShareAccessSession) {
+    this.accessSessions.set(input.sessionId, input);
+    return Promise.resolve(input);
+  }
+
+  findAccessSession(sessionId: string) {
+    return Promise.resolve(this.accessSessions.get(sessionId) ?? null);
+  }
+
+  createShareDownloadIntent(input: {
+    downloadId: string;
+    expiresAt: string;
+    filename: string;
+    identityType: 'anonymous' | 'email' | 'ica';
+    email?: string;
+    method: 'presigned-url' | 'backend-manifest';
+    nodeId: string;
+    token: string;
+  }) {
+    this.downloadIntents.set(input.downloadId, {
+      ...input,
+      consumedAt: null,
+    });
+    return Promise.resolve(this.downloadIntents.get(input.downloadId));
+  }
+
+  consumeShareDownloadIntent(input: {
+    downloadId: string;
+    nodeId: string;
+    token: string;
+  }) {
+    const intent = this.downloadIntents.get(input.downloadId);
+    if (
+      !intent ||
+      intent.consumedAt ||
+      intent.token !== input.token ||
+      intent.nodeId !== input.nodeId ||
+      new Date(intent.expiresAt).getTime() < Date.now()
+    ) {
+      return Promise.resolve(null);
+    }
+    intent.consumedAt = new Date().toISOString();
+    return Promise.resolve(intent);
   }
 }
 
@@ -665,6 +773,54 @@ describe('SharesService', () => {
     await expect(
       repository.countAuditEvents('share.access_code_sent'),
     ).resolves.toBe(1);
+  });
+
+  it('keeps email sessions and download intents usable across service instances', async () => {
+    const created = await service.createShare(createDto());
+    const email = 'reviewer@example.com';
+    await service.sendEmailAccessCode(created.token, { email });
+    const code = sentCodes.get(email);
+    expect(code).toBeDefined();
+
+    const restartedService = new SharesService(
+      repository,
+      fileNodesService as FileNodesService,
+      storageService as StorageService,
+      workspacesService as WorkspacesService,
+      mailService as MailService,
+    );
+    const session = await restartedService.verifyEmailAccessCode(
+      created.token,
+      { email, code: code! },
+    );
+    const intent = await restartedService.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const download = await restartedService.downloadSharedNode(
+      created.token,
+      'roadmap',
+      intent.downloadId,
+    );
+
+    expect(download).toMatchObject({
+      method: 'presigned-url',
+      filename: 'ICEDR Roadmap.docx',
+    });
+    await expect(
+      restartedService.verifyEmailAccessCode(created.token, {
+        email,
+        code: code!,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      restartedService.downloadSharedNode(
+        created.token,
+        'roadmap',
+        intent.downloadId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('does not create email access codes when mail delivery fails', async () => {
