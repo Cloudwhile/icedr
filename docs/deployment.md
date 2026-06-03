@@ -3,7 +3,9 @@
 Docker Compose lives at `deploy/docker-compose.yml`.
 
 ```bash
-docker compose -f deploy/docker-compose.yml up --build
+copy .env.production.example .env.production
+# Edit .env.production before starting the stack.
+docker compose --env-file .env.production -f deploy/docker-compose.yml up --build
 ```
 
 Compose starts PostgreSQL, Redis, MinIO, the Nest API, the Vite-built frontend, and an Nginx edge proxy. The edge proxy listens on `13000` and forwards `/api/health` to the API.
@@ -31,6 +33,8 @@ The sample Nginx config in `deploy/nginx/default.conf` routes:
 - `/objects/` to the MinIO S3 API for signed object URLs.
 
 Do not publish PostgreSQL, Redis, the API container, or MinIO console directly in production. If you need operational access, bind them to a private interface, VPN, bastion, or another restricted network path.
+
+When the API runs with `NODE_ENV=production` or `APP_ENV=production`, startup validates the production environment before binding the HTTP port. Missing PostgreSQL, Redis, S3, CORS, public URL, or SMTP variables fail startup with the specific variable names. Development-only values such as `ALLOW_DEV_MEMORY_STORE=true`, `SEED_DEMO_DATA=true`, and `SHARE_EMAIL_PROVIDER=dev-log` are rejected in production.
 
 Dockerfiles live in:
 

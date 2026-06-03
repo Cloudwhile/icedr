@@ -1,3 +1,9 @@
+import {
+  getAppEnv,
+  isProductionEnv,
+  validateProductionEnv,
+} from './production-env';
+
 function readBoolean(value: string | undefined, defaultValue = false) {
   if (value === undefined) return defaultValue;
   return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
@@ -15,47 +21,12 @@ function readOptionalNumber(value: string | undefined) {
   return Number.isFinite(next) && next >= 0 ? next : null;
 }
 
-function getAppEnv() {
-  return process.env.APP_ENV ?? process.env.NODE_ENV ?? 'development';
-}
-
 function isProduction() {
-  return getAppEnv() === 'production' || process.env.NODE_ENV === 'production';
-}
-
-function requireProductionEnv(name: string) {
-  if (isProduction() && !process.env[name]) {
-    throw new Error(`${name} is required in production`);
-  }
-}
-
-function requireProductionEnvOneOf(names: string[]) {
-  if (isProduction() && !names.some((name) => process.env[name])) {
-    throw new Error(`${names.join(' or ')} is required in production`);
-  }
+  return isProductionEnv(process.env);
 }
 
 export default () => {
-  [
-    'DATABASE_HOST',
-    'DATABASE_PORT',
-    'DATABASE_DBNAME',
-    'DATABASE_USER',
-    'DATABASE_PASSWORD',
-    'REDIS_HOST',
-    'REDIS_PORT',
-    'REDIS_DBNAME',
-    'S3_ENDPOINT',
-    'S3_BUCKET',
-    'S3_ACCESS_KEY_ID',
-    'S3_SECRET_ACCESS_KEY',
-    'PUBLIC_SHARE_BASE_URL',
-  ].forEach(requireProductionEnv);
-  requireProductionEnvOneOf([
-    'API_PUBLIC_BASE_URL',
-    'VITE_API_BASE_URL',
-    'NEXT_PUBLIC_API_BASE_URL',
-  ]);
+  validateProductionEnv(process.env);
 
   return {
     app: {
@@ -127,6 +98,7 @@ export default () => {
         process.env.PUBLIC_SHARE_BASE_URL ?? 'http://localhost:13000/share/s',
       emailProvider:
         process.env.SHARE_EMAIL_PROVIDER ?? (isProduction() ? '' : 'dev-log'),
+      visitorHashSecret: process.env.SHARE_VISITOR_HASH_SECRET ?? '',
     },
     mail: {
       enabled: readBoolean(

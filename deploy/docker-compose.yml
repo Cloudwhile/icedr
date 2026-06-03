@@ -3,11 +3,11 @@ services:
     image: postgres:16-alpine
     container_name: icedr-postgres
     environment:
-      POSTGRES_DB: icedr
-      POSTGRES_USER: icedr
-      POSTGRES_PASSWORD: icedr
+      POSTGRES_DB: ${DATABASE_DBNAME:?Set DATABASE_DBNAME}
+      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U icedr -d icedr"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -31,8 +31,8 @@ services:
     container_name: icedr-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: icedr
-      MINIO_ROOT_PASSWORD: icedr-secret
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?Set S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?Set S3_SECRET_ACCESS_KEY}
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -49,10 +49,14 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 icedr icedr-secret &&
-      mc mb --ignore-existing local/icedr-drive &&
-      mc anonymous set none local/icedr-drive
+      mc alias set local http://minio:9000 \"$${S3_ACCESS_KEY_ID}\" \"$${S3_SECRET_ACCESS_KEY}\" &&
+      mc mb --ignore-existing \"local/$${S3_BUCKET}\" &&
+      mc anonymous set none \"local/$${S3_BUCKET}\"
       "
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set S3_SECRET_ACCESS_KEY}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET}
 
   api:
     build:
@@ -69,30 +73,41 @@ services:
     environment:
       NODE_ENV: production
       APP_ENV: production
-      API_HOST: 0.0.0.0
-      API_PORT: 13001
-      API_CORS_ORIGIN: http://localhost:13000
+      API_HOST: ${API_HOST:-0.0.0.0}
+      API_PORT: ${API_PORT:-13001}
+      API_CORS_ORIGIN: ${API_CORS_ORIGIN:-}
       DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_DBNAME: icedr
-      DATABASE_USER: icedr
-      DATABASE_PASSWORD: icedr
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_DBNAME: ${DATABASE_DBNAME:-}
+      DATABASE_USER: ${DATABASE_USER:-}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-}
       REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DBNAME: 0
-      REDIS_USER: ""
-      REDIS_PASSWORD: ""
-      S3_ENDPOINT: http://minio:9000
-      S3_PUBLIC_ENDPOINT: http://localhost:13000/objects
-      S3_REGION: us-east-1
-      S3_BUCKET: icedr-drive
-      S3_ACCESS_KEY_ID: icedr
-      S3_SECRET_ACCESS_KEY: icedr-secret
-      S3_FORCE_PATH_STYLE: "true"
-      LOCAL_STORAGE_ROOT: /workspace/backend/data/local-files
-      PUBLIC_SHARE_BASE_URL: http://localhost:13000/share/s
-      API_PUBLIC_BASE_URL: http://localhost:13000/api
-      DEFAULT_WORKSPACE_ACTOR: Workspace User
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DBNAME: ${REDIS_DBNAME:-0}
+      REDIS_USER: ${REDIS_USER:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      LOCAL_STORAGE_ROOT: ${LOCAL_STORAGE_ROOT:-/workspace/backend/data/local-files}
+      PUBLIC_SHARE_BASE_URL: ${PUBLIC_SHARE_BASE_URL:-}
+      API_PUBLIC_BASE_URL: ${API_PUBLIC_BASE_URL:-}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      SHARE_EMAIL_PROVIDER: ${SHARE_EMAIL_PROVIDER:-}
+      SMTP_ENABLED: ${SMTP_ENABLED:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-ICEDR}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
+      DEFAULT_WORKSPACE_ACTOR: ${DEFAULT_WORKSPACE_ACTOR:-Workspace User}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13001/api/health | grep -q '\"status\"'"]
       interval: 15s
@@ -106,7 +121,7 @@ services:
       context: ..
       dockerfile: deploy/docker/frontend.Dockerfile
       args:
-        VITE_API_BASE_URL: http://localhost:13000/api
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:13000/api}
     container_name: icedr-web
     depends_on:
       api:
