@@ -23,6 +23,7 @@ model User {
   email        String    @unique
   displayName  String    @map("display_name")
   role         String    @default("member")
+  storageQuotaBytes BigInt? @map("storage_quota_bytes")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
 
@@ -33,6 +34,7 @@ model User {
   passkeys            AuthPasskey[]
   challenges          AuthChallenge[]
   oauthExchangeCodes  AuthOAuthExchangeCode[]
+  ownedFileNodes      FileNode[]
 
   @@map("users")
 }
@@ -167,10 +169,22 @@ model Workspace {
   name        String
   rootNodeId  String   @map("root_node_id")
   memberCount Int      @default(1) @map("member_count")
+  quotaBytes  BigInt?  @map("quota_bytes")
+  defaultUserQuotaBytes BigInt? @map("default_user_quota_bytes")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("workspaces")
+}
+
+model FilePolicySetting {
+  settingKey            String   @id @map("setting_key")
+  trashRetentionDays    Int      @default(30) @map("trash_retention_days")
+  versionRetentionCount Int      @default(20) @map("version_retention_count")
+  versionRetentionDays  Int      @default(180) @map("version_retention_days")
+  updatedAt             DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("file_policy_settings")
 }
 
 model WorkspaceShareSetting {
@@ -197,12 +211,38 @@ model FileNode {
   sizeBytes    BigInt?   @map("size_bytes")
   objectKey    String?   @map("object_key")
   ownerName    String    @map("owner_name")
+  ownerUserId  String?   @map("owner_user_id")
   starred      Boolean   @default(false)
   archivedAt   DateTime? @map("archived_at") @db.Timestamptz
+  archivedBy   String?   @map("archived_by")
+  originalParentNodeId String? @map("original_parent_node_id")
+  originalPath String?   @map("original_path")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
 
+  owner    User?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  versions FileVersion[]
+
+  @@index([ownerUserId])
   @@map("file_nodes")
+}
+
+model FileVersion {
+  id            String   @id
+  nodeId        String   @map("node_id")
+  versionNumber Int     @map("version_number")
+  objectKey     String  @map("object_key")
+  sizeBytes     BigInt  @map("size_bytes")
+  mimeType      String  @map("mime_type")
+  uploadedBy    String  @default("") @map("uploaded_by")
+  remark        String  @default("")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  node FileNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, versionNumber])
+  @@index([nodeId])
+  @@map("file_versions")
 }
 
 model PreviewArtifact {

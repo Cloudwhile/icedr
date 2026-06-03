@@ -1,5 +1,8 @@
 import {
+  ArrayMaxSize,
   IsBoolean,
+  IsArray,
+  IsDateString,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -8,6 +11,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import type {
   FilePreviewCapability,
   PreviewRenderMode,
@@ -19,8 +23,23 @@ export type FileNodeKind =
   | 'sheet'
   | 'image'
   | 'video'
-  | 'archive';
+  | 'archive'
+  | 'other';
 export type FileNodeListState = 'active' | 'archived' | 'all';
+export type FileNodeSortField =
+  | 'name'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'sizeBytes';
+export type FileNodeSortDirection = 'asc' | 'desc';
+export type FileNodeTypeFilter =
+  | 'folder'
+  | 'doc'
+  | 'sheet'
+  | 'image'
+  | 'video'
+  | 'archive'
+  | 'other';
 export type FileNodePreviewStatus =
   | 'pending'
   | 'ready'
@@ -175,6 +194,52 @@ export class UpdateFileNodeStateDto {
   archived?: boolean;
 }
 
+export class RestoreFileNodeDto {
+  @IsString()
+  @IsOptional()
+  parentNodeId?: string | null;
+
+  @IsString()
+  @IsOptional()
+  name?: string;
+}
+
+export class BatchFileNodeIdsDto {
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  ids!: string[];
+}
+
+export class BatchMoveFileNodesDto extends BatchFileNodeIdsDto {
+  @IsString()
+  @IsOptional()
+  parentNodeId?: string | null;
+}
+
+export class UpdateFilePolicyDto {
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  @Type(() => Number)
+  @IsOptional()
+  trashRetentionDays?: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  @Type(() => Number)
+  @IsOptional()
+  versionRetentionCount?: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  @Type(() => Number)
+  @IsOptional()
+  versionRetentionDays?: number;
+}
+
 export class CreateDownloadIntentDto {
   @IsString()
   @IsOptional()
@@ -195,6 +260,77 @@ export class ListFileNodesQueryDto {
   state?: FileNodeListState;
 }
 
+export class SearchFileNodesQueryDto {
+  @IsString()
+  @IsOptional()
+  workspaceId?: string;
+
+  @IsString()
+  @IsOptional()
+  query?: string;
+
+  @IsIn(['folder', 'doc', 'sheet', 'image', 'video', 'archive', 'other'])
+  @IsOptional()
+  type?: FileNodeTypeFilter;
+
+  @IsIn(['active', 'archived', 'all'])
+  @IsOptional()
+  state?: FileNodeListState;
+
+  @IsIn(['shared', 'unshared', 'all'])
+  @IsOptional()
+  shared?: 'shared' | 'unshared' | 'all';
+
+  @IsDateString()
+  @IsOptional()
+  createdFrom?: string;
+
+  @IsDateString()
+  @IsOptional()
+  createdTo?: string;
+
+  @IsDateString()
+  @IsOptional()
+  updatedFrom?: string;
+
+  @IsDateString()
+  @IsOptional()
+  updatedTo?: string;
+
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  @IsOptional()
+  minSizeBytes?: number;
+
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  @IsOptional()
+  maxSizeBytes?: number;
+
+  @IsIn(['name', 'createdAt', 'updatedAt', 'sizeBytes'])
+  @IsOptional()
+  sortBy?: FileNodeSortField;
+
+  @IsIn(['asc', 'desc'])
+  @IsOptional()
+  sortDirection?: FileNodeSortDirection;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  @Type(() => Number)
+  @IsOptional()
+  limit?: number;
+
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  @IsOptional()
+  offset?: number;
+}
+
 export type FileNodeResponse = {
   id: string;
   workspaceId: string;
@@ -207,9 +343,23 @@ export type FileNodeResponse = {
   owner: string;
   starred: boolean;
   archivedAt: string | null;
+  archivedBy: string | null;
+  originalParentNodeId: string | null;
+  originalPath: string | null;
   previewCapability: FilePreviewCapability;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FileNodeSearchResponse = FileNodeResponse & {
+  path: string;
+};
+
+export type FileNodeSearchResultResponse = {
+  items: FileNodeSearchResponse[];
+  limit: number;
+  offset: number;
+  total: number;
 };
 
 export type FileNodeContentResponse = {
@@ -239,6 +389,45 @@ export type DownloadIntentResponse = {
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
+};
+
+export type FileVersionResponse = {
+  id: string;
+  nodeId: string;
+  versionNumber: number;
+  sizeBytes: number;
+  objectKey: string;
+  mimeType: string;
+  uploadedBy: string;
+  remark: string;
+  createdAt: string;
+};
+
+export type FilePolicyResponse = {
+  trashRetentionDays: number;
+  versionRetentionCount: number;
+  versionRetentionDays: number;
+  updatedAt: string;
+};
+
+export type BatchFileNodeOperationResponse = {
+  failed: Array<{ id: string; message: string }>;
+  succeeded: FileNodeResponse[];
+  summary: {
+    failed: number;
+    requested: number;
+    succeeded: number;
+  };
+};
+
+export type BatchDownloadIntentResponse = {
+  failed: Array<{ id: string; message: string }>;
+  succeeded: DownloadIntentResponse[];
+  summary: {
+    failed: number;
+    requested: number;
+    succeeded: number;
+  };
 };
 
 export type UploadIntentResponse = {

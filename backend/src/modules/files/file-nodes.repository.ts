@@ -6,16 +6,22 @@ import {
   Prisma,
   type FileDownloadIntent,
   type FileNode,
+  type FilePolicySetting,
+  type FileVersion,
   type PreviewArtifact,
 } from '../../generated/prisma/client';
 import {
   CompleteUploadDto,
   CreateFolderDto,
   DownloadIntentResponse,
+  FileNodeSearchResultResponse,
   FileNodeListState,
   FileNodeKind,
   FileNodeResponse,
+  FilePolicyResponse,
+  FileVersionResponse,
   PreviewIntentResponse,
+  SearchFileNodesQueryDto,
 } from './file-nodes.dto';
 import {
   resolveFilePreviewCapability,
@@ -30,12 +36,25 @@ export type FileAuditAction =
   | 'file.content_updated'
   | 'file.upload_intent_created'
   | 'file.upload_completed'
+  | 'file.version_created'
+  | 'file.version_downloaded'
+  | 'file.version_restored'
   | 'file.starred_updated'
   | 'file.archived'
   | 'file.restored'
+  | 'file.permanently_deleted'
+  | 'file.trash_cleaned'
+  | 'file.batch_archived'
+  | 'file.batch_restored'
+  | 'file.batch_moved'
+  | 'file.batch_download_intents_created'
+  | 'file.search_performed'
+  | 'file.quota_upload_rejected'
   | 'file.download_intent_created'
   | 'file.download_started'
   | 'file.preview_requested';
+
+const filePolicySettingsKey = 'global';
 
 @Injectable()
 export class FileNodesRepository {
@@ -63,7 +82,45 @@ export class FileNodesRepository {
     return row ? this.mapRow(row) : null;
   }
 
-  async createFolder(dto: CreateFolderDto) {
+  async getPolicy(): Promise<FilePolicyResponse> {
+    const row = await this.prisma.filePolicySetting.upsert({
+      where: { settingKey: filePolicySettingsKey },
+      update: {},
+      create: { settingKey: filePolicySettingsKey },
+    });
+    return this.mapPolicyRow(row);
+  }
+
+  async updatePolicy(input: {
+    trashRetentionDays?: number;
+    versionRetentionCount?: number;
+    versionRetentionDays?: number;
+  }): Promise<FilePolicyResponse> {
+    const row = await this.prisma.filePolicySetting.upsert({
+      where: { settingKey: filePolicySettingsKey },
+      update: {
+        ...(input.trashRetentionDays !== undefined
+          ? { trashRetentionDays: input.trashRetentionDays }
+          : {}),
+        ...(input.versionRetentionCount !== undefined
+          ? { versionRetentionCount: input.versionRetentionCount }
+          : {}),
+        ...(input.versionRetentionDays !== undefined
+          ? { versionRetentionDays: input.versionRetentionDays }
+          : {}),
+        updatedAt: new Date(),
+      },
+      create: {
+        settingKey: filePolicySettingsKey,
+        trashRetentionDays: input.trashRetentionDays ?? 30,
+        versionRetentionCount: input.versionRetentionCount ?? 20,
+        versionRetentionDays: input.versionRetentionDays ?? 180,
+      },
+    });
+    return this.mapPolicyRow(row);
+  }
+
+  async createFolder(dto: CreateFolderDto & { ownerUserId?: string }) {
     const now = new Date();
     const row = await this.prisma.fileNode.create({
       data: {
@@ -76,6 +133,7 @@ export class FileNodesRepository {
         sizeBytes: null,
         objectKey: null,
         ownerName: dto.owner ?? '',
+        ownerUserId: dto.ownerUserId ?? null,
         starred: false,
         archivedAt: null,
         createdAt: now,
@@ -98,6 +156,37 @@ export class FileNodesRepository {
       sizeBytes: BigInt(sizeBytes),
       updatedAt: new Date(),
     });
+  }
+
+  async replaceContentObject(input: {
+    id: string;
+    objectKey: string;
+    sizeBytes: number;
+    mimeType: string;
+    uploadedBy?: string;
+  }) {
+    const row = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.fileNode.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing?.objectKey) return null;
+      await this.createVersionForNode(tx, existing, {
+        remark: 'Replaced by content edit',
+        uploadedBy: input.uploadedBy ?? existing.ownerName,
+      });
+      return tx.fileNode.update({
+        where: { id: input.id },
+        data: {
+          objectKey: input.objectKey,
+          sizeBytes: BigInt(input.sizeBytes),
+          mimeType: input.mimeType,
+          kind: this.getKind(existing.name, input.mimeType),
+          updatedAt: new Date(),
+        },
+      });
+    });
+    if (row) await this.pruneVersions(row.id);
+    return row ? this.mapRow(row) : null;
   }
 
   async copyTree(
@@ -168,6 +257,164 @@ export class FileNodesRepository {
     return this.updateNode(id, data);
   }
 
+  async archiveTree(id: string, actor?: string) {
+    const source = await this.prisma.fileNode.findUnique({ where: { id } });
+    if (!source) return null;
+    const rows = [source, ...(await this.collectDescendantRows(source.id))];
+    const paths = await this.buildWorkspacePaths(source.workspaceId);
+    const now = new Date();
+
+    await this.prisma.$transaction(
+      rows.map((row) =>
+        this.prisma.fileNode.update({
+          where: { id: row.id },
+          data: {
+            archivedAt: row.archivedAt ?? now,
+            archivedBy: actor?.trim() || row.archivedBy || 'workspace',
+            originalParentNodeId: row.originalParentNodeId ?? row.parentNodeId,
+            originalPath: row.originalPath ?? paths.get(row.id) ?? row.name,
+            updatedAt: now,
+          },
+        }),
+      ),
+    );
+
+    return this.findById(id);
+  }
+
+  async restoreTree(
+    id: string,
+    options: { parentNodeId?: string | null; name?: string } = {},
+  ) {
+    const source = await this.prisma.fileNode.findUnique({ where: { id } });
+    if (!source) return null;
+    const rows = [source, ...(await this.collectDescendantRows(source.id))];
+    const ids = new Set(rows.map((row) => row.id));
+    const targetParentNodeId =
+      options.parentNodeId !== undefined
+        ? options.parentNodeId
+        : source.originalParentNodeId;
+    const targetName = await this.resolveRestoreName({
+      desiredName: options.name?.trim() || source.name,
+      excludeIds: ids,
+      parentNodeId: targetParentNodeId ?? null,
+      workspaceId: source.workspaceId,
+    });
+    const now = new Date();
+
+    await this.prisma.$transaction(
+      rows.map((row) =>
+        this.prisma.fileNode.update({
+          where: { id: row.id },
+          data: {
+            ...(row.id === source.id
+              ? {
+                  name: targetName,
+                  parentNodeId: targetParentNodeId ?? null,
+                }
+              : {}),
+            archivedAt: null,
+            archivedBy: null,
+            originalParentNodeId: null,
+            originalPath: null,
+            updatedAt: now,
+          },
+        }),
+      ),
+    );
+
+    return this.findById(id);
+  }
+
+  async listTreeForDeletion(id: string) {
+    const source = await this.prisma.fileNode.findUnique({ where: { id } });
+    if (!source) return { nodes: [], versions: [] as FileVersionResponse[] };
+    const rows = [source, ...(await this.collectDescendantRows(source.id))];
+    const ids = rows.map((row) => row.id);
+    const versions = await this.prisma.fileVersion.findMany({
+      where: { nodeId: { in: ids } },
+      orderBy: [{ nodeId: 'asc' }, { versionNumber: 'asc' }],
+    });
+    return {
+      nodes: rows.map((row) => this.mapRow(row)),
+      versions: versions.map((row) => this.mapVersionRow(row)),
+    };
+  }
+
+  async deleteTree(id: string) {
+    const deletion = await this.listTreeForDeletion(id);
+    if (deletion.nodes.length === 0) return deletion;
+    await this.prisma.fileNode.deleteMany({
+      where: { id: { in: deletion.nodes.map((node) => node.id) } },
+    });
+    return deletion;
+  }
+
+  async cleanupTrash(cutoff: Date) {
+    const roots = await this.prisma.fileNode.findMany({
+      where: {
+        archivedAt: { lt: cutoff },
+        OR: [{ parentNodeId: null }, { parentNodeId: { not: null } }],
+      },
+      orderBy: { archivedAt: 'asc' },
+    });
+    const deletedNodes: FileNodeResponse[] = [];
+    const deletedVersions: FileVersionResponse[] = [];
+    const visited = new Set<string>();
+    for (const root of roots) {
+      if (visited.has(root.id)) continue;
+      const tree = await this.listTreeForDeletion(root.id);
+      tree.nodes.forEach((node) => visited.add(node.id));
+      await this.prisma.fileNode.deleteMany({
+        where: { id: { in: tree.nodes.map((node) => node.id) } },
+      });
+      deletedNodes.push(...tree.nodes);
+      deletedVersions.push(...tree.versions);
+    }
+    return { nodes: deletedNodes, versions: deletedVersions };
+  }
+
+  async listVersions(nodeId: string) {
+    const rows = await this.prisma.fileVersion.findMany({
+      where: { nodeId },
+      orderBy: { versionNumber: 'desc' },
+    });
+    return rows.map((row) => this.mapVersionRow(row));
+  }
+
+  async findVersion(nodeId: string, versionId: string) {
+    const row = await this.prisma.fileVersion.findFirst({
+      where: { id: versionId, nodeId },
+    });
+    return row ? this.mapVersionRow(row) : null;
+  }
+
+  async restoreVersion(nodeId: string, versionId: string, actor?: string) {
+    const row = await this.prisma.$transaction(async (tx) => {
+      const node = await tx.fileNode.findUnique({ where: { id: nodeId } });
+      if (!node?.objectKey) return null;
+      const version = await tx.fileVersion.findFirst({
+        where: { id: versionId, nodeId },
+      });
+      if (!version) return null;
+      await this.createVersionForNode(tx, node, {
+        remark: `Restored version ${version.versionNumber}`,
+        uploadedBy: actor ?? node.ownerName,
+      });
+      return tx.fileNode.update({
+        where: { id: nodeId },
+        data: {
+          mimeType: version.mimeType,
+          objectKey: version.objectKey,
+          sizeBytes: version.sizeBytes,
+          updatedAt: new Date(),
+        },
+      });
+    });
+    if (row) await this.pruneVersions(row.id);
+    return row ? this.mapRow(row) : null;
+  }
+
   async createDownloadIntent(
     node: FileNodeResponse,
     method: DownloadIntentResponse['method'],
@@ -221,25 +468,58 @@ export class FileNodesRepository {
     return row ? this.mapPreviewArtifact(row) : null;
   }
 
-  async completeUpload(dto: CompleteUploadDto) {
+  async completeUpload(dto: CompleteUploadDto & { ownerUserId?: string }) {
     const now = new Date();
-    const row = await this.prisma.fileNode.create({
-      data: {
-        id: `node_${randomBytes(12).toString('base64url')}`,
-        workspaceId: dto.workspaceId,
-        parentNodeId: dto.parentNodeId ?? null,
-        name: dto.fileName,
-        kind: this.getKind(dto.fileName, dto.mimeType),
-        mimeType: dto.mimeType ?? 'application/octet-stream',
-        sizeBytes: BigInt(dto.sizeBytes),
-        objectKey: dto.objectKey,
-        ownerName: dto.owner ?? '',
-        starred: false,
-        archivedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      },
+    const parentNodeId = dto.parentNodeId ?? null;
+    const row = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.fileNode.findFirst({
+        where: {
+          archivedAt: null,
+          name: dto.fileName,
+          parentNodeId,
+          workspaceId: dto.workspaceId,
+        },
+      });
+
+      if (existing?.objectKey) {
+        await this.createVersionForNode(tx, existing, {
+          remark: 'Replaced by upload',
+          uploadedBy: dto.owner ?? existing.ownerName,
+        });
+        return tx.fileNode.update({
+          where: { id: existing.id },
+          data: {
+            kind: this.getKind(dto.fileName, dto.mimeType),
+            mimeType: dto.mimeType ?? 'application/octet-stream',
+            objectKey: dto.objectKey,
+            ownerUserId: dto.ownerUserId ?? existing.ownerUserId,
+            ownerName: dto.owner ?? existing.ownerName,
+            sizeBytes: BigInt(dto.sizeBytes),
+            updatedAt: now,
+          },
+        });
+      }
+
+      return tx.fileNode.create({
+        data: {
+          id: `node_${randomBytes(12).toString('base64url')}`,
+          workspaceId: dto.workspaceId,
+          parentNodeId,
+          name: dto.fileName,
+          kind: this.getKind(dto.fileName, dto.mimeType),
+          mimeType: dto.mimeType ?? 'application/octet-stream',
+          sizeBytes: BigInt(dto.sizeBytes),
+          objectKey: dto.objectKey,
+          ownerUserId: dto.ownerUserId ?? null,
+          ownerName: dto.owner ?? '',
+          starred: false,
+          archivedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
     });
+    await this.pruneVersions(row.id);
     return this.mapRow(row);
   }
 
@@ -264,17 +544,146 @@ export class FileNodesRepository {
     return collected;
   }
 
-  async recordAudit(action: FileAuditAction, target: string) {
+  private async collectDescendantRows(parentId: string) {
+    const collected: FileNode[] = [];
+    const visit = async (id: string) => {
+      const rows = await this.prisma.fileNode.findMany({
+        where: { parentNodeId: id },
+        orderBy: { name: 'asc' },
+      });
+      for (const row of rows) {
+        collected.push(row);
+        await visit(row.id);
+      }
+    };
+
+    await visit(parentId);
+    return collected;
+  }
+
+  private async createVersionForNode(
+    tx: Prisma.TransactionClient,
+    node: FileNode,
+    options: { remark: string; uploadedBy: string },
+  ) {
+    if (!node.objectKey || node.sizeBytes === null) return null;
+    const versionNumber = await this.getNextVersionNumber(tx, node.id);
+    return tx.fileVersion.create({
+      data: {
+        id: `version_${randomBytes(12).toString('base64url')}`,
+        nodeId: node.id,
+        versionNumber,
+        objectKey: node.objectKey,
+        sizeBytes: node.sizeBytes,
+        mimeType: node.mimeType,
+        uploadedBy: options.uploadedBy,
+        remark: options.remark,
+      },
+    });
+  }
+
+  private async getNextVersionNumber(
+    tx: Prisma.TransactionClient,
+    nodeId: string,
+  ) {
+    const latest = await tx.fileVersion.aggregate({
+      where: { nodeId },
+      _max: { versionNumber: true },
+    });
+    return (latest._max.versionNumber ?? 0) + 1;
+  }
+
+  private async pruneVersions(nodeId: string) {
+    const policy = await this.getPolicy();
+    const cutoff = new Date(
+      Date.now() - policy.versionRetentionDays * 24 * 60 * 60 * 1000,
+    );
+    const versions = await this.prisma.fileVersion.findMany({
+      where: { nodeId },
+      orderBy: { versionNumber: 'desc' },
+    });
+    const keepIds = new Set(
+      versions
+        .filter((version) => version.createdAt >= cutoff)
+        .slice(0, policy.versionRetentionCount)
+        .map((version) => version.id),
+    );
+    const deleteIds = versions
+      .filter((version) => !keepIds.has(version.id))
+      .map((version) => version.id);
+    if (deleteIds.length > 0) {
+      await this.prisma.fileVersion.deleteMany({
+        where: { id: { in: deleteIds } },
+      });
+    }
+  }
+
+  private async resolveRestoreName(input: {
+    desiredName: string;
+    excludeIds: Set<string>;
+    parentNodeId: string | null;
+    workspaceId: string;
+  }) {
+    const siblings = await this.prisma.fileNode.findMany({
+      where: {
+        archivedAt: null,
+        parentNodeId: input.parentNodeId,
+        workspaceId: input.workspaceId,
+        id: { notIn: [...input.excludeIds] },
+      },
+      select: { name: true },
+    });
+    const names = new Set(
+      siblings.map((sibling) => sibling.name.toLocaleLowerCase()),
+    );
+    if (!names.has(input.desiredName.toLocaleLowerCase())) {
+      return input.desiredName;
+    }
+    const { baseName, extension } = this.splitName(input.desiredName);
+    let index = 2;
+    let candidate = `${baseName} (${index})${extension}`;
+    while (names.has(candidate.toLocaleLowerCase())) {
+      index += 1;
+      candidate = `${baseName} (${index})${extension}`;
+    }
+    return candidate;
+  }
+
+  private splitName(name: string) {
+    const dotIndex = name.lastIndexOf('.');
+    if (dotIndex <= 0 || dotIndex === name.length - 1) {
+      return { baseName: name, extension: '' };
+    }
+    return {
+      baseName: name.slice(0, dotIndex),
+      extension: name.slice(dotIndex),
+    };
+  }
+
+  async recordAudit(
+    action: FileAuditAction,
+    target: string,
+    options: {
+      actor?: 'workspace' | 'visitor' | 'system';
+      metadata?: Record<string, unknown>;
+      nodeId?: string | null;
+      workspaceId?: string | null;
+    } = {},
+  ) {
     const node = action.startsWith('file.')
       ? await this.findById(target)
       : null;
     const event = createAuditEvent({
       action,
-      actor: 'workspace',
+      actor: options.actor ?? 'workspace',
       target,
-      workspaceId: node?.workspaceId ?? 'workspace-default',
-      nodeId: node?.id ?? (action.startsWith('file.') ? target : null),
-      metadata: { source: 'file-nodes-service' },
+      workspaceId:
+        options.workspaceId ?? node?.workspaceId ?? 'workspace-default',
+      nodeId:
+        options.nodeId !== undefined
+          ? options.nodeId
+          : (node?.id ?? (action.startsWith('file.') ? target : null)),
+      metadata: { source: 'file-nodes-service', ...options.metadata },
     });
 
     await this.prisma.auditEvent.create({
@@ -298,29 +707,255 @@ export class FileNodesRepository {
     });
   }
 
+  async search(
+    input: SearchFileNodesQueryDto,
+  ): Promise<FileNodeSearchResultResponse> {
+    const workspaceId = input.workspaceId?.trim() || undefined;
+    const state = input.state ?? 'active';
+    const limit = Math.min(Math.max(Math.trunc(input.limit ?? 50), 1), 100);
+    const offset = Math.max(Math.trunc(input.offset ?? 0), 0);
+    const sortBy = input.sortBy ?? 'updatedAt';
+    const sortDirection = input.sortDirection ?? 'desc';
+    const query = input.query?.trim().toLocaleLowerCase() ?? '';
+    const sharedFilter = input.shared ?? 'all';
+    const sharedIds =
+      sharedFilter === 'all'
+        ? null
+        : await this.getSharedNodeIds(workspaceId ?? null);
+
+    const where: Prisma.FileNodeWhereInput = {
+      ...(workspaceId ? { workspaceId } : {}),
+      ...(state === 'active' ? { archivedAt: null } : {}),
+      ...(state === 'archived' ? { archivedAt: { not: null } } : {}),
+      ...(input.type
+        ? input.type === 'other'
+          ? {
+              OR: [
+                { kind: 'other' },
+                {
+                  kind: {
+                    notIn: [
+                      'folder',
+                      'doc',
+                      'sheet',
+                      'image',
+                      'video',
+                      'archive',
+                    ],
+                  },
+                },
+              ],
+            }
+          : { kind: input.type }
+        : {}),
+      ...(input.createdFrom || input.createdTo
+        ? {
+            createdAt: {
+              ...(input.createdFrom
+                ? { gte: new Date(input.createdFrom) }
+                : {}),
+              ...(input.createdTo ? { lte: new Date(input.createdTo) } : {}),
+            },
+          }
+        : {}),
+      ...(input.updatedFrom || input.updatedTo
+        ? {
+            updatedAt: {
+              ...(input.updatedFrom
+                ? { gte: new Date(input.updatedFrom) }
+                : {}),
+              ...(input.updatedTo ? { lte: new Date(input.updatedTo) } : {}),
+            },
+          }
+        : {}),
+      ...(input.minSizeBytes !== undefined || input.maxSizeBytes !== undefined
+        ? {
+            sizeBytes: {
+              ...(input.minSizeBytes !== undefined
+                ? { gte: BigInt(input.minSizeBytes) }
+                : {}),
+              ...(input.maxSizeBytes !== undefined
+                ? { lte: BigInt(input.maxSizeBytes) }
+                : {}),
+            },
+          }
+        : {}),
+      ...(query
+        ? {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' } },
+              { ownerName: { contains: query, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+      ...(sharedIds
+        ? sharedFilter === 'shared'
+          ? { id: { in: [...sharedIds] } }
+          : { id: { notIn: [...sharedIds] } }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.fileNode.count({ where }),
+      this.prisma.fileNode.findMany({
+        where,
+        orderBy: this.toFileNodeOrderBy(sortBy, sortDirection),
+        skip: offset,
+        take: limit,
+      }),
+    ]);
+    const paths = await this.buildWorkspacePaths(workspaceId);
+    return {
+      items: rows.map((row) => ({
+        ...this.mapRow(row),
+        path: paths.get(row.id) ?? row.name,
+      })),
+      limit,
+      offset,
+      total,
+    };
+  }
+
   async getStorageUsage(workspaceId: string) {
-    const [fileStats, folderCount] = await Promise.all([
+    const [activeStats, trashStats, folderCount, versionStats, workspace] =
+      await Promise.all([
+        this.prisma.fileNode.aggregate({
+          where: {
+            archivedAt: null,
+            sizeBytes: { not: null },
+            workspaceId,
+          },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+        }),
+        this.prisma.fileNode.aggregate({
+          where: {
+            archivedAt: { not: null },
+            sizeBytes: { not: null },
+            workspaceId,
+          },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+        }),
+        this.prisma.fileNode.count({
+          where: {
+            archivedAt: null,
+            sizeBytes: null,
+            workspaceId,
+          },
+        }),
+        this.prisma.fileVersion.aggregate({
+          where: {
+            node: { workspaceId },
+          },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+        }),
+        this.prisma.workspace.findUnique({ where: { id: workspaceId } }),
+      ]);
+    const trashBytes = Number(trashStats._sum.sizeBytes ?? 0);
+    const versionBytes = Number(versionStats._sum.sizeBytes ?? 0);
+    const activeBytes = Number(activeStats._sum.sizeBytes ?? 0);
+    return {
+      activeBytes,
+      defaultUserQuotaBytes: workspace?.defaultUserQuotaBytes
+        ? Number(workspace.defaultUserQuotaBytes)
+        : null,
+      fileCount: activeStats._count._all,
+      folderCount,
+      quotaBytes: workspace?.quotaBytes ? Number(workspace.quotaBytes) : null,
+      trashBytes,
+      trashFileCount: trashStats._count._all,
+      usedBytes: activeBytes + trashBytes + versionBytes,
+      versionBytes,
+      versionCount: versionStats._count._all,
+    };
+  }
+
+  async getUserStorageUsage(workspaceId: string, userId: string) {
+    const [fileStats, versionStats, user, workspace] = await Promise.all([
       this.prisma.fileNode.aggregate({
         where: {
-          archivedAt: null,
+          ownerUserId: userId,
           sizeBytes: { not: null },
           workspaceId,
         },
-        _count: { _all: true },
         _sum: { sizeBytes: true },
       }),
-      this.prisma.fileNode.count({
+      this.prisma.fileVersion.aggregate({
         where: {
-          archivedAt: null,
-          sizeBytes: null,
-          workspaceId,
+          node: {
+            ownerUserId: userId,
+            workspaceId,
+          },
         },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { storageQuotaBytes: true },
+      }),
+      this.prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { defaultUserQuotaBytes: true },
       }),
     ]);
+    const fileBytes = Number(fileStats._sum.sizeBytes ?? 0);
+    const versionBytes = Number(versionStats._sum.sizeBytes ?? 0);
+    const userQuotaBytes = user?.storageQuotaBytes
+      ? Number(user.storageQuotaBytes)
+      : null;
+    const defaultUserQuotaBytes = workspace?.defaultUserQuotaBytes
+      ? Number(workspace.defaultUserQuotaBytes)
+      : null;
     return {
-      usedBytes: Number(fileStats._sum.sizeBytes ?? 0),
-      fileCount: fileStats._count._all,
-      folderCount,
+      defaultUserQuotaBytes,
+      quotaBytes: userQuotaBytes ?? defaultUserQuotaBytes,
+      usedBytes: fileBytes + versionBytes,
+      userId,
+      workspaceId,
+    };
+  }
+
+  async getWorkspaceQuota(workspaceId: string) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { quotaBytes: true },
+    });
+    return workspace?.quotaBytes ? Number(workspace.quotaBytes) : null;
+  }
+
+  async updateWorkspaceQuota(input: {
+    workspaceId: string;
+    quotaBytes?: number | null;
+    defaultUserQuotaBytes?: number | null;
+  }) {
+    const row = await this.prisma.workspace.update({
+      where: { id: input.workspaceId },
+      data: {
+        ...(input.quotaBytes !== undefined
+          ? {
+              quotaBytes:
+                input.quotaBytes === null ? null : BigInt(input.quotaBytes),
+            }
+          : {}),
+        ...(input.defaultUserQuotaBytes !== undefined
+          ? {
+              defaultUserQuotaBytes:
+                input.defaultUserQuotaBytes === null
+                  ? null
+                  : BigInt(input.defaultUserQuotaBytes),
+            }
+          : {}),
+        updatedAt: new Date(),
+      },
+    });
+    return {
+      defaultUserQuotaBytes: row.defaultUserQuotaBytes
+        ? Number(row.defaultUserQuotaBytes)
+        : null,
+      quotaBytes: row.quotaBytes ? Number(row.quotaBytes) : null,
+      workspaceId: row.id,
     };
   }
 
@@ -329,6 +964,23 @@ export class FileNodesRepository {
     if (mimeType.startsWith('video/')) return 'video';
     const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
     if (['xlsx', 'xls', 'csv'].includes(extension)) return 'sheet';
+    if (
+      [
+        'txt',
+        'md',
+        'markdown',
+        'pdf',
+        'doc',
+        'docx',
+        'json',
+        'log',
+        'yaml',
+        'yml',
+        'rtf',
+      ].includes(extension)
+    ) {
+      return 'doc';
+    }
     if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
       return 'image';
     }
@@ -336,7 +988,71 @@ export class FileNodesRepository {
       return 'video';
     }
     if (['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)) return 'archive';
-    return 'doc';
+    return 'other';
+  }
+
+  private async buildWorkspacePaths(workspaceId?: string | null) {
+    const rows = await this.prisma.fileNode.findMany({
+      where: workspaceId ? { workspaceId } : undefined,
+      select: { id: true, name: true, parentNodeId: true },
+    });
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+    const pathById = new Map<string, string>();
+    const resolvePath = (id: string, seen = new Set<string>()): string => {
+      const existing = pathById.get(id);
+      if (existing) return existing;
+      const row = rowById.get(id);
+      if (!row) return '';
+      if (seen.has(id)) return row.name;
+      const nextSeen = new Set(seen);
+      nextSeen.add(id);
+      const parentPath = row.parentNodeId
+        ? resolvePath(row.parentNodeId, nextSeen)
+        : '';
+      const path = parentPath ? `${parentPath}/${row.name}` : row.name;
+      pathById.set(id, path);
+      return path;
+    };
+    rows.forEach((row) => resolvePath(row.id));
+    return pathById;
+  }
+
+  private async getSharedNodeIds(workspaceId: string | null) {
+    const shares = await this.prisma.shareLink.findMany({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        revokedAt: null,
+      },
+      select: {
+        allowedItemIds: true,
+        rootItemIds: true,
+      },
+    });
+    const ids = new Set<string>();
+    shares.forEach((share) => {
+      this.parseJsonStringArray(share.rootItemIds).forEach((id) => ids.add(id));
+      this.parseJsonStringArray(share.allowedItemIds).forEach((id) =>
+        ids.add(id),
+      );
+    });
+    return ids;
+  }
+
+  private parseJsonStringArray(value: Prisma.JsonValue) {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string')
+      : [];
+  }
+
+  private toFileNodeOrderBy(
+    sortBy: 'name' | 'createdAt' | 'updatedAt' | 'sizeBytes',
+    sortDirection: 'asc' | 'desc',
+  ): Prisma.FileNodeOrderByWithRelationInput[] {
+    const direction = sortDirection === 'asc' ? 'asc' : 'desc';
+    if (sortBy === 'name') return [{ name: direction }];
+    if (sortBy === 'createdAt') return [{ createdAt: direction }];
+    if (sortBy === 'sizeBytes') return [{ sizeBytes: direction }];
+    return [{ updatedAt: direction }];
   }
 
   private async updateNode(
@@ -371,6 +1087,9 @@ export class FileNodesRepository {
       owner: row.ownerName,
       starred: row.starred,
       archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+      archivedBy: row.archivedBy,
+      originalParentNodeId: row.originalParentNodeId,
+      originalPath: row.originalPath,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -388,6 +1107,29 @@ export class FileNodesRepository {
       method: row.method as DownloadIntentResponse['method'],
       expiresAt: row.expiresAt.toISOString(),
       createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mapVersionRow(row: FileVersion): FileVersionResponse {
+    return {
+      id: row.id,
+      nodeId: row.nodeId,
+      versionNumber: row.versionNumber,
+      objectKey: row.objectKey,
+      sizeBytes: Number(row.sizeBytes),
+      mimeType: row.mimeType,
+      uploadedBy: row.uploadedBy,
+      remark: row.remark,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mapPolicyRow(row: FilePolicySetting): FilePolicyResponse {
+    return {
+      trashRetentionDays: row.trashRetentionDays,
+      versionRetentionCount: row.versionRetentionCount,
+      versionRetentionDays: row.versionRetentionDays,
+      updatedAt: row.updatedAt.toISOString(),
     };
   }
 

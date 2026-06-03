@@ -11,6 +11,10 @@ import {
 } from '../storage/storage-object-keys';
 import { TransfersService } from '../downloads/transfers/transfers.service';
 import {
+  BatchDownloadIntentResponse,
+  BatchFileNodeIdsDto,
+  BatchFileNodeOperationResponse,
+  BatchMoveFileNodesDto,
   CompleteUploadPartDto,
   CompleteUploadDto,
   CopyFileNodeDto,
@@ -20,9 +24,13 @@ import {
   DownloadIntentResponse,
   FileNodeListState,
   type FileNodeKind,
+  FilePolicyResponse,
   MoveFileNodeDto,
   PreviewIntentResponse,
   RenameFileNodeDto,
+  RestoreFileNodeDto,
+  SearchFileNodesQueryDto,
+  UpdateFilePolicyDto,
   UpdateFileNodeContentDto,
   UpdateFileNodeStateDto,
   UploadChunkResponse,
@@ -50,25 +58,60 @@ export class FileNodesService {
     private readonly uploadSessionsRepository: UploadSessionsRepository,
   ) {}
 
-  listFileNodes(
+  async listFileNodes(
     workspaceId?: string,
     parentNodeId?: string | null,
     options: { state?: string } = {},
   ) {
     const state = this.normalizeListState(options.state);
+    if (state !== 'active') {
+      await this.cleanupExpiredTrash();
+    }
     return this.fileNodesRepository.list(workspaceId, parentNodeId, state);
+  }
+
+  async searchFileNodes(query: SearchFileNodesQueryDto) {
+    const result = await this.fileNodesRepository.search(query);
+    await this.fileNodesRepository.recordAudit(
+      'file.search_performed',
+      query.workspaceId ?? 'workspace-default',
+      {
+        metadata: {
+          query: query.query ?? '',
+          state: query.state ?? 'active',
+          type: query.type ?? 'all',
+        },
+        nodeId: null,
+        workspaceId: query.workspaceId ?? 'workspace-default',
+      },
+    );
+    return result;
   }
 
   getFileNode(id: string) {
     return this.fileNodesRepository.findById(id);
   }
 
+  getFilePolicy(): Promise<FilePolicyResponse> {
+    return this.fileNodesRepository.getPolicy();
+  }
+
+  updateFilePolicy(dto: UpdateFilePolicyDto): Promise<FilePolicyResponse> {
+    return this.fileNodesRepository.updatePolicy(dto);
+  }
+
   async createUploadIntent(
     dto: CreateUploadIntentDto,
+    options: { ownerUserId?: string } = {},
   ): Promise<UploadIntentResponse> {
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
     const sizeBytes = Math.max(0, Math.trunc(dto.fileSizeBytes ?? 0));
+    await this.assertWithinWorkspaceQuota(
+      dto.workspaceId,
+      sizeBytes,
+      options.ownerUserId,
+    );
     const chunkSizeBytes = this.normalizeChunkSize(dto.chunkSizeBytes, {
       distributedStorage,
     });
@@ -300,8 +343,18 @@ export class FileNodesService {
     return { ok: true };
   }
 
-  async completeUpload(dto: CompleteUploadDto) {
+  async completeUpload(
+    dto: CompleteUploadDto,
+    options: { ownerUserId?: string } = {},
+  ) {
     this.assertUploadObjectKey(dto);
+    const existingUploadTarget = (
+      await this.fileNodesRepository.list(
+        dto.workspaceId,
+        dto.parentNodeId ?? null,
+        'active',
+      )
+    ).find((node) => node.name === dto.fileName && Boolean(node.objectKey));
     const uploadSession = dto.uploadSessionId
       ? await this.requireCompletableUploadSession(dto)
       : null;
@@ -336,11 +389,18 @@ export class FileNodesService {
     const node = await this.fileNodesRepository.completeUpload({
       ...dto,
       owner: dto.owner?.trim() || undefined,
+      ownerUserId: options.ownerUserId,
     });
     await this.fileNodesRepository.recordAudit(
       'file.upload_completed',
       node.id,
     );
+    if (existingUploadTarget) {
+      await this.fileNodesRepository.recordAudit(
+        'file.version_created',
+        node.id,
+      );
+    }
     const transferId = dto.transferId ?? uploadSession?.transferId;
     if (transferId) {
       await this.transfersService.completeTransfer({
@@ -351,7 +411,7 @@ export class FileNodesService {
     return node;
   }
 
-  async createFolder(dto: CreateFolderDto) {
+  async createFolder(dto: CreateFolderDto & { ownerUserId?: string }) {
     const name = this.normalizeNodeName(dto.name);
     await this.assertValidParent(dto.workspaceId, dto.parentNodeId ?? null);
     const node = await this.fileNodesRepository.createFolder({
@@ -429,17 +489,28 @@ export class FileNodesService {
       throw new BadRequestException('Folder content cannot be edited');
     }
 
+    const distributedStorage =
+      await this.storageService.distributedStorageEnabled();
+    const objectKey = createFileObjectKey({
+      distributedStorage,
+      fileName: node.name,
+      workspaceId: node.workspaceId,
+    });
     await this.storageService.writeObjectText(
-      node.objectKey,
+      objectKey,
       dto.content,
       node.mimeType,
     );
-    const updated = await this.fileNodesRepository.updateSize(
+    const updated = await this.fileNodesRepository.replaceContentObject({
       id,
-      Buffer.byteLength(dto.content, 'utf8'),
-    );
+      objectKey,
+      sizeBytes: Buffer.byteLength(dto.content, 'utf8'),
+      mimeType: node.mimeType,
+      uploadedBy: node.owner,
+    });
     if (!updated) throw new NotFoundException('File node not found');
     await this.fileNodesRepository.recordAudit('file.content_updated', id);
+    await this.fileNodesRepository.recordAudit('file.version_created', id);
     return {
       content: dto.content,
       id: updated.id,
@@ -449,11 +520,20 @@ export class FileNodesService {
     };
   }
 
-  async updateFileNodeState(id: string, dto: UpdateFileNodeStateDto) {
+  async updateFileNodeState(
+    id: string,
+    dto: UpdateFileNodeStateDto,
+    options: { actor?: string } = {},
+  ) {
     if (dto.starred === undefined && dto.archived === undefined) {
       throw new BadRequestException('No file node state change provided');
     }
-    const node = await this.fileNodesRepository.updateState(id, dto);
+    const node =
+      dto.archived === true
+        ? await this.fileNodesRepository.archiveTree(id, options.actor)
+        : dto.archived === false
+          ? await this.fileNodesRepository.restoreTree(id)
+          : await this.fileNodesRepository.updateState(id, dto);
     if (!node) throw new NotFoundException('File node not found');
     if (dto.starred !== undefined) {
       await this.fileNodesRepository.recordAudit('file.starred_updated', id);
@@ -464,6 +544,88 @@ export class FileNodesService {
       await this.fileNodesRepository.recordAudit('file.restored', id);
     }
     return node;
+  }
+
+  async restoreFileNode(id: string, dto: RestoreFileNodeDto) {
+    const source = await this.fileNodesRepository.findById(id);
+    if (!source) throw new NotFoundException('File node not found');
+    const parentNodeId =
+      dto.parentNodeId === undefined
+        ? source.originalParentNodeId
+        : dto.parentNodeId;
+    await this.assertValidParent(source.workspaceId, parentNodeId ?? null, id);
+    const node = await this.fileNodesRepository.restoreTree(id, {
+      name: dto.name ? this.normalizeNodeName(dto.name) : undefined,
+      parentNodeId,
+    });
+    if (!node) throw new NotFoundException('File node not found');
+    await this.fileNodesRepository.recordAudit('file.restored', id);
+    return node;
+  }
+
+  async permanentlyDeleteFileNode(id: string) {
+    const deletion = await this.fileNodesRepository.deleteTree(id);
+    if (deletion.nodes.length === 0) {
+      throw new NotFoundException('File node not found');
+    }
+    await this.deleteStoredObjects([
+      ...deletion.nodes.map((node) => node.objectKey),
+      ...deletion.versions.map((version) => version.objectKey),
+    ]);
+    const root = deletion.nodes[0];
+    await this.fileNodesRepository.recordAudit('file.permanently_deleted', id, {
+      metadata: {
+        deletedNodeCount: deletion.nodes.length,
+        deletedVersionCount: deletion.versions.length,
+      },
+      nodeId: id,
+      workspaceId: root?.workspaceId ?? 'workspace-default',
+    });
+    return {
+      deleted: deletion.nodes.length,
+      id,
+      ok: true,
+    };
+  }
+
+  async cleanupTrash() {
+    const result = await this.cleanupExpiredTrash({ forceAudit: true });
+    return {
+      deleted: result.deleted,
+      ok: true,
+      trashRetentionDays: result.trashRetentionDays,
+    };
+  }
+
+  private async cleanupExpiredTrash(options: { forceAudit?: boolean } = {}) {
+    const policy = await this.fileNodesRepository.getPolicy();
+    const cutoff = new Date(
+      Date.now() - policy.trashRetentionDays * 24 * 60 * 60 * 1000,
+    );
+    const deleted = await this.fileNodesRepository.cleanupTrash(cutoff);
+    await this.deleteStoredObjects([
+      ...deleted.nodes.map((node) => node.objectKey),
+      ...deleted.versions.map((version) => version.objectKey),
+    ]);
+    if (options.forceAudit || deleted.nodes.length > 0) {
+      await this.fileNodesRepository.recordAudit(
+        'file.trash_cleaned',
+        'trash-cleanup',
+        {
+          actor: 'system',
+          metadata: {
+            deletedNodeCount: deleted.nodes.length,
+            deletedVersionCount: deleted.versions.length,
+            trashRetentionDays: policy.trashRetentionDays,
+          },
+          nodeId: null,
+        },
+      );
+    }
+    return {
+      deleted: deleted.nodes.length,
+      trashRetentionDays: policy.trashRetentionDays,
+    };
   }
 
   async createDownloadIntent(nodeId: string, dto: CreateDownloadIntentDto) {
@@ -488,6 +650,72 @@ export class FileNodesService {
       expiresAt: intent.expiresAt,
       downloadUrl: `/api/file-nodes/${encodeURIComponent(node.id)}/download?downloadId=${encodeURIComponent(intent.downloadId)}`,
     } satisfies DownloadIntentResponse;
+  }
+
+  async createBatchDownloadIntents(
+    dto: BatchFileNodeIdsDto,
+  ): Promise<BatchDownloadIntentResponse> {
+    const result = await this.runBatch(dto.ids, (id) =>
+      this.createDownloadIntent(id, {}),
+    );
+    await this.fileNodesRepository.recordAudit(
+      'file.batch_download_intents_created',
+      'batch-download',
+      {
+        metadata: result.summary,
+        nodeId: null,
+      },
+    );
+    return result;
+  }
+
+  async batchArchive(
+    dto: BatchFileNodeIdsDto,
+    options: { actor?: string } = {},
+  ): Promise<BatchFileNodeOperationResponse> {
+    const result = await this.runBatch(dto.ids, (id) =>
+      this.updateFileNodeState(id, { archived: true }, options),
+    );
+    await this.fileNodesRepository.recordAudit(
+      'file.batch_archived',
+      'batch-archive',
+      { metadata: result.summary, nodeId: null },
+    );
+    return result;
+  }
+
+  async batchRestore(
+    dto: BatchFileNodeIdsDto,
+  ): Promise<BatchFileNodeOperationResponse> {
+    const result = await this.runBatch(dto.ids, (id) =>
+      this.restoreFileNode(id, {}),
+    );
+    await this.fileNodesRepository.recordAudit(
+      'file.batch_restored',
+      'batch-restore',
+      { metadata: result.summary, nodeId: null },
+    );
+    return result;
+  }
+
+  async batchMove(
+    dto: BatchMoveFileNodesDto,
+  ): Promise<BatchFileNodeOperationResponse> {
+    const result = await this.runBatch(dto.ids, (id) =>
+      this.moveFileNode(id, { parentNodeId: dto.parentNodeId ?? null }),
+    );
+    await this.fileNodesRepository.recordAudit(
+      'file.batch_moved',
+      'batch-move',
+      {
+        metadata: {
+          ...result.summary,
+          parentNodeId: dto.parentNodeId ?? null,
+        },
+        nodeId: null,
+      },
+    );
+    return result;
   }
 
   async downloadFileNode(nodeId: string, downloadId: string) {
@@ -527,6 +755,57 @@ export class FileNodesService {
     };
   }
 
+  async listFileVersions(nodeId: string) {
+    await this.requireActiveNode(nodeId);
+    return this.fileNodesRepository.listVersions(nodeId);
+  }
+
+  async createVersionDownloadIntent(nodeId: string, versionId: string) {
+    await this.requireActiveNode(nodeId);
+    const version = await this.fileNodesRepository.findVersion(
+      nodeId,
+      versionId,
+    );
+    if (!version) throw new NotFoundException('File version not found');
+    const signed = await this.storageService.createPresignedDownload(
+      version.objectKey,
+      `v${version.versionNumber}-${version.nodeId}`,
+    );
+    await this.fileNodesRepository.recordAudit(
+      'file.version_downloaded',
+      nodeId,
+      {
+        metadata: { versionId, versionNumber: version.versionNumber },
+      },
+    );
+    return {
+      downloadId: `version:${version.id}`,
+      nodeId,
+      filename: `v${version.versionNumber}-${version.nodeId}`,
+      method: 'presigned-url' as const,
+      availableAt: new Date().toISOString(),
+      expiresAt: signed.expiresAt,
+      downloadUrl: signed.url,
+    };
+  }
+
+  async restoreFileVersion(nodeId: string, versionId: string) {
+    await this.requireActiveNode(nodeId);
+    const node = await this.fileNodesRepository.restoreVersion(
+      nodeId,
+      versionId,
+    );
+    if (!node) throw new NotFoundException('File version not found');
+    await this.fileNodesRepository.recordAudit(
+      'file.version_restored',
+      nodeId,
+      {
+        metadata: { versionId },
+      },
+    );
+    return node;
+  }
+
   async createPreviewIntent(nodeId: string) {
     const node = await this.requireActiveNode(nodeId);
     const capability = resolveFilePreviewCapability(node);
@@ -562,16 +841,120 @@ export class FileNodesService {
 
   async getStorageUsage(workspaceId: string, quotaBytes: number | null) {
     const usage = await this.fileNodesRepository.getStorageUsage(workspaceId);
+    const resolvedQuotaBytes = usage.quotaBytes ?? quotaBytes;
     const usagePercent =
-      quotaBytes && quotaBytes > 0
-        ? Math.min(100, Math.round((usage.usedBytes / quotaBytes) * 1000) / 10)
+      resolvedQuotaBytes && resolvedQuotaBytes > 0
+        ? Math.min(
+            100,
+            Math.round((usage.usedBytes / resolvedQuotaBytes) * 1000) / 10,
+          )
         : null;
     return {
       workspaceId,
       ...usage,
-      quotaBytes,
+      quotaBytes: resolvedQuotaBytes,
       usagePercent,
       updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private async assertWithinWorkspaceQuota(
+    workspaceId: string,
+    incomingBytes: number,
+    ownerUserId?: string,
+  ) {
+    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId);
+    const quotaBytes = usage.quotaBytes;
+    if (
+      quotaBytes &&
+      quotaBytes > 0 &&
+      usage.usedBytes + incomingBytes > quotaBytes
+    ) {
+      await this.fileNodesRepository.recordAudit(
+        'file.quota_upload_rejected',
+        workspaceId,
+        {
+          metadata: {
+            incomingBytes,
+            quotaBytes,
+            scope: 'workspace',
+            usedBytes: usage.usedBytes,
+          },
+          nodeId: null,
+          workspaceId,
+        },
+      );
+      throw new BadRequestException('Workspace storage quota exceeded');
+    }
+    if (!ownerUserId) return;
+    const userUsage = await this.fileNodesRepository.getUserStorageUsage(
+      workspaceId,
+      ownerUserId,
+    );
+    const userQuotaBytes = userUsage.quotaBytes;
+    if (
+      !userQuotaBytes ||
+      userQuotaBytes <= 0 ||
+      userUsage.usedBytes + incomingBytes <= userQuotaBytes
+    ) {
+      return;
+    }
+    await this.fileNodesRepository.recordAudit(
+      'file.quota_upload_rejected',
+      workspaceId,
+      {
+        metadata: {
+          incomingBytes,
+          quotaBytes: userQuotaBytes,
+          scope: 'user',
+          usedBytes: userUsage.usedBytes,
+          userId: ownerUserId,
+        },
+        nodeId: null,
+        workspaceId,
+      },
+    );
+    throw new BadRequestException('User storage quota exceeded');
+  }
+
+  private async deleteStoredObjects(objectKeys: Array<string | null>) {
+    const uniqueObjectKeys = [
+      ...new Set(objectKeys.filter(Boolean)),
+    ] as string[];
+    for (const objectKey of uniqueObjectKeys) {
+      await this.storageService.deleteObject(objectKey).catch(() => undefined);
+    }
+  }
+
+  private async runBatch<T>(
+    ids: string[],
+    action: (id: string) => Promise<T>,
+  ): Promise<{
+    failed: Array<{ id: string; message: string }>;
+    succeeded: T[];
+    summary: { failed: number; requested: number; succeeded: number };
+  }> {
+    const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    const succeeded: T[] = [];
+    const failed: Array<{ id: string; message: string }> = [];
+    for (const id of uniqueIds) {
+      try {
+        succeeded.push(await action(id));
+      } catch (error) {
+        failed.push({
+          id,
+          message: error instanceof Error ? error.message : 'Operation failed',
+        });
+      }
+    }
+    return {
+      failed,
+      succeeded,
+      summary: {
+        failed: failed.length,
+        requested: uniqueIds.length,
+        succeeded: succeeded.length,
+      },
     };
   }
 
@@ -613,7 +996,7 @@ export class FileNodesService {
       uploadedPartIndexes: parts
         .map((part) => part.partIndex)
         .sort((left, right) => left - right),
-      progress: Math.min(95, Math.round((5 + uploadRatio * 90) * 10) / 10),
+      progress: Math.min(95, Math.round(uploadRatio * 95 * 10) / 10),
     };
   }
 
