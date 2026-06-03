@@ -8,6 +8,7 @@ import {
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
 import { FileNodesService } from './file-nodes.service';
+import { resolveFilePreviewCapability } from './file-preview-policy';
 import {
   UploadSession,
   UploadSessionPart,
@@ -38,15 +39,26 @@ describe('FileNodesService', () => {
   };
   let uploadSessions: UploadSessionsRepository;
 
+  const docxMimeType =
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  function createNode(
+    input: Omit<FileNodeResponse, 'previewCapability'>,
+  ): FileNodeResponse {
+    return {
+      ...input,
+      previewCapability: resolveFilePreviewCapability(input),
+    };
+  }
+
   const seedNodes: FileNodeResponse[] = [
-    {
+    createNode({
       id: 'roadmap',
       workspaceId: 'workspace-default',
       parentNodeId: null,
       name: 'ICEDR Roadmap.docx',
       kind: 'doc',
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      mimeType: docxMimeType,
       sizeBytes: 284 * 1024,
       objectKey: 'uploads/workspace-default/root/seed-roadmap.docx',
       owner: 'Workspace User',
@@ -54,7 +66,37 @@ describe('FileNodesService', () => {
       archivedAt: null,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
-    },
+    }),
+    createNode({
+      id: 'unsafe-html',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: 'unsafe.html',
+      kind: 'doc',
+      mimeType: 'text/html',
+      sizeBytes: 4096,
+      objectKey: 'uploads/workspace-default/root/unsafe.html',
+      owner: 'Workspace User',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    }),
+    createNode({
+      id: 'large-log',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: 'large.log',
+      kind: 'doc',
+      mimeType: 'text/plain',
+      sizeBytes: 1024 * 1024 + 1,
+      objectKey: 'uploads/workspace-default/root/large.log',
+      owner: 'Workspace User',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    }),
   ];
 
   async function readStreamSize(stream: Readable) {
@@ -85,7 +127,7 @@ describe('FileNodesService', () => {
         Promise.resolve(nodes.find((node) => node.id === id) ?? null),
       ),
       completeUpload: jest.fn((dto: CompleteUploadDto) => {
-        const node: FileNodeResponse = {
+        const node = createNode({
           id: `node_${nodes.length + 1}`,
           workspaceId: dto.workspaceId,
           parentNodeId: dto.parentNodeId ?? null,
@@ -99,7 +141,7 @@ describe('FileNodesService', () => {
           archivedAt: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        };
+        });
         nodes.push(node);
         return Promise.resolve(node);
       }),
@@ -114,7 +156,9 @@ describe('FileNodesService', () => {
             nodeId: node.id,
             status,
             previewType,
+            renderMode: previewType as PreviewIntentResponse['renderMode'],
             statusUrl: `/api/file-nodes/${node.id}/preview/status`,
+            capability: node.previewCapability,
             error: null,
           }),
       ),
@@ -122,9 +166,11 @@ describe('FileNodesService', () => {
         Promise.resolve({
           previewId,
           nodeId: 'roadmap',
-          status: 'pending',
-          previewType: 'doc',
+          status: 'ready',
+          previewType: 'docx',
+          renderMode: 'docx',
           statusUrl: '/api/file-nodes/roadmap/preview/status',
+          capability: seedNodes[0].previewCapability,
           error: null,
         }),
       ),
@@ -482,12 +528,53 @@ describe('FileNodesService', () => {
     const intent = await service.createPreviewIntent('roadmap');
 
     expect(intent.previewId).toBe('preview-test');
-    expect(intent.status).toBe('pending');
+    expect(intent.status).toBe('ready');
+    expect(intent.renderMode).toBe('docx');
+    expect(intent.capability).toMatchObject({
+      supported: true,
+      renderMode: 'docx',
+      sanitized: true,
+    });
     await expect(
       service.getPreviewStatus('roadmap', intent.previewId),
     ).resolves.toMatchObject({
       previewId: 'preview-test',
-      status: 'pending',
+      status: 'ready',
+      renderMode: 'docx',
     });
+  });
+
+  it('degrades unsafe or oversized preview intents to download-only', async () => {
+    await expect(
+      service.createPreviewIntent('unsafe-html'),
+    ).resolves.toMatchObject({
+      status: 'unsupported',
+      renderMode: 'download-only',
+      capability: {
+        supported: false,
+        reason: 'html-disabled',
+        downloadOnly: true,
+      },
+      error: 'HTML-like files are available for download only',
+    });
+
+    await expect(
+      service.createPreviewIntent('large-log'),
+    ).resolves.toMatchObject({
+      status: 'unsupported',
+      renderMode: 'download-only',
+      capability: {
+        supported: false,
+        reason: 'too-large',
+        downloadOnly: true,
+      },
+      error: 'File is too large to preview',
+    });
+  });
+
+  it('preserves the oversized text edit error message', async () => {
+    await expect(service.getFileNodeContent('large-log')).rejects.toThrow(
+      'File is too large to edit as text',
+    );
   });
 });

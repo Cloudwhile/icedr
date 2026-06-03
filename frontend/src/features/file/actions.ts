@@ -6,6 +6,8 @@ import {
   getAuthHeaders,
   updateTransfer,
   type FileNodeResponse,
+  type FilePreviewCapability,
+  type PreviewRenderMode,
   type ShareDownloadPolicyDecision,
 } from "@/lib/drive-api";
 
@@ -95,7 +97,9 @@ export type PreviewIntentResponse = {
   nodeId: string;
   status: "pending" | "ready" | "unsupported" | "failed";
   previewType: string;
+  renderMode: PreviewRenderMode;
   statusUrl: string;
+  capability: FilePreviewCapability;
   error?: string | null;
 };
 

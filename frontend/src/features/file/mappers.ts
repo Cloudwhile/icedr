@@ -16,6 +16,7 @@ export function mapFileNodeToDriveItem(node: FileNodeResponse): DriveItem {
     shared: false,
     starred: node.starred,
     archivedAt: node.archivedAt,
+    previewCapability: node.previewCapability,
     colorKey: node.kind === "sheet" ? "success" : node.kind === "image" || node.kind === "video" ? "secure" : node.kind === "archive" ? "tertiary" : "primary",
   };
 }

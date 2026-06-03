@@ -17,6 +17,10 @@ import {
   FileNodeResponse,
   PreviewIntentResponse,
 } from './file-nodes.dto';
+import {
+  resolveFilePreviewCapability,
+  type PreviewRenderMode,
+} from './file-preview-policy';
 
 export type FileAuditAction =
   | 'file.folder_created'
@@ -352,7 +356,7 @@ export class FileNodesRepository {
   }
 
   private mapRow(row: FileNode): FileNodeResponse {
-    return {
+    const mapped = {
       id: row.id,
       workspaceId: row.workspaceId,
       parentNodeId: row.parentNodeId,
@@ -370,6 +374,10 @@ export class FileNodesRepository {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+    return {
+      ...mapped,
+      previewCapability: resolveFilePreviewCapability(mapped),
+    };
   }
 
   private mapDownloadIntent(row: FileDownloadIntent) {
@@ -384,13 +392,52 @@ export class FileNodesRepository {
   }
 
   private mapPreviewArtifact(row: PreviewArtifact): PreviewIntentResponse {
+    const renderMode = this.normalizeStoredPreviewType(row.previewType);
+    const capability = row.nodeId
+      ? {
+          supported: row.status !== 'unsupported',
+          renderMode,
+          reason:
+            row.status === 'unsupported'
+              ? ('unknown-type' as const)
+              : ('previewable' as const),
+          maxPreviewBytes: null,
+          sanitized: false,
+          downloadOnly: row.status === 'unsupported',
+        }
+      : resolveFilePreviewCapability({
+          kind: 'doc',
+          mimeType: 'application/octet-stream',
+          name: '',
+          objectKey: null,
+          sizeBytes: null,
+        });
     return {
       previewId: row.id,
       nodeId: row.nodeId,
       status: row.status as PreviewIntentResponse['status'],
       previewType: row.previewType as PreviewIntentResponse['previewType'],
+      renderMode,
       statusUrl: `/api/file-nodes/${encodeURIComponent(row.nodeId)}/preview/status`,
+      capability,
       error: row.error,
     };
+  }
+
+  private normalizeStoredPreviewType(value: string): PreviewRenderMode {
+    if (
+      value === 'image' ||
+      value === 'video' ||
+      value === 'pdf' ||
+      value === 'docx' ||
+      value === 'markdown' ||
+      value === 'text' ||
+      value === 'metadata' ||
+      value === 'download-only'
+    ) {
+      return value;
+    }
+    if (value === 'archive') return 'download-only';
+    return 'metadata';
   }
 }

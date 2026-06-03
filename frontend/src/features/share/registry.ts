@@ -3,6 +3,7 @@ import {
   DriveApiError,
   getApiBaseUrl,
   getAuthHeaders,
+  type FilePreviewCapability,
   type ShareDownloadPolicy,
 } from "@/lib/drive-api";
 
@@ -33,12 +34,13 @@ export type RegisteredShareItem = {
   workspaceId: string;
   parentNodeId: string | null;
   name: string;
-  kind: "folder" | "doc" | "sheet" | "image" | "archive";
+  kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive";
   mimeType: string;
   sizeBytes: number | null;
   owner: string;
   starred: boolean;
   archivedAt: string | null;
+  previewCapability?: FilePreviewCapability;
   createdAt: string;
   updatedAt: string;
 };

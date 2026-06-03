@@ -8,6 +8,10 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import type {
+  FilePreviewCapability,
+  PreviewRenderMode,
+} from './file-preview-policy';
 
 export type FileNodeKind =
   | 'folder'
@@ -22,6 +26,7 @@ export type FileNodePreviewStatus =
   | 'ready'
   | 'unsupported'
   | 'failed';
+export type FileNodePreviewType = FileNodeKind | 'metadata' | PreviewRenderMode;
 
 export class CreateUploadIntentDto {
   @IsString()
@@ -202,6 +207,7 @@ export type FileNodeResponse = {
   owner: string;
   starred: boolean;
   archivedAt: string | null;
+  previewCapability: FilePreviewCapability;
   createdAt: string;
   updatedAt: string;
 };
@@ -218,8 +224,10 @@ export type PreviewIntentResponse = {
   previewId: string;
   nodeId: string;
   status: FileNodePreviewStatus;
-  previewType: FileNodeKind | 'metadata';
+  previewType: FileNodePreviewType;
+  renderMode: PreviewRenderMode;
   statusUrl: string;
+  capability: FilePreviewCapability;
   error?: string | null;
 };
 
