@@ -34,6 +34,14 @@ try {
 async function waitForServer() {
   const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
+    if (
+      previewProcess &&
+      (previewProcess.exitCode !== null || previewProcess.signalCode !== null)
+    ) {
+      throw new Error(
+        `Preview server exited early with code ${previewProcess.exitCode} (signal: ${previewProcess.signalCode})`,
+      );
+    }
     if (await serverReady()) return;
     await delay(350);
   }
@@ -63,7 +71,13 @@ function runCommand(command, args) {
 }
 
 async function stopPreview() {
-  if (!previewProcess || previewProcess.exitCode !== null) return;
+  if (
+    !previewProcess ||
+    previewProcess.exitCode !== null ||
+    previewProcess.signalCode !== null
+  ) {
+    return;
+  }
   if (!previewProcess.pid) return;
 
   if (process.platform === "win32") {
@@ -74,7 +88,11 @@ async function stopPreview() {
   try {
     process.kill(-previewProcess.pid, "SIGTERM");
   } catch {
-    process.kill(previewProcess.pid, "SIGTERM");
+    try {
+      process.kill(previewProcess.pid, "SIGTERM");
+    } catch {
+      // Ignore if the process has already exited.
+    }
   }
 }
 
