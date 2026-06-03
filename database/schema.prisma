@@ -131,6 +131,7 @@ model AuthOAuthState {
   shareToken   String?   @map("share_token")
   codeVerifier String    @map("code_verifier")
   redirectUri  String    @map("redirect_uri")
+  providerSnapshot Json?  @map("provider_snapshot")
   expiresAt    DateTime  @map("expires_at") @db.Timestamptz
   usedAt       DateTime? @map("used_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz

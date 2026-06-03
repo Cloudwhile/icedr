@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuthSettings, AuthUserResponse } from './auth.dto';
+import type { OAuthProviderSnapshot } from './oauth-provider-adapters';
 
 const authSettingsKey = 'global';
 const localIdentityProvider = 'local';
@@ -122,6 +123,7 @@ export type StoredOAuthState = {
   shareToken: string | null;
   codeVerifier: string;
   redirectUri: string;
+  providerSnapshot: OAuthProviderSnapshot | null;
   expiresAt: string;
   usedAt: string | null;
   createdAt: string;
@@ -167,6 +169,7 @@ type OAuthStateRow = {
   share_token: string | null;
   code_verifier: string;
   redirect_uri: string;
+  provider_snapshot: Record<string, unknown> | string | null;
   expires_at: Date | string;
   used_at: Date | string | null;
   created_at: Date | string;
@@ -185,6 +188,7 @@ export class AuthRepository implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
+    await this.ensureOAuthStateProviderSnapshotColumn();
     await this.migrateLegacyAuthUsers();
     await this.prisma.authSetting.upsert({
       where: { settingKey: authSettingsKey },
@@ -940,6 +944,7 @@ export class AuthRepository implements OnModuleInit {
     shareToken?: string | null;
     codeVerifier: string;
     redirectUri: string;
+    providerSnapshot: OAuthProviderSnapshot;
     expiresAt: string;
   }) {
     const result = await this.query<OAuthStateRow>(
@@ -950,10 +955,11 @@ export class AuthRepository implements OnModuleInit {
           share_token,
           code_verifier,
           redirect_uri,
+          provider_snapshot,
           expires_at,
           created_at
         )
-        values ($1, $2, $3, $4, $5, $6, now())
+        values ($1, $2, $3, $4, $5, $6::jsonb, $7, now())
         returning *
       `,
       [
@@ -962,6 +968,7 @@ export class AuthRepository implements OnModuleInit {
         input.shareToken ?? null,
         input.codeVerifier,
         input.redirectUri,
+        JSON.stringify(input.providerSnapshot),
         input.expiresAt,
       ],
     );
@@ -1017,6 +1024,13 @@ export class AuthRepository implements OnModuleInit {
       'update auth_oauth_exchange_codes set used_at = coalesce(used_at, now()) where code_hash = $1',
       [codeHash],
     );
+  }
+
+  private async ensureOAuthStateProviderSnapshotColumn() {
+    await this.query(`
+      alter table if exists auth_oauth_states
+      add column if not exists provider_snapshot jsonb;
+    `);
   }
 
   private async migrateLegacyAuthUsers() {
@@ -1188,6 +1202,7 @@ export class AuthRepository implements OnModuleInit {
       shareToken: row.share_token,
       codeVerifier: row.code_verifier,
       redirectUri: row.redirect_uri,
+      providerSnapshot: this.parseOAuthProviderSnapshot(row.provider_snapshot),
       expiresAt: this.toIsoString(row.expires_at),
       usedAt: row.used_at ? this.toIsoString(row.used_at) : null,
       createdAt: this.toIsoString(row.created_at),
@@ -1239,5 +1254,48 @@ export class AuthRepository implements OnModuleInit {
     return Array.isArray(parsed)
       ? parsed.filter((item): item is string => typeof item === 'string')
       : [];
+  }
+
+  private parseOAuthProviderSnapshot(
+    value: Record<string, unknown> | string | null,
+  ): OAuthProviderSnapshot | null {
+    let parsed: Record<string, unknown> | null;
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    } else {
+      parsed = value;
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const providerProfile = parsed.providerProfile;
+    if (providerProfile !== 'oidc' && providerProfile !== 'icetowne-blog') {
+      return null;
+    }
+    const issuerUrl = this.readStringSnapshotField(parsed, 'issuerUrl');
+    const clientId = this.readStringSnapshotField(parsed, 'clientId');
+    if (!issuerUrl || !clientId) return null;
+    return {
+      enabled: Boolean(parsed.enabled),
+      providerProfile,
+      issuerUrl,
+      clientId,
+      clientSecret: this.readStringSnapshotField(parsed, 'clientSecret'),
+      audience: this.readStringSnapshotField(parsed, 'audience'),
+      scopes:
+        this.readStringSnapshotField(parsed, 'scopes') ||
+        'openid email profile',
+      redirectUri: this.readStringSnapshotField(parsed, 'redirectUri'),
+    };
+  }
+
+  private readStringSnapshotField(
+    source: Record<string, unknown>,
+    key: string,
+  ) {
+    const value = source[key];
+    return typeof value === 'string' ? value : '';
   }
 }

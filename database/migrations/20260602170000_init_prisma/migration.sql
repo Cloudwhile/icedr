@@ -104,10 +104,14 @@ create table if not exists auth_oauth_states (
   share_token text,
   code_verifier text not null,
   redirect_uri text not null,
+  provider_snapshot jsonb,
   expires_at timestamptz not null,
   used_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table auth_oauth_states
+add column if not exists provider_snapshot jsonb;
 
 create table if not exists auth_oauth_exchange_codes (
   code_hash text primary key,

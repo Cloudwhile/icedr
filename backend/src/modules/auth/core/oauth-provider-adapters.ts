@@ -14,6 +14,17 @@ type OAuthTokenResponse = Record<string, unknown> & {
 
 type OAuthProviderProfile = OAuthSettings['providerProfile'];
 type OAuthEmailSource = 'provider' | 'derived';
+export type OAuthProviderSnapshot = Pick<
+  OAuthSettings,
+  | 'enabled'
+  | 'providerProfile'
+  | 'issuerUrl'
+  | 'clientId'
+  | 'clientSecret'
+  | 'audience'
+  | 'scopes'
+  | 'redirectUri'
+>;
 
 export type MappedOAuthUser = {
   provider: string;
@@ -70,18 +81,21 @@ export function createOAuthProviderAdapter(
   options: OAuthAdapterOptions,
 ): OAuthProviderAdapter {
   if (providerProfile === 'icetowne-blog') {
-    return new IcetowneBlogOAuthAdapter();
+    return new IcetowneBlogOAuthAdapter(options);
   }
   return new OidcOAuthAdapter(options);
 }
 
 export function mapOidcUserProfile(input: {
+  issuerUrl?: unknown;
   subject?: unknown;
   email?: unknown;
   displayName?: unknown;
 }): MappedOAuthUser {
+  const providerScope = createOAuthProviderScope('oidc', input.issuerUrl);
   return normalizeOAuthUserProfile({
-    provider: 'oauth',
+    provider: providerScope,
+    providerScope,
     providerLabel: 'OAuth',
     providerProfile: 'oidc',
     subject: input.subject,
@@ -93,6 +107,7 @@ export function mapOidcUserProfile(input: {
 export function mapIcetowneBlogUserProfile(
   userInfo: Record<string, unknown>,
   tokenResponse: OAuthTokenResponse,
+  issuerUrl?: unknown,
 ): MappedOAuthUser {
   const nestedUser = readRecordField(userInfo, 'user');
   const subject =
@@ -122,8 +137,10 @@ export function mapIcetowneBlogUserProfile(
       'username',
     ]);
 
+  const providerScope = createOAuthProviderScope('icetowne-blog', issuerUrl);
   return normalizeOAuthUserProfile({
-    provider: 'icetowne-blog',
+    provider: providerScope,
+    providerScope,
     providerLabel: 'ICETOWNE BLOG',
     providerProfile: 'icetowne-blog',
     subject,
@@ -135,14 +152,20 @@ export function mapIcetowneBlogUserProfile(
 export function createDerivedOAuthEmail(
   providerProfile: OAuthProviderProfile,
   subject: string,
+  providerScope: string = providerProfile,
 ) {
+  const scopeDigest = createHash('sha256')
+    .update(providerScope)
+    .digest('base64url')
+    .slice(0, 8)
+    .toLowerCase();
   const digest = createHash('sha256')
-    .update(`${providerProfile}:${subject}`)
+    .update(`${providerProfile}:${providerScope}:${subject}`)
     .digest('base64url')
     .slice(0, 24)
     .toLowerCase();
   const prefix = providerProfile === 'icetowne-blog' ? 'icetowne-blog' : 'oidc';
-  return `${prefix}+${digest}@identity.local`;
+  return `${prefix}-${scopeDigest}+${digest}@identity.local`;
 }
 
 class OidcOAuthAdapter implements OAuthProviderAdapter {
@@ -152,66 +175,99 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
   constructor(private readonly options: OAuthAdapterOptions) {}
 
   async buildAuthorizationUrl(input: OAuthAuthorizationInput) {
-    const client = await this.createClient(input.oauth, input.redirectUri);
-    return oidc.buildAuthorizationUrl(client, {
-      redirect_uri: input.redirectUri,
-      scope: input.oauth.scopes || 'openid email profile',
-      code_challenge: input.codeChallenge,
-      code_challenge_method: 'S256',
-      state: input.state,
-      ...(input.oauth.audience ? { audience: input.oauth.audience } : {}),
-    });
+    try {
+      const client = await this.createClient(input.oauth, input.redirectUri);
+      return oidc.buildAuthorizationUrl(client, {
+        redirect_uri: input.redirectUri,
+        scope: input.oauth.scopes || 'openid email profile',
+        code_challenge: input.codeChallenge,
+        code_challenge_method: 'S256',
+        state: input.state,
+        ...(input.oauth.audience ? { audience: input.oauth.audience } : {}),
+      });
+    } catch (error) {
+      rethrowKnownOAuthException(error);
+      throw toOAuthServiceUnavailableException(
+        'OIDC authorization URL generation failed',
+        error,
+      );
+    }
   }
 
   async exchangeCode(input: OAuthCodeExchangeInput) {
-    const client = await this.createClient(input.oauth, input.redirectUri);
-    const tokens = await oidc.authorizationCodeGrant(client, input.url, {
-      expectedState: input.state,
-      pkceCodeVerifier: input.codeVerifier,
-    });
-    const claims = (tokens.claims() ?? {}) as Record<string, unknown>;
-    const subject = readStringField(claims, 'sub');
-    const accessToken = tokens.access_token;
-    let email = readStringField(claims, 'email');
-    let displayName =
-      firstStringField(claims, ['name', 'preferred_username', 'nickname']) ||
-      email;
+    throwOAuthCallbackError(input.url);
+    try {
+      const client = await this.createClient(input.oauth, input.redirectUri);
+      const tokens = await oidc.authorizationCodeGrant(client, input.url, {
+        expectedState: input.state,
+        pkceCodeVerifier: input.codeVerifier,
+      });
+      const claims = (tokens.claims() ?? {}) as Record<string, unknown>;
+      const subject = readStringField(claims, 'sub');
+      const accessToken = tokens.access_token;
+      let email = readStringField(claims, 'email');
+      let displayName =
+        firstStringField(claims, ['name', 'preferred_username', 'nickname']) ||
+        email;
 
-    if ((!email || !displayName) && accessToken) {
-      const userInfo = (await oidc.fetchUserInfo(
-        client,
-        accessToken,
-        subject || oidc.skipSubjectCheck,
-      )) as Record<string, unknown>;
-      if (!email) email = readStringField(userInfo, 'email');
-      if (!displayName) {
-        displayName = firstStringField(userInfo, [
-          'name',
-          'preferred_username',
-          'nickname',
-        ]);
+      if ((!email || !displayName) && accessToken) {
+        const userInfo = (await oidc.fetchUserInfo(
+          client,
+          accessToken,
+          subject || oidc.skipSubjectCheck,
+        )) as Record<string, unknown>;
+        if (!email) email = readStringField(userInfo, 'email');
+        if (!displayName) {
+          displayName = firstStringField(userInfo, [
+            'name',
+            'preferred_username',
+            'nickname',
+          ]);
+        }
       }
-    }
 
-    return mapOidcUserProfile({ subject, email, displayName });
+      return mapOidcUserProfile({
+        issuerUrl: input.oauth.issuerUrl,
+        subject,
+        email,
+        displayName,
+      });
+    } catch (error) {
+      rethrowKnownOAuthException(error);
+      if (isNetworkOAuthError(error)) {
+        throw toOAuthServiceUnavailableException(
+          'OIDC code exchange failed',
+          error,
+        );
+      }
+      throw new UnauthorizedException(
+        `OIDC code exchange failed: ${formatOAuthErrorDetail(error)}`,
+      );
+    }
   }
 
   private async createClient(oauth: OAuthSettings, redirectUri: string) {
-    const issuer = new URL(oauth.issuerUrl);
-    return oidc.discovery(
-      issuer,
-      oauth.clientId,
-      {
-        redirect_uris: [redirectUri],
-        response_types: ['code'],
-      },
-      oauth.clientSecret
-        ? oidc.ClientSecretPost(oauth.clientSecret)
-        : oidc.None(),
-      issuer.protocol === 'http:' && !this.options.production
-        ? { execute: [oidc.allowInsecureRequests] }
-        : undefined,
-    );
+    try {
+      const issuer = parseOAuthIssuer(oauth.issuerUrl, 'OIDC issuer URL');
+      assertOAuthIssuerTransport(issuer, this.options, 'OIDC OAuth');
+      return await oidc.discovery(
+        issuer,
+        oauth.clientId,
+        {
+          redirect_uris: [redirectUri],
+          response_types: ['code'],
+        },
+        oauth.clientSecret
+          ? oidc.ClientSecretPost(oauth.clientSecret)
+          : oidc.None(),
+        issuer.protocol === 'http:' && !this.options.production
+          ? { execute: [oidc.allowInsecureRequests] }
+          : undefined,
+      );
+    } catch (error) {
+      rethrowKnownOAuthException(error);
+      throw toOAuthServiceUnavailableException('OIDC discovery failed', error);
+    }
   }
 }
 
@@ -219,30 +275,43 @@ class IcetowneBlogOAuthAdapter implements OAuthProviderAdapter {
   readonly providerKey = 'icetowne-blog';
   readonly providerProfile = 'icetowne-blog';
 
+  constructor(private readonly options: OAuthAdapterOptions) {}
+
   async buildAuthorizationUrl(input: OAuthAuthorizationInput) {
-    const response = await postOAuthForm(
-      joinOAuthUrl(input.oauth.issuerUrl, '/oauth/request-auth-token'),
-      {
-        client_id: input.oauth.clientId,
-        client_secret: input.oauth.clientSecret ?? '',
-        scope: input.oauth.scopes || 'basic',
-        state: input.state,
-      },
-    );
-    const authUrl = readStringField(response, 'auth_url');
-    if (!authUrl) {
-      throw new ServiceUnavailableException(
-        'ICETOWNE BLOG OAuth did not return an authorization URL',
+    try {
+      const issuerUrl = this.resolveIssuerUrl(input.oauth.issuerUrl);
+      const response = await postOAuthForm(
+        joinOAuthUrl(issuerUrl, '/oauth/request-auth-token'),
+        {
+          client_id: input.oauth.clientId,
+          client_secret: input.oauth.clientSecret ?? '',
+          scope: input.oauth.scopes || 'basic',
+          state: input.state,
+        },
+      );
+      const authUrl = readStringField(response, 'auth_url');
+      if (!authUrl) {
+        throw new ServiceUnavailableException(
+          'ICETOWNE BLOG OAuth did not return an authorization URL',
+        );
+      }
+      return new URL(authUrl);
+    } catch (error) {
+      rethrowKnownOAuthException(error);
+      throw toOAuthServiceUnavailableException(
+        'ICETOWNE BLOG authorization URL generation failed',
+        error,
       );
     }
-    return new URL(authUrl);
   }
 
   async exchangeCode(input: OAuthCodeExchangeInput) {
+    throwOAuthCallbackError(input.url);
     const code = input.url.searchParams.get('code');
     if (!code) throw new UnauthorizedException('OAuth code is required');
+    const issuerUrl = this.resolveIssuerUrl(input.oauth.issuerUrl);
     const tokenResponse = await postOAuthForm(
-      joinOAuthUrl(input.oauth.issuerUrl, '/oauth/token'),
+      joinOAuthUrl(issuerUrl, '/oauth/token'),
       {
         grant_type: 'authorization_code',
         code,
@@ -256,17 +325,24 @@ class IcetowneBlogOAuthAdapter implements OAuthProviderAdapter {
       throw new UnauthorizedException('ICETOWNE BLOG access token is missing');
     }
     const userInfo = await fetchOAuthJson(
-      joinOAuthUrl(input.oauth.issuerUrl, '/oauth/userinfo'),
+      joinOAuthUrl(issuerUrl, '/oauth/userinfo'),
       {
         Authorization: `Bearer ${accessToken}`,
       },
     );
-    return mapIcetowneBlogUserProfile(userInfo, tokenResponse);
+    return mapIcetowneBlogUserProfile(userInfo, tokenResponse, issuerUrl);
+  }
+
+  private resolveIssuerUrl(issuerUrl: string) {
+    const issuer = parseOAuthIssuer(issuerUrl, 'ICETOWNE BLOG issuer URL');
+    assertOAuthIssuerTransport(issuer, this.options, 'ICETOWNE BLOG OAuth');
+    return issuer.toString().replace(/\/$/, '');
   }
 }
 
 function normalizeOAuthUserProfile(input: {
   provider: string;
+  providerScope: string;
   providerLabel: string;
   providerProfile: OAuthProviderProfile;
   subject?: unknown;
@@ -283,7 +359,11 @@ function normalizeOAuthUserProfile(input: {
   const rawEmail = readStringValue(input.email);
   const email = rawEmail
     ? normalizeProviderEmail(rawEmail, input.providerLabel)
-    : createDerivedOAuthEmail(input.providerProfile, subject);
+    : createDerivedOAuthEmail(
+        input.providerProfile,
+        subject,
+        input.providerScope,
+      );
   const displayName =
     readStringValue(input.displayName) ||
     (rawEmail ? email : `${input.providerLabel} User`);
@@ -337,16 +417,130 @@ async function fetchOAuthJson(
     );
   }
   if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText);
+    const message = await readOAuthResponseMessage(response);
+    const errorMessage = `OAuth provider returned ${response.status}: ${message}`;
+    if (response.status === 400 || response.status === 401) {
+      throw new UnauthorizedException(errorMessage);
+    }
+    throw new ServiceUnavailableException(errorMessage);
+  }
+  try {
+    return (await response.json()) as Record<string, unknown>;
+  } catch (error) {
     throw new ServiceUnavailableException(
-      `OAuth provider returned ${response.status}: ${message}`,
+      `OAuth provider returned invalid JSON: ${formatOAuthErrorDetail(error)}`,
     );
   }
-  return (await response.json()) as Record<string, unknown>;
 }
 
 function joinOAuthUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/$/, '')}${path}`;
+}
+
+function createOAuthProviderScope(
+  providerProfile: OAuthProviderProfile,
+  issuerUrl: unknown,
+) {
+  const issuerScope = normalizeOAuthIssuerScope(issuerUrl);
+  const prefix =
+    providerProfile === 'icetowne-blog' ? 'icetowne-blog' : 'oauth';
+  return `${prefix}:${issuerScope}`;
+}
+
+function normalizeOAuthIssuerScope(issuerUrl: unknown) {
+  const rawIssuer = readStringValue(issuerUrl);
+  if (!rawIssuer) return 'unknown';
+  try {
+    const issuer = new URL(rawIssuer);
+    issuer.hash = '';
+    issuer.search = '';
+    return issuer.toString().replace(/\/$/, '').toLowerCase();
+  } catch {
+    return rawIssuer.replace(/\/$/, '').toLowerCase();
+  }
+}
+
+function parseOAuthIssuer(issuerUrl: string, label: string) {
+  try {
+    return new URL(issuerUrl);
+  } catch (error) {
+    throw toOAuthServiceUnavailableException(`${label} is invalid`, error);
+  }
+}
+
+function assertOAuthIssuerTransport(
+  issuer: URL,
+  options: OAuthAdapterOptions,
+  providerLabel: string,
+) {
+  if (!['https:', 'http:'].includes(issuer.protocol)) {
+    throw new ServiceUnavailableException(
+      `${providerLabel} issuer must use HTTP or HTTPS`,
+    );
+  }
+  if (issuer.protocol === 'http:' && options.production) {
+    throw new ServiceUnavailableException(
+      `${providerLabel} issuer must use HTTPS in production`,
+    );
+  }
+}
+
+function throwOAuthCallbackError(url: URL) {
+  const error = url.searchParams.get('error');
+  if (!error) return;
+  const description =
+    url.searchParams.get('error_description') ||
+    url.searchParams.get('error_uri') ||
+    error;
+  throw new UnauthorizedException(
+    `OAuth error: ${sanitizeOAuthMessage(description)}`,
+  );
+}
+
+async function readOAuthResponseMessage(response: globalThis.Response) {
+  const rawMessage = await response.text().catch(() => response.statusText);
+  return sanitizeOAuthMessage(rawMessage || response.statusText);
+}
+
+function sanitizeOAuthMessage(message: string) {
+  const normalized = message
+    .replace(/[^\P{C}\t\r\n]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return 'unknown error';
+  return normalized.length > 200
+    ? `${normalized.slice(0, 200)}...`
+    : normalized;
+}
+
+function rethrowKnownOAuthException(error: unknown): never | void {
+  if (
+    error instanceof UnauthorizedException ||
+    error instanceof ServiceUnavailableException
+  ) {
+    throw error;
+  }
+}
+
+function toOAuthServiceUnavailableException(prefix: string, error: unknown) {
+  return new ServiceUnavailableException(
+    `${prefix}: ${formatOAuthErrorDetail(error)}`,
+  );
+}
+
+function formatOAuthErrorDetail(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return sanitizeOAuthMessage(error.message);
+  }
+  return 'unknown error';
+}
+
+function isNetworkOAuthError(error: unknown) {
+  if (error instanceof TypeError) return true;
+  const message = error instanceof Error ? error.message : '';
+  return /fetch failed|network|econn|enotfound|etimedout|eai_again/i.test(
+    message,
+  );
 }
 
 function readRecordField(source: Record<string, unknown>, key: string) {

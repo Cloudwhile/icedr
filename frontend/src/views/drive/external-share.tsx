@@ -11,7 +11,7 @@ import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
 import { ExternalSharePageLoading, LoadingSpinner, ShareCreationLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getChildItems, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type LocalIconName, type Palette, type ThemeMode } from "@/features/file/model";
 import { copyTextToClipboard, createSharedDriveItemBlobUrl, createSharedPreviewIntent, createShareUrl, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
-import { fetchAuthSettings, createPasskeyRegistrationOptions, deletePasskey, DriveApiError, getApiBaseUrl, fetchPasskeys, fetchSiteSettings, fetchTranslationSettings, fetchWorkspaces, fetchIdentityConfig, fetchMailSettings, fetchStorageSettings, fetchWorkspaceShareSettings, sendShareEmailCode, startShareOAuth, testMailSettings, testStorageSettings, updateAuthSettings, updateMailSettings, updateOAuthSettings, updatePasskeySettings, updateSiteSettings, updateStorageSettings, updateWorkspaceShareSettings, upsertTranslationBundle, verifyPasskeyRegistration, verifyShareEmailCode, type AuthSettings, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeyRecord, type PasskeySettings, type PublicSiteSettings, type ShareAccessSession, type StorageSettings, type StorageSettingsInput, type TranslationBundle, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { fetchAuthSettings, createPasskeyRegistrationOptions, deletePasskey, DriveApiError, getApiBaseUrl, fetchPasskeys, fetchSiteSettings, fetchTranslationSettings, fetchWorkspaces, fetchIdentityConfig, fetchMailSettings, fetchStorageSettings, fetchWorkspaceShareSettings, sendShareEmailCode, startShareOAuth, testMailSettings, testStorageSettings, toOAuthSettingsInput, updateAuthSettings, updateMailSettings, updateOAuthSettings, updatePasskeySettings, updateSiteSettings, updateStorageSettings, updateWorkspaceShareSettings, upsertTranslationBundle, verifyPasskeyRegistration, verifyShareEmailCode, type AuthSettings, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeyRecord, type PasskeySettings, type PublicSiteSettings, type ShareAccessSession, type StorageSettings, type StorageSettingsInput, type TranslationBundle, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice } from "./auth-form-primitives";
 import { ThemeActions } from "./drive-shell";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
@@ -31,7 +31,7 @@ const icetowneBlogOAuthPreset = {
   clientId: "client_uNl7QJ689LDXlBWXhCS4",
   audience: "",
   scopes: "basic vip_info"
-} satisfies Pick<OAuthSettings, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
+} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
 function getCurrentSystemBaseUrl() {
   if (typeof window === "undefined") return "";
   return window.location.origin;
@@ -1016,9 +1016,9 @@ export function ExternalShareAdminSettingsPanel({
     setOauthSettings(next);
     setSaving(true);
     void updateOAuthSettings(clientSecret ? {
-      ...next,
+      ...toOAuthSettingsInput(next),
       clientSecret
-    } : next).then(async settings => {
+    } : toOAuthSettingsInput(next)).then(async settings => {
       savedOauthRef.current = settings;
       setSavedOauthSnapshot(settings);
       setOauthSettings(settings);

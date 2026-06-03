@@ -54,6 +54,7 @@ import { AuthRepository, StoredAuthUser } from './auth.repository';
 import {
   createOAuthProviderAdapter,
   createOAuthRequestState,
+  type OAuthProviderSnapshot,
 } from './oauth-provider-adapters';
 
 const scryptAsync = promisify(scrypt);
@@ -306,7 +307,10 @@ export class AuthService {
       throw new UnauthorizedException('OAuth state is invalid');
     }
 
-    const oauth = await this.settingsService.getOAuthSettings();
+    const oauth = storedState.providerSnapshot;
+    if (!oauth) {
+      throw new UnauthorizedException('OAuth state provider is invalid');
+    }
     const oauthAdapter = this.createOAuthProviderAdapter(oauth);
     const oauthUser = await oauthAdapter.exchangeCode({
       oauth,
@@ -595,6 +599,7 @@ export class AuthService {
       shareToken: shareToken ?? null,
       codeVerifier,
       redirectUri,
+      providerSnapshot: this.createOAuthProviderSnapshot(oauth, redirectUri),
       expiresAt: new Date(Date.now() + oauthStateTtlMs).toISOString(),
     });
     return { authorizationUrl: authorizationUrl.toString() };
@@ -622,6 +627,22 @@ export class AuthService {
     return createOAuthProviderAdapter(oauth.providerProfile, {
       production: this.production,
     });
+  }
+
+  private createOAuthProviderSnapshot(
+    oauth: OAuthSettings,
+    redirectUri: string,
+  ): OAuthProviderSnapshot {
+    return {
+      enabled: oauth.enabled,
+      providerProfile: oauth.providerProfile,
+      issuerUrl: oauth.issuerUrl,
+      clientId: oauth.clientId,
+      clientSecret: oauth.clientSecret ?? '',
+      audience: oauth.audience,
+      scopes: oauth.scopes,
+      redirectUri,
+    };
   }
 
   private resolveOAuthRedirectUri(
