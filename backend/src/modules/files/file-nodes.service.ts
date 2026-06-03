@@ -36,7 +36,6 @@ import {
   UploadSessionsRepository,
 } from './upload-sessions.repository';
 import {
-  isTextContentEditable,
   resolveFilePreviewCapability,
   type FilePreviewCapability,
 } from './file-preview-policy';
@@ -765,14 +764,23 @@ export class FileNodesService {
     objectKey: string | null;
     sizeBytes: number | null;
   }) {
-    const editable = isTextContentEditable({
+    const capability = resolveFilePreviewCapability({
       kind: (node.kind ?? 'doc') as FileNodeKind,
       mimeType: node.mimeType,
       name: node.name,
       objectKey: node.objectKey,
       sizeBytes: node.sizeBytes,
     });
-    if (!editable) {
+    if (!capability.supported) {
+      if (capability.reason === 'too-large') {
+        throw new BadRequestException('File is too large to edit as text');
+      }
+      throw new BadRequestException('File type cannot be edited as text');
+    }
+    if (
+      capability.renderMode !== 'markdown' &&
+      capability.renderMode !== 'text'
+    ) {
       throw new BadRequestException('File type cannot be edited as text');
     }
   }

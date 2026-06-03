@@ -259,10 +259,14 @@ function DriveFilePreviewContent({
   workspaceId: string | null;
 }) {
   const t = useTranslations();
-  const previewCapability = previewIntent?.capability ?? item.previewCapability;
+  const intentCapability = previewIntent?.capability;
+  const previewCapability = intentCapability ?? item.previewCapability;
   const previewItem = useMemo(
-    () => (previewCapability ? { ...item, previewCapability } : item),
-    [item, previewCapability],
+    () =>
+      intentCapability
+        ? { ...item, previewCapability: intentCapability }
+        : item,
+    [item, intentCapability],
   );
   const kind = getItemKind(previewItem);
   const extension = getItemExtension(previewItem);

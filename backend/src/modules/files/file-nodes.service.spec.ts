@@ -571,4 +571,10 @@ describe('FileNodesService', () => {
       error: 'File is too large to preview',
     });
   });
+
+  it('preserves the oversized text edit error message', async () => {
+    await expect(service.getFileNodeContent('large-log')).rejects.toThrow(
+      'File is too large to edit as text',
+    );
+  });
 });
