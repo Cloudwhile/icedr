@@ -307,10 +307,10 @@ export class AuthService {
       throw new UnauthorizedException('OAuth state is invalid');
     }
 
-    const oauth = storedState.providerSnapshot;
-    if (!oauth) {
-      throw new UnauthorizedException('OAuth state provider is invalid');
-    }
+    const oauth = await this.resolveOAuthStateProvider(
+      storedState.providerSnapshot,
+      storedState.redirectUri,
+    );
     const oauthAdapter = this.createOAuthProviderAdapter(oauth);
     const oauthUser = await oauthAdapter.exchangeCode({
       oauth,
@@ -638,11 +638,48 @@ export class AuthService {
       providerProfile: oauth.providerProfile,
       issuerUrl: oauth.issuerUrl,
       clientId: oauth.clientId,
-      clientSecret: oauth.clientSecret ?? '',
       audience: oauth.audience,
       scopes: oauth.scopes,
       redirectUri,
     };
+  }
+
+  private async resolveOAuthStateProvider(
+    providerSnapshot: OAuthProviderSnapshot | null,
+    redirectUri: string,
+  ): Promise<OAuthSettings> {
+    const currentSettings = await this.settingsService.getOAuthSettings();
+    if (!this.settingsService.oauthConfigured(currentSettings)) {
+      throw new UnauthorizedException('OAuth state provider is invalid');
+    }
+    if (!providerSnapshot) {
+      return { ...currentSettings, redirectUri };
+    }
+    if (
+      !providerSnapshot.enabled ||
+      !this.oauthProviderSnapshotMatchesSettings(
+        providerSnapshot,
+        currentSettings,
+      )
+    ) {
+      throw new UnauthorizedException('OAuth state provider is invalid');
+    }
+    return {
+      ...providerSnapshot,
+      clientSecret: currentSettings.clientSecret,
+      redirectUri: providerSnapshot.redirectUri || redirectUri,
+    };
+  }
+
+  private oauthProviderSnapshotMatchesSettings(
+    providerSnapshot: OAuthProviderSnapshot,
+    currentSettings: OAuthSettings,
+  ) {
+    return (
+      providerSnapshot.providerProfile === currentSettings.providerProfile &&
+      providerSnapshot.issuerUrl === currentSettings.issuerUrl &&
+      providerSnapshot.clientId === currentSettings.clientId
+    );
   }
 
   private resolveOAuthRedirectUri(

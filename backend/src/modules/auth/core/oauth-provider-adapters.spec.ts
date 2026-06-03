@@ -8,9 +8,21 @@ import {
   mapIcetowneBlogUserProfile,
   mapOidcUserProfile,
 } from './oauth-provider-adapters';
+import * as oidc from 'openid-client';
 
 jest.mock('openid-client', () => ({
   __esModule: true,
+  allowInsecureRequests: jest.fn(),
+  authorizationCodeGrant: jest.fn(),
+  buildAuthorizationUrl: jest.fn(),
+  calculatePKCECodeChallenge: jest.fn(),
+  ClientSecretPost: jest.fn((secret: string) => ({ secret })),
+  discovery: jest.fn(),
+  fetchUserInfo: jest.fn(),
+  None: jest.fn(() => ({ type: 'none' })),
+  randomPKCECodeVerifier: jest.fn(),
+  randomState: jest.fn(),
+  skipSubjectCheck: Symbol('skipSubjectCheck'),
 }));
 
 const baseOAuth = {
@@ -27,6 +39,7 @@ const baseOAuth = {
 describe('OAuth provider adapters', () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.clearAllMocks();
   });
 
   it('maps standard OIDC user fields into the local identity shape', () => {
@@ -83,6 +96,55 @@ describe('OAuth provider adapters', () => {
     expect(issuerA.provider).toBe('oauth:https://issuer-a.example');
     expect(issuerB.provider).toBe('oauth:https://issuer-b.example');
     expect(issuerA.email).not.toBe(issuerB.email);
+  });
+
+  it('preserves issuer path case when namespacing OIDC identities', () => {
+    const upperPath = mapOidcUserProfile({
+      issuerUrl: 'https://Issuer.example/Tenant/',
+      subject: 'shared-subject',
+    });
+    const lowerPath = mapOidcUserProfile({
+      issuerUrl: 'https://issuer.example/tenant/',
+      subject: 'shared-subject',
+    });
+
+    expect(upperPath.provider).toBe('oauth:https://issuer.example/Tenant');
+    expect(lowerPath.provider).toBe('oauth:https://issuer.example/tenant');
+    expect(upperPath.provider).not.toBe(lowerPath.provider);
+    expect(upperPath.email).not.toBe(lowerPath.email);
+  });
+
+  it('adds openid scope and reuses cached OIDC discovery clients', async () => {
+    const client = { client: 'oidc-client' };
+    jest.mocked(oidc.discovery).mockResolvedValue(client as never);
+    jest
+      .mocked(oidc.buildAuthorizationUrl)
+      .mockReturnValue(new URL('https://issuer.example/authorize'));
+    const adapter = createOAuthProviderAdapter('oidc', {
+      production: false,
+    });
+    const input = {
+      oauth: {
+        ...baseOAuth,
+        providerProfile: 'oidc' as const,
+        issuerUrl: 'https://issuer.example',
+        scopes: 'email profile',
+      },
+      redirectUri: 'https://app.example/callback',
+      state: 'oauth-state',
+      codeChallenge: 'challenge',
+    };
+
+    await adapter.buildAuthorizationUrl(input);
+    await adapter.buildAuthorizationUrl(input);
+
+    expect(oidc.discovery).toHaveBeenCalledTimes(1);
+    expect(oidc.buildAuthorizationUrl).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({
+        scope: 'openid email profile',
+      }),
+    );
   });
 
   it('maps ICETOWNE BLOG compatibility user fields from nested payloads', () => {
@@ -172,7 +234,7 @@ describe('OAuth provider adapters', () => {
   });
 
   it('maps ICETOWNE BLOG token auth failures to UnauthorizedException', async () => {
-    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('invalid authorization code', {
         status: 400,
       }),
@@ -190,6 +252,13 @@ describe('OAuth provider adapters', () => {
         codeVerifier: 'verifier',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+    const expectedSignal = expect.any(AbortSignal) as unknown as AbortSignal;
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://blog.example/oauth/token',
+      expect.objectContaining({
+        signal: expectedSignal,
+      }),
+    );
   });
 
   it('rejects provider callback errors before exchanging codes', async () => {

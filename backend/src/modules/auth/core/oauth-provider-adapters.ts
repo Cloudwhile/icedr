@@ -14,13 +14,13 @@ type OAuthTokenResponse = Record<string, unknown> & {
 
 type OAuthProviderProfile = OAuthSettings['providerProfile'];
 type OAuthEmailSource = 'provider' | 'derived';
+const oauthProviderRequestTimeoutMs = 10_000;
 export type OAuthProviderSnapshot = Pick<
   OAuthSettings,
   | 'enabled'
   | 'providerProfile'
   | 'issuerUrl'
   | 'clientId'
-  | 'clientSecret'
   | 'audience'
   | 'scopes'
   | 'redirectUri'
@@ -169,6 +169,11 @@ export function createDerivedOAuthEmail(
 }
 
 class OidcOAuthAdapter implements OAuthProviderAdapter {
+  private static readonly discoveryCache = new Map<
+    string,
+    ReturnType<typeof oidc.discovery>
+  >();
+
   readonly providerKey = 'oauth';
   readonly providerProfile = 'oidc';
 
@@ -179,7 +184,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       const client = await this.createClient(input.oauth, input.redirectUri);
       return oidc.buildAuthorizationUrl(client, {
         redirect_uri: input.redirectUri,
-        scope: input.oauth.scopes || 'openid email profile',
+        scope: ensureOpenIdScope(input.oauth.scopes),
         code_challenge: input.codeChallenge,
         code_challenge_method: 'S256',
         state: input.state,
@@ -250,20 +255,31 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
     try {
       const issuer = parseOAuthIssuer(oauth.issuerUrl, 'OIDC issuer URL');
       assertOAuthIssuerTransport(issuer, this.options, 'OIDC OAuth');
-      return await oidc.discovery(
-        issuer,
-        oauth.clientId,
-        {
-          redirect_uris: [redirectUri],
-          response_types: ['code'],
-        },
-        oauth.clientSecret
-          ? oidc.ClientSecretPost(oauth.clientSecret)
-          : oidc.None(),
-        issuer.protocol === 'http:' && !this.options.production
-          ? { execute: [oidc.allowInsecureRequests] }
-          : undefined,
-      );
+      const cacheKey = createOidcDiscoveryCacheKey(issuer, oauth, redirectUri);
+      let clientPromise = OidcOAuthAdapter.discoveryCache.get(cacheKey);
+      if (!clientPromise) {
+        clientPromise = oidc
+          .discovery(
+            issuer,
+            oauth.clientId,
+            {
+              redirect_uris: [redirectUri],
+              response_types: ['code'],
+            },
+            oauth.clientSecret
+              ? oidc.ClientSecretPost(oauth.clientSecret)
+              : oidc.None(),
+            issuer.protocol === 'http:' && !this.options.production
+              ? { execute: [oidc.allowInsecureRequests] }
+              : undefined,
+          )
+          .catch((error: unknown) => {
+            OidcOAuthAdapter.discoveryCache.delete(cacheKey);
+            throw error;
+          });
+        OidcOAuthAdapter.discoveryCache.set(cacheKey, clientPromise);
+      }
+      return await clientPromise;
     } catch (error) {
       rethrowKnownOAuthException(error);
       throw toOAuthServiceUnavailableException('OIDC discovery failed', error);
@@ -410,6 +426,7 @@ async function fetchOAuthJson(
       method: body ? 'POST' : 'GET',
       headers: { Accept: 'application/json', ...headers },
       body,
+      signal: AbortSignal.timeout(oauthProviderRequestTimeoutMs),
     });
   } catch (error) {
     throw new ServiceUnavailableException(
@@ -437,6 +454,32 @@ function joinOAuthUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/$/, '')}${path}`;
 }
 
+function createOidcDiscoveryCacheKey(
+  issuer: URL,
+  oauth: OAuthSettings,
+  redirectUri: string,
+) {
+  const clientSecretDigest = oauth.clientSecret
+    ? createHash('sha256').update(oauth.clientSecret).digest('base64url')
+    : '';
+  return JSON.stringify([
+    issuer.toString(),
+    oauth.clientId,
+    redirectUri,
+    clientSecretDigest,
+  ]);
+}
+
+function ensureOpenIdScope(scopes?: string) {
+  const tokens = (scopes?.trim() || 'openid email profile')
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!tokens.includes('openid')) {
+    tokens.unshift('openid');
+  }
+  return Array.from(new Set(tokens)).join(' ');
+}
+
 function createOAuthProviderScope(
   providerProfile: OAuthProviderProfile,
   issuerUrl: unknown,
@@ -454,9 +497,11 @@ function normalizeOAuthIssuerScope(issuerUrl: unknown) {
     const issuer = new URL(rawIssuer);
     issuer.hash = '';
     issuer.search = '';
-    return issuer.toString().replace(/\/$/, '').toLowerCase();
+    issuer.protocol = issuer.protocol.toLowerCase();
+    issuer.hostname = issuer.hostname.toLowerCase();
+    return issuer.toString().replace(/\/$/, '');
   } catch {
-    return rawIssuer.replace(/\/$/, '').toLowerCase();
+    return rawIssuer.replace(/\/$/, '');
   }
 }
 

@@ -188,7 +188,6 @@ export class AuthRepository implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    await this.ensureOAuthStateProviderSnapshotColumn();
     await this.migrateLegacyAuthUsers();
     await this.prisma.authSetting.upsert({
       where: { settingKey: authSettingsKey },
@@ -1026,13 +1025,6 @@ export class AuthRepository implements OnModuleInit {
     );
   }
 
-  private async ensureOAuthStateProviderSnapshotColumn() {
-    await this.query(`
-      alter table if exists auth_oauth_states
-      add column if not exists provider_snapshot jsonb;
-    `);
-  }
-
   private async migrateLegacyAuthUsers() {
     await this.query(`
       do $$
@@ -1282,7 +1274,6 @@ export class AuthRepository implements OnModuleInit {
       providerProfile,
       issuerUrl,
       clientId,
-      clientSecret: this.readStringSnapshotField(parsed, 'clientSecret'),
       audience: this.readStringSnapshotField(parsed, 'audience'),
       scopes:
         this.readStringSnapshotField(parsed, 'scopes') ||
