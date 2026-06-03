@@ -58,7 +58,7 @@ export class SharesController {
     @Param('token') token: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'share', 'delete');
+    await this.adminGuard.requireAdminSession(authorization);
     return this.sharesService.revokeShare(token);
   }
 

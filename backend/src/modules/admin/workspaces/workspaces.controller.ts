@@ -14,7 +14,7 @@ export class WorkspacesController {
 
   @Get()
   async listWorkspaces(@Headers('authorization') authorization?: string) {
-    await this.adminGuard.requirePermission(authorization, 'workspace', 'read');
+    await this.adminGuard.requireAdminSession(authorization);
     return this.workspacesService.listWorkspaces();
   }
 
@@ -23,7 +23,7 @@ export class WorkspacesController {
     @Param('workspaceId') workspaceId: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'share', 'read');
+    await this.adminGuard.requireAdminSession(authorization);
     return this.workspacesService.getShareSettings(workspaceId);
   }
 
