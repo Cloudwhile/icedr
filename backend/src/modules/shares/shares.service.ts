@@ -275,6 +275,12 @@ export class SharesService {
     if (downloadRecord.missingShare) {
       throw new NotFoundException('Share link not found');
     }
+    if (downloadRecord.revoked) {
+      throw new GoneException('Share link is revoked');
+    }
+    if (downloadRecord.expired) {
+      throw new GoneException('Share link is expired');
+    }
     if (!downloadRecord.recorded) {
       throw new GoneException('Share download limit has been reached');
     }

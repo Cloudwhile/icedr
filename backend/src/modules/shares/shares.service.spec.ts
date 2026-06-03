@@ -102,8 +102,21 @@ class SharesRepositorySpecDouble {
     if (!share) {
       return Promise.resolve({
         downloadCount: 0,
+        expired: false,
         missingShare: true,
         recorded: false,
+        revoked: false,
+      });
+    }
+    const expiresAt =
+      new Date(share.createdAt).getTime() + share.expiresDays * 86400000;
+    if (share.revokedAt || expiresAt < Date.now()) {
+      return Promise.resolve({
+        downloadCount: 0,
+        expired: !share.revokedAt,
+        missingShare: false,
+        recorded: false,
+        revoked: Boolean(share.revokedAt),
       });
     }
     const downloadCount = this.auditEvents.filter(
@@ -114,8 +127,10 @@ class SharesRepositorySpecDouble {
     if (!metadata) {
       return Promise.resolve({
         downloadCount,
+        expired: false,
         missingShare: false,
         recorded: false,
+        revoked: false,
       });
     }
     this.auditEvents.push({
@@ -125,8 +140,10 @@ class SharesRepositorySpecDouble {
     });
     return Promise.resolve({
       downloadCount,
+      expired: false,
       missingShare: false,
       recorded: true,
+      revoked: false,
     });
   }
 
@@ -501,6 +518,35 @@ describe('SharesService', () => {
         competingIntent.downloadId,
       ),
     ).rejects.toThrow('Share download limit has been reached');
+  });
+
+  it('rechecks share state while recording download starts', async () => {
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const repositoryDouble =
+      repository as unknown as SharesRepositorySpecDouble;
+    const recordDownloadStarted =
+      repositoryDouble.recordDownloadStarted.bind(repositoryDouble);
+    jest
+      .spyOn(repositoryDouble, 'recordDownloadStarted')
+      .mockImplementation((token, metadataForDownloadCount) => {
+        const share = repositoryDouble.findByToken(token);
+        if (share) share.revokedAt = new Date().toISOString();
+        return recordDownloadStarted(token, metadataForDownloadCount);
+      });
+
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
+    ).rejects.toThrow('Share link is revoked');
+    expect(storageService.createPresignedDownload).not.toHaveBeenCalled();
+    await expect(
+      repository.countAuditEvents('share.download_started'),
+    ).resolves.toBe(0);
   });
 
   it('uses account access sessions to bypass visitor wait and speed limits', async () => {

@@ -153,8 +153,19 @@ export class SharesRepository {
     metadataForDownloadCount: DownloadStartedMetadataFactory,
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const lockedRows = await tx.$queryRaw<Array<{ workspaceId: string }>>`
-        select workspace_id as "workspaceId"
+      const lockedRows = await tx.$queryRaw<
+        Array<{
+          createdAt: Date | string;
+          expiresDays: number;
+          revokedAt: Date | string | null;
+          workspaceId: string;
+        }>
+      >`
+        select
+          workspace_id as "workspaceId",
+          revoked_at as "revokedAt",
+          created_at as "createdAt",
+          expires_days as "expiresDays"
         from share_links
         where token = ${shareToken}
         for update
@@ -163,8 +174,22 @@ export class SharesRepository {
       if (!lockedShare) {
         return {
           downloadCount: 0,
+          expired: false,
           missingShare: true,
           recorded: false,
+          revoked: false,
+        };
+      }
+      const expiresAt =
+        new Date(lockedShare.createdAt).getTime() +
+        Math.max(0, Math.trunc(Number(lockedShare.expiresDays))) * 86400000;
+      if (lockedShare.revokedAt || expiresAt < Date.now()) {
+        return {
+          downloadCount: 0,
+          expired: !lockedShare.revokedAt,
+          missingShare: false,
+          recorded: false,
+          revoked: Boolean(lockedShare.revokedAt),
         };
       }
 
@@ -178,8 +203,10 @@ export class SharesRepository {
       if (!metadata) {
         return {
           downloadCount,
+          expired: false,
           missingShare: false,
           recorded: false,
+          revoked: false,
         };
       }
 
@@ -210,8 +237,10 @@ export class SharesRepository {
 
       return {
         downloadCount,
+        expired: false,
         missingShare: false,
         recorded: true,
+        revoked: false,
       };
     });
   }
