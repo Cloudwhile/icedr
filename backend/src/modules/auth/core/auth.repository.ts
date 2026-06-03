@@ -2,7 +2,10 @@ import { randomBytes } from 'crypto';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuthSettings, AuthUserResponse } from './auth.dto';
-import type { OAuthProviderSnapshot } from './oauth-provider-adapters';
+import type {
+  OAuthEmailSource,
+  OAuthProviderSnapshot,
+} from './oauth-provider-adapters';
 
 const authSettingsKey = 'global';
 const localIdentityProvider = 'local';
@@ -39,6 +42,10 @@ type UserWithPasswordRow = UserRow & {
   password_hash: string | null;
 };
 
+type OAuthUserRow = UserRow & {
+  email_source: string | null;
+};
+
 type AuthSessionRow = {
   token_hash: string;
   expires_at: Date | string;
@@ -73,6 +80,10 @@ type PasswordResetRow = {
 
 export type StoredAuthUser = AuthUserResponse & {
   passwordHash: string;
+};
+
+export type StoredOAuthUser = AuthUserResponse & {
+  emailSource: OAuthEmailSource;
 };
 
 export type StoredAuthSession = {
@@ -459,15 +470,19 @@ export class AuthRepository implements OnModuleInit {
     return updated;
   }
 
-  async findUserByProviderIdentity(provider: string, subject: string) {
-    const result = await this.query<UserRow>(
+  async findUserByProviderIdentity(
+    provider: string,
+    subject: string,
+  ): Promise<StoredOAuthUser | null> {
+    const result = await this.query<OAuthUserRow>(
       `
         select
           u.*,
           m.avatar_url,
           m.locale,
           m.theme,
-          m.timezone
+          m.timezone,
+          i.email_source
         from user_identities i
         join users u on u.id = i.user_id
         left join user_meta m on m.user_id = u.id
@@ -476,17 +491,18 @@ export class AuthRepository implements OnModuleInit {
       `,
       [provider, subject],
     );
-    return result.rows[0] ? this.mapUserRow(result.rows[0]) : null;
+    return result.rows[0] ? this.mapOAuthUserRow(result.rows[0]) : null;
   }
 
   async createOAuthUser(input: {
     provider: string;
     subject: string;
     email: string;
+    emailSource: OAuthEmailSource;
     displayName: string;
-  }) {
+  }): Promise<StoredOAuthUser> {
     const id = `user_${randomBytes(12).toString('base64url')}`;
-    const result = await this.query<UserRow>(
+    const result = await this.query<OAuthUserRow>(
       `
         with created_user as (
           insert into users (
@@ -519,13 +535,15 @@ export class AuthRepository implements OnModuleInit {
             user_id,
             provider,
             provider_subject,
+            email_source,
             created_at,
             updated_at
           )
-          select $4, id, $5, $6, now(), now()
+          select $4, id, $5, $6, $7, now(), now()
           from created_user
           on conflict (provider, provider_subject) do update set
             user_id = excluded.user_id,
+            email_source = excluded.email_source,
             updated_at = excluded.updated_at
           returning user_id
         )
@@ -534,7 +552,8 @@ export class AuthRepository implements OnModuleInit {
           m.avatar_url,
           m.locale,
           m.theme,
-          m.timezone
+          m.timezone,
+          $7::text as email_source
         from created_user u
         left join user_meta m on m.user_id = u.id
       `,
@@ -545,9 +564,10 @@ export class AuthRepository implements OnModuleInit {
         `identity_${randomBytes(12).toString('base64url')}`,
         input.provider,
         input.subject,
+        input.emailSource,
       ],
     );
-    return this.mapUserRow(result.rows[0]);
+    return this.mapOAuthUserRow(result.rows[0]);
   }
 
   async createSession(input: {
@@ -1114,6 +1134,13 @@ export class AuthRepository implements OnModuleInit {
     };
   }
 
+  private mapOAuthUserRow(row: OAuthUserRow): StoredOAuthUser {
+    return {
+      ...this.mapUserRow(row),
+      emailSource: this.normalizeOAuthEmailSource(row.email_source),
+    };
+  }
+
   private mapSessionRow(row: AuthSessionRow): StoredAuthSession {
     return {
       tokenHash: row.token_hash,
@@ -1152,6 +1179,10 @@ export class AuthRepository implements OnModuleInit {
     return value instanceof Date
       ? value.toISOString()
       : new Date(value).toISOString();
+  }
+
+  private normalizeOAuthEmailSource(value: unknown): OAuthEmailSource {
+    return value === 'derived' ? 'derived' : 'provider';
   }
 
   private mapPasskeyRow(row: PasskeyRow): StoredPasskey {

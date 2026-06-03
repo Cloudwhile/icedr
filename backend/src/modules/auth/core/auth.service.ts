@@ -330,15 +330,17 @@ export class AuthService {
         provider: oauthUser.provider,
         subject: oauthUser.subject,
         email: this.normalizeEmail(oauthUser.email),
+        emailSource: oauthUser.emailSource,
         displayName: oauthUser.displayName,
       });
     }
+    const userResponse = this.toUserResponse(user);
 
     if (storedState.flow === 'share') {
       return {
         flow: 'share' as const,
         shareToken: storedState.shareToken,
-        user,
+        user: userResponse,
       };
     }
 
@@ -351,7 +353,7 @@ export class AuthService {
     return {
       flow: 'login' as const,
       code: exchangeCode,
-      user,
+      user: userResponse,
     };
   }
 

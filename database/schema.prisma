@@ -58,6 +58,7 @@ model UserIdentity {
   provider        String
   providerSubject String   @map("provider_subject")
   passwordHash    String?  @map("password_hash")
+  emailSource     String   @default("provider") @map("email_source")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz
 

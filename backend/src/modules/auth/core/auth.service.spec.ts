@@ -526,6 +526,13 @@ describe('AuthService', () => {
       'icetowne-blog:https://original.example',
       'legacy-subject',
     );
+    expect(repository.createOAuthUser).toHaveBeenCalledWith({
+      provider: 'icetowne-blog:https://original.example',
+      subject: 'legacy-subject',
+      email: 'legacy@example.com',
+      emailSource: 'provider',
+      displayName: 'Legacy User',
+    });
     expect(repository.markOAuthStateUsed).toHaveBeenCalledWith('stored-state');
     expect(repository.createOAuthExchangeCode).toHaveBeenCalledWith(
       expect.objectContaining({ userId: user.id }),
@@ -557,7 +564,7 @@ describe('AuthService', () => {
         providerProfile: 'icetowne-blog';
         subject: string;
         email: string;
-        emailSource: 'provider';
+        emailSource: 'derived';
         displayName: string;
       }>,
       [OAuthExchangeInput]
@@ -566,9 +573,9 @@ describe('AuthService', () => {
         provider: 'icetowne-blog:https://current.example',
         providerProfile: 'icetowne-blog',
         subject: 'legacy-subject',
-        email: 'legacy@example.com',
-        emailSource: 'provider',
-        displayName: 'Legacy User',
+        email: 'icetowne-blog-abcd1234+fallback123@identity.local',
+        emailSource: 'derived',
+        displayName: 'ICETOWNE BLOG User',
       }),
     );
     settingsService.getOAuthSettings.mockResolvedValue(currentOAuth);
@@ -605,6 +612,13 @@ describe('AuthService', () => {
         },
       }),
     );
+    expect(repository.createOAuthUser).toHaveBeenCalledWith({
+      provider: 'icetowne-blog:https://current.example',
+      subject: 'legacy-subject',
+      email: 'icetowne-blog-abcd1234+fallback123@identity.local',
+      emailSource: 'derived',
+      displayName: 'ICETOWNE BLOG User',
+    });
     expect(result).toEqual(
       expect.objectContaining({
         flow: 'login',
