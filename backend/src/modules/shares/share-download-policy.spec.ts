@@ -1,4 +1,6 @@
 import {
+  normalizePolicyDomain,
+  normalizePolicyEmailAllowlist,
   resolveShareDownloadDecision,
   resolveShareDownloadPolicy,
 } from './share-download-policy';
@@ -95,5 +97,40 @@ describe('share download policy', () => {
       waitSeconds: 0,
       speedLimit: null,
     });
+  });
+
+  it('falls back to KB/s for invalid speed units', () => {
+    const resolved = resolveShareDownloadPolicy({
+      ...policy,
+      speedUnit: 'bogus' as SharePolicyDto['speedUnit'],
+    });
+
+    expect(resolved.rules.anonymous.speedLimit).toEqual({
+      value: 512,
+      unit: 'KB/s',
+    });
+  });
+
+  it('normalizes policy domains defensively', () => {
+    expect(normalizePolicyDomain(null)).toBe('');
+    expect(normalizePolicyDomain(undefined)).toBe('');
+    expect(normalizePolicyDomain(' @Example.COM ')).toBe('example.com');
+  });
+
+  it('normalizes email allowlists defensively', () => {
+    expect(normalizePolicyEmailAllowlist(null)).toEqual([]);
+    expect(normalizePolicyEmailAllowlist(undefined)).toEqual([]);
+    expect(normalizePolicyEmailAllowlist('reviewer@example.com')).toEqual([]);
+    expect(
+      normalizePolicyEmailAllowlist([
+        null,
+        undefined,
+        ' Reviewer@Example.com ',
+        'reviewer@example.com',
+        'invalid',
+        42,
+        'owner@example.org',
+      ]),
+    ).toEqual(['reviewer@example.com', 'owner@example.org']);
   });
 });

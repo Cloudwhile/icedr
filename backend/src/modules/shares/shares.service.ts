@@ -26,6 +26,8 @@ import type {
 } from './shares.dto';
 import { SharesRepository } from './shares.repository';
 import {
+  normalizePolicyDomain,
+  normalizePolicyEmailAllowlist,
   resolveShareDownloadDecision,
   toSharePolicyAuditMetadata,
   type ShareDownloadPolicyDecision,
@@ -394,18 +396,15 @@ export class SharesService {
 
   private assertEmailAllowed(share: ShareResponse, email: string) {
     const normalizedEmail = email.trim().toLowerCase();
-    const allowlist = this.normalizePolicyEmailAllowlist(
-      share.policy.emailAllowlist ?? [],
+    const allowlist = normalizePolicyEmailAllowlist(
+      share.policy.emailAllowlist,
     );
     if (allowlist.length > 0 && !allowlist.includes(normalizedEmail)) {
       throw new ForbiddenException('Email address is not allowed');
     }
-    const allowedDomain = share.policy.allowedDomain.trim().toLowerCase();
+    const allowedDomain = normalizePolicyDomain(share.policy.allowedDomain);
     if (!allowedDomain) return;
-    const normalized = allowedDomain.startsWith('@')
-      ? allowedDomain.slice(1)
-      : allowedDomain;
-    if (!normalizedEmail.endsWith(`@${normalized}`)) {
+    if (!normalizedEmail.endsWith(`@${allowedDomain}`)) {
       throw new ForbiddenException('Email domain is not allowed');
     }
   }
@@ -427,11 +426,9 @@ export class SharesService {
 
     const policy: SharePolicyDto = {
       ...dto.policy,
-      allowedDomain: this.normalizePolicyDomain(dto.policy.allowedDomain),
+      allowedDomain: normalizePolicyDomain(dto.policy.allowedDomain),
       downloadLimit: dto.policy.downloadLimit?.trim() ?? '',
-      emailAllowlist: this.normalizePolicyEmailAllowlist(
-        dto.policy.emailAllowlist ?? [],
-      ),
+      emailAllowlist: normalizePolicyEmailAllowlist(dto.policy.emailAllowlist),
       maxDownloads: Math.max(0, Math.trunc(dto.policy.maxDownloads ?? 0)),
       maxViews: Math.max(0, Math.trunc(dto.policy.maxViews ?? 0)),
       rateLimitProfile: dto.policy.rateLimitProfile?.trim() ?? '',
@@ -467,21 +464,6 @@ export class SharesService {
       expiresDays: dto.expiresDays || settings.defaultExpiresDays,
       policy,
     };
-  }
-
-  private normalizePolicyDomain(domain: string) {
-    const normalized = domain.trim().toLowerCase();
-    return normalized.startsWith('@') ? normalized.slice(1) : normalized;
-  }
-
-  private normalizePolicyEmailAllowlist(emails: string[]) {
-    return [
-      ...new Set(
-        emails
-          .map((email) => email.trim().toLowerCase())
-          .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
-      ),
-    ];
   }
 
   private emailCodeKey(token: string, email: string) {

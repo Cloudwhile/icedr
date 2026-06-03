@@ -40,9 +40,7 @@ export function resolveShareDownloadPolicy(
   const waitSeconds = getPolicyWaitSeconds(policy);
   const visitorSpeedLimit = getPolicySpeedLimit(policy);
   const allowedDomain = normalizePolicyDomain(policy.allowedDomain);
-  const emailAllowlist = normalizePolicyEmailAllowlist(
-    policy.emailAllowlist ?? [],
-  );
+  const emailAllowlist = normalizePolicyEmailAllowlist(policy.emailAllowlist);
   const downloadLimit = policy.downloadLimit?.trim() ?? '';
   const maxDownloads = resolveMaxDownloads(policy);
   const maxViews = Math.max(0, Math.trunc(policy.maxViews ?? 0));
@@ -154,18 +152,22 @@ function createRule(
 
 function getPolicySpeedLimit(policy: SharePolicyDto): ShareDownloadSpeedLimit {
   const value = Math.max(0, Math.trunc(policy.speedValue ?? 0));
-  return value > 0 ? { value, unit: policy.speedUnit } : null;
+  const unit = policy.speedUnit === 'MB/s' ? 'MB/s' : 'KB/s';
+  return value > 0 ? { value, unit } : null;
 }
 
-function normalizePolicyDomain(domain = '') {
+export function normalizePolicyDomain(domain?: string | null) {
+  if (!domain) return '';
   const normalized = domain.trim().toLowerCase();
   return normalized.startsWith('@') ? normalized.slice(1) : normalized;
 }
 
-function normalizePolicyEmailAllowlist(emails: string[]) {
+export function normalizePolicyEmailAllowlist(emails: unknown) {
+  if (!Array.isArray(emails)) return [];
   return [
     ...new Set(
       emails
+        .filter((email): email is string => typeof email === 'string')
         .map((email) => email.trim().toLowerCase())
         .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
     ),
