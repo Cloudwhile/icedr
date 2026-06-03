@@ -13,12 +13,17 @@ export class WorkspacesController {
   ) {}
 
   @Get()
-  listWorkspaces() {
+  async listWorkspaces(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requireAdminSession(authorization);
     return this.workspacesService.listWorkspaces();
   }
 
   @Get(':workspaceId/share-settings')
-  getShareSettings(@Param('workspaceId') workspaceId: string) {
+  async getShareSettings(
+    @Param('workspaceId') workspaceId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
     return this.workspacesService.getShareSettings(workspaceId);
   }
 
@@ -28,7 +33,7 @@ export class WorkspacesController {
     @Body() dto: UpdateWorkspaceShareSettingsDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
+    await this.adminGuard.requirePermission(authorization, 'share', 'manage');
     return this.workspacesService.updateShareSettings(workspaceId, dto);
   }
 }

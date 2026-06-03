@@ -9,6 +9,7 @@ import { ProgressMeter } from "@/components/ui/progress-meter";
 import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
 import { AppMenu, type AppMenuItem } from "@/components/ui/app-menu";
 import { AppImage } from "@/components/ui/app-image";
+import { canAccessDriveModule } from "@/features/auth/permissions";
 import { formatFileSize, getItemKind, navItems, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
 import type { AuthUser, StorageUsage } from "@/lib/drive-api";
 import { LocalIcon, ToolButton } from "./drive-primitives";
@@ -55,6 +56,7 @@ export function AppHeader({
   siteName,
 }: DriveHeaderProps) {
   const t = useTranslations();
+  const showActivity = canAccessDriveModule(currentUser, "audit");
 
   return (
     <header className="drive-header">
@@ -105,9 +107,11 @@ export function AppHeader({
           <ToolButton label={t("app.refresh")} palette={palette} tooltipPlacement="bottom" onClick={onRefresh}>
             <LocalIcon name="refresh" size={17} />
           </ToolButton>
-          <ToolButton label={t("app.activity")} palette={palette} tooltipPlacement="bottom" onClick={onActivity}>
-            <LocalIcon name="notification" size={17} />
-          </ToolButton>
+          {showActivity ? (
+            <ToolButton label={t("app.activity")} palette={palette} tooltipPlacement="bottom" onClick={onActivity}>
+              <LocalIcon name="notification" size={17} />
+            </ToolButton>
+          ) : null}
         </div>
 
         <UserAccountMenu
@@ -126,6 +130,7 @@ export type DriveSidebarProps = {
   activeNav: string;
   closeSidebar: () => void;
   currentFolderId: string | null;
+  currentUser: AuthUser | null;
   directoryItems: DriveItem[];
   folderPath: DriveItem[];
   onNavigateFolder: (id: string) => void;
@@ -143,6 +148,7 @@ export function Sidebar({
   activeNav,
   closeSidebar,
   currentFolderId,
+  currentUser,
   directoryItems,
   folderPath,
   onNavigateFolder,
@@ -167,6 +173,7 @@ export function Sidebar({
   const activeSpaceLabel = spaceScope === "personal" ? t("app.personalSpace") : rootLabel;
   const activeSpaceMeta = spaceScope === "personal" ? t("app.personalSpace") : t("app.workspaceSpace");
   const activeSpaceIcon: LocalIconName = spaceScope === "personal" ? "user_avatar" : "user_group";
+  const showAdminSection = canAccessDriveModule(currentUser, "audit");
 
   const renderSection = (label: string, ids: readonly string[], secondary = false) => (
     <div className={`drive-sidebar-section${secondary ? " drive-sidebar-secondary-section" : ""}`}>
@@ -215,11 +222,9 @@ export function Sidebar({
 
       {renderSection(t("app.workspace"), workspaceShortcutNavIds, true)}
 
-      {renderSection(t("app.userFunctions"), userFunctionNavIds, true)}
-
-      <div className="drive-sidebar-section drive-sidebar-admin-section drive-sidebar-secondary-section">
-        <span className="drive-sidebar-section-label">{t("app.adminFunctions")}</span>
-        {adminFunctionNavIds.map((id) => {
+      <div className="drive-sidebar-section drive-sidebar-secondary-section">
+        <span className="drive-sidebar-section-label">{t("app.userFunctions")}</span>
+        {userFunctionNavIds.map((id) => {
           const item = navById.get(id);
           if (!item) return null;
           return (
@@ -234,6 +239,25 @@ export function Sidebar({
         })}
         <SidebarNavButton active={activeNav === "settings"} icon="settings" label={t("app.settings")} onClick={() => setActiveNav("settings")} />
       </div>
+
+      {showAdminSection ? (
+        <div className="drive-sidebar-section drive-sidebar-admin-section drive-sidebar-secondary-section">
+          <span className="drive-sidebar-section-label">{t("app.adminFunctions")}</span>
+          {adminFunctionNavIds.map((id) => {
+            const item = navById.get(id);
+            if (!item) return null;
+            return (
+              <SidebarNavButton
+                key={item.id}
+                active={activeNav === item.id}
+                icon={item.icon}
+                label={t(`nav.${item.id}`)}
+                onClick={() => setActiveNav(item.id)}
+              />
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="drive-sidebar-storage">
         <div className="drive-sidebar-storage-header">

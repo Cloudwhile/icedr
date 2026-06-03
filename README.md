@@ -28,6 +28,8 @@ For local development, `.env.example` enables:
 
 Those settings allow the app to boot with demo data while the database or email provider is still being wired up. They are not production settings.
 
+`pnpm.cmd infra:up` starts only PostgreSQL, Redis, and MinIO for local development, with ports bound to `127.0.0.1`.
+
 ## Docker Compose Deployment
 
 ```bash
@@ -38,13 +40,12 @@ docker compose --env-file .env.production -f deploy/docker-compose.yml up --buil
 
 Compose starts:
 
-- `postgres` on `localhost:5432`
-- `redis` on `localhost:6379`
-- `minio` on `localhost:9000`, console on `localhost:9001`
-- `api` on `localhost:13001`
-- `web` on `localhost:13000`
+- `edge` on `localhost:13000`
+- `web`, `api`, `postgres`, `redis`, and `minio` inside the Docker network
 
-The `minio-init` service creates the configured bucket automatically. The API health endpoint is available at `http://localhost:13001/api/health`.
+The `minio-init` service creates the configured bucket automatically. The API health endpoint is available through the edge proxy at `http://localhost:13000/api/health`.
+
+For production, publish only the edge proxy or your own gateway. PostgreSQL, Redis, the Nest API, MinIO S3 API, and the MinIO console should stay on the internal network. The default Nginx sample proxies `/` to the web client, `/api/` to the Nest API, and `/objects/` to MinIO for signed object URLs.
 
 ## Production Environment
 
@@ -68,7 +69,8 @@ REDIS_PORT=6379
 REDIS_DBNAME=0
 REDIS_USER=
 REDIS_PASSWORD=
-S3_ENDPOINT=https://s3.example.com
+S3_ENDPOINT=http://minio:9000
+S3_PUBLIC_ENDPOINT=https://drive.example.com/objects
 S3_REGION=us-east-1
 S3_BUCKET=icedr-drive
 S3_ACCESS_KEY_ID=...
