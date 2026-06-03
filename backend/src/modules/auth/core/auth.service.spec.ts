@@ -1,6 +1,16 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { scryptSync } from 'crypto';
 import { AuthService } from './auth.service';
+import {
+  createOAuthProviderAdapter,
+  createOAuthRequestState,
+} from './oauth-provider-adapters';
+
+jest.mock('./oauth-provider-adapters', () => ({
+  __esModule: true,
+  createOAuthProviderAdapter: jest.fn(),
+  createOAuthRequestState: jest.fn(),
+}));
 
 jest.mock('openid-client', () => ({
   __esModule: true,
@@ -15,6 +25,14 @@ type ResetRecord = {
   usedAt: string | null;
   attemptCount: number;
   createdAt: string;
+};
+
+type OAuthExchangeInput = {
+  oauth: unknown;
+  redirectUri: string;
+  url: URL;
+  state: string;
+  codeVerifier: string;
 };
 
 function createPasswordHash(password: string) {
@@ -93,6 +111,12 @@ function createService(options: { userLocale?: string | null } = {}) {
     }),
     deleteSessionsForUser: jest.fn(() => Promise.resolve()),
     createSession: jest.fn(() => Promise.resolve()),
+    findOAuthState: jest.fn(),
+    createOAuthState: jest.fn(() => Promise.resolve()),
+    markOAuthStateUsed: jest.fn(() => Promise.resolve()),
+    findUserByProviderIdentity: jest.fn(),
+    createOAuthUser: jest.fn(),
+    createOAuthExchangeCode: jest.fn(() => Promise.resolve()),
   };
   const settingsService = {
     getOAuthSettings: jest.fn(() => Promise.resolve({ enabled: false })),
@@ -119,6 +143,7 @@ function createService(options: { userLocale?: string | null } = {}) {
     },
     mailService,
     repository,
+    settingsService,
     service,
   };
 }
@@ -143,6 +168,11 @@ async function expectInvalidResetCode(promise: Promise<unknown>) {
 }
 
 describe('AuthService', () => {
+  afterEach(() => {
+    jest.mocked(createOAuthProviderAdapter).mockReset();
+    jest.mocked(createOAuthRequestState).mockReset();
+  });
+
   it('uses one safe credential error for unknown email and wrong password', async () => {
     const { service } = createService();
 
@@ -352,5 +382,284 @@ describe('AuthService', () => {
         password: 'new-password',
       }),
     );
+  });
+
+  it('stores OAuth provider snapshots without client secrets', async () => {
+    const { repository, settingsService, service } = createService();
+    repository.getSettings.mockResolvedValue({
+      localEnabled: true,
+      oauthEnabled: true,
+      passkeyEnabled: false,
+      updatedAt: new Date(0).toISOString(),
+    });
+    settingsService.getOAuthSettings.mockResolvedValue({
+      enabled: true,
+      providerProfile: 'icetowne-blog',
+      issuerUrl: 'https://blog.example',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://app.example/callback',
+    });
+    settingsService.oauthConfigured.mockReturnValue(true);
+    jest.mocked(createOAuthRequestState).mockResolvedValue({
+      state: 'oauth-state',
+      codeVerifier: 'verifier',
+      codeChallenge: 'challenge',
+    });
+    jest.mocked(createOAuthProviderAdapter).mockReturnValue({
+      providerKey: 'icetowne-blog',
+      providerProfile: 'icetowne-blog',
+      buildAuthorizationUrl: jest.fn(() =>
+        Promise.resolve(new URL('https://blog.example/oauth/authorize')),
+      ),
+      exchangeCode: jest.fn(),
+    });
+
+    await service.startOAuthLogin();
+
+    const createdState = repository.createOAuthState.mock.calls[0]?.[0] as {
+      providerSnapshot: Record<string, unknown>;
+    };
+    expect(createdState.providerSnapshot).toEqual({
+      enabled: true,
+      providerProfile: 'icetowne-blog',
+      issuerUrl: 'https://blog.example',
+      clientId: 'client-id',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://app.example/callback',
+    });
+    expect(createdState.providerSnapshot).not.toHaveProperty('clientSecret');
+  });
+
+  it('uses the OAuth provider snapshot stored with the state during callbacks', async () => {
+    const { repository, settingsService, service } = createService();
+    const providerSnapshot = {
+      enabled: true,
+      providerProfile: 'icetowne-blog' as const,
+      issuerUrl: 'https://original.example',
+      clientId: 'original-client',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://app.example/callback',
+    };
+    settingsService.getOAuthSettings.mockResolvedValue({
+      ...providerSnapshot,
+      clientSecret: 'current-secret',
+    });
+    settingsService.oauthConfigured.mockReturnValue(true);
+    const user = createUserResponse();
+    const exchangeCode = jest
+      .fn<
+        Promise<{
+          provider: string;
+          providerProfile: 'icetowne-blog';
+          subject: string;
+          email: string;
+          emailSource: 'provider';
+          displayName: string;
+        }>,
+        [OAuthExchangeInput]
+      >()
+      .mockResolvedValue({
+        provider: 'icetowne-blog:https://original.example',
+        providerProfile: 'icetowne-blog',
+        subject: 'legacy-subject',
+        email: 'legacy@example.com',
+        emailSource: 'provider',
+        displayName: 'Legacy User',
+      });
+    jest.mocked(createOAuthProviderAdapter).mockReturnValue({
+      providerKey: 'icetowne-blog',
+      providerProfile: 'icetowne-blog',
+      buildAuthorizationUrl: jest.fn(),
+      exchangeCode,
+    });
+    repository.findOAuthState.mockResolvedValue({
+      state: 'stored-state',
+      flow: 'login',
+      shareToken: null,
+      codeVerifier: 'stored-verifier',
+      redirectUri: 'https://app.example/callback',
+      providerSnapshot,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      usedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    repository.findUserByProviderIdentity.mockResolvedValue(null);
+    repository.createOAuthUser.mockResolvedValue(user);
+
+    const result = await service.handleOAuthCallback(
+      'https://app.example/callback?state=stored-state&code=oauth-code',
+    );
+
+    expect(settingsService.getOAuthSettings).toHaveBeenCalledTimes(1);
+    expect(createOAuthProviderAdapter).toHaveBeenCalledWith('icetowne-blog', {
+      production: false,
+    });
+    expect(exchangeCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oauth: {
+          ...providerSnapshot,
+          clientSecret: 'current-secret',
+        },
+        redirectUri: 'https://app.example/callback',
+        state: 'stored-state',
+        codeVerifier: 'stored-verifier',
+      }),
+    );
+    const exchangedInput = exchangeCode.mock.calls[0]?.[0];
+    if (!exchangedInput) throw new Error('OAuth exchange was not called');
+    expect(exchangedInput.url).toBeInstanceOf(URL);
+    expect(exchangedInput).toMatchObject({
+      oauth: {
+        ...providerSnapshot,
+        clientSecret: 'current-secret',
+      },
+      redirectUri: 'https://app.example/callback',
+      state: 'stored-state',
+      codeVerifier: 'stored-verifier',
+    });
+    expect(repository.findUserByProviderIdentity).toHaveBeenCalledWith(
+      'icetowne-blog:https://original.example',
+      'legacy-subject',
+    );
+    expect(repository.markOAuthStateUsed).toHaveBeenCalledWith('stored-state');
+    expect(repository.createOAuthExchangeCode).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: user.id }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        flow: 'login',
+        user,
+      }),
+    );
+  });
+
+  it('falls back to current OAuth settings for callbacks from legacy states', async () => {
+    const { repository, settingsService, service } = createService();
+    const currentOAuth = {
+      enabled: true,
+      providerProfile: 'icetowne-blog' as const,
+      issuerUrl: 'https://current.example',
+      clientId: 'current-client',
+      clientSecret: 'current-secret',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://current.example/callback',
+    };
+    const user = createUserResponse();
+    const exchangeCode = jest.fn<
+      Promise<{
+        provider: string;
+        providerProfile: 'icetowne-blog';
+        subject: string;
+        email: string;
+        emailSource: 'provider';
+        displayName: string;
+      }>,
+      [OAuthExchangeInput]
+    >(() =>
+      Promise.resolve({
+        provider: 'icetowne-blog:https://current.example',
+        providerProfile: 'icetowne-blog',
+        subject: 'legacy-subject',
+        email: 'legacy@example.com',
+        emailSource: 'provider',
+        displayName: 'Legacy User',
+      }),
+    );
+    settingsService.getOAuthSettings.mockResolvedValue(currentOAuth);
+    settingsService.oauthConfigured.mockReturnValue(true);
+    jest.mocked(createOAuthProviderAdapter).mockReturnValue({
+      providerKey: 'icetowne-blog',
+      providerProfile: 'icetowne-blog',
+      buildAuthorizationUrl: jest.fn(),
+      exchangeCode,
+    });
+    repository.findOAuthState.mockResolvedValue({
+      state: 'legacy-state',
+      flow: 'login',
+      shareToken: null,
+      codeVerifier: 'legacy-verifier',
+      redirectUri: 'https://app.example/callback',
+      providerSnapshot: null,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      usedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    repository.findUserByProviderIdentity.mockResolvedValue(null);
+    repository.createOAuthUser.mockResolvedValue(user);
+
+    const result = await service.handleOAuthCallback(
+      'https://app.example/callback?state=legacy-state&code=oauth-code',
+    );
+
+    expect(exchangeCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oauth: {
+          ...currentOAuth,
+          redirectUri: 'https://app.example/callback',
+        },
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        flow: 'login',
+        user,
+      }),
+    );
+  });
+
+  it('rejects callbacks when the stored provider snapshot no longer matches settings', async () => {
+    const { repository, settingsService, service } = createService();
+    const exchangeCode = jest.fn();
+    settingsService.getOAuthSettings.mockResolvedValue({
+      enabled: true,
+      providerProfile: 'icetowne-blog',
+      issuerUrl: 'https://changed.example',
+      clientId: 'original-client',
+      clientSecret: 'current-secret',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://app.example/callback',
+    });
+    settingsService.oauthConfigured.mockReturnValue(true);
+    jest.mocked(createOAuthProviderAdapter).mockReturnValue({
+      providerKey: 'icetowne-blog',
+      providerProfile: 'icetowne-blog',
+      buildAuthorizationUrl: jest.fn(),
+      exchangeCode,
+    });
+    repository.findOAuthState.mockResolvedValue({
+      state: 'stored-state',
+      flow: 'login',
+      shareToken: null,
+      codeVerifier: 'stored-verifier',
+      redirectUri: 'https://app.example/callback',
+      providerSnapshot: {
+        enabled: true,
+        providerProfile: 'icetowne-blog',
+        issuerUrl: 'https://original.example',
+        clientId: 'original-client',
+        audience: '',
+        scopes: 'basic',
+        redirectUri: 'https://app.example/callback',
+      },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      usedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+
+    await expect(
+      service.handleOAuthCallback(
+        'https://app.example/callback?state=stored-state&code=oauth-code',
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(createOAuthProviderAdapter).not.toHaveBeenCalled();
+    expect(exchangeCode).not.toHaveBeenCalled();
+    expect(repository.markOAuthStateUsed).not.toHaveBeenCalled();
   });
 });

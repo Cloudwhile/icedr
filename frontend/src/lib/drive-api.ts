@@ -171,16 +171,24 @@ export type TranslationSettings = {
   bundles: TranslationBundle[];
 };
 
-export type OAuthSettings = {
+export type OAuthProviderProfile = "oidc" | "icetowne-blog";
+
+export type OAuthSettingsInput = {
   enabled: boolean;
-  providerProfile: "oidc" | "icetowne-blog";
+  providerProfile: OAuthProviderProfile;
   issuerUrl: string;
   clientId: string;
   audience: string;
   scopes: string;
   redirectUri: string;
+};
+
+export type OAuthSettingsResponse = OAuthSettingsInput & {
+  providerMode: "standard" | "compatibility";
   clientSecretConfigured: boolean;
 };
+
+export type OAuthSettings = OAuthSettingsResponse;
 
 export type PasskeySettings = {
   enabled: boolean;
@@ -230,7 +238,7 @@ export type AdminSettings = {
 export type CompleteSetupInput = {
   admin: { email: string; password: string; displayName: string };
   site: Partial<PublicSiteSettings>;
-  oauth?: Partial<OAuthSettings> & { clientSecret?: string };
+  oauth?: Partial<OAuthSettingsInput> & { clientSecret?: string };
   passkey?: Partial<PasskeySettings>;
   mail?: MailSettingsInput;
   localEnabled: boolean;
@@ -614,9 +622,13 @@ export function verifySetupDatabase() {
 }
 
 export function completeSetup(input: CompleteSetupInput) {
+  const body = {
+    ...input,
+    ...(input.oauth ? { oauth: toOAuthSettingsInput(input.oauth) } : {}),
+  };
   return requestDriveApi<CompleteSetupResponse>("/setup/complete", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify(body),
   });
 }
 
@@ -666,14 +678,29 @@ export function updateAuthSettings(settings: Pick<AuthSettings, "localEnabled" |
 }
 
 export function fetchOAuthSettings() {
-  return requestDriveApi<OAuthSettings>("/identity/oauth/settings");
+  return requestDriveApi<OAuthSettingsResponse>("/identity/oauth/settings");
 }
 
-export function updateOAuthSettings(settings: Partial<OAuthSettings> & { clientSecret?: string }) {
-  return requestDriveApi<OAuthSettings>("/identity/oauth/settings", {
+export function updateOAuthSettings(settings: Partial<OAuthSettingsInput> & { clientSecret?: string }) {
+  return requestDriveApi<OAuthSettingsResponse>("/identity/oauth/settings", {
     method: "PATCH",
-    body: JSON.stringify(settings),
+    body: JSON.stringify(toOAuthSettingsInput(settings)),
   });
+}
+
+export function toOAuthSettingsInput(
+  settings: Partial<OAuthSettingsInput> & { clientSecret?: string },
+) {
+  return {
+    ...(settings.enabled !== undefined ? { enabled: settings.enabled } : {}),
+    ...(settings.providerProfile !== undefined ? { providerProfile: settings.providerProfile } : {}),
+    ...(settings.issuerUrl !== undefined ? { issuerUrl: settings.issuerUrl } : {}),
+    ...(settings.clientId !== undefined ? { clientId: settings.clientId } : {}),
+    ...(settings.audience !== undefined ? { audience: settings.audience } : {}),
+    ...(settings.scopes !== undefined ? { scopes: settings.scopes } : {}),
+    ...(settings.redirectUri !== undefined ? { redirectUri: settings.redirectUri } : {}),
+    ...(settings.clientSecret !== undefined ? { clientSecret: settings.clientSecret } : {}),
+  };
 }
 
 export function fetchPasskeySettings() {

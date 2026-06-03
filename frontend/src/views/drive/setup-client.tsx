@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
-import { completeSetup, fetchSetupStatus, getApiBaseUrl, setStoredAuthToken, testSetupMailSettings, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { completeSetup, fetchSetupStatus, getApiBaseUrl, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
@@ -60,7 +60,7 @@ const icetowneBlogOAuthPreset = {
   clientId: "client_uNl7QJ689LDXlBWXhCS4",
   audience: "",
   scopes: "basic vip_info"
-} satisfies Pick<OAuthSettings, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
+} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
 function getCurrentSystemBaseUrl() {
   if (typeof window === "undefined") return "";
   return window.location.origin;
@@ -135,6 +135,7 @@ function SetupPage({
   const [oauth, setOAuth] = useState<OAuthSettings>({
     enabled: false,
     providerProfile: "oidc",
+    providerMode: "standard",
     issuerUrl: "",
     clientId: "",
     audience: "icedr-api",
@@ -288,6 +289,7 @@ function SetupPage({
     setOAuth(value => ({
       ...value,
       ...icetowneBlogOAuthPreset,
+      providerMode: "compatibility",
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     }));
     setOAuthEnabled(true);
@@ -300,14 +302,14 @@ function SetupPage({
     const input: CompleteSetupInput = {
       admin,
       site,
-      oauth: {
+      oauth: toOAuthSettingsInput({
         ...oauth,
         enabled: oauthEnabled,
         redirectUri: effectiveOAuthRedirectUri,
         ...(oauthSecret ? {
           clientSecret: oauthSecret
         } : {})
-      },
+      }),
       passkey: {
         ...passkey,
         enabled: passkeyEnabled
@@ -511,10 +513,16 @@ function SetupPage({
             } as React.CSSProperties}>
                   <SelectButton active={oauth.providerProfile === "oidc"} label={t("setup.providerOidc")} onClick={() => setOAuth(value => ({
                 ...value,
-                providerProfile: "oidc"
+                providerProfile: "oidc",
+                providerMode: "standard"
               }))} palette={palette} />
                   <SelectButton active={oauth.providerProfile === "icetowne-blog"} label={t("setup.providerIcetowneBlog")} onClick={applyIcetowneBlogOAuthPreset} palette={palette} />
                 </div>
+                <StatusPill palette={palette} tone={oauth.providerMode === "compatibility" ? "risk" : "secure"} style={{
+              alignSelf: "flex-start"
+            }}>
+                  {oauth.providerMode === "compatibility" ? t("setup.oauthCompatibilityMode") : t("setup.oauthStandardMode")}
+                </StatusPill>
                 <div className="icedr-r-grid-template-columns" style={{
               display: "grid",
               "--r-grid-template-columns-base": "1fr",

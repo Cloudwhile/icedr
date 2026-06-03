@@ -339,6 +339,7 @@ export class SettingsService {
     return {
       enabled: settings.enabled,
       providerProfile: settings.providerProfile,
+      providerMode: this.oauthProviderMode(settings.providerProfile),
       issuerUrl: settings.issuerUrl,
       clientId: settings.clientId,
       audience: settings.audience,
@@ -346,6 +347,12 @@ export class SettingsService {
       redirectUri: settings.redirectUri,
       clientSecretConfigured: Boolean(settings.clientSecret),
     };
+  }
+
+  private oauthProviderMode(providerProfile: OAuthSettings['providerProfile']) {
+    return providerProfile === 'icetowne-blog'
+      ? ('compatibility' as const)
+      : ('standard' as const);
   }
 
   oauthConfigured(settings: OAuthSettings) {
