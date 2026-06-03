@@ -118,15 +118,43 @@ function getVisitorLabel(level: VisitorLevel) {
   return "Anonymous visitor";
 }
 function getSharePolicyExperience(share: RegisteredShare, level: VisitorLevel, accessSession: ShareAccessSession | null): AccessPolicyExperience {
-  const waitSeconds = accessSession ? accessSession.waitSeconds : level === "ica" ? 0 : formatPolicyWaitSeconds(share.policy);
+  const policyRule = share.downloadPolicy?.rules[level];
+  const policyDecision = accessSession?.policyDecision;
+  const waitSeconds = policyDecision?.waitSeconds ?? policyRule?.waitSeconds ?? (accessSession ? accessSession.waitSeconds : level === "ica" ? 0 : formatPolicyWaitSeconds(share.policy));
+  const speedLimit = policyDecision?.speedLimit ?? policyRule?.speedLimit ?? (accessSession ? accessSession.speedLimit : share.policy.speedValue > 0 ? {
+    value: share.policy.speedValue,
+    unit: share.policy.speedUnit
+  } : null);
   return {
     label: getVisitorLabel(level),
     waitSeconds,
-    speedLabel: accessSession ? formatSpeedLimit(accessSession.speedLimit) : formatSpeedLimit(share.policy.speedValue > 0 ? {
-      value: share.policy.speedValue,
-      unit: share.policy.speedUnit
-    } : null),
-    sessionLabel: accessSession?.downloadLimit || share.policy.downloadLimit || "No download limit"
+    speedLabel: formatSpeedLimit(speedLimit),
+    sessionLabel: formatDownloadLimitLabel(policyDecision?.maxDownloads ?? share.downloadPolicy?.maxDownloads ?? 0, policyDecision?.downloadLimit ?? share.downloadPolicy?.downloadLimit ?? share.policy.downloadLimit)
+  };
+}
+function getShareAccessRequired(share: RegisteredShare) {
+  return share.downloadPolicy?.requiresAccessSession ?? Boolean(share.policy.allowedDomain || share.policy.downloadLimit || formatPolicyWaitSeconds(share.policy) > 0);
+}
+function formatDownloadLimitLabel(maxDownloads: number, downloadLimit: string) {
+  if (maxDownloads > 0) return `${maxDownloads} downloads`;
+  return downloadLimit || "No download limit";
+}
+function createAccountPolicyDecision(share: RegisteredShare) {
+  const rule = share.downloadPolicy?.rules.ica ?? {
+    identityType: "ica" as const,
+    waitSeconds: 0,
+    speedLimit: null,
+    bypassWait: true,
+    bypassSpeedLimit: true
+  };
+  const maxDownloads = share.downloadPolicy?.maxDownloads ?? 0;
+  return {
+    ...rule,
+    downloadLimit: share.downloadPolicy?.downloadLimit ?? share.policy.downloadLimit,
+    maxDownloads,
+    remainingDownloads: maxDownloads > 0 ? maxDownloads : null,
+    requiresAccessSession: share.downloadPolicy?.requiresAccessSession ?? getShareAccessRequired(share),
+    requiresEmailVerification: share.downloadPolicy?.requiresEmailVerification ?? Boolean(share.policy.allowedDomain)
   };
 }
 type ShareCollection = {
@@ -2672,7 +2700,7 @@ function ExternalSharePreview({
   const currentFolder = folderId ? findDriveItem(folderId, sourceItems) : undefined;
   const experience = getSharePolicyExperience(registeredShare, visitorLevel, accessSession);
   const verified = stage === "verified" || stage === "waiting" || stage === "download";
-  const accessSessionRequired = Boolean(registeredShare.policy.allowedDomain || registeredShare.policy.downloadLimit || formatPolicyWaitSeconds(registeredShare.policy) > 0);
+  const accessSessionRequired = getShareAccessRequired(registeredShare);
   const visibleListRef = useMotionStagger<HTMLDivElement>([folderId, visibleItems.map(item => item.id).join("|")]);
   useEffect(() => {
     if (stage !== "waiting") return;
@@ -2708,8 +2736,9 @@ function ExternalSharePreview({
         identityType: "ica",
         availableAt: new Date().toISOString(),
         waitSeconds: 0,
-        downloadLimit: registeredShare.policy.downloadLimit,
+        downloadLimit: registeredShare.downloadPolicy?.downloadLimit ?? registeredShare.policy.downloadLimit,
         speedLimit: null,
+        policyDecision: createAccountPolicyDecision(registeredShare),
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
       };
       setAccessSessionId(sessionId);
@@ -2721,7 +2750,7 @@ function ExternalSharePreview({
     return () => {
       cancelled = true;
     };
-  }, [registeredShare.policy.downloadLimit, registeredShare.token, searchParams]);
+  }, [registeredShare, registeredShare.token, searchParams]);
   const sendCode = () => {
     if (!accessItem || !emailPattern.test(email)) return;
     setAuthBusy(true);

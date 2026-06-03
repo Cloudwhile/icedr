@@ -349,6 +349,7 @@ model ShareAccessSession {
   waitSeconds   Int      @map("wait_seconds")
   downloadLimit String   @default("") @map("download_limit")
   speedLimit    Json?    @map("speed_limit")
+  policyDecision Json?   @map("policy_decision")
   expiresAt     DateTime @map("expires_at") @db.Timestamptz
   requestIpHash String?  @map("request_ip_hash")
   userAgentHash String?  @map("user_agent_hash")
@@ -367,6 +368,8 @@ model ShareDownloadIntent {
   nodeId        String    @map("node_id")
   filename      String
   method        String
+  identityType  String    @default("anonymous") @map("identity_type")
+  email         String?
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz
   consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
   requestIpHash String?   @map("request_ip_hash")

@@ -51,11 +51,15 @@ create table if not exists share_access_sessions (
   wait_seconds integer not null,
   download_limit text not null default '',
   speed_limit jsonb,
+  policy_decision jsonb,
   expires_at timestamptz not null,
   request_ip_hash text,
   user_agent_hash text,
   created_at timestamptz not null default now()
 );
+
+alter table share_access_sessions
+add column if not exists policy_decision jsonb;
 
 create index if not exists share_access_sessions_share_token_idx
 on share_access_sessions (share_token);
@@ -91,12 +95,18 @@ create table if not exists share_download_intents (
   node_id text not null,
   filename text not null,
   method text not null,
+  identity_type text not null default 'anonymous',
+  email text,
   expires_at timestamptz not null,
   consumed_at timestamptz,
   request_ip_hash text,
   user_agent_hash text,
   created_at timestamptz not null default now()
 );
+
+alter table share_download_intents
+add column if not exists identity_type text not null default 'anonymous',
+add column if not exists email text;
 
 create index if not exists share_download_intents_share_token_node_id_idx
 on share_download_intents (share_token, node_id);

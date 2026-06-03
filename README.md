@@ -31,7 +31,9 @@ Those settings allow the app to boot with demo data while the database or email 
 ## Docker Compose Deployment
 
 ```bash
-docker compose -f deploy/docker-compose.yml up --build
+copy .env.production.example .env.production
+# Edit .env.production before starting the stack.
+docker compose --env-file .env.production -f deploy/docker-compose.yml up --build
 ```
 
 Compose starts:
@@ -42,11 +44,11 @@ Compose starts:
 - `api` on `localhost:13001`
 - `web` on `localhost:13000`
 
-The `minio-init` service creates the `icedr-drive` bucket automatically. The API health endpoint is available at `http://localhost:13001/api/health`.
+The `minio-init` service creates the configured bucket automatically. The API health endpoint is available at `http://localhost:13001/api/health`.
 
 ## Production Environment
 
-When `NODE_ENV=production` or `APP_ENV=production`, ICEDR refuses to boot without the production dependencies it needs. Provide at least:
+When `NODE_ENV=production` or `APP_ENV=production`, ICEDR refuses to boot without the production dependencies it needs. Start from `.env.production.example`, replace every placeholder, and provide at least:
 
 ```bash
 NODE_ENV=production
@@ -73,10 +75,19 @@ S3_ACCESS_KEY_ID=...
 S3_SECRET_ACCESS_KEY=...
 S3_FORCE_PATH_STYLE=true
 PUBLIC_SHARE_BASE_URL=https://drive.example.com/share/s
-SHARE_EMAIL_PROVIDER=your-provider
+SHARE_EMAIL_PROVIDER=smtp
+SMTP_ENABLED=true
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=true
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=noreply@example.com
 ```
 
-Do not set `ALLOW_DEV_MEMORY_STORE=true` or `SEED_DEMO_DATA=true` in production. Production file nodes and share links must come from PostgreSQL, and uploaded objects must exist in S3 or MinIO.
+Do not set `ALLOW_DEV_MEMORY_STORE=true`, `SEED_DEMO_DATA=true`, or `SHARE_EMAIL_PROVIDER=dev-log` in production. Production file nodes and share links must come from PostgreSQL, uploaded objects must exist in S3 or MinIO, and mail delivery must use SMTP.
+
+The backend validates production environment variables during startup. Missing required values, disabled SMTP delivery, malformed URLs or ports, `dev-log`, and obvious placeholder values such as `...`, `replace-me`, `your-provider`, or `example.com` cause startup to fail with the specific variable names in the error message.
 
 ## Verification Flow
 
@@ -86,7 +97,9 @@ Do not set `ALLOW_DEV_MEMORY_STORE=true` or `SEED_DEMO_DATA=true` in production.
 4. Select it and create an external share.
 5. Open the generated `/share/s/:token` link.
 6. Authenticate with email verification. In `dev-log` mode, the code is recorded in audit events for tests and local debugging.
-7. Download the file and check the Audit view for share and download events.
+7. Download the file and check the Audit view for share, download, and matched policy events.
+
+External shares resolve one download policy for anonymous visitors, email-verified visitors, and authenticated account visitors. That policy controls wait time, speed hints, domain or allowlist requirements, and per-link download limits; each access session and download intent carries the policy decision that was applied.
 
 Short-lived email codes, access sessions, preview intents, and download intents are persisted with TTLs in PostgreSQL. API restarts and multiple API instances can continue validating unexpired share access state from the shared database.
 

@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
+import type { ShareDownloadPolicyDecision } from './share-download-policy';
 
 export class SendShareEmailCodeDto {
   @IsEmail()
@@ -30,5 +31,6 @@ export type ShareAccessSession = {
   waitSeconds: number;
   downloadLimit: string;
   speedLimit: { value: number; unit: 'KB/s' | 'MB/s' } | null;
+  policyDecision: ShareDownloadPolicyDecision;
   expiresAt: string;
 };
