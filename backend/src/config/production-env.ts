@@ -42,6 +42,14 @@ const urlEnv = [
   'PUBLIC_SHARE_BASE_URL',
 ] as const;
 
+const publicUrlEnv = [
+  'API_CORS_ORIGIN',
+  'API_PUBLIC_BASE_URL',
+  'VITE_API_BASE_URL',
+  'NEXT_PUBLIC_API_BASE_URL',
+  'PUBLIC_SHARE_BASE_URL',
+] as const;
+
 const portEnv = [
   'API_PORT',
   'PORT',
@@ -132,6 +140,13 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     }
   }
 
+  for (const name of publicUrlEnv) {
+    const value = env[name];
+    if (hasValue(value) && isLocalhostUrl(value)) {
+      errors.push(`${name} must not point to localhost in production`);
+    }
+  }
+
   for (const name of portEnv) {
     const value = env[name];
     if (hasValue(value) && !isPort(value)) {
@@ -189,19 +204,25 @@ function isSensitiveName(name: string) {
 }
 
 function hasExampleHostname(value: string) {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return normalize(value).endsWith('example.com');
+  const normalized = normalize(value);
+  let domain = normalized;
+  if (normalized.includes('@')) {
+    domain = normalized.split('@').pop() ?? '';
+  } else {
+    try {
+      const url = new URL(value);
+      domain = url.hostname.toLowerCase();
+    } catch {
+      domain = normalized;
+    }
   }
-  return (
-    url.hostname === 'example.com' ||
-    url.hostname.endsWith('.example.com') ||
-    url.hostname === 'example.net' ||
-    url.hostname.endsWith('.example.net') ||
-    url.hostname === 'example.org' ||
-    url.hostname.endsWith('.example.org')
+  return isExampleDomain(domain);
+}
+
+function isExampleDomain(domain: string) {
+  return ['example.com', 'example.net', 'example.org'].some(
+    (exampleDomain) =>
+      domain === exampleDomain || domain.endsWith(`.${exampleDomain}`),
   );
 }
 
@@ -212,6 +233,25 @@ function isHttpUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function isLocalhostUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return isLocalhostHostname(url.hostname);
+  } catch {
+    return isLocalhostHostname(normalize(value));
+  }
+}
+
+function isLocalhostHostname(hostname: string) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return (
+    normalized === 'localhost' ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized) ||
+    normalized === '::1' ||
+    normalized === '0:0:0:0:0:0:0:1'
+  );
 }
 
 function isPort(value: string) {

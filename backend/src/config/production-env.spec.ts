@@ -80,6 +80,16 @@ describe('production environment validation', () => {
     );
   });
 
+  it('rejects example domains in email and non-url strings', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SMTP_FROM_EMAIL: 'noreply@example.org',
+        SHARE_EMAIL_PROVIDER: 'smtp.example.net',
+      }),
+    ).toThrow(/SMTP_FROM_EMAIL.*SHARE_EMAIL_PROVIDER/s);
+  });
+
   it('rejects malformed URLs, ports, and email addresses', () => {
     expect(() =>
       validateProductionEnv({
@@ -89,6 +99,19 @@ describe('production environment validation', () => {
         SMTP_FROM_EMAIL: 'noreply',
       }),
     ).toThrow(/API_CORS_ORIGIN.*REDIS_PORT.*SMTP_FROM_EMAIL/s);
+  });
+
+  it('rejects localhost or loopback IPs in public-facing URLs in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        API_PUBLIC_BASE_URL: 'http://localhost:13001/api',
+        NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:13001/api',
+        PUBLIC_SHARE_BASE_URL: 'http://[::1]:13000/share/s',
+      }),
+    ).toThrow(
+      /API_PUBLIC_BASE_URL.*NEXT_PUBLIC_API_BASE_URL.*PUBLIC_SHARE_BASE_URL/s,
+    );
   });
 
   it('accepts complete production settings through the app configuration', () => {
