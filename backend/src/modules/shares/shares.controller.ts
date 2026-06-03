@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import { AdminGuardService } from '../../common/security/admin-guard.service';
 import { AuthService } from '../auth/core/auth.service';
 import {
   SendShareEmailCodeDto,
@@ -26,15 +27,24 @@ export class SharesController {
   constructor(
     private readonly sharesService: SharesService,
     private readonly authService: AuthService,
+    private readonly adminGuard: AdminGuardService,
   ) {}
 
   @Post()
-  createShare(@Body() dto: CreateShareDto) {
+  async createShare(
+    @Body() dto: CreateShareDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'share', 'write');
     return this.sharesService.createShare(dto);
   }
 
   @Get()
-  listShares(@Query('workspaceId') workspaceId?: string) {
+  async listShares(
+    @Query('workspaceId') workspaceId?: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'share', 'read');
     return this.sharesService.listShares(workspaceId);
   }
 
@@ -44,7 +54,11 @@ export class SharesController {
   }
 
   @Delete(':token')
-  revokeShare(@Param('token') token: string) {
+  async revokeShare(
+    @Param('token') token: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
     return this.sharesService.revokeShare(token);
   }
 

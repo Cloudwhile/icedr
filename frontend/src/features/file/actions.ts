@@ -1,5 +1,13 @@
 import type { DriveItem } from "@/features/file/model";
-import { buildApiUrl, createFileDownloadIntent, getApiBaseUrl, updateTransfer, type FileNodeResponse, type ShareDownloadPolicyDecision } from "@/lib/drive-api";
+import {
+  buildApiUrl,
+  createFileDownloadIntent,
+  getApiBaseUrl,
+  getAuthHeaders,
+  updateTransfer,
+  type FileNodeResponse,
+  type ShareDownloadPolicyDecision,
+} from "@/lib/drive-api";
 
 type DownloadIntentResponse = {
   downloadId: string;
@@ -272,7 +280,7 @@ export function createUploadDriveFileTask({
 
     const intentResponse = await fetch(`${getApiBaseUrl()}/file-nodes/upload-intents`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         workspaceId,
         fileName: file.name,
@@ -346,6 +354,7 @@ export function createUploadDriveFileTask({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getAuthHeaders(),
           ...(workspaceActor ? { "X-Workspace-Actor": workspaceActor } : {}),
         },
         signal: activeCompletionAbort.signal,
@@ -599,6 +608,7 @@ function uploadChunkWithProgress({
     request.open("PUT", url);
     request.timeout = 120000;
     request.setRequestHeader("Content-Type", "application/octet-stream");
+    Object.entries(getAuthHeaders()).forEach(([key, value]) => request.setRequestHeader(key, value));
     request.upload.onprogress = event => {
       if (!event.lengthComputable) return;
       armStallTimer();
@@ -717,12 +727,14 @@ function getUploadedPartBytes(partIndexes: Set<number>, file: File, chunkSizeByt
 function cancelUploadSession(sessionId: string) {
   return fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/cancel`, {
     method: "POST",
+    headers: getAuthHeaders(),
   }).catch(() => undefined);
 }
 
 async function createUploadPartIntent(sessionId: string, partIndex: number) {
   const response = await fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/upload-intents`, {
     method: "POST",
+    headers: getAuthHeaders(),
   });
   if (!response.ok) throw new Error("Upload part intent failed");
   return (await response.json()) as UploadPartIntentResponse;
@@ -735,7 +747,7 @@ async function completeUploadPart(
 ) {
   const response = await fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(input),
   });
   if (!response.ok) throw new Error("Upload part completion failed");
@@ -754,7 +766,7 @@ function isUploadIntentExpired(intent: UploadIntentResponse) {
 export async function createFilePreviewIntent(itemId: DriveItem["id"]) {
   const response = await fetch(`${getApiBaseUrl()}/file-nodes/${encodeURIComponent(itemId)}/preview-intents`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
   });
   if (!response.ok) throw new Error("Preview intent failed");
   return (await response.json()) as PreviewIntentResponse;

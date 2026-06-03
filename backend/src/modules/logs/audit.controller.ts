@@ -1,20 +1,26 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AdminGuardService } from '../../common/security/admin-guard.service';
 import { AuditService } from './audit.service';
 
 @ApiTags('audit')
 @Controller('audit')
 export class AuditController {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    private readonly adminGuard: AdminGuardService,
+  ) {}
 
   @Get('events')
-  listEvents(
+  async listEvents(
+    @Headers('authorization') authorization?: string,
     @Query('workspaceId') workspaceId?: string,
     @Query('shareToken') shareToken?: string,
     @Query('nodeId') nodeId?: string,
     @Query('action') action?: string,
     @Query('limit') limit?: string,
   ) {
+    await this.adminGuard.requirePermission(authorization, 'audit', 'read');
     return this.auditService.listEvents({
       workspaceId,
       shareToken,

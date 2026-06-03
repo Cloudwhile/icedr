@@ -388,7 +388,7 @@ export function clearStoredAuthToken() {
   window.localStorage.removeItem(authTokenStorageKey);
 }
 
-export function getAuthHeaders() {
+export function getAuthHeaders(): Record<string, string> {
   const token = getStoredAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

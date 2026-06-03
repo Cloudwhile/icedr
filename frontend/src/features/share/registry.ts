@@ -1,5 +1,10 @@
 import { findDriveItem, getChildItems, getItemKind, type DriveItem } from "@/features/file/model";
-import { DriveApiError, getApiBaseUrl, type ShareDownloadPolicy } from "@/lib/drive-api";
+import {
+  DriveApiError,
+  getApiBaseUrl,
+  getAuthHeaders,
+  type ShareDownloadPolicy,
+} from "@/lib/drive-api";
 
 const apiUnavailableMessage = "ICEDR share API is unavailable";
 
@@ -114,12 +119,13 @@ function mapShareApiResponse(response: ShareApiResponse): RegisteredShare {
 
 async function requestShareApi<T>(path: string, init?: RequestInit): Promise<T> {
   try {
+    const headers = new Headers(init?.headers);
+    headers.set("Content-Type", "application/json");
+    Object.entries(getAuthHeaders()).forEach(([key, value]) => headers.set(key, value));
+
     const response = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...init?.headers,
-      },
+      headers,
     });
 
     if (response.status === 404 || response.status === 410) return null as T;
