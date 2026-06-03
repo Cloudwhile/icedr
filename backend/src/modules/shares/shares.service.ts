@@ -247,21 +247,37 @@ export class SharesService {
       throw new NotFoundException('Download intent not found');
     }
 
-    const { node } = await this.requireShareNode(token, nodeId, 'download');
-    const share = await this.requireActiveShare(token);
-    const policyDecision = await this.resolveDownloadDecision(
-      share,
-      intent.identityType,
-    );
-    await this.sharesRepository.recordAudit('share.download_started', token, {
+    const { share, node } = await this.requireShareNode(
+      token,
       nodeId,
-      identityType: intent.identityType,
-      email: intent.email,
-      policyDecision: toSharePolicyAuditMetadata(
-        this.toStartedPolicyDecision(policyDecision),
-      ),
-      ...visitor,
-    });
+      'download',
+    );
+    const downloadRecord = await this.sharesRepository.recordDownloadStarted(
+      token,
+      (downloadCount) => {
+        const policyDecision = this.getDownloadDecisionForCount(
+          share,
+          intent.identityType,
+          downloadCount,
+        );
+        if (policyDecision.remainingDownloads === 0) return null;
+        return {
+          nodeId,
+          identityType: intent.identityType,
+          email: intent.email,
+          policyDecision: toSharePolicyAuditMetadata(
+            this.toStartedPolicyDecision(policyDecision),
+          ),
+          ...visitor,
+        };
+      },
+    );
+    if (downloadRecord.missingShare) {
+      throw new NotFoundException('Share link not found');
+    }
+    if (!downloadRecord.recorded) {
+      throw new GoneException('Share download limit has been reached');
+    }
 
     if (intent.method === 'presigned-url' && node.objectKey) {
       const signed = await this.storageService.createPresignedDownload(
@@ -518,15 +534,31 @@ export class SharesService {
       share.token,
       'share.download_started',
     );
-    const decision = resolveShareDownloadDecision({
+    const decision = this.getDownloadDecisionForCount(
+      share,
+      identityType,
+      downloadCount,
+    );
+    this.assertDownloadLimitAvailable(decision);
+    return decision;
+  }
+
+  private getDownloadDecisionForCount(
+    share: ShareResponse,
+    identityType: ShareAccessIdentityType,
+    downloadCount: number,
+  ) {
+    return resolveShareDownloadDecision({
       downloadCount,
       identityType,
       share,
     });
+  }
+
+  private assertDownloadLimitAvailable(decision: ShareDownloadPolicyDecision) {
     if (decision.remainingDownloads === 0) {
       throw new GoneException('Share download limit has been reached');
     }
-    return decision;
   }
 
   private toStartedPolicyDecision(decision: ShareDownloadPolicyDecision) {

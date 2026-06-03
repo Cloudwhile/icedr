@@ -92,6 +92,44 @@ class SharesRepositorySpecDouble {
     this.auditEvents.push({ action, target, metadata });
   }
 
+  recordDownloadStarted(
+    token: string,
+    metadataForDownloadCount: (
+      downloadCount: number,
+    ) => Record<string, unknown> | null,
+  ) {
+    const share = this.shares.get(token);
+    if (!share) {
+      return Promise.resolve({
+        downloadCount: 0,
+        missingShare: true,
+        recorded: false,
+      });
+    }
+    const downloadCount = this.auditEvents.filter(
+      (event) =>
+        event.target === token && event.action === 'share.download_started',
+    ).length;
+    const metadata = metadataForDownloadCount(downloadCount);
+    if (!metadata) {
+      return Promise.resolve({
+        downloadCount,
+        missingShare: false,
+        recorded: false,
+      });
+    }
+    this.auditEvents.push({
+      action: 'share.download_started',
+      target: token,
+      metadata,
+    });
+    return Promise.resolve({
+      downloadCount,
+      missingShare: false,
+      recorded: true,
+    });
+  }
+
   countAuditEvents(action: string) {
     return Promise.resolve(
       this.auditEvents.filter((event) => event.action === action).length,
@@ -430,6 +468,11 @@ describe('SharesService', () => {
       'roadmap',
       session.sessionId,
     );
+    const competingIntent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
 
     expect(intent.policyDecision).toMatchObject({
       identityType: 'email',
@@ -452,7 +495,11 @@ describe('SharesService', () => {
       remainingDownloads: 0,
     });
     await expect(
-      service.createDownloadIntent(created.token, 'roadmap', session.sessionId),
+      service.downloadSharedNode(
+        created.token,
+        'roadmap',
+        competingIntent.downloadId,
+      ),
     ).rejects.toThrow('Share download limit has been reached');
   });
 

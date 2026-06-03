@@ -47,7 +47,7 @@ export function resolveShareDownloadPolicy(
   const requiresEmailVerification =
     Boolean(allowedDomain) || emailAllowlist.length > 0;
   const requiresAccessSession =
-    requiresEmailVerification || waitSeconds > 0 || Boolean(downloadLimit);
+    requiresEmailVerification || waitSeconds > 0 || maxDownloads > 0;
 
   return {
     requiresAccessSession,

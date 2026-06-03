@@ -111,6 +111,35 @@ describe('share download policy', () => {
     });
   });
 
+  it('does not require access sessions for invalid download limits', () => {
+    expect(
+      resolveShareDownloadPolicy({
+        ...policy,
+        allowedDomain: '',
+        emailAllowlist: [],
+        downloadLimit: '0',
+        maxDownloads: 0,
+        waitValue: 0,
+      }),
+    ).toMatchObject({
+      maxDownloads: 0,
+      requiresAccessSession: false,
+    });
+    expect(
+      resolveShareDownloadPolicy({
+        ...policy,
+        allowedDomain: '',
+        emailAllowlist: [],
+        downloadLimit: 'abc',
+        maxDownloads: 0,
+        waitValue: 0,
+      }),
+    ).toMatchObject({
+      maxDownloads: 0,
+      requiresAccessSession: false,
+    });
+  });
+
   it('normalizes policy domains defensively', () => {
     expect(normalizePolicyDomain(null)).toBe('');
     expect(normalizePolicyDomain(undefined)).toBe('');

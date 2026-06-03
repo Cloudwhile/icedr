@@ -8,6 +8,9 @@ import { CreateShareDto, ShareResponse } from './shares.dto';
 import { resolveShareDownloadPolicy } from './share-download-policy';
 
 type StoredShare = ShareResponse;
+type DownloadStartedMetadataFactory = (
+  downloadCount: number,
+) => Record<string, unknown> | null;
 
 export type ShareStatus = 'active' | 'revoked' | 'expired';
 export type ShareRiskLevel = 'normal' | 'attention' | 'high';
@@ -142,6 +145,74 @@ export class SharesRepository {
         metadata: event.metadata as Prisma.InputJsonValue,
         createdAt: new Date(event.createdAt),
       },
+    });
+  }
+
+  async recordDownloadStarted(
+    shareToken: string,
+    metadataForDownloadCount: DownloadStartedMetadataFactory,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const lockedRows = await tx.$queryRaw<Array<{ workspaceId: string }>>`
+        select workspace_id as "workspaceId"
+        from share_links
+        where token = ${shareToken}
+        for update
+      `;
+      const lockedShare = lockedRows[0];
+      if (!lockedShare) {
+        return {
+          downloadCount: 0,
+          missingShare: true,
+          recorded: false,
+        };
+      }
+
+      const downloadCount = await tx.auditEvent.count({
+        where: {
+          action: 'share.download_started',
+          shareToken,
+        },
+      });
+      const metadata = metadataForDownloadCount(downloadCount);
+      if (!metadata) {
+        return {
+          downloadCount,
+          missingShare: false,
+          recorded: false,
+        };
+      }
+
+      const event = createAuditEvent({
+        action: 'share.download_started',
+        actor: 'visitor',
+        target: shareToken,
+        workspaceId: lockedShare.workspaceId,
+        shareToken,
+        nodeId:
+          typeof metadata.nodeId === 'string' ? metadata.nodeId : undefined,
+        metadata: { source: 'shares-service', ...metadata },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          id: event.id,
+          action: event.action,
+          actor: event.actor,
+          target: event.target,
+          workspaceId: event.workspaceId,
+          shareToken: event.shareToken,
+          nodeId: event.nodeId,
+          metadata: event.metadata as Prisma.InputJsonValue,
+          createdAt: new Date(event.createdAt),
+        },
+      });
+
+      return {
+        downloadCount,
+        missingShare: false,
+        recorded: true,
+      };
     });
   }
 
