@@ -209,7 +209,7 @@ export class StorageService {
       Key: key,
       ContentType: contentType,
     });
-    const url = await this.signer(this.createClient(settings), command, {
+    const signedUrl = await this.signer(this.createClient(settings), command, {
       expiresIn: expiresInSeconds,
     });
 
@@ -217,7 +217,7 @@ export class StorageService {
       key,
       bucket,
       method: 'PUT' as const,
-      url,
+      url: this.withPublicObjectEndpoint(signedUrl),
       headers: {
         'Content-Type': contentType,
       },
@@ -262,7 +262,7 @@ export class StorageService {
       PartNumber: input.partIndex + 1,
       UploadId: input.uploadId,
     });
-    const url = await this.signer(this.createClient(settings), command, {
+    const signedUrl = await this.signer(this.createClient(settings), command, {
       expiresIn: expiresInSeconds,
     });
 
@@ -273,7 +273,7 @@ export class StorageService {
       method: 'PUT' as const,
       partIndex: input.partIndex,
       uploadId: input.uploadId,
-      url,
+      url: this.withPublicObjectEndpoint(signedUrl),
     };
   }
 
@@ -374,7 +374,7 @@ export class StorageService {
       Key: key,
       ResponseContentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
     });
-    const url = await this.signer(this.createClient(settings), command, {
+    const signedUrl = await this.signer(this.createClient(settings), command, {
       expiresIn: expiresInSeconds,
     });
 
@@ -382,7 +382,7 @@ export class StorageService {
       key,
       bucket,
       method: 'GET' as const,
-      url,
+      url: this.withPublicObjectEndpoint(signedUrl),
       expiresInSeconds,
       expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
     };
@@ -834,6 +834,37 @@ export class StorageService {
 
   private getLocalRoot() {
     return this.config.get<string>('storage.localRoot') ?? 'data/local-files';
+  }
+
+  private getPublicObjectEndpoint() {
+    return (
+      this.config
+        .get<string>('storage.publicEndpoint')
+        ?.trim()
+        .replace(/\/$/, '') ?? ''
+    );
+  }
+
+  private withPublicObjectEndpoint(signedUrl: string) {
+    const publicEndpoint = this.getPublicObjectEndpoint();
+    if (!publicEndpoint) return signedUrl;
+
+    try {
+      const signed = new URL(signedUrl);
+      const publicUrl = new URL(publicEndpoint);
+      publicUrl.pathname = `${publicUrl.pathname.replace(/\/$/, '')}${signed.pathname}`;
+      const mergedParams = new URLSearchParams(signed.search);
+      new URLSearchParams(publicUrl.search).forEach((value, key) => {
+        if (!mergedParams.has(key)) {
+          mergedParams.set(key, value);
+        }
+      });
+      publicUrl.search = mergedParams.toString();
+      publicUrl.hash = signed.hash || publicUrl.hash;
+      return publicUrl.toString();
+    } catch {
+      return signedUrl;
+    }
   }
 
   private getUploadStagingRoot() {
