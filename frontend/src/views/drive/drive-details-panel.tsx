@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   formatDriveItemModified,
   formatFileSize,
@@ -75,26 +75,30 @@ export function DetailsPanel({
   const [versionError, setVersionError] = useState<string | null>(null);
   const versions = versionState.itemId === versionItem?.id ? versionState.versions : [];
 
+  const loadVersions = useCallback((itemId: string, isCancelled: () => boolean = () => false) => {
+    void fetchFileVersions(itemId).then((items) => {
+      if (!isCancelled()) {
+        setVersionState({ itemId, versions: items });
+        setVersionError(null);
+      }
+    }).catch(() => {
+      if (!isCancelled()) {
+        setVersionState({ itemId, versions: [] });
+        setVersionError(t("files.versionsLoadFailed"));
+      }
+    });
+  }, [t]);
+
   useEffect(() => {
     if (!versionItem) {
       return;
     }
     let cancelled = false;
-    void fetchFileVersions(versionItem.id).then((items) => {
-      if (!cancelled) {
-        setVersionState({ itemId: versionItem.id, versions: items });
-        setVersionError(null);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setVersionState({ itemId: versionItem.id, versions: [] });
-        setVersionError(t("files.versionsLoadFailed"));
-      }
-    });
+    loadVersions(versionItem.id, () => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [t, versionItem]);
+  }, [loadVersions, versionItem]);
 
   const downloadVersion = (version: FileVersionResponse) => {
     if (!versionItem) return;
@@ -105,7 +109,8 @@ export function DetailsPanel({
     if (!versionItem) return;
     void restoreFileVersion(versionItem.id, version.id).then(() => {
       onVersionRestored?.();
-    }).catch(() => setVersionError(t("app.uploadFailed")));
+      loadVersions(versionItem.id);
+    }).catch(() => setVersionError(t("files.restoreVersionFailed")));
   };
   const formatVersionDate = (value: string) => {
     const date = new Date(value);

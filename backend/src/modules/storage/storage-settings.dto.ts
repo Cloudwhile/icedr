@@ -117,6 +117,10 @@ export class UpdateWorkspaceQuotaDto {
 export class UpdateUserStorageQuotaDto {
   @IsString()
   @IsOptional()
+  workspaceId?: string;
+
+  @IsString()
+  @IsOptional()
   email?: string;
 
   @IsString()

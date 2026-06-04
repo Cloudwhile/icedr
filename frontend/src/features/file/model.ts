@@ -65,6 +65,7 @@ export type LocalIconName =
 export type DriveItem = {
   id: string;
   name: string;
+  kind?: DriveItemKind;
   workspaceId?: string;
   parentId: string | null;
   owner: string;
@@ -207,10 +208,14 @@ export function getItemExtension(item: DriveItem) {
 }
 
 export function getItemKind(item: DriveItem): DriveItemKind {
+  if (item.kind) return item.kind;
+  if (item.mimeType === "inode/directory") return "folder";
   if (item.mimeType?.startsWith("image/")) return "image";
   if (item.mimeType?.startsWith("video/")) return "video";
   const extension = getItemExtension(item);
-  return extension ? extensionKinds[extension] ?? "doc" : "folder";
+  if (extension) return extensionKinds[extension] ?? "other";
+  if (item.objectKey === null && item.sizeBytes === null) return "folder";
+  return "other";
 }
 
 export function formatFileSize(sizeBytes: number | null, locale: Locale) {

@@ -26,6 +26,7 @@ begin
     select 1
     from pg_constraint
     where conname = 'user_identities_email_source_check'
+      and conrelid = 'user_identities'::regclass
   ) then
     alter table user_identities
     add constraint user_identities_email_source_check

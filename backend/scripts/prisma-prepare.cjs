@@ -6,6 +6,7 @@ const { Client } = require('pg');
 const backendRoot = path.resolve(__dirname, '..');
 const workspaceRoot = path.resolve(backendRoot, '..');
 const baselineMigration = '20260602170000_init_prisma';
+const databaseConnectionTimeoutMillis = 5000;
 const requiredBaselineTables = [
   'auth_settings',
   'users',
@@ -76,7 +77,10 @@ function runPrisma(...args) {
 
 async function assertExistingIcedrBaseline() {
   loadWorkspaceEnv();
-  const client = new Client({ connectionString: getDatabaseUrl() });
+  const client = new Client({
+    connectionString: getDatabaseUrl(),
+    connectionTimeoutMillis: databaseConnectionTimeoutMillis,
+  });
   await client.connect();
   try {
     const migrationsTableExists = await tableExists(client, '_prisma_migrations');
@@ -160,6 +164,14 @@ function getDatabaseUrl() {
   const host = process.env.DATABASE_HOST ?? '';
   const port = process.env.DATABASE_PORT ?? '5432';
   const dbName = process.env.DATABASE_DBNAME ?? '';
+  const missing = [];
+  if (!host) missing.push('DATABASE_HOST');
+  if (!dbName) missing.push('DATABASE_DBNAME');
+  if (missing.length > 0) {
+    throw new Error(
+      `DATABASE_URL is not set and required database environment variables are missing: ${missing.join(', ')}`,
+    );
+  }
   const user = encodeURIComponent(process.env.DATABASE_USER ?? '');
   const password = encodeURIComponent(process.env.DATABASE_PASSWORD ?? '');
 

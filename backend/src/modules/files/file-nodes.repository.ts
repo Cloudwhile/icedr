@@ -56,6 +56,8 @@ export type FileAuditAction =
 
 const filePolicySettingsKey = 'global';
 
+type FileNodePathRow = Pick<FileNode, 'id' | 'name' | 'parentNodeId'>;
+
 @Injectable()
 export class FileNodesRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -185,7 +187,6 @@ export class FileNodesRepository {
         },
       });
     });
-    if (row) await this.pruneVersions(row.id);
     return row ? this.mapRow(row) : null;
   }
 
@@ -261,7 +262,7 @@ export class FileNodesRepository {
     const source = await this.prisma.fileNode.findUnique({ where: { id } });
     if (!source) return null;
     const rows = [source, ...(await this.collectDescendantRows(source.id))];
-    const paths = await this.buildWorkspacePaths(source.workspaceId);
+    const paths = await this.buildPathsForRows(rows);
     const now = new Date();
 
     await this.prisma.$transaction(
@@ -289,7 +290,14 @@ export class FileNodesRepository {
     const source = await this.prisma.fileNode.findUnique({ where: { id } });
     if (!source) return null;
     const rows = [source, ...(await this.collectDescendantRows(source.id))];
-    const ids = new Set(rows.map((row) => row.id));
+    const restoreArchivedAt = source.archivedAt?.getTime();
+    const rowsToRestore = rows.filter(
+      (row) =>
+        row.id === source.id ||
+        (restoreArchivedAt !== undefined &&
+          row.archivedAt?.getTime() === restoreArchivedAt),
+    );
+    const ids = new Set(rowsToRestore.map((row) => row.id));
     const targetParentNodeId =
       options.parentNodeId !== undefined
         ? options.parentNodeId
@@ -303,7 +311,7 @@ export class FileNodesRepository {
     const now = new Date();
 
     await this.prisma.$transaction(
-      rows.map((row) =>
+      rowsToRestore.map((row) =>
         this.prisma.fileNode.update({
           where: { id: row.id },
           data: {
@@ -354,7 +362,6 @@ export class FileNodesRepository {
     const roots = await this.prisma.fileNode.findMany({
       where: {
         archivedAt: { lt: cutoff },
-        OR: [{ parentNodeId: null }, { parentNodeId: { not: null } }],
       },
       orderBy: { archivedAt: 'asc' },
     });
@@ -411,7 +418,6 @@ export class FileNodesRepository {
         },
       });
     });
-    if (row) await this.pruneVersions(row.id);
     return row ? this.mapRow(row) : null;
   }
 
@@ -519,7 +525,6 @@ export class FileNodesRepository {
         },
       });
     });
-    await this.pruneVersions(row.id);
     return this.mapRow(row);
   }
 
@@ -545,20 +550,73 @@ export class FileNodesRepository {
   }
 
   private async collectDescendantRows(parentId: string) {
-    const collected: FileNode[] = [];
-    const visit = async (id: string) => {
-      const rows = await this.prisma.fileNode.findMany({
-        where: { parentNodeId: id },
-        orderBy: { name: 'asc' },
-      });
-      for (const row of rows) {
-        collected.push(row);
-        await visit(row.id);
-      }
-    };
-
-    await visit(parentId);
-    return collected;
+    return this.prisma.$queryRaw<FileNode[]>`
+      with recursive descendants as (
+        select
+          id,
+          workspace_id as "workspaceId",
+          parent_node_id as "parentNodeId",
+          name,
+          kind,
+          mime_type as "mimeType",
+          size_bytes as "sizeBytes",
+          object_key as "objectKey",
+          owner_name as "ownerName",
+          owner_user_id as "ownerUserId",
+          starred,
+          archived_at as "archivedAt",
+          archived_by as "archivedBy",
+          original_parent_node_id as "originalParentNodeId",
+          original_path as "originalPath",
+          created_at as "createdAt",
+          updated_at as "updatedAt",
+          1 as depth
+        from file_nodes
+        where parent_node_id = ${parentId}
+        union all
+        select
+          child.id,
+          child.workspace_id as "workspaceId",
+          child.parent_node_id as "parentNodeId",
+          child.name,
+          child.kind,
+          child.mime_type as "mimeType",
+          child.size_bytes as "sizeBytes",
+          child.object_key as "objectKey",
+          child.owner_name as "ownerName",
+          child.owner_user_id as "ownerUserId",
+          child.starred,
+          child.archived_at as "archivedAt",
+          child.archived_by as "archivedBy",
+          child.original_parent_node_id as "originalParentNodeId",
+          child.original_path as "originalPath",
+          child.created_at as "createdAt",
+          child.updated_at as "updatedAt",
+          descendants.depth + 1 as depth
+        from file_nodes child
+        inner join descendants on child.parent_node_id = descendants.id
+      )
+      select
+        id,
+        "workspaceId",
+        "parentNodeId",
+        name,
+        kind,
+        "mimeType",
+        "sizeBytes",
+        "objectKey",
+        "ownerName",
+        "ownerUserId",
+        starred,
+        "archivedAt",
+        "archivedBy",
+        "originalParentNodeId",
+        "originalPath",
+        "createdAt",
+        "updatedAt"
+      from descendants
+      order by depth asc, name asc
+    `;
   }
 
   private async createVersionForNode(
@@ -593,7 +651,7 @@ export class FileNodesRepository {
     return (latest._max.versionNumber ?? 0) + 1;
   }
 
-  private async pruneVersions(nodeId: string) {
+  async pruneVersions(nodeId: string) {
     const policy = await this.getPolicy();
     const cutoff = new Date(
       Date.now() - policy.versionRetentionDays * 24 * 60 * 60 * 1000,
@@ -608,14 +666,15 @@ export class FileNodesRepository {
         .slice(0, policy.versionRetentionCount)
         .map((version) => version.id),
     );
-    const deleteIds = versions
-      .filter((version) => !keepIds.has(version.id))
-      .map((version) => version.id);
-    if (deleteIds.length > 0) {
+    const versionsToDelete = versions.filter(
+      (version) => !keepIds.has(version.id),
+    );
+    if (versionsToDelete.length > 0) {
       await this.prisma.fileVersion.deleteMany({
-        where: { id: { in: deleteIds } },
+        where: { id: { in: versionsToDelete.map((version) => version.id) } },
       });
     }
+    return versionsToDelete.map((version) => version.objectKey);
   }
 
   private async resolveRestoreName(input: {
@@ -717,6 +776,10 @@ export class FileNodesRepository {
     const sortBy = input.sortBy ?? 'updatedAt';
     const sortDirection = input.sortDirection ?? 'desc';
     const query = input.query?.trim().toLocaleLowerCase() ?? '';
+    const parentNodeId =
+      input.parentNodeId !== undefined
+        ? input.parentNodeId?.trim() || null
+        : undefined;
     const sharedFilter = input.shared ?? 'all';
     const sharedIds =
       sharedFilter === 'all'
@@ -725,6 +788,7 @@ export class FileNodesRepository {
 
     const where: Prisma.FileNodeWhereInput = {
       ...(workspaceId ? { workspaceId } : {}),
+      ...(parentNodeId !== undefined ? { parentNodeId } : {}),
       ...(state === 'active' ? { archivedAt: null } : {}),
       ...(state === 'archived' ? { archivedAt: { not: null } } : {}),
       ...(input.type
@@ -804,7 +868,7 @@ export class FileNodesRepository {
         take: limit,
       }),
     ]);
-    const paths = await this.buildWorkspacePaths(workspaceId);
+    const paths = await this.buildPathsForRows(rows);
     return {
       items: rows.map((row) => ({
         ...this.mapRow(row),
@@ -858,12 +922,17 @@ export class FileNodesRepository {
     const activeBytes = Number(activeStats._sum.sizeBytes ?? 0);
     return {
       activeBytes,
-      defaultUserQuotaBytes: workspace?.defaultUserQuotaBytes
-        ? Number(workspace.defaultUserQuotaBytes)
-        : null,
+      defaultUserQuotaBytes:
+        workspace?.defaultUserQuotaBytes !== null &&
+        workspace?.defaultUserQuotaBytes !== undefined
+          ? Number(workspace.defaultUserQuotaBytes)
+          : null,
       fileCount: activeStats._count._all,
       folderCount,
-      quotaBytes: workspace?.quotaBytes ? Number(workspace.quotaBytes) : null,
+      quotaBytes:
+        workspace?.quotaBytes !== null && workspace?.quotaBytes !== undefined
+          ? Number(workspace.quotaBytes)
+          : null,
       trashBytes,
       trashFileCount: trashStats._count._all,
       usedBytes: activeBytes + trashBytes + versionBytes,
@@ -902,12 +971,15 @@ export class FileNodesRepository {
     ]);
     const fileBytes = Number(fileStats._sum.sizeBytes ?? 0);
     const versionBytes = Number(versionStats._sum.sizeBytes ?? 0);
-    const userQuotaBytes = user?.storageQuotaBytes
-      ? Number(user.storageQuotaBytes)
-      : null;
-    const defaultUserQuotaBytes = workspace?.defaultUserQuotaBytes
-      ? Number(workspace.defaultUserQuotaBytes)
-      : null;
+    const userQuotaBytes =
+      user?.storageQuotaBytes !== null && user?.storageQuotaBytes !== undefined
+        ? Number(user.storageQuotaBytes)
+        : null;
+    const defaultUserQuotaBytes =
+      workspace?.defaultUserQuotaBytes !== null &&
+      workspace?.defaultUserQuotaBytes !== undefined
+        ? Number(workspace.defaultUserQuotaBytes)
+        : null;
     return {
       defaultUserQuotaBytes,
       quotaBytes: userQuotaBytes ?? defaultUserQuotaBytes,
@@ -922,7 +994,9 @@ export class FileNodesRepository {
       where: { id: workspaceId },
       select: { quotaBytes: true },
     });
-    return workspace?.quotaBytes ? Number(workspace.quotaBytes) : null;
+    return workspace?.quotaBytes !== null && workspace?.quotaBytes !== undefined
+      ? Number(workspace.quotaBytes)
+      : null;
   }
 
   async updateWorkspaceQuota(input: {
@@ -951,10 +1025,15 @@ export class FileNodesRepository {
       },
     });
     return {
-      defaultUserQuotaBytes: row.defaultUserQuotaBytes
-        ? Number(row.defaultUserQuotaBytes)
-        : null,
-      quotaBytes: row.quotaBytes ? Number(row.quotaBytes) : null,
+      defaultUserQuotaBytes:
+        row.defaultUserQuotaBytes !== null &&
+        row.defaultUserQuotaBytes !== undefined
+          ? Number(row.defaultUserQuotaBytes)
+          : null,
+      quotaBytes:
+        row.quotaBytes !== null && row.quotaBytes !== undefined
+          ? Number(row.quotaBytes)
+          : null,
       workspaceId: row.id,
     };
   }
@@ -991,12 +1070,29 @@ export class FileNodesRepository {
     return 'other';
   }
 
-  private async buildWorkspacePaths(workspaceId?: string | null) {
-    const rows = await this.prisma.fileNode.findMany({
-      where: workspaceId ? { workspaceId } : undefined,
-      select: { id: true, name: true, parentNodeId: true },
-    });
+  private async buildPathsForRows(rows: FileNodePathRow[]) {
     const rowById = new Map(rows.map((row) => [row.id, row]));
+    let pendingParentIds = new Set(
+      rows
+        .map((row) => row.parentNodeId)
+        .filter((id): id is string => Boolean(id))
+        .filter((id) => !rowById.has(id)),
+    );
+
+    while (pendingParentIds.size > 0) {
+      const parentRows = await this.prisma.fileNode.findMany({
+        where: { id: { in: [...pendingParentIds] } },
+        select: { id: true, name: true, parentNodeId: true },
+      });
+      pendingParentIds = new Set<string>();
+      parentRows.forEach((row) => {
+        rowById.set(row.id, row);
+        if (row.parentNodeId && !rowById.has(row.parentNodeId)) {
+          pendingParentIds.add(row.parentNodeId);
+        }
+      });
+    }
+
     const pathById = new Map<string, string>();
     const resolvePath = (id: string, seen = new Set<string>()): string => {
       const existing = pathById.get(id);

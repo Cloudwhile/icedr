@@ -3477,6 +3477,12 @@ video.icedr-preview-media-object {
   gap: 4px;
 }
 
+.drive-load-more-tools {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 14px;
+}
+
 .drive-section-label {
   display: block;
   margin-bottom: 10px;

@@ -151,6 +151,8 @@ const defaultDriveSearchFilters: DriveSearchFilters = {
   updated: "all",
 };
 
+const searchPageSize = 100;
+
 function hasActiveDriveSearchFilters(filters: DriveSearchFilters) {
   return (
     filters.shared !== defaultDriveSearchFilters.shared ||
@@ -354,6 +356,8 @@ export function DriveWorkbench({
   const [searchFilters, setSearchFilters] = useState<DriveSearchFilters>(defaultDriveSearchFilters);
   const [searchItems, setSearchItems] = useState<DriveItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchCursor, setSearchCursor] = useState({ key: "", offset: 0 });
+  const [searchTotal, setSearchTotal] = useState(0);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -414,6 +418,20 @@ export function DriveWorkbench({
   const workspaceBusy = showSettingsSkeleton || showWorkspaceLoader;
   const hasSearchFilters = useMemo(() => hasActiveDriveSearchFilters(searchFilters), [searchFilters]);
   const serverSearchActive = Boolean(workspaceId && activeModule === "drive" && (query.trim().length > 0 || hasSearchFilters));
+  const searchContextParentNodeId =
+    searchFilters.state === "context" && activeNavForView === "drive"
+      ? currentFolderId
+      : undefined;
+  const searchRequestKey = useMemo(() => JSON.stringify({
+    activeNavForView,
+    filters: searchFilters,
+    parentNodeId: searchContextParentNodeId ?? null,
+    query: query.trim(),
+    workspaceId,
+  }), [activeNavForView, query, searchContextParentNodeId, searchFilters, workspaceId]);
+  const searchOffset = searchCursor.key === searchRequestKey ? searchCursor.offset : 0;
+  const searchCanLoadMore = serverSearchActive && searchItems.length < searchTotal;
+  const searchLoadingMore = searchLoading && searchOffset > 0;
   const fileModuleSourceItems = useMemo(() => {
     if (!serverSearchActive) return allKnownItems;
     const searchIds = new Set(searchItems.map((item) => item.id));
@@ -457,11 +475,20 @@ export function DriveWorkbench({
   }, [activeNavForView, archivedItems, currentFolderId, driveItems, searchItems, serverSearchActive]);
   useEffect(() => {
     if (!serverSearchActive || !workspaceId) {
-      return;
+      const clearTimer = window.setTimeout(() => {
+        setSearchItems([]);
+        setSearchTotal(0);
+        setSearchLoading(false);
+      }, 0);
+      return () => window.clearTimeout(clearTimer);
     }
 
     let cancelled = false;
     const timer = window.setTimeout(() => {
+      if (searchOffset === 0) {
+        setSearchItems([]);
+        setSearchTotal(0);
+      }
       const state = searchFilters.state === "context"
         ? activeNavForView === "trash"
           ? "archived"
@@ -478,21 +505,28 @@ export function DriveWorkbench({
         query: query.trim() || undefined,
         state,
         shared,
+        ...(searchContextParentNodeId !== undefined ? { parentNodeId: searchContextParentNodeId } : {}),
         ...(searchFilters.type !== "all" ? { type: searchFilters.type } : {}),
         ...(createdFrom ? { createdFrom } : {}),
         ...(updatedFrom ? { updatedFrom } : {}),
         ...sizeRange,
         sortBy: activeNavForView === "recent" ? "updatedAt" : searchFilters.sortBy,
         sortDirection: activeNavForView === "recent" ? "desc" : searchFilters.sortDirection,
-        limit: 100,
-        offset: 0,
+        limit: searchPageSize,
+        offset: searchOffset,
       }).then((result) => {
         if (cancelled) return;
-        setSearchItems(withShareFlags(result.items.map(mapFileNodeToDriveItem), registeredSharesRef.current));
+        const nextItems = withShareFlags(result.items.map(mapFileNodeToDriveItem), registeredSharesRef.current);
+        setSearchItems((current) => {
+          if (searchOffset === 0) return nextItems;
+          const currentIds = new Set(current.map((item) => item.id));
+          return [...current, ...nextItems.filter((item) => !currentIds.has(item.id))];
+        });
+        setSearchTotal(result.total);
         setFilesError(null);
       }).catch(() => {
         if (cancelled) return;
-        setSearchItems([]);
+        if (searchOffset === 0) setSearchItems([]);
         setFilesError(t("files.loadFailed"));
       }).finally(() => {
         if (!cancelled) setSearchLoading(false);
@@ -503,7 +537,7 @@ export function DriveWorkbench({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeNavForView, query, searchFilters, serverSearchActive, t, workspaceId]);
+  }, [activeNavForView, query, searchContextParentNodeId, searchFilters, searchOffset, serverSearchActive, t, workspaceId]);
   useEffect(() => {
     const uploadTasks = uploadTasksRef.current;
     const uploadTaskMeta = uploadTaskMetaRef.current;
@@ -1359,7 +1393,7 @@ export function DriveWorkbench({
 
             <MotionSurface key={`${activeModule}-${currentFolderId ?? "root"}`} preset="surface" aria-busy={workspaceBusy} className="drive-workspace-body">
               {showSettingsSkeleton ? <WorkspaceSkeleton activeModule={activeModule} palette={palette} viewMode={viewMode} /> : showWorkspaceLoader ? <LdrsLoadingState label={t("app.syncing")} palette={palette} minHeight="min(420px, calc(100dvh - 180px))" size={30} /> : <>
-                  {activeModule === "drive" ? <FilesModule activeNav={activeNavForView} createMenuItems={createMenuItems} currentFolderId={currentFolderId} error={filesError} hasQuery={query.trim().length > 0 || hasSearchFilters || searchLoading} items={filteredFiles} onArchiveItem={item => archiveItems([item])} onBatchArchiveItems={archiveItems} onBatchDeletePermanentlyItems={deletePermanentlyItems} onBatchDownloadItems={downloadItems} onBatchMoveItems={moveItems} onBatchRestoreItems={restoreItems} onBatchShareItems={shareItems} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
+                  {activeModule === "drive" ? <FilesModule activeNav={activeNavForView} canLoadMore={searchCanLoadMore} createMenuItems={createMenuItems} currentFolderId={currentFolderId} error={filesError} hasQuery={query.trim().length > 0 || hasSearchFilters || searchLoading} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBatchArchiveItems={archiveItems} onBatchDeletePermanentlyItems={deletePermanentlyItems} onBatchDownloadItems={downloadItems} onBatchMoveItems={moveItems} onBatchRestoreItems={restoreItems} onBatchShareItems={shareItems} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={() => setSearchCursor((cursor) => ({ key: searchRequestKey, offset: (cursor.key === searchRequestKey ? cursor.offset : 0) + searchPageSize }))} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
                 setSelected([item.id]);
                 setShareOpen(true);
               }} onShowDetailsItem={showItemDetails} onSecurityItem={openItemSecurity} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}

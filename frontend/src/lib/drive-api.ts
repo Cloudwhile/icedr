@@ -404,6 +404,7 @@ export type FileNodeListState = "active" | "archived" | "all";
 export type FileNodeSearchQuery = Partial<{
   workspaceId: string;
   query: string;
+  parentNodeId: string | null;
   type: "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
   state: FileNodeListState;
   shared: "shared" | "unshared" | "all";
@@ -629,6 +630,10 @@ export async function fetchFileNodesByState(
 export async function searchFileNodes(filters: FileNodeSearchQuery = {}) {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
+    if (key === "parentNodeId" && value === null) {
+      query.set(key, "");
+      return;
+    }
     if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
   });
   const suffix = query.toString() ? `?${query.toString()}` : "";
@@ -1062,6 +1067,7 @@ export function updateUserStorageQuota(input: {
   email?: string;
   quotaBytes?: number | null;
   userId?: string;
+  workspaceId?: string;
 }) {
   return requestDriveApi<UserStorageQuota>("/storage/usage/user-quota", {
     method: "PATCH",

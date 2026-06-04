@@ -181,6 +181,7 @@ export function DriveSystemSettings({
   };
 
   const saveUserQuota = () => {
+    if (!workspaceId) return;
     const email = userQuotaEmail.trim();
     const quotaBytes = parseQuotaBytes(userQuotaDraft, userQuotaUnit);
     if (!email || quotaBytes === undefined) {
@@ -188,7 +189,7 @@ export function DriveSystemSettings({
       return;
     }
     setSavingKey("user-quota");
-    void updateUserStorageQuota({ email, quotaBytes })
+    void updateUserStorageQuota({ email, quotaBytes, workspaceId })
       .then(() => {
         showAppToast({ title: t("admin.saved"), tone: "success" });
       })

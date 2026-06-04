@@ -27,6 +27,7 @@ describe('FileNodesService', () => {
     | 'createMultipartUpload'
     | 'createMultipartUploadPartUrl'
     | 'createPresignedUpload'
+    | 'deleteObject'
     | 'deleteUploadSessionParts'
     | 'distributedStorageEnabled'
     | 'findMultipartUploadPart'
@@ -220,6 +221,7 @@ describe('FileNodesService', () => {
         audits.set(action, (audits.get(action) ?? 0) + 1);
         return Promise.resolve();
       }),
+      pruneVersions: jest.fn(() => Promise.resolve([])),
       countAuditEvents: jest.fn((action: string) =>
         Promise.resolve(audits.get(action) ?? 0),
       ),
@@ -260,6 +262,7 @@ describe('FileNodesService', () => {
         Promise.resolve({ objectKey: 'completed', stored: true }),
       ),
       abortMultipartUpload: jest.fn(() => Promise.resolve()),
+      deleteObject: jest.fn(() => Promise.resolve()),
       findMultipartUploadPart: jest.fn((input: { partIndex: number }) =>
         Promise.resolve({
           eTag: `"etag-${input.partIndex}"`,

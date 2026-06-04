@@ -49,8 +49,12 @@ import {
 } from './file-preview-policy';
 import type { Readable } from 'stream';
 
+const trashCleanupThrottleMs = 5 * 60 * 1000;
+
 @Injectable()
 export class FileNodesService {
+  private lastTrashCleanupAt = 0;
+
   constructor(
     private readonly fileNodesRepository: FileNodesRepository,
     private readonly storageService: StorageService,
@@ -65,7 +69,7 @@ export class FileNodesService {
   ) {
     const state = this.normalizeListState(options.state);
     if (state !== 'active') {
-      await this.cleanupExpiredTrash();
+      await this.cleanupExpiredTrashIfDue();
     }
     return this.fileNodesRepository.list(workspaceId, parentNodeId, state);
   }
@@ -391,6 +395,9 @@ export class FileNodesService {
       owner: dto.owner?.trim() || undefined,
       ownerUserId: options.ownerUserId,
     });
+    await this.deleteStoredObjects(
+      await this.fileNodesRepository.pruneVersions(node.id),
+    );
     await this.fileNodesRepository.recordAudit(
       'file.upload_completed',
       node.id,
@@ -509,6 +516,9 @@ export class FileNodesService {
       uploadedBy: node.owner,
     });
     if (!updated) throw new NotFoundException('File node not found');
+    await this.deleteStoredObjects(
+      await this.fileNodesRepository.pruneVersions(updated.id),
+    );
     await this.fileNodesRepository.recordAudit('file.content_updated', id);
     await this.fileNodesRepository.recordAudit('file.version_created', id);
     return {
@@ -626,6 +636,18 @@ export class FileNodesService {
       deleted: deleted.nodes.length,
       trashRetentionDays: policy.trashRetentionDays,
     };
+  }
+
+  private async cleanupExpiredTrashIfDue() {
+    const now = Date.now();
+    if (now - this.lastTrashCleanupAt < trashCleanupThrottleMs) return;
+    this.lastTrashCleanupAt = now;
+    try {
+      await this.cleanupExpiredTrash();
+    } catch (error) {
+      this.lastTrashCleanupAt = 0;
+      throw error;
+    }
   }
 
   async createDownloadIntent(nodeId: string, dto: CreateDownloadIntentDto) {
@@ -796,6 +818,9 @@ export class FileNodesService {
       versionId,
     );
     if (!node) throw new NotFoundException('File version not found');
+    await this.deleteStoredObjects(
+      await this.fileNodesRepository.pruneVersions(node.id),
+    );
     await this.fileNodesRepository.recordAudit(
       'file.version_restored',
       nodeId,
@@ -919,11 +944,13 @@ export class FileNodesService {
 
   private async deleteStoredObjects(objectKeys: Array<string | null>) {
     const uniqueObjectKeys = [
-      ...new Set(objectKeys.filter(Boolean)),
-    ] as string[];
-    for (const objectKey of uniqueObjectKeys) {
-      await this.storageService.deleteObject(objectKey).catch(() => undefined);
-    }
+      ...new Set(objectKeys.filter((key): key is string => Boolean(key))),
+    ];
+    await Promise.all(
+      uniqueObjectKeys.map((objectKey) =>
+        this.storageService.deleteObject(objectKey).catch(() => undefined),
+      ),
+    );
   }
 
   private async runBatch<T>(

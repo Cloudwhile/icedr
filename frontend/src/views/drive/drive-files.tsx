@@ -36,10 +36,12 @@ export type FilesModuleProps = {
   activeNav: string;
   createMenuItems: AppMenuItem[];
   currentFolderId: string | null;
+  canLoadMore?: boolean;
   error: string | null;
   goUp: () => void;
   hasQuery: boolean;
   items: DriveItem[];
+  loadingMore?: boolean;
   onArchiveItem: FileAction;
   onBlankGoRoot: () => void;
   onBlankGoUp: () => void;
@@ -58,6 +60,7 @@ export type FilesModuleProps = {
   onBatchRestoreItems: (items: DriveItem[]) => void;
   onBatchShareItems: (items: DriveItem[]) => void;
   onDeletePermanentlyItem: FileAction;
+  onLoadMore?: () => void;
   onMoveItem: FileAction;
   onRenameItem: FileAction;
   onRestoreItem: FileAction;
@@ -80,10 +83,12 @@ export function FilesModule({
   activeNav,
   createMenuItems,
   currentFolderId,
+  canLoadMore,
   error,
   goUp,
   hasQuery,
   items,
+  loadingMore,
   onArchiveItem,
   onBlankGoRoot,
   onBlankGoUp,
@@ -102,6 +107,7 @@ export function FilesModule({
   onBatchRestoreItems,
   onBatchShareItems,
   onDeletePermanentlyItem,
+  onLoadMore,
   onMoveItem,
   onRenameItem,
   onRestoreItem,
@@ -200,7 +206,10 @@ export function FilesModule({
             activeNav={activeNav}
             items={selectedItems}
             onArchive={() => onBatchArchiveItems(selectedItems)}
-            onClear={onBlankSelect}
+            onClear={() => {
+              onBlankSelect();
+              setSelectionAnchorId(null);
+            }}
             onDeletePermanently={() => onBatchDeletePermanentlyItems(selectedItems)}
             onDownload={() => onBatchDownloadItems(selectedItems)}
             onMove={() => onBatchMoveItems(selectedItems)}
@@ -278,6 +287,20 @@ export function FilesModule({
             toggleStar={toggleStar}
           />
         )}
+        {canLoadMore && onLoadMore ? (
+          <div className="drive-load-more-tools">
+            <ToolButton
+              disabled={loadingMore}
+              isPending={loadingMore}
+              label={t("files.loadMoreResults")}
+              onClick={onLoadMore}
+              palette={palette}
+              visual="surface"
+            >
+              <LocalIcon name="arrow_down" size={17} />
+            </ToolButton>
+          </div>
+        ) : null}
         <AppContextMenu
           ariaLabel={t("actions.more")}
           items={blankMenuItems}

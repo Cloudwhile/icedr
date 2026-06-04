@@ -269,6 +269,10 @@ export class SearchFileNodesQueryDto {
   @IsOptional()
   query?: string;
 
+  @IsString()
+  @IsOptional()
+  parentNodeId?: string | null;
+
   @IsIn(['folder', 'doc', 'sheet', 'image', 'video', 'archive', 'other'])
   @IsOptional()
   type?: FileNodeTypeFilter;
