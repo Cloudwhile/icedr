@@ -15,7 +15,11 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
 import { RunBlobReconcileDto } from './storage-reconcile.dto';
-import { UpdateStorageSettingsDto } from './storage-settings.dto';
+import {
+  UpdateStorageSettingsDto,
+  UpdateUserStorageQuotaDto,
+  UpdateWorkspaceQuotaDto,
+} from './storage-settings.dto';
 import { StorageService } from './storage.service';
 
 @ApiTags('storage')
@@ -45,6 +49,33 @@ export class StorageController {
   ) {
     await this.adminGuard.requirePermission(authorization, 'storage', 'read');
     return this.storageService.getUsage(workspaceId);
+  }
+
+  @Get('usage/breakdown')
+  async getUsageBreakdown(
+    @Query('workspaceId') workspaceId = 'workspace-default',
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'storage', 'read');
+    return this.storageService.getUsageBreakdown(workspaceId);
+  }
+
+  @Patch('usage/quota')
+  async updateWorkspaceQuota(
+    @Body() dto: UpdateWorkspaceQuotaDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
+    return this.storageService.updateWorkspaceQuota(dto);
+  }
+
+  @Patch('usage/user-quota')
+  async updateUserStorageQuota(
+    @Body() dto: UpdateUserStorageQuotaDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
+    return this.storageService.updateUserStorageQuota(dto);
   }
 
   @Get('reconcile/tasks')

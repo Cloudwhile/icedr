@@ -1,4 +1,4 @@
-import { findDriveItem, getChildItems, getItemKind, type DriveItem } from "@/features/file/model";
+import { findDriveItem, getChildItems, getItemKind, type DriveItem, type DriveItemKind } from "@/features/file/model";
 import {
   DriveApiError,
   getApiBaseUrl,
@@ -34,7 +34,7 @@ export type RegisteredShareItem = {
   workspaceId: string;
   parentNodeId: string | null;
   name: string;
-  kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive";
+  kind: DriveItemKind;
   mimeType: string;
   sizeBytes: number | null;
   owner: string;

@@ -13,7 +13,7 @@ type OAuthTokenResponse = Record<string, unknown> & {
 };
 
 type OAuthProviderProfile = OAuthSettings['providerProfile'];
-type OAuthEmailSource = 'provider' | 'derived';
+export type OAuthEmailSource = 'provider' | 'derived';
 const oauthProviderRequestTimeoutMs = 10_000;
 export type OAuthProviderSnapshot = Pick<
   OAuthSettings,

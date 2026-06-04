@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -15,6 +16,8 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
 import {
+  BatchFileNodeIdsDto,
+  BatchMoveFileNodesDto,
   CompleteUploadPartDto,
   CompleteUploadDto,
   CopyFileNodeDto,
@@ -23,6 +26,9 @@ import {
   CreateUploadIntentDto,
   MoveFileNodeDto,
   RenameFileNodeDto,
+  RestoreFileNodeDto,
+  SearchFileNodesQueryDto,
+  UpdateFilePolicyDto,
   UpdateFileNodeContentDto,
   UpdateFileNodeStateDto,
 } from './file-nodes.dto';
@@ -36,6 +42,12 @@ export class FileNodesController {
     private readonly adminGuard: AdminGuardService,
   ) {}
 
+  private getSessionActor(
+    session: Awaited<ReturnType<AdminGuardService['requireSession']>>,
+  ) {
+    return session.user.displayName || session.user.email || session.user.id;
+  }
+
   @Get()
   async listFileNodes(
     @Headers('authorization') authorization?: string,
@@ -47,6 +59,86 @@ export class FileNodesController {
     return this.fileNodesService.listFileNodes(workspaceId, parentNodeId, {
       state,
     });
+  }
+
+  @Get('search')
+  async searchFileNodes(
+    @Query() query: SearchFileNodesQueryDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'read');
+    return this.fileNodesService.searchFileNodes(query);
+  }
+
+  @Get('trash-policy')
+  async getTrashPolicy(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requirePermission(authorization, 'settings', 'read');
+    return this.fileNodesService.getFilePolicy();
+  }
+
+  @Patch('trash-policy')
+  async updateTrashPolicy(
+    @Body() dto: UpdateFilePolicyDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(
+      authorization,
+      'settings',
+      'manage',
+    );
+    return this.fileNodesService.updateFilePolicy(dto);
+  }
+
+  @Post('trash/cleanup')
+  async cleanupTrash(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requirePermission(
+      authorization,
+      'settings',
+      'manage',
+    );
+    return this.fileNodesService.cleanupTrash();
+  }
+
+  @Post('batch/archive')
+  async batchArchive(
+    @Body() dto: BatchFileNodeIdsDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
+    return this.fileNodesService.batchArchive(dto, {
+      actor: this.getSessionActor(session),
+    });
+  }
+
+  @Post('batch/restore')
+  async batchRestore(
+    @Body() dto: BatchFileNodeIdsDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    return this.fileNodesService.batchRestore(dto);
+  }
+
+  @Post('batch/move')
+  async batchMove(
+    @Body() dto: BatchMoveFileNodesDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    return this.fileNodesService.batchMove(dto);
+  }
+
+  @Post('batch/download-intents')
+  async batchDownloadIntents(
+    @Body() dto: BatchFileNodeIdsDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'download');
+    return this.fileNodesService.createBatchDownloadIntents(dto);
   }
 
   @Get(':id')
@@ -63,8 +155,14 @@ export class FileNodesController {
     @Body() dto: CreateUploadIntentDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'write');
-    return this.fileNodesService.createUploadIntent(dto);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
+    return this.fileNodesService.createUploadIntent(dto, {
+      ownerUserId: session.user.id,
+    });
   }
 
   @Post('upload-completions')
@@ -73,11 +171,18 @@ export class FileNodesController {
     @Headers('authorization') authorization?: string,
     @Headers('x-workspace-actor') workspaceActor?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'write');
-    return this.fileNodesService.completeUpload({
-      ...dto,
-      owner: dto.owner ?? workspaceActor,
-    });
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
+    return this.fileNodesService.completeUpload(
+      {
+        ...dto,
+        owner: dto.owner ?? workspaceActor,
+      },
+      { ownerUserId: session.user.id },
+    );
   }
 
   @Post('upload-sessions/:sessionId/parts/:partIndex/upload-intents')
@@ -138,10 +243,15 @@ export class FileNodesController {
     @Headers('authorization') authorization?: string,
     @Headers('x-workspace-actor') workspaceActor?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
     return this.fileNodesService.createFolder({
       ...dto,
       owner: dto.owner ?? workspaceActor,
+      ownerUserId: session.user.id,
     });
   }
 
@@ -200,8 +310,33 @@ export class FileNodesController {
     @Body() dto: UpdateFileNodeStateDto,
     @Headers('authorization') authorization?: string,
   ) {
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
+    return this.fileNodesService.updateFileNodeState(id, dto, {
+      actor: this.getSessionActor(session),
+    });
+  }
+
+  @Post(':id/restore')
+  async restoreFileNode(
+    @Param('id') id: string,
+    @Body() dto: RestoreFileNodeDto,
+    @Headers('authorization') authorization?: string,
+  ) {
     await this.adminGuard.requirePermission(authorization, 'file', 'write');
-    return this.fileNodesService.updateFileNodeState(id, dto);
+    return this.fileNodesService.restoreFileNode(id, dto);
+  }
+
+  @Delete(':id')
+  async permanentlyDeleteFileNode(
+    @Param('id') id: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    return this.fileNodesService.permanentlyDeleteFileNode(id);
   }
 
   @Post(':id/download-intents')
@@ -252,5 +387,34 @@ export class FileNodesController {
     @Query('previewId') previewId: string,
   ) {
     return this.fileNodesService.getPreviewStatus(id, previewId);
+  }
+
+  @Get(':id/versions')
+  async listFileVersions(
+    @Param('id') id: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'read');
+    return this.fileNodesService.listFileVersions(id);
+  }
+
+  @Post(':id/versions/:versionId/download-intents')
+  async createVersionDownloadIntent(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'download');
+    return this.fileNodesService.createVersionDownloadIntent(id, versionId);
+  }
+
+  @Post(':id/versions/:versionId/restore')
+  async restoreFileVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    return this.fileNodesService.restoreFileVersion(id, versionId);
   }
 }

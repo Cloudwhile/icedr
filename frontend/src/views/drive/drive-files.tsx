@@ -36,10 +36,12 @@ export type FilesModuleProps = {
   activeNav: string;
   createMenuItems: AppMenuItem[];
   currentFolderId: string | null;
+  canLoadMore?: boolean;
   error: string | null;
   goUp: () => void;
   hasQuery: boolean;
   items: DriveItem[];
+  loadingMore?: boolean;
   onArchiveItem: FileAction;
   onBlankGoRoot: () => void;
   onBlankGoUp: () => void;
@@ -51,6 +53,14 @@ export type FilesModuleProps = {
   onCopyNodeItem: FileAction;
   onDownloadItem: FileAction;
   onEditItem: FileAction;
+  onBatchArchiveItems: (items: DriveItem[]) => void;
+  onBatchDeletePermanentlyItems: (items: DriveItem[]) => void;
+  onBatchDownloadItems: (items: DriveItem[]) => void;
+  onBatchMoveItems: (items: DriveItem[]) => void;
+  onBatchRestoreItems: (items: DriveItem[]) => void;
+  onBatchShareItems: (items: DriveItem[]) => void;
+  onDeletePermanentlyItem: FileAction;
+  onLoadMore?: () => void;
   onMoveItem: FileAction;
   onRenameItem: FileAction;
   onRestoreItem: FileAction;
@@ -73,10 +83,12 @@ export function FilesModule({
   activeNav,
   createMenuItems,
   currentFolderId,
+  canLoadMore,
   error,
   goUp,
   hasQuery,
   items,
+  loadingMore,
   onArchiveItem,
   onBlankGoRoot,
   onBlankGoUp,
@@ -88,6 +100,14 @@ export function FilesModule({
   onCopyNodeItem,
   onDownloadItem,
   onEditItem,
+  onBatchArchiveItems,
+  onBatchDeletePermanentlyItems,
+  onBatchDownloadItems,
+  onBatchMoveItems,
+  onBatchRestoreItems,
+  onBatchShareItems,
+  onDeletePermanentlyItem,
+  onLoadMore,
   onMoveItem,
   onRenameItem,
   onRestoreItem,
@@ -108,6 +128,9 @@ export function FilesModule({
   const t = useTranslations();
   const [blankContextMenu, setBlankContextMenu] = useState<AppContextMenuPosition | null>(null);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const selectedItems = selected
+    .map((id) => sourceItems.find((item) => item.id === id) ?? items.find((item) => item.id === id))
+    .filter((item): item is DriveItem => Boolean(item));
   const blankNavigationItems = [
     currentFolderId ? { icon: <LocalIcon name="arrow_up" size={15} />, label: t("files.parentDirectory"), onClick: onBlankGoUp, value: "go-up" } : null,
     currentFolderId ? { icon: <LocalIcon name="house" size={15} />, label: t("actions.goRoot"), onClick: onBlankGoRoot, value: "go-root" } : null,
@@ -178,10 +201,30 @@ export function FilesModule({
           </div>
         ) : null}
 
+        {selectedItems.length > 1 ? (
+          <BatchToolbar
+            activeNav={activeNav}
+            items={selectedItems}
+            onArchive={() => onBatchArchiveItems(selectedItems)}
+            onClear={() => {
+              onBlankSelect();
+              setSelectionAnchorId(null);
+            }}
+            onDeletePermanently={() => onBatchDeletePermanentlyItems(selectedItems)}
+            onDownload={() => onBatchDownloadItems(selectedItems)}
+            onMove={() => onBatchMoveItems(selectedItems)}
+            onRestore={() => onBatchRestoreItems(selectedItems)}
+            onShare={() => onBatchShareItems(selectedItems)}
+            palette={palette}
+            sourceItems={sourceItems}
+          />
+        ) : null}
+
         {items.length === 0 && !(activeNav === "drive" && currentFolderId) ? (
           <EmptyState activeNav={activeNav} hasQuery={hasQuery} palette={palette} />
         ) : viewMode === "list" ? (
           <FileTable
+            activeNav={activeNav}
             currentFolderId={currentFolderId}
             goUp={goUp}
             items={items}
@@ -192,6 +235,7 @@ export function FilesModule({
             onCopyNodeItem={onCopyNodeItem}
             onDownloadItem={onDownloadItem}
             onEditItem={onEditItem}
+            onDeletePermanentlyItem={onDeletePermanentlyItem}
             onMoveItem={onMoveItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
@@ -212,6 +256,7 @@ export function FilesModule({
           />
         ) : (
           <FileGrid
+            activeNav={activeNav}
             currentFolderId={currentFolderId}
             goUp={goUp}
             items={items}
@@ -222,6 +267,7 @@ export function FilesModule({
             onCopyNodeItem={onCopyNodeItem}
             onDownloadItem={onDownloadItem}
             onEditItem={onEditItem}
+            onDeletePermanentlyItem={onDeletePermanentlyItem}
             onMoveItem={onMoveItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
@@ -241,6 +287,20 @@ export function FilesModule({
             toggleStar={toggleStar}
           />
         )}
+        {canLoadMore && onLoadMore ? (
+          <div className="drive-load-more-tools">
+            <ToolButton
+              disabled={loadingMore}
+              isPending={loadingMore}
+              label={t("files.loadMoreResults")}
+              onClick={onLoadMore}
+              palette={palette}
+              visual="surface"
+            >
+              <LocalIcon name="arrow_down" size={17} />
+            </ToolButton>
+          </div>
+        ) : null}
         <AppContextMenu
           ariaLabel={t("actions.more")}
           items={blankMenuItems}
@@ -371,11 +431,83 @@ function MoreActionsMenu({
   );
 }
 
+function BatchToolbar({
+  activeNav,
+  items,
+  onArchive,
+  onClear,
+  onDeletePermanently,
+  onDownload,
+  onMove,
+  onRestore,
+  onShare,
+  palette,
+  sourceItems,
+}: {
+  activeNav: string;
+  items: DriveItem[];
+  onArchive: () => void;
+  onClear: () => void;
+  onDeletePermanently: () => void;
+  onDownload: () => void;
+  onMove: () => void;
+  onRestore: () => void;
+  onShare: () => void;
+  palette: Palette;
+  sourceItems: DriveItem[];
+}) {
+  const t = useTranslations();
+  const locale = useLocale() as Locale;
+  const folderCount = items.filter((item) => getItemKind(item) === "folder").length;
+  const sizeLabel = formatFileSize(sumDriveItemSizes(items, sourceItems), locale);
+  const inTrash = activeNav === "trash" || items.every((item) => item.archivedAt);
+
+  return (
+    <div className="drive-batch-toolbar" data-drive-entry>
+      <div className="drive-batch-summary">
+        <span>{t("app.selected", { count: items.length })}</span>
+        <span>{t("files.batchScope", { files: items.length - folderCount, folders: folderCount, size: sizeLabel })}</span>
+      </div>
+      <div className="drive-batch-actions">
+        {inTrash ? (
+          <>
+            <ToolButton label={t("actions.restore")} palette={palette} onClick={onRestore}>
+              <LocalIcon name="refresh" size={16} />
+            </ToolButton>
+            <ToolButton label={t("actions.deletePermanently")} palette={palette} tone="danger" onClick={onDeletePermanently}>
+              <LocalIcon name="trash" size={16} />
+            </ToolButton>
+          </>
+        ) : (
+          <>
+            <ToolButton label={t("actions.download")} palette={palette} onClick={onDownload}>
+              <LocalIcon name="download" size={16} />
+            </ToolButton>
+            <ToolButton label={t("actions.moveTo")} palette={palette} onClick={onMove}>
+              <LocalIcon name="folder" size={16} />
+            </ToolButton>
+            <ToolButton label={t("actions.share")} palette={palette} onClick={onShare}>
+              <LocalIcon name="share2" size={16} />
+            </ToolButton>
+            <ToolButton label={t("actions.archive")} palette={palette} tone="danger" onClick={onArchive}>
+              <LocalIcon name="trash" size={16} />
+            </ToolButton>
+          </>
+        )}
+        <ToolButton label={t("app.clear")} palette={palette} onClick={onClear}>
+          <LocalIcon name="cross" size={16} />
+        </ToolButton>
+      </div>
+    </div>
+  );
+}
+
 function buildFileActionItems({
   item,
   onArchive,
   onCopy,
   onCopyNode,
+  onDeletePermanently,
   onDownload,
   onEdit,
   onMove,
@@ -392,6 +524,7 @@ function buildFileActionItems({
   onArchive: FileAction;
   onCopy: FileAction;
   onCopyNode: FileAction;
+  onDeletePermanently: FileAction;
   onDownload: FileAction;
   onEdit: FileAction;
   onMove: FileAction;
@@ -403,9 +536,16 @@ function buildFileActionItems({
   onToggleStar: () => void;
   palette: Palette;
   t: ReturnType<typeof useTranslations>;
-}) {
+}): AppMenuItem[] {
   const isFolder = getItemKind(item) === "folder";
   const editable = isTextEditableFile(item);
+  if (item.archivedAt) {
+    return [
+      { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), value: "details" },
+      { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), separatorBefore: true, value: "restore" },
+      { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), tone: "danger" as const, value: "delete-permanently" },
+    ];
+  }
   const actionItems: AppMenuItem[] = [
     { icon: <LocalIcon name="share2" size={15} />, label: t("actions.share"), onClick: () => onShare(item), value: "share" },
     { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyLink"), onClick: () => onCopy(item), value: "copy-link" },
@@ -433,6 +573,22 @@ function buildFileActionItems({
 function openItemSurface(item: DriveItem, openFolder: (id: string) => void, openPreview: (id: string) => void) {
   if (getItemKind(item) === "folder") openFolder(item.id);
   else openPreview(item.id);
+}
+
+function formatDriveItemDate(value: string | null | undefined, locale: Locale, timeZone?: string) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale.replace(/_/g, "-"), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(date);
+}
+
+function getFilePathHint(item: DriveItem) {
+  return item.searchPath || item.originalPath || null;
 }
 
 function DriveCardPreview({ item, palette }: { item: DriveItem; palette: Palette }) {
@@ -467,6 +623,7 @@ function DriveCardPreview({ item, palette }: { item: DriveItem; palette: Palette
 }
 
 function FileTable({
+  activeNav,
   currentFolderId,
   goUp,
   items,
@@ -477,6 +634,7 @@ function FileTable({
   onCopyNodeItem,
   onDownloadItem,
   onEditItem,
+  onDeletePermanentlyItem,
   onMoveItem,
   onRenameItem,
   onRestoreItem,
@@ -496,10 +654,15 @@ function FileTable({
   toggleStar,
 }: Omit<
   FilesModuleProps,
-  | "activeNav"
   | "createMenuItems"
   | "error"
   | "hasQuery"
+  | "onBatchArchiveItems"
+  | "onBatchDeletePermanentlyItems"
+  | "onBatchDownloadItems"
+  | "onBatchMoveItems"
+  | "onBatchRestoreItems"
+  | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
   | "onBlankSelect"
@@ -520,6 +683,7 @@ function FileTable({
     onArchive: onArchiveItem,
     onCopy: onCopyItem,
     onCopyNode: onCopyNodeItem,
+    onDeletePermanently: onDeletePermanentlyItem,
     onDownload: onDownloadItem,
     onEdit: onEditItem,
     onMove: onMoveItem,
@@ -544,6 +708,10 @@ function FileTable({
     const checked = selected.includes(item.id);
     const isRenaming = renamingItemId === item.id;
     const itemSize = formatFileSize(sumDriveItemSizes([item], sourceItems), locale);
+    const pathHint = getFilePathHint(item);
+    const modifiedLabel = activeNav === "trash" && item.archivedAt
+      ? formatDriveItemDate(item.archivedAt, locale, timeZone)
+      : formatDriveItemModified(item, locale, timeZone);
     const actionItems = buildActions(item);
 
     return (
@@ -575,6 +743,7 @@ function FileTable({
               <>
                 <span className="drive-file-name-text icedr-truncate">{item.name}</span>
                 {item.shared ? <LocalIcon name="user_group" size={15} color={palette.subtle} /> : null}
+                {pathHint ? <span className="drive-file-path-text icedr-truncate">{pathHint}</span> : null}
               </>
             )}
           </span>
@@ -583,7 +752,7 @@ function FileTable({
           <span className="icedr-truncate">{item.owner}</span>
         </td>
         <td>{itemSize}</td>
-        <td>{formatDriveItemModified(item, locale, timeZone)}</td>
+        <td>{modifiedLabel}</td>
         <td onClick={(event) => event.stopPropagation()}>
           <div className="drive-row-actions">
             <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
@@ -668,6 +837,7 @@ function FileGrid({
   onCopyNodeItem,
   onDownloadItem,
   onEditItem,
+  onDeletePermanentlyItem,
   onMoveItem,
   onRenameItem,
   onRestoreItem,
@@ -686,10 +856,15 @@ function FileGrid({
   toggleStar,
 }: Omit<
   FilesModuleProps,
-  | "activeNav"
   | "createMenuItems"
   | "error"
   | "hasQuery"
+  | "onBatchArchiveItems"
+  | "onBatchDeletePermanentlyItems"
+  | "onBatchDownloadItems"
+  | "onBatchMoveItems"
+  | "onBatchRestoreItems"
+  | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
   | "onBlankSelect"
@@ -706,6 +881,7 @@ function FileGrid({
     onArchive: onArchiveItem,
     onCopy: onCopyItem,
     onCopyNode: onCopyNodeItem,
+    onDeletePermanently: onDeletePermanentlyItem,
     onDownload: onDownloadItem,
     onEdit: onEditItem,
     onMove: onMoveItem,
@@ -730,6 +906,7 @@ function FileGrid({
     const checked = selected.includes(item.id);
     const isRenaming = renamingItemId === item.id;
     const itemSize = formatFileSize(sumDriveItemSizes([item], sourceItems), locale);
+    const pathHint = getFilePathHint(item);
     const actionItems = buildActions(item);
 
     return (
@@ -756,7 +933,10 @@ function FileGrid({
                 value={item.name}
               />
             ) : (
-              <span className="drive-file-name-text icedr-truncate">{item.name}</span>
+              <>
+                <span className="drive-file-name-text icedr-truncate">{item.name}</span>
+                {pathHint ? <span className="drive-file-path-text icedr-truncate">{pathHint}</span> : null}
+              </>
             )}
           </span>
           <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />

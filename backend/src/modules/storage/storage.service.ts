@@ -27,12 +27,17 @@ import { dirname, relative, resolve, sep } from 'path';
 import type { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { PrismaService } from '../../database/prisma.service';
+import { Prisma } from '../../generated/prisma/client';
+import { createAuditEvent } from '../logs/audit-events';
 import {
   StorageSettings,
   StorageSettingsResponse,
   StorageTestResponse,
+  StorageUsageBreakdownResponse,
   StorageUsageResponse,
   UpdateStorageSettingsDto,
+  UpdateUserStorageQuotaDto,
+  UpdateWorkspaceQuotaDto,
 } from './storage-settings.dto';
 import { StorageSettingsRepository } from './storage-settings.repository';
 import { StorageReconcileRepository } from './storage-reconcile.repository';
@@ -151,39 +156,293 @@ export class StorageService {
   }
 
   async getUsage(workspaceId: string): Promise<StorageUsageResponse> {
-    const [fileStats, folderCount] = await Promise.all([
-      this.prisma.fileNode.aggregate({
-        where: {
-          archivedAt: null,
-          sizeBytes: { not: null },
-          workspaceId,
-        },
-        _count: { _all: true },
-        _sum: { sizeBytes: true },
-      }),
-      this.prisma.fileNode.count({
-        where: {
-          archivedAt: null,
-          sizeBytes: null,
-          workspaceId,
-        },
-      }),
-    ]);
-    const usedBytes = Number(fileStats._sum.sizeBytes ?? 0);
+    const [activeStats, trashStats, folderCount, versionStats, workspace] =
+      await Promise.all([
+        this.prisma.fileNode.aggregate({
+          where: {
+            archivedAt: null,
+            sizeBytes: { not: null },
+            workspaceId,
+          },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+        }),
+        this.prisma.fileNode.aggregate({
+          where: {
+            archivedAt: { not: null },
+            sizeBytes: { not: null },
+            workspaceId,
+          },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+        }),
+        this.prisma.fileNode.count({
+          where: {
+            archivedAt: null,
+            sizeBytes: null,
+            workspaceId,
+          },
+        }),
+        this.prisma.fileVersion.aggregate({
+          where: { node: { workspaceId } },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+        }),
+        this.prisma.workspace.findUnique({ where: { id: workspaceId } }),
+      ]);
+    const activeBytes = Number(activeStats._sum.sizeBytes ?? 0);
+    const trashBytes = Number(trashStats._sum.sizeBytes ?? 0);
+    const versionBytes = Number(versionStats._sum.sizeBytes ?? 0);
+    const usedBytes = activeBytes + trashBytes + versionBytes;
     const quotaBytes =
-      this.config.get<number | null>('storage.quotaBytes') ?? null;
+      workspace?.quotaBytes !== null && workspace?.quotaBytes !== undefined
+        ? Number(workspace.quotaBytes)
+        : (this.config.get<number | null>('storage.quotaBytes') ?? null);
     return {
       workspaceId,
+      activeBytes,
+      defaultUserQuotaBytes:
+        workspace?.defaultUserQuotaBytes !== null &&
+        workspace?.defaultUserQuotaBytes !== undefined
+          ? Number(workspace.defaultUserQuotaBytes)
+          : null,
       usedBytes,
-      fileCount: fileStats._count._all,
+      fileCount: activeStats._count._all,
       folderCount,
       quotaBytes,
+      trashBytes,
+      trashFileCount: trashStats._count._all,
       usagePercent:
         quotaBytes && quotaBytes > 0
           ? Math.min(100, Math.round((usedBytes / quotaBytes) * 1000) / 10)
           : null,
+      versionBytes,
+      versionCount: versionStats._count._all,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  async getUsageBreakdown(
+    workspaceId: string,
+  ): Promise<StorageUsageBreakdownResponse> {
+    const since = new Date();
+    since.setDate(since.getDate() - 13);
+    since.setHours(0, 0, 0, 0);
+    const activeFileWhere: Prisma.FileNodeWhereInput = {
+      archivedAt: null,
+      sizeBytes: { not: null },
+      workspaceId,
+    };
+    const [userRows, typeRows, directoryRows, trendRows] = await Promise.all([
+      this.prisma.fileNode.groupBy({
+        by: ['ownerUserId', 'ownerName'],
+        where: activeFileWhere,
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.fileNode.groupBy({
+        by: ['kind'],
+        where: activeFileWhere,
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.fileNode.groupBy({
+        by: ['parentNodeId'],
+        where: activeFileWhere,
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.$queryRaw<
+        Array<{ bytes: bigint | null; count: bigint; date: string }>
+      >`
+        select
+          to_char(created_at, 'YYYY-MM-DD') as date,
+          coalesce(sum(size_bytes), 0)::bigint as bytes,
+          count(*)::bigint as count
+        from file_nodes
+        where workspace_id = ${workspaceId}
+          and archived_at is null
+          and size_bytes is not null
+          and created_at >= ${since}
+        group by to_char(created_at, 'YYYY-MM-DD')
+      `,
+    ]);
+    const folderPathById = await this.fetchFolderPathMap(
+      directoryRows
+        .map((row) => row.parentNodeId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const byUser = new Map<
+      string,
+      { bytes: number; count: number; label: string }
+    >();
+    const byType = new Map<
+      string,
+      { bytes: number; count: number; label: string }
+    >();
+    const byDirectory = new Map<
+      string,
+      { bytes: number; count: number; label: string }
+    >();
+    const trend = new Map<string, { bytes: number; count: number }>();
+    for (let offset = 0; offset < 14; offset += 1) {
+      const date = new Date(since);
+      date.setDate(since.getDate() + offset);
+      trend.set(date.toISOString().slice(0, 10), { bytes: 0, count: 0 });
+    }
+
+    userRows.forEach((row) => {
+      this.addStorageBucket(
+        byUser,
+        (row.ownerUserId ?? row.ownerName) || 'unknown',
+        row.ownerName || 'Unknown',
+        Number(row._sum.sizeBytes ?? 0),
+        row._count._all,
+      );
+    });
+    typeRows.forEach((row) => {
+      this.addStorageBucket(
+        byType,
+        row.kind || 'other',
+        row.kind || 'other',
+        Number(row._sum.sizeBytes ?? 0),
+        row._count._all,
+      );
+    });
+    directoryRows.forEach((row) => {
+      const directoryId = row.parentNodeId ?? 'root';
+      this.addStorageBucket(
+        byDirectory,
+        directoryId,
+        folderPathById.get(directoryId) ?? '/',
+        Number(row._sum.sizeBytes ?? 0),
+        row._count._all,
+      );
+    });
+    trendRows.forEach((row) => {
+      const current = trend.get(row.date);
+      if (current) {
+        current.bytes = Number(row.bytes ?? 0);
+        current.count = Number(row.count);
+      }
+    });
+
+    return {
+      byDirectory: this.toStorageBuckets(byDirectory),
+      byType: this.toStorageBuckets(byType),
+      byUser: this.toStorageBuckets(byUser),
+      trend: Array.from(trend.entries()).map(([date, point]) => ({
+        date,
+        ...point,
+      })),
+      updatedAt: new Date().toISOString(),
+      workspaceId,
+    };
+  }
+
+  async updateWorkspaceQuota(dto: UpdateWorkspaceQuotaDto) {
+    await this.prisma.workspace.update({
+      where: { id: dto.workspaceId },
+      data: {
+        ...(dto.quotaBytes !== undefined
+          ? {
+              quotaBytes:
+                dto.quotaBytes === null ? null : BigInt(dto.quotaBytes),
+            }
+          : {}),
+        ...(dto.defaultUserQuotaBytes !== undefined
+          ? {
+              defaultUserQuotaBytes:
+                dto.defaultUserQuotaBytes === null
+                  ? null
+                  : BigInt(dto.defaultUserQuotaBytes),
+            }
+          : {}),
+        updatedAt: new Date(),
+      },
+    });
+    await this.recordAudit('file.quota_updated', dto.workspaceId, {
+      defaultUserQuotaBytes: dto.defaultUserQuotaBytes ?? null,
+      quotaBytes: dto.quotaBytes ?? null,
+    });
+    return this.getUsage(dto.workspaceId);
+  }
+
+  async updateUserStorageQuota(dto: UpdateUserStorageQuotaDto) {
+    const email = dto.email?.trim().toLowerCase();
+    const userId = dto.userId?.trim();
+    const workspaceId = dto.workspaceId?.trim() || 'workspace-default';
+    if (!email && !userId) {
+      throw new BadRequestException('User id or email is required');
+    }
+    if (email && userId) {
+      const existing = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+      if (!existing || existing.email.trim().toLowerCase() !== email) {
+        throw new BadRequestException('User id and email do not match');
+      }
+    }
+    const userWhere = userId ? { id: userId } : { email: email as string };
+    const user = await this.prisma.user.update({
+      where: userWhere,
+      data: {
+        storageQuotaBytes:
+          dto.quotaBytes === undefined || dto.quotaBytes === null
+            ? null
+            : BigInt(dto.quotaBytes),
+        updatedAt: new Date(),
+      },
+      select: {
+        email: true,
+        id: true,
+        storageQuotaBytes: true,
+      },
+    });
+    await this.recordAudit('file.user_quota_updated', workspaceId, {
+      quotaBytes:
+        user.storageQuotaBytes !== null && user.storageQuotaBytes !== undefined
+          ? Number(user.storageQuotaBytes)
+          : null,
+      userEmail: user.email,
+      userId: user.id,
+    });
+    return {
+      email: user.email,
+      quotaBytes:
+        user.storageQuotaBytes !== null && user.storageQuotaBytes !== undefined
+          ? Number(user.storageQuotaBytes)
+          : null,
+      userId: user.id,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private async recordAudit(
+    action: string,
+    workspaceId: string,
+    metadata: Record<string, unknown>,
+  ) {
+    const event = createAuditEvent({
+      action,
+      actor: 'workspace',
+      target: workspaceId,
+      workspaceId,
+      metadata,
+    });
+    await this.prisma.auditEvent.create({
+      data: {
+        id: event.id,
+        action: event.action,
+        actor: event.actor,
+        target: event.target,
+        workspaceId: event.workspaceId,
+        shareToken: event.shareToken,
+        nodeId: event.nodeId,
+        metadata: event.metadata as Prisma.InputJsonValue,
+      },
+    });
   }
 
   async distributedStorageEnabled() {
@@ -979,6 +1238,75 @@ export class StorageService {
       recursive: true,
       force: true,
     });
+  }
+
+  private addStorageBucket(
+    buckets: Map<string, { bytes: number; count: number; label: string }>,
+    id: string,
+    label: string,
+    bytes: number,
+    count = 1,
+  ) {
+    const current = buckets.get(id) ?? { bytes: 0, count: 0, label };
+    current.bytes += bytes;
+    current.count += count;
+    buckets.set(id, current);
+  }
+
+  private toStorageBuckets(
+    buckets: Map<string, { bytes: number; count: number; label: string }>,
+  ) {
+    return Array.from(buckets.entries())
+      .map(([id, bucket]) => ({ id, ...bucket }))
+      .sort((left, right) => right.bytes - left.bytes);
+  }
+
+  private async fetchFolderPathMap(folderIds: string[]) {
+    const rowById = new Map<
+      string,
+      { id: string; name: string; parentNodeId: string | null }
+    >();
+    let pendingIds = new Set([...new Set(folderIds)]);
+
+    while (pendingIds.size > 0) {
+      const rows = await this.prisma.fileNode.findMany({
+        where: { id: { in: [...pendingIds] } },
+        select: { id: true, name: true, parentNodeId: true },
+      });
+      pendingIds = new Set<string>();
+      rows.forEach((row) => {
+        rowById.set(row.id, row);
+        if (row.parentNodeId && !rowById.has(row.parentNodeId)) {
+          pendingIds.add(row.parentNodeId);
+        }
+      });
+    }
+
+    return this.buildFolderPathMap([...rowById.values()]);
+  }
+
+  private buildFolderPathMap(
+    rows: Array<{ id: string; name: string; parentNodeId: string | null }>,
+  ) {
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+    const pathById = new Map<string, string>([['root', '/']]);
+    const resolvePath = (id: string, seen = new Set<string>()): string => {
+      const existing = pathById.get(id);
+      if (existing) return existing;
+      const row = rowById.get(id);
+      if (!row) return '/';
+      if (seen.has(id)) return row.name;
+      const nextSeen = new Set(seen);
+      nextSeen.add(id);
+      const parentPath = row.parentNodeId
+        ? resolvePath(row.parentNodeId, nextSeen)
+        : '';
+      const path = parentPath ? `${parentPath}/${row.name}` : `/${row.name}`;
+      pathById.set(id, path);
+      return path;
+    };
+    rows.forEach((row) => resolvePath(row.id));
+    return pathById;
   }
 
   private isNotFoundError(error: unknown) {

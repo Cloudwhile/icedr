@@ -8,7 +8,7 @@ export type LanguageOption = {
 export type ThemeMode = "dark" | "light";
 export type ThemePreference = "system" | ThemeMode;
 export type DriveModule = "drive" | "links" | "transfers" | "audit";
-export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "video" | "archive";
+export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
 export type LocalIconName =
   | "abc"
   | "arrow_down"
@@ -65,6 +65,7 @@ export type LocalIconName =
 export type DriveItem = {
   id: string;
   name: string;
+  kind?: DriveItemKind;
   workspaceId?: string;
   parentId: string | null;
   owner: string;
@@ -76,6 +77,10 @@ export type DriveItem = {
   shared: boolean;
   starred: boolean;
   archivedAt?: string | null;
+  archivedBy?: string | null;
+  originalParentNodeId?: string | null;
+  originalPath?: string | null;
+  searchPath?: string | null;
   previewCapability?: FilePreviewCapability;
   colorKey: "primary" | "success" | "secure" | "tertiary";
 };
@@ -168,6 +173,7 @@ export const kindIcons: Record<DriveItemKind, LocalIconName> = {
   image: "image",
   video: "visible",
   archive: "file",
+  other: "file",
 };
 
 const extensionKinds: Record<string, DriveItemKind> = {
@@ -202,10 +208,14 @@ export function getItemExtension(item: DriveItem) {
 }
 
 export function getItemKind(item: DriveItem): DriveItemKind {
+  if (item.kind) return item.kind;
+  if (item.mimeType === "inode/directory") return "folder";
   if (item.mimeType?.startsWith("image/")) return "image";
   if (item.mimeType?.startsWith("video/")) return "video";
   const extension = getItemExtension(item);
-  return extension ? extensionKinds[extension] ?? "doc" : "folder";
+  if (extension) return extensionKinds[extension] ?? "other";
+  if (item.objectKey === null && item.sizeBytes === null) return "folder";
+  return "other";
 }
 
 export function formatFileSize(sizeBytes: number | null, locale: Locale) {

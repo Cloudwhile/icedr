@@ -27,6 +27,7 @@ describe('FileNodesService', () => {
     | 'createMultipartUpload'
     | 'createMultipartUploadPartUrl'
     | 'createPresignedUpload'
+    | 'deleteObject'
     | 'deleteUploadSessionParts'
     | 'distributedStorageEnabled'
     | 'findMultipartUploadPart'
@@ -123,6 +124,48 @@ describe('FileNodesService', () => {
             : nodes,
         ),
       ),
+      getStorageUsage: jest.fn((workspaceId: string) =>
+        Promise.resolve({
+          activeBytes: nodes
+            .filter(
+              (node) => node.workspaceId === workspaceId && !node.archivedAt,
+            )
+            .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
+          defaultUserQuotaBytes: null,
+          fileCount: nodes.filter(
+            (node) =>
+              node.workspaceId === workspaceId &&
+              !node.archivedAt &&
+              node.sizeBytes !== null,
+          ).length,
+          folderCount: nodes.filter(
+            (node) =>
+              node.workspaceId === workspaceId &&
+              !node.archivedAt &&
+              node.sizeBytes === null,
+          ).length,
+          quotaBytes: null,
+          trashBytes: 0,
+          trashFileCount: 0,
+          usagePercent: null,
+          usedBytes: nodes
+            .filter((node) => node.workspaceId === workspaceId)
+            .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
+          versionBytes: 0,
+          versionCount: 0,
+          workspaceId,
+          updatedAt: new Date(0).toISOString(),
+        }),
+      ),
+      getUserStorageUsage: jest.fn((workspaceId: string, userId: string) =>
+        Promise.resolve({
+          defaultUserQuotaBytes: null,
+          quotaBytes: null,
+          usedBytes: 0,
+          userId,
+          workspaceId,
+        }),
+      ),
       findById: jest.fn((id: string) =>
         Promise.resolve(nodes.find((node) => node.id === id) ?? null),
       ),
@@ -178,6 +221,7 @@ describe('FileNodesService', () => {
         audits.set(action, (audits.get(action) ?? 0) + 1);
         return Promise.resolve();
       }),
+      pruneVersions: jest.fn(() => Promise.resolve([])),
       countAuditEvents: jest.fn((action: string) =>
         Promise.resolve(audits.get(action) ?? 0),
       ),
@@ -218,6 +262,7 @@ describe('FileNodesService', () => {
         Promise.resolve({ objectKey: 'completed', stored: true }),
       ),
       abortMultipartUpload: jest.fn(() => Promise.resolve()),
+      deleteObject: jest.fn(() => Promise.resolve()),
       findMultipartUploadPart: jest.fn((input: { partIndex: number }) =>
         Promise.resolve({
           eTag: `"etag-${input.partIndex}"`,
@@ -242,7 +287,7 @@ describe('FileNodesService', () => {
             nodeId: null,
             name: input.name,
             type: 'upload',
-            progress: 5,
+            progress: 0,
             status: 'running',
             createdAt: new Date(0).toISOString(),
             updatedAt: new Date(0).toISOString(),
@@ -425,6 +470,57 @@ describe('FileNodesService', () => {
     expect(intent.uploadUrl).toContain('/api/file-nodes/upload-sessions/');
     expect(intent.uploadUrl).toContain('/chunks');
     expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+  });
+
+  it('rejects upload intents that exceed workspace quota', async () => {
+    jest.spyOn(repository, 'getStorageUsage').mockResolvedValueOnce({
+      activeBytes: 900,
+      defaultUserQuotaBytes: null,
+      fileCount: 1,
+      folderCount: 0,
+      quotaBytes: 1000,
+      trashBytes: 0,
+      trashFileCount: 0,
+      usagePercent: 90,
+      usedBytes: 900,
+      versionBytes: 0,
+      versionCount: 0,
+      workspaceId: 'workspace-default',
+      updatedAt: new Date(0).toISOString(),
+    });
+
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'Too Large.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 200,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('rejects upload intents that exceed user quota', async () => {
+    jest.spyOn(repository, 'getUserStorageUsage').mockResolvedValueOnce({
+      defaultUserQuotaBytes: 1000,
+      quotaBytes: 1000,
+      usedBytes: 950,
+      userId: 'user-test',
+      workspaceId: 'workspace-default',
+    });
+
+    await expect(
+      service.createUploadIntent(
+        {
+          workspaceId: 'workspace-default',
+          fileName: 'Member Quota.pdf',
+          mimeType: 'application/pdf',
+          fileSizeBytes: 100,
+        },
+        { ownerUserId: 'user-test' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
   });
 
   it('reuses resumable upload sessions and reports completed chunks', async () => {

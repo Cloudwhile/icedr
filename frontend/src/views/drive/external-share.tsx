@@ -246,6 +246,7 @@ function mapRegisteredShareItemToDriveItem(item: RegisteredShareItem): DriveItem
   return {
     id: item.id,
     name: item.name,
+    kind: item.kind,
     workspaceId: item.workspaceId,
     parentId: item.parentNodeId,
     owner: item.owner,

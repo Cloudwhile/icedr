@@ -26,7 +26,7 @@ export class TransfersService {
       objectKey: input.objectKey,
       name: input.name,
       type: 'upload',
-      progress: 5,
+      progress: 0,
       status: 'running',
     });
   }

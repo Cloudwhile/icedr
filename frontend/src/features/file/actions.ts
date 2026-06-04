@@ -1,7 +1,9 @@
 import type { DriveItem } from "@/features/file/model";
 import {
   buildApiUrl,
+  createBatchFileDownloadIntents,
   createFileDownloadIntent,
+  createFileVersionDownloadIntent,
   getApiBaseUrl,
   getAuthHeaders,
   updateTransfer,
@@ -181,6 +183,17 @@ export async function downloadWorkspaceDriveItem(item: DriveItem, workspaceId?: 
   openDownloadUrl(buildApiUrl(intent.downloadUrl));
 }
 
+export async function downloadWorkspaceDriveItems(items: DriveItem[]) {
+  const batch = await createBatchFileDownloadIntents(items.map((item) => item.id));
+  batch.succeeded.forEach((intent) => openDownloadUrl(buildApiUrl(intent.downloadUrl)));
+  return batch;
+}
+
+export async function downloadWorkspaceFileVersion(item: DriveItem, versionId: string) {
+  const intent = await createFileVersionDownloadIntent(item.id, versionId);
+  openDownloadUrl(buildApiUrl(intent.downloadUrl));
+}
+
 export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspaceId?: string) {
   const intent = await createFileDownloadIntent(item.id, workspaceId);
   const downloadUrl = buildApiUrl(intent.downloadUrl);
@@ -217,8 +230,8 @@ export function createUploadDriveFileTask({
   let intent: UploadIntentResponse | null = null;
   let lastLoadedBytes = 0;
   let lastTransferSyncAt = 0;
-  let lastTransferSyncProgress = 5;
-  let lastProgress = 5;
+  let lastTransferSyncProgress = 0;
+  let lastProgress = 0;
   let status: UploadDriveFileTaskStatus = "idle";
   let uploadedPartIndexes = new Set<number>();
   let uploadStartedAt = getMonotonicNow();
@@ -228,7 +241,7 @@ export function createUploadDriveFileTask({
 
   const getUploadProgress = (loadedBytes: number) => {
     if (file.size === 0) return 95;
-    return 5 + Math.min(1, loadedBytes / file.size) * 90;
+    return Math.min(1, loadedBytes / file.size) * 95;
   };
 
   const emitProgress = (
@@ -299,7 +312,7 @@ export function createUploadDriveFileTask({
     intent = (await intentResponse.json()) as UploadIntentResponse;
     uploadedPartIndexes = new Set(intent.uploadedPartIndexes ?? []);
     lastTransferSyncAt = 0;
-    lastTransferSyncProgress = 5;
+    lastTransferSyncProgress = 0;
     lastLoadedBytes = Math.min(file.size, intent.uploadedBytes ?? getUploadedPartBytes(uploadedPartIndexes, file, intent.chunkSizeBytes));
     lastProgress = normalizeProgress(getUploadProgress(lastLoadedBytes));
     uploadStartedAt = getMonotonicNow();
@@ -327,7 +340,7 @@ export function createUploadDriveFileTask({
           headers: currentIntent.headers,
           onProgress: (loadedBytes, totalBytes) => {
             const uploadRatio = totalBytes > 0 ? loadedBytes / totalBytes : 0;
-            emitProgress(loadedBytes, 5 + uploadRatio * 90);
+            emitProgress(loadedBytes, uploadRatio * 95);
           },
           onRequest: (request) => {
             activeRequest = request;
