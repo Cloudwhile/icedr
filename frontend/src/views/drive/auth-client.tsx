@@ -14,7 +14,7 @@ import { AuthCodePanel, AuthCurrentUserRow, AuthFormTitleBlock, AuthPasswordStre
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LegalConsentDialog } from "./legal-consent-dialog";
 import { LegalFooter } from "./legal-footer";
-import { Surface } from "./drive-primitives";
+import { LocalIcon, Surface } from "./drive-primitives";
 import { AppImage } from "@/components/ui/app-image";
 export function AuthGate({
   children
@@ -426,7 +426,7 @@ function AuthPage({
       });
     });
   };
-  return <div ref={pageRef} className="icedr-auth-page" style={{
+  return <div ref={pageRef} className="icedr-auth-page" data-auth-mode={mode} style={{
     "--auth-canvas": palette.canvas,
     "--auth-surface": palette.surface1,
     "--auth-surface-2": palette.surface2,
@@ -450,16 +450,21 @@ function AuthPage({
     overflowY: "auto",
     overflowX: "hidden",
     overscrollBehaviorY: "contain",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink,
     fontSize: "14px",
     letterSpacing: "0px"
   } as React.CSSProperties}>
-      <AuthHeader brandLogo={brandLogo} siteName={siteSettings.siteName} palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
-
       <main className="icedr-auth-main">
-        <div ref={formRef} className="icedr-auth-form-slot">
-          <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} mode={mode} next={next} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={value => {
+        <section className="icedr-auth-shell">
+          <AuthVisualPanel brandLogo={brandLogo} palette={palette} siteName={siteSettings.siteName} />
+          <section className="icedr-auth-panel">
+            <div className="icedr-auth-panel-top">
+              <AuthModePrompt mode={mode} next={next} />
+              <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+            </div>
+            <div ref={formRef} className="icedr-auth-form-slot">
+              <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} mode={mode} next={next} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={value => {
         setDisplayName(value);
         clearAuthInputError(status, setStatus);
       }} onEmailChange={value => {
@@ -476,53 +481,99 @@ function AuthPage({
         setCode(normalizeAuthCodeValue(value, passwordResetCodeLength));
         clearAuthInputError(status, setStatus);
       }} palette={palette} password={password} passwordResetStep={passwordResetStep} resetCooldown={resetCooldown} status={visibleStatus} code={code} />
-        </div>
+            </div>
+            <LegalFooter locale={locale} palette={palette} />
+          </section>
+        </section>
       </main>
 
-      <LegalFooter locale={locale} palette={palette} />
       <LegalConsentDialog locale={locale} onAccept={acceptLegalAndRegister} onClose={() => {
       setLegalDialogOpen(false);
       setPendingRegistrationValues(null);
     }} open={legalDialogOpen} palette={palette} />
     </div>;
 }
-function AuthHeader({
+function AuthVisualPanel({
   brandLogo,
   palette,
-  setThemeMode,
-  siteName,
-  themeMode
+  siteName
 }: {
   brandLogo: string;
   palette: Palette;
-  setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   siteName: string;
-  themeMode: ThemeMode;
 }) {
-  return <header className="icedr-auth-header" style={{
-    "--auth-header-border": palette.hairline,
-    "--auth-header-bg": `color-mix(in srgb, ${palette.surface1} 92%, transparent)`
-  } as React.CSSProperties}>
-      <div style={{
-      alignItems: "center",
-      display: "flex",
-      gap: "10px"
-    }}>
-        <AppImage src={brandLogo} alt="" style={{
-        width: "28px",
-        height: "28px",
-        objectFit: "contain",
-        flexShrink: "0"
-      }} />
-        <span style={{
-          fontWeight: "760",
-          lineHeight: "1"
-        }}>
-          {siteName}
-        </span>
+  const t = useTranslations();
+  const features = [
+    { icon: "shield" as const, title: t("auth.previewUser"), detail: t("auth.previewUserDetail") },
+    { icon: "upload" as const, title: t("auth.previewUpload"), detail: t("auth.previewUploadDetail") },
+    { icon: "link" as const, title: t("auth.previewShare"), detail: t("auth.previewShareDetail") }
+  ];
+
+  return <aside className="icedr-auth-visual-panel">
+      <div className="icedr-auth-visual-brand">
+        <AppImage src={brandLogo} alt="" className="icedr-auth-visual-logo" />
+        <strong>{siteName}</strong>
       </div>
-      <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
-    </header>;
+      <div className="icedr-auth-visual-copy">
+        <span>{t("auth.secureBadge")}</span>
+        <h1>{t("auth.heroTitle")}</h1>
+        <p>{t("auth.heroSubtitle")}</p>
+      </div>
+      <div className="icedr-auth-product-scene" aria-hidden="true">
+        <div className="icedr-auth-scene-grid">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="icedr-auth-scene-card icedr-auth-scene-card-back">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="icedr-auth-scene-card icedr-auth-scene-card-front">
+          <AppImage src={brandLogo} alt="" />
+          <span />
+          <span />
+        </div>
+      </div>
+      <div className="icedr-auth-feature-row">
+        {features.map((feature) => (
+          <div className="icedr-auth-feature" key={feature.title}>
+            <span className="icedr-auth-feature-icon" style={{ color: palette.primaryHover }}>
+              <LocalIcon name={feature.icon} size={17} />
+            </span>
+            <span>
+              <strong>{feature.title}</strong>
+              <small>{feature.detail}</small>
+            </span>
+          </div>
+        ))}
+      </div>
+    </aside>;
+}
+function AuthModePrompt({
+  mode,
+  next
+}: {
+  mode: AuthPageMode;
+  next: string;
+}) {
+  const t = useTranslations();
+  if (mode === "register") {
+    return <Link href={`/login?next=${encodeURIComponent(next)}`} className="icedr-auth-mode-prompt icedr-has-hover">
+        {t("auth.backToLogin")}
+      </Link>;
+  }
+  if (mode === "login") {
+    return <Link href={`/register?next=${encodeURIComponent(next)}`} className="icedr-auth-mode-prompt icedr-has-hover">
+        {t("auth.createInstead")}
+      </Link>;
+  }
+  return <Link href={`/login?next=${encodeURIComponent(next)}`} className="icedr-auth-mode-prompt icedr-has-hover">
+      {t("auth.backToLogin")}
+    </Link>;
 }
 function AuthFormCard({
   authCopy,
@@ -658,7 +709,7 @@ function AuthFormCard({
                   </AuthField>
                 </div> : null}
 
-              <div data-auth-form-row>
+              <div data-auth-form-row className="icedr-auth-submit-row">
                 <AuthPrimaryButton type="submit" disabled={submitDisabled} busy={busy} palette={palette}>
                   {busy ? t("auth.working") : mode === "login" && authSettings?.localEnabled === false ? t("auth.localUnavailable") : submitLabel}
                 </AuthPrimaryButton>
@@ -668,10 +719,10 @@ function AuthFormCard({
         </MotionPresence>
 
       {mode === "login" && !continuingCurrentSession ? <div data-auth-form-row className="icedr-auth-provider-stack">
-            {authSettings?.oauthEnabled && authSettings.oauthConfigured ? <AuthPrimaryButton icon="key" palette={palette} disabled={busy} busy={busy} onClick={onOAuthLogin}>
+            {authSettings?.oauthEnabled && authSettings.oauthConfigured ? <AuthPrimaryButton icon="key" palette={palette} disabled={busy} busy={busy} onClick={onOAuthLogin} variant="secondary">
                 {t("auth.oauthLogin")}
               </AuthPrimaryButton> : null}
-            {authSettings?.passkeyEnabled && authSettings.passkeyConfigured ? <AuthPrimaryButton icon="key" palette={palette} disabled={busy} busy={busy} onClick={onPasskeyLogin}>
+            {authSettings?.passkeyEnabled && authSettings.passkeyConfigured ? <AuthPrimaryButton icon="key" palette={palette} disabled={busy} busy={busy} onClick={onPasskeyLogin} variant="secondary">
                 {t("auth.passkeyLogin")}
               </AuthPrimaryButton> : null}
           </div> : null}

@@ -15,10 +15,10 @@ export type StatusPillProps = HTMLAttributes<HTMLSpanElement> & {
 function getStatusPillColors(tone: StatusPillTone, palette: Palette) {
   if (tone === "risk") {
     return {
-      bg: `color-mix(in srgb, ${palette.primary} 13%, ${palette.surface2})`,
-      borderColor: `color-mix(in srgb, ${palette.primary} 34%, ${palette.hairline})`,
-      color: palette.primaryHover,
-      shadow: `inset 0 1px 0 color-mix(in srgb, ${palette.primaryHover} 20%, transparent)`,
+      bg: `color-mix(in srgb, ${palette.danger} 12%, ${palette.surface2})`,
+      borderColor: `color-mix(in srgb, ${palette.danger} 38%, ${palette.hairline})`,
+      color: palette.danger,
+      shadow: `inset 0 1px 0 color-mix(in srgb, ${palette.danger} 20%, transparent)`,
     };
   }
 

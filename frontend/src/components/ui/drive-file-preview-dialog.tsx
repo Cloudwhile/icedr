@@ -4,15 +4,16 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
+import { DrivePreviewMetadataPanel, type PreviewMediaMetadata } from "./drive-preview-metadata-panel";
 import { AppDialogShell } from "./app-dialog-shell";
 import { showAppToast } from "./app-toast";
 import { cn } from "./cn";
-import { ItemIcon, LocalIcon } from "./local-icon";
+import { ItemIcon, LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
 import { useTimeZone, useTranslations } from "@/i18n/react";
 import {
-  formatDriveItemModified,
   formatFileSize,
+  formatDriveItemModified,
   getIntlLocale,
   getItemExtension,
   getItemKind,
@@ -33,12 +34,15 @@ import {
 } from "@/features/file/open-with";
 import {
   createFilePreviewIntent,
+  copyTextToClipboard,
+  createPreviewUrl,
   createWorkspaceDriveItemBlobUrl,
   createWorkspaceDriveItemSourceUrl,
+  downloadWorkspaceDriveItem,
   type PreviewIntentResponse,
 } from "@/features/file/actions";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
-import { fetchFileNode, fetchFileNodeContent, updateFileNodeContent } from "@/lib/drive-api";
+import { fetchFileNode, fetchFileNodeContent, fetchFileVersions, updateFileNodeContent, type FileVersionResponse } from "@/lib/drive-api";
 
 const mediaDetailsPreferenceKey = "icedr.preview.mediaDetailsOpen";
 
@@ -78,7 +82,7 @@ export function DriveFilePreviewDialog({
   const itemResolved = Boolean(item) || (Boolean(targetItemId) && resolvedItem?.itemId === targetItemId);
   const effectiveWorkspaceId = workspaceId ?? activeItem?.workspaceId ?? undefined;
   const effectiveOpenWith = activeItem ? resolveFileOpenWith(activeItem, openWith ?? null) : null;
-  const mediaPreview = isMediaDetailsPreview(activeItem, effectiveOpenWith);
+  const workspacePreview = isWorkspacePreview(activeItem, effectiveOpenWith);
 
   useEffect(() => {
     if (!open || item || !targetItemId) return;
@@ -118,11 +122,23 @@ export function DriveFilePreviewDialog({
   const previewIntent =
     resolvedPreviewIntent && resolvedPreviewIntent.itemId === activeItem?.id ? resolvedPreviewIntent.intent : null;
   const sizeLabel = activeItem ? formatFileSize(sumDriveItemSizes([activeItem], [activeItem]), locale) : "--";
+  const downloadActiveItem = () => {
+    if (!activeItem) return;
+    void downloadWorkspaceDriveItem(activeItem, effectiveWorkspaceId ?? undefined)
+      .then(() => showAppToast({ title: t("app.downloaded"), tone: "success" }))
+      .catch(() => showAppToast({ title: t("share.downloadFailed"), tone: "error" }));
+  };
+  const copyActivePreviewLink = () => {
+    if (!activeItem) return;
+    void copyTextToClipboard(createPreviewUrl(activeItem.id))
+      .then(() => showAppToast({ title: t("app.copied"), tone: "success" }))
+      .catch(() => showAppToast({ title: t("share.createFailed"), tone: "error" }));
+  };
 
   return (
     <AppDialogShell
-      className={cn("icedr-file-preview-dialog", mediaPreview && "icedr-file-preview-dialog-media")}
-      containerClassName={mediaPreview ? "icedr-dialog-container-media" : undefined}
+      className={cn("icedr-file-preview-dialog", workspacePreview && "icedr-file-preview-dialog-media")}
+      containerClassName={workspacePreview ? "icedr-dialog-container-media" : undefined}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose();
       }}
@@ -131,57 +147,64 @@ export function DriveFilePreviewDialog({
       scroll="inside"
       size="full"
       style={{
-        "--file-preview-dialog-height": mediaPreview ? "100dvh" : "min(820px, calc(100dvh - 48px))",
-        "--file-preview-dialog-width": mediaPreview ? "100vw" : "min(1160px, calc(100vw - 48px))",
+        "--file-preview-dialog-height": workspacePreview ? "100dvh" : "min(820px, calc(100dvh - 48px))",
+        "--file-preview-dialog-width": workspacePreview ? "100vw" : "min(1160px, calc(100vw - 48px))",
       } as CSSProperties}
     >
-      <div className="icedr-file-preview-frame">
-        {!mediaPreview ? (
-          <header
-            className="icedr-r-padding-inline"
-            style={{
-              alignItems: "center",
-              borderBottom: `1px solid ${palette.hairline}`,
-              display: "flex",
-              flexShrink: 0,
-              gap: "12px",
-              justifyContent: "space-between",
-              minHeight: "58px",
-              "--r-padding-inline-base": "12px",
-              "--r-padding-inline-md": "16px",
-            } as CSSProperties}
-          >
-            <div style={{ alignItems: "center", display: "flex", gap: "12px", minWidth: "0px" }}>
+      <div
+        className="icedr-file-preview-frame"
+        style={
+          {
+            "--preview-bg": palette.canvas,
+            "--preview-border": palette.hairline,
+            "--preview-border-strong": palette.hairlineStrong,
+            "--preview-focus": palette.focusRing,
+            "--preview-muted": palette.subtle,
+            "--preview-panel": palette.surface1,
+            "--preview-panel-strong": palette.surface2,
+            "--preview-selected": palette.selected,
+            "--preview-text": palette.ink,
+          } as CSSProperties
+        }
+      >
+        <header className="icedr-file-preview-header">
+          <div className="icedr-file-preview-identity">
+            {workspacePreview ? (
+              <button className="icedr-file-preview-back" type="button" aria-label={t("preview.back")} onClick={onClose}>
+                <LocalIcon name="arrow_left" size={18} />
+              </button>
+            ) : null}
+            <span className="icedr-file-preview-icon">
               {activeItem ? (
-                <ItemIcon item={activeItem} palette={palette} size={22} />
+                <ItemIcon item={activeItem} palette={palette} size={24} />
               ) : (
-                <LocalIcon name="visible" size={22} color={palette.primaryHover} />
+                <LocalIcon name="visible" size={24} color={palette.primaryHover} />
               )}
-              <div style={{ minWidth: "0px" }}>
-                <span
-                  className="icedr-truncate"
-                  style={{ color: palette.ink, fontSize: "14px", fontWeight: 720, lineHeight: 1.35 }}
-                >
-                  {activeItem?.name ?? t(itemResolved ? "preview.missing" : "preview.title")}
-                </span>
-                <span
-                  className="icedr-truncate"
-                  style={{ color: palette.subtle, fontSize: "12px", lineHeight: 1.35 }}
-                >
-                  {activeItem ? sizeLabel : itemResolved ? t("preview.missingHint") : t("app.loading")}
-                </span>
-              </div>
+            </span>
+            <div className="icedr-file-preview-title-block">
+              <strong className="icedr-truncate">
+                {activeItem?.name ?? t(itemResolved ? "preview.missing" : "preview.title")}
+              </strong>
+              <span className="icedr-truncate">
+                {activeItem ? sizeLabel : itemResolved ? t("preview.missingHint") : t("app.loading")}
+              </span>
             </div>
+          </div>
 
-            <div style={{ alignItems: "center", display: "flex", flexShrink: 0, gap: "4px" }}>
-              <ToolButton label={t("app.close")} palette={palette} onClick={onClose}>
-                <LocalIcon name="cross" size={17} />
-              </ToolButton>
-            </div>
-          </header>
-        ) : null}
+          <div className="icedr-file-preview-actions">
+            <ToolButton disabled={!activeItem} label={t("actions.download")} palette={palette} onClick={downloadActiveItem} tone="accent" visual="surface">
+              <LocalIcon name="download" size={17} />
+            </ToolButton>
+            <ToolButton disabled={!activeItem} label={t("actions.copyLink")} palette={palette} onClick={copyActivePreviewLink} visual="surface">
+              <LocalIcon name="share2" size={17} />
+            </ToolButton>
+            <ToolButton label={t("app.close")} palette={palette} onClick={onClose} visual="surface">
+              <LocalIcon name="cross" size={17} />
+            </ToolButton>
+          </div>
+        </header>
 
-        <div className={cn("icedr-file-preview-body", mediaPreview && "icedr-file-preview-body-media")}>
+        <div className={cn("icedr-file-preview-body", workspacePreview && "icedr-file-preview-body-media")}>
           <div className="icedr-file-preview-stage">
             {activeItem ? (
               <DriveFilePreviewContent
@@ -189,7 +212,6 @@ export function DriveFilePreviewDialog({
                 item={activeItem}
                 locale={locale}
                 onSaved={onSaved}
-                onClose={onClose}
                 onMediaDetailsClose={() => updateMediaDetailsOpen(false)}
                 onMediaDetailsOpen={() => updateMediaDetailsOpen(true)}
                 openWith={openWith ?? null}
@@ -235,9 +257,8 @@ function DriveFilePreviewContent({
   item,
   locale,
   mediaDetailsOpen,
-  onClose,
   onMediaDetailsClose,
-  onMediaDetailsOpen,
+  onMediaDetailsOpen: _onMediaDetailsOpen,
   onSaved,
   openWith: requestedOpenWith,
   palette,
@@ -248,7 +269,6 @@ function DriveFilePreviewContent({
   item: DriveItem;
   locale: Locale;
   mediaDetailsOpen: boolean;
-  onClose: () => void;
   onMediaDetailsClose: () => void;
   onMediaDetailsOpen: () => void;
   onSaved?: () => void;
@@ -426,28 +446,50 @@ function DriveFilePreviewContent({
     );
 
   const showMetadata = !canEditText && (openWith === "image" || openWith === "video");
+  const showWorkspaceChrome = showMetadata || (canPreviewDocument && openWith === "office");
+  const workspaceMode = showMetadata ? "media" : canEditText ? "text" : canPreviewDocument ? "document" : "status";
 
   return (
-    <div style={{ display: "flex", flex: "1 1 auto", minHeight: "0px", width: "100%" }}>
-      {showMetadata ? (
-        <div className="icedr-preview-media-layout" data-details-open={mediaDetailsOpen ? "true" : "false"}>
+    <div className="icedr-preview-workspace" data-mode={workspaceMode}>
+      {showWorkspaceChrome ? (
+        <div
+          className="icedr-preview-media-layout"
+          data-details-open={(showMetadata && mediaDetailsOpen) || (canPreviewDocument && openWith === "office") ? "true" : "false"}
+        >
           <div className="icedr-preview-media-stage">
-            <div className="icedr-preview-media-toolbar">
-              <ToolButton active={mediaDetailsOpen} className="icedr-preview-media-action" label={t("app.details")} palette={palette} onClick={onMediaDetailsOpen} tooltipPlacement="bottom end">
-                <LocalIcon name="info" size={17} />
-              </ToolButton>
-              <ToolButton className="icedr-preview-media-action" label={t("app.close")} palette={palette} onClick={onClose} tooltipPlacement="bottom end">
-                <LocalIcon name="cross" size={17} />
-              </ToolButton>
-            </div>
-            {previewNode}
+            <PreviewZoomStage key={`${previewItem.id}-${openWith}`} mode={workspaceMode} palette={palette}>
+              {previewNode}
+            </PreviewZoomStage>
+            <PreviewMediaRail
+              item={previewItem}
+              locale={locale}
+              mediaMetadata={showMetadata ? mediaMetadata : {}}
+              mediaUrl={showMetadata ? mediaUrl : documentUrl}
+              openWith={openWith}
+              palette={palette}
+              sizeLabel={size}
+              timeZone={timeZone}
+            />
           </div>
-          {mediaDetailsOpen ? (
-            <PreviewMetadataPanel
+          {showMetadata && mediaDetailsOpen ? (
+            <DrivePreviewMetadataPanel
               item={previewItem}
               locale={locale}
               mediaMetadata={mediaMetadata}
               onClose={onMediaDetailsClose}
+              onVersionRestored={onSaved}
+              openWith={openWith}
+              palette={palette}
+              timeZone={timeZone}
+            />
+          ) : canPreviewDocument && openWith === "office" ? (
+            <DrivePreviewMetadataPanel
+              closeable={false}
+              item={previewItem}
+              locale={locale}
+              mediaMetadata={{}}
+              onClose={onMediaDetailsClose}
+              onVersionRestored={onSaved}
               openWith={openWith}
               palette={palette}
               timeZone={timeZone}
@@ -455,15 +497,223 @@ function DriveFilePreviewContent({
           ) : null}
         </div>
       ) : (
-        previewNode
+        <div className="icedr-preview-simple-stage">{previewNode}</div>
       )}
     </div>
   );
 }
 
-function isMediaDetailsPreview(item: DriveItem | null | undefined, openWith: FileOpenWithApp | null) {
+function PreviewMediaRail({
+  item,
+  locale,
+  mediaMetadata,
+  mediaUrl,
+  openWith,
+  palette,
+  sizeLabel,
+  timeZone,
+}: {
+  item: DriveItem;
+  locale: Locale;
+  mediaMetadata: PreviewMediaMetadata;
+  mediaUrl: string | null;
+  openWith: FileOpenWithApp;
+  palette: Palette;
+  sizeLabel: string;
+  timeZone?: string;
+}) {
+  const t = useTranslations();
+  const extension = getItemExtension(item);
+  const [versionState, setVersionState] = useState<{ itemId: string | null; versions: FileVersionResponse[] }>({
+    itemId: null,
+    versions: [],
+  });
+  const canLoadVersions = Boolean(item.objectKey && !item.archivedAt);
+  const versions = canLoadVersions && versionState.itemId === item.id ? versionState.versions : [];
+  const currentVersion = versions[0] ?? null;
+  const secondaryVersions = versions.slice(1, 6);
+  const showVideoThumb = openWith === "video" && mediaUrl;
+  const showImageThumb = openWith === "image" && mediaUrl;
+  const mediaMetaLine = mediaMetadata.width && mediaMetadata.height
+    ? `${mediaMetadata.width} x ${mediaMetadata.height}${mediaMetadata.duration ? ` / ${mediaMetadata.duration}` : ""}`
+    : formatDriveItemModified(item, locale, timeZone);
+  const currentTitle =
+    openWith === "office"
+      ? t("preview.currentPage")
+      : currentVersion
+        ? t("files.versionNumber", { number: currentVersion.versionNumber })
+        : t("preview.currentFrame");
+  const currentMeta = currentVersion
+    ? `${formatFileSize(currentVersion.sizeBytes, locale)} / ${formatRailDate(currentVersion.createdAt, locale, timeZone)}`
+    : extension
+      ? `${extension.toUpperCase()} / ${sizeLabel}`
+      : `${t(`files.kind.${getItemKind(item)}`)} / ${sizeLabel}`;
+
+  useEffect(() => {
+    if (!canLoadVersions) return;
+    let cancelled = false;
+    void fetchFileVersions(item.id)
+      .then((versions) => {
+        if (!cancelled) setVersionState({ itemId: item.id, versions });
+      })
+      .catch(() => {
+        if (!cancelled) setVersionState({ itemId: item.id, versions: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canLoadVersions, item.id]);
+
+  return (
+    <div
+      className="icedr-preview-strip"
+      data-mode={openWith === "office" ? "pages" : "frames"}
+      style={
+        {
+          "--preview-strip-accent": palette.primaryHover,
+          "--preview-strip-border": palette.hairline,
+          "--preview-strip-muted": palette.subtle,
+          "--preview-strip-text": palette.ink,
+        } as CSSProperties
+      }
+    >
+      <button aria-label={t("preview.previousFrame")} className="icedr-preview-strip-edge" disabled type="button">
+        <LocalIcon name="arrow_left" size={18} />
+      </button>
+      <div className="icedr-preview-strip-track">
+        <div className="icedr-preview-strip-card icedr-preview-strip-card-current" data-active="true">
+          <span className="icedr-preview-strip-thumb">
+            {showImageThumb ? <img alt="" src={mediaUrl} /> : null}
+            {showVideoThumb ? <video aria-label={item.name} muted playsInline preload="metadata" src={mediaUrl} /> : null}
+            {!showImageThumb && !showVideoThumb ? <ItemIcon item={item} palette={palette} size={34} /> : null}
+          </span>
+          <span className="icedr-preview-strip-copy">
+            <span>{currentTitle}</span>
+            <span className="icedr-truncate">{currentMeta}</span>
+          </span>
+        </div>
+        {secondaryVersions.map((version) => (
+          <PreviewVersionRailTile
+            key={version.id}
+            item={item}
+            locale={locale}
+            palette={palette}
+            timeZone={timeZone}
+            version={version}
+          />
+        ))}
+        {secondaryVersions.length === 0 ? (
+          <div className="icedr-preview-strip-card icedr-preview-strip-card-muted">
+            <span className="icedr-preview-strip-thumb">
+              <LocalIcon name={openWith === "office" ? "document" : "time"} size={24} />
+            </span>
+            <span className="icedr-preview-strip-copy">
+              <span>{openWith === "office" ? t("preview.pages") : t("files.versions")}</span>
+              <span className="icedr-truncate">{openWith === "office" ? "1 / --" : mediaMetaLine}</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <button aria-label={t("preview.nextFrame")} className="icedr-preview-strip-edge" disabled type="button">
+        <LocalIcon name="arrow_right" size={18} />
+      </button>
+    </div>
+  );
+}
+
+function PreviewVersionRailTile({
+  item,
+  locale,
+  palette,
+  timeZone,
+  version,
+}: {
+  item: DriveItem;
+  locale: Locale;
+  palette: Palette;
+  timeZone?: string;
+  version: FileVersionResponse;
+}) {
+  const t = useTranslations();
+  return (
+    <div className="icedr-preview-strip-card">
+      <span className="icedr-preview-strip-thumb">
+        <ItemIcon item={item} palette={palette} size={28} />
+      </span>
+      <span className="icedr-preview-strip-copy">
+        <span>{t("files.versionNumber", { number: version.versionNumber })}</span>
+        <span className="icedr-truncate">
+          {formatFileSize(version.sizeBytes, locale)} / {formatRailDate(version.createdAt, locale, timeZone)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function formatRailDate(value: string, locale: Locale, timeZone?: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return new Intl.DateTimeFormat(getIntlLocale(locale), {
+    day: "2-digit",
+    month: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(date);
+}
+
+function isWorkspacePreview(item: DriveItem | null | undefined, openWith: FileOpenWithApp | null) {
   if (!item) return false;
-  return (openWith === "image" && isImagePreviewFile(item)) || (openWith === "video" && isVideoPreviewFile(item));
+  return (
+    (openWith === "image" && isImagePreviewFile(item)) ||
+    (openWith === "video" && isVideoPreviewFile(item)) ||
+    (openWith === "office" && isOfficePreviewFile(item))
+  );
+}
+
+function PreviewZoomStage({
+  children,
+  mode,
+  palette,
+}: {
+  children: React.ReactNode;
+  mode: "document" | "media" | "status" | "text";
+  palette: Palette;
+}) {
+  const t = useTranslations();
+  const [zoom, setZoom] = useState(100);
+  const decreaseZoom = () => setZoom((current) => Math.max(50, current - 10));
+  const increaseZoom = () => setZoom((current) => Math.min(160, current + 10));
+  const resetZoom = () => setZoom(100);
+
+  return (
+    <div className="icedr-preview-zoom-stage">
+      <div className="icedr-preview-media-toolbar" aria-label={t("preview.title")}>
+        {mode === "document" ? (
+          <span className="icedr-preview-page-meter" aria-label={t("preview.pages")}>
+            <LocalIcon name="document" size={14} />
+            <strong>1</strong>
+            <span>/ --</span>
+          </span>
+        ) : null}
+        <ToolButton disabled={zoom <= 50} label={t("preview.zoomOut")} palette={palette} size="sm" onClick={decreaseZoom} visual="surface">
+          <LocalIcon name="minus" size={15} />
+        </ToolButton>
+        <button className="icedr-preview-zoom-value" type="button" onClick={resetZoom} aria-label={t("preview.zoomReset")}>
+          {zoom}%
+        </button>
+        <ToolButton disabled={zoom >= 160} label={t("preview.zoomIn")} palette={palette} size="sm" onClick={increaseZoom} visual="surface">
+          <LocalIcon name="plus" size={15} />
+        </ToolButton>
+        <ToolButton label={t("preview.zoomReset")} palette={palette} size="sm" onClick={resetZoom} visual="surface">
+          <LocalIcon name="expand" size={15} />
+        </ToolButton>
+      </div>
+      <div className="icedr-preview-canvas">
+        <div className="icedr-preview-zoom-surface" style={{ "--preview-zoom": zoom / 100 } as CSSProperties}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PreviewStatusPane({
@@ -520,71 +770,6 @@ function PreviewMetric({ label, palette, value }: { label: string; palette: Pale
   );
 }
 
-function PreviewMetadataPanel({
-  item,
-  locale,
-  mediaMetadata,
-  onClose,
-  openWith,
-  palette,
-  timeZone,
-}: {
-  item: DriveItem;
-  locale: Locale;
-  mediaMetadata: PreviewMediaMetadata;
-  onClose: () => void;
-  openWith: FileOpenWithApp;
-  palette: Palette;
-  timeZone?: string;
-}) {
-  const t = useTranslations();
-  const extension = getItemExtension(item);
-  const kind = getItemKind(item);
-  const rows = [
-    { label: t("files.name"), value: item.name },
-    { label: t("files.type"), value: t(`files.kind.${kind}`) },
-    { label: t("preview.mimeType"), value: item.mimeType || "--" },
-    { label: t("preview.extension"), value: extension ? extension.toUpperCase() : "--" },
-    { label: t("files.size"), value: formatFileSize(item.sizeBytes, locale) },
-    { label: t("preview.sizeBytes"), value: typeof item.sizeBytes === "number" ? new Intl.NumberFormat(getIntlLocale(locale)).format(item.sizeBytes) : "--" },
-    { label: t("files.owner"), value: item.owner || "--" },
-    { label: t("preview.dimensions"), value: mediaMetadata.width && mediaMetadata.height ? `${mediaMetadata.width} × ${mediaMetadata.height}` : "--" },
-    { label: t("preview.aspectRatio"), value: mediaMetadata.aspectRatio ?? "--" },
-    openWith === "video" ? { label: t("preview.duration"), value: mediaMetadata.duration ?? "--" } : null,
-    { label: t("files.modified"), value: formatDriveItemModified(item, locale, timeZone) },
-    { label: t("preview.createdAt"), value: formatOptionalDate(item.createdAt, locale, timeZone) },
-  ].filter(Boolean) as Array<{ label: string; value: string }>;
-
-  return (
-    <aside className="icedr-preview-metadata-panel">
-      <div className="icedr-preview-metadata-heading">
-        <div className="icedr-preview-metadata-title">
-          <ItemIcon item={item} palette={palette} size={20} />
-          <span>{t("app.details")}</span>
-        </div>
-        <ToolButton label={t("app.close")} palette={palette} onClick={onClose} visual="surface">
-          <LocalIcon name="cross" size={16} />
-        </ToolButton>
-      </div>
-      <div className="icedr-preview-metadata-list">
-        {rows.map((row) => (
-          <div className="icedr-preview-metadata-row" key={row.label}>
-            <span>{row.label}</span>
-            <strong title={row.value}>{row.value}</strong>
-          </div>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
-type PreviewMediaMetadata = {
-  aspectRatio?: string;
-  duration?: string;
-  height?: number;
-  width?: number;
-};
-
 type PreviewMediaMetadataState = PreviewMediaMetadata & {
   itemId: string | null;
   openWith: string;
@@ -616,12 +801,15 @@ function ImagePreview({
   onMetadata: (metadata: PreviewMediaMetadata) => void;
   palette: Palette;
 }) {
+  const [metadata, setMetadata] = useState<PreviewMediaMetadata>({});
+  const aspectRatio = metadata.width && metadata.height ? `${metadata.width} / ${metadata.height}` : undefined;
+
   return (
     <div
       className="icedr-preview-media-viewer"
       style={{
-        "--preview-media-bg": palette.surface2,
         "--preview-media-border": palette.hairline,
+        "--preview-media-aspect-ratio": aspectRatio,
       } as CSSProperties}
     >
       {imageUrl ? (
@@ -629,11 +817,13 @@ function ImagePreview({
           alt={item.name}
           onLoad={(event) => {
             const image = event.currentTarget;
-            onMetadata({
+            const nextMetadata = {
               aspectRatio: formatAspectRatio(image.naturalWidth, image.naturalHeight),
               height: image.naturalHeight || undefined,
               width: image.naturalWidth || undefined,
-            });
+            };
+            setMetadata(nextMetadata);
+            onMetadata(nextMetadata);
           }}
           src={imageUrl}
           className="icedr-preview-media-object"
@@ -664,12 +854,15 @@ function VideoPreview({
   palette: Palette;
   videoUrl: string | null;
 }) {
+  const [metadata, setMetadata] = useState<PreviewMediaMetadata>({});
+  const aspectRatio = metadata.width && metadata.height ? `${metadata.width} / ${metadata.height}` : undefined;
+
   return (
     <div
       className="icedr-preview-media-viewer"
       style={{
-        "--preview-media-bg": palette.surface2,
         "--preview-media-border": palette.hairline,
+        "--preview-media-aspect-ratio": aspectRatio,
       } as CSSProperties}
     >
       {videoUrl ? (
@@ -678,12 +871,14 @@ function VideoPreview({
           controls
           onLoadedMetadata={(event) => {
             const video = event.currentTarget;
-            onMetadata({
+            const nextMetadata = {
               aspectRatio: formatAspectRatio(video.videoWidth, video.videoHeight),
               duration: Number.isFinite(video.duration) ? formatDuration(video.duration) : undefined,
               height: video.videoHeight || undefined,
               width: video.videoWidth || undefined,
-            });
+            };
+            setMetadata(nextMetadata);
+            onMetadata(nextMetadata);
           }}
           playsInline
           preload="metadata"
@@ -717,15 +912,8 @@ function OfficePreview({
   if (extension === "pdf" && documentUrl) {
     return (
       <iframe
+        className="icedr-preview-document-frame"
         src={documentUrl}
-        style={{
-          background: palette.surface2,
-          border: `1px solid ${palette.hairline}`,
-          borderRadius: "8px",
-          flex: "1 1 auto",
-          minHeight: "520px",
-          width: "100%",
-        }}
         title={item.name}
       />
     );
@@ -733,20 +921,7 @@ function OfficePreview({
 
   if (extension === "docx" && documentHtml) {
     return (
-      <div
-        style={{
-          background: palette.surface2,
-          border: `1px solid ${palette.hairline}`,
-          borderRadius: "8px",
-          color: palette.ink,
-          flex: "1 1 auto",
-          lineHeight: 1.7,
-          minHeight: "420px",
-          overflow: "auto",
-          padding: "24px",
-          width: "100%",
-        }}
-      >
+      <div className="icedr-preview-document-shell">
         <div className="icedr-preview-document" dangerouslySetInnerHTML={{ __html: documentHtml }} />
       </div>
     );
@@ -836,17 +1011,6 @@ function MarkdownPreview({ html, palette }: { html: string; palette: Palette }) 
       <div className="icedr-preview-markdown" dangerouslySetInnerHTML={{ __html: html || "" }} />
     </div>
   );
-}
-
-function formatOptionalDate(value: string | null | undefined, locale: Locale, timeZone?: string) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--";
-  return new Intl.DateTimeFormat(getIntlLocale(locale), {
-    dateStyle: "medium",
-    timeStyle: "short",
-    ...(timeZone ? { timeZone } : {}),
-  }).format(date);
 }
 
 function formatAspectRatio(width: number, height: number) {

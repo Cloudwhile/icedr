@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { AppDialogShell } from "./app-dialog-shell";
-import { LocalIcon } from "./local-icon";
+import { LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
 import { useTranslations } from "@/i18n/react";
 import type { Palette } from "@/features/file/model";

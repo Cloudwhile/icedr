@@ -7,7 +7,10 @@ export type LanguageOption = {
 };
 export type ThemeMode = "dark" | "light";
 export type ThemePreference = "system" | ThemeMode;
-export type DriveModule = "drive" | "links" | "transfers" | "audit";
+export type DriveModule = "drive" | "links" | "transfers";
+export type DriveShortcutNav = "shared" | "recent" | "starred" | "trash";
+export type DriveWorkspaceNav = DriveModule | DriveShortcutNav;
+export type DriveUserNav = DriveWorkspaceNav | "settings";
 export type DriveItemKind = "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
 export type LocalIconName =
   | "abc"
@@ -39,6 +42,7 @@ export type LocalIconName =
   | "mention"
   | "menu"
   | "menu7"
+  | "minus"
   | "notification"
   | "pause"
   | "play"
@@ -60,7 +64,8 @@ export type LocalIconName =
   | "user_check"
   | "user_group"
   | "user_avatar"
-  | "visible";
+  | "visible"
+  | "expand";
 
 export type DriveItem = {
   id: string;
@@ -155,13 +160,12 @@ export const palettes: Record<ThemeMode, Palette> = {
   },
 };
 
-export const navItems: Array<{ id: DriveModule | "shared" | "recent" | "starred" | "trash"; icon: LocalIconName }> = [
+export const navItems: Array<{ id: DriveWorkspaceNav; icon: LocalIconName }> = [
   { id: "drive", icon: "folder" },
   { id: "shared", icon: "user_group" },
   { id: "recent", icon: "clock" },
   { id: "links", icon: "link" },
   { id: "transfers", icon: "upload" },
-  { id: "audit", icon: "shield" },
   { id: "starred", icon: "star" },
   { id: "trash", icon: "trash" },
 ];
@@ -201,10 +205,23 @@ const extensionKinds: Record<string, DriveItemKind> = {
   gz: "archive",
 };
 
+const extensionIconAliases: Record<string, string> = {
+  md: "markdown",
+  mkd: "markdown",
+  markdown: "markdown",
+};
+
 export function getItemExtension(item: DriveItem) {
   const dotIndex = item.name.lastIndexOf(".");
   if (dotIndex <= 0 || dotIndex === item.name.length - 1) return "";
   return item.name.slice(dotIndex + 1).toLowerCase();
+}
+
+export function getItemExtensionIconName(item: DriveItem) {
+  if (getItemKind(item) === "folder") return "folder";
+  const extension = getItemExtension(item);
+  if (!extension) return "";
+  return extensionIconAliases[extension] ?? extension;
 }
 
 export function getItemKind(item: DriveItem): DriveItemKind {

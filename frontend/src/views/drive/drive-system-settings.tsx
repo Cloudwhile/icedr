@@ -57,6 +57,13 @@ type QuotaDraftState = {
   value: string;
 };
 
+const systemSettingNavItems: Array<{ icon: ComponentProps<typeof LocalIcon>["name"]; id: string; labelKey: string }> = [
+  { icon: "settings", id: "site-settings", labelKey: "settings.siteSettings" },
+  { icon: "key", id: "auth-settings", labelKey: "settings.authSettings" },
+  { icon: "file", id: "storage-policy", labelKey: "settings.storagePolicy" },
+  { icon: "trash", id: "lifecycle-policy", labelKey: "settings.lifecyclePolicy" },
+];
+
 const quotaUnits: Array<{ factor: number; key: string; value: QuotaUnit }> = [
   { factor: 1, key: "settings.quotaUnitBytes", value: "B" },
   { factor: 1024, key: "settings.quotaUnitKilobytes", value: "KB" },
@@ -223,148 +230,185 @@ export function DriveSystemSettings({
 
   return (
     <section className="drive-system-settings" aria-label={t("settings.systemSettings")}>
-      <SettingsBlock icon="settings" palette={palette} title={t("settings.siteSettings")}>
-        <SettingsField label={t("setup.siteName")}>
-          <AppInput
-            palette={palette}
-            value={site.siteName}
-            onChange={(event) => setSite((value) => ({ ...value, siteName: event.target.value }))}
-          />
-        </SettingsField>
-        <div className="drive-system-fact-grid">
-          <SettingsFact label={t("settings.siteLogo")} value={site.authLogoDataUrl ? t("settings.configured") : t("settings.notConfigured")} />
-        </div>
-        <BlockActions>
-          <ToolButton isPending={savingKey === "site"} label={t("admin.save")} palette={palette} onClick={saveSite} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
-
-      <SettingsBlock icon="key" palette={palette} title={t("settings.authSettings")}>
-        <SettingsSelectRow
-          label={t("admin.localAuth")}
-          onChange={(value) => setAuth((current) => ({ ...current, localEnabled: value === "true" }))}
-          palette={palette}
-          value={String(auth.localEnabled)}
-        />
-        <SettingsSelectRow
-          label={t("admin.oauthAuth")}
-          onChange={(value) => setAuth((current) => ({ ...current, oauthEnabled: value === "true" }))}
-          palette={palette}
-          value={String(auth.oauthEnabled)}
-        />
-        <SettingsSelectRow
-          label={t("admin.passkeyAuth")}
-          onChange={(value) => setAuth((current) => ({ ...current, passkeyEnabled: value === "true" }))}
-          palette={palette}
-          value={String(auth.passkeyEnabled)}
-        />
-        <div className="drive-system-fact-grid">
-          <SettingsFact label={t("settings.oauthConfiguration")} value={auth.oauthConfigured ? t("settings.configured") : t("settings.notConfigured")} />
-          <SettingsFact label={t("settings.passkeyConfiguration")} value={auth.passkeyConfigured ? t("settings.configured") : t("settings.notConfigured")} />
-          <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(auth.updatedAt, locale)} />
-        </div>
-        <BlockActions>
-          <ToolButton isPending={savingKey === "auth"} label={t("admin.save")} palette={palette} onClick={saveAuth} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
-
-      <SettingsBlock icon="file" palette={palette} title={t("settings.storagePolicy")}>
-        <div className="drive-system-usage-grid">
-          {usageRows.map((row) => (
-            <div className="drive-settings-fact" key={row.label}>
-              <span className="drive-settings-label">{row.label}</span>
-              <span className="drive-settings-value icedr-truncate">{row.value}</span>
-            </div>
-          ))}
-        </div>
-        {usageBreakdown ? (
-          <div className="drive-system-breakdown-grid">
-            <UsageBreakdownList items={usageBreakdown.byUser} locale={locale} title={t("settings.usageByUser")} />
-            <UsageBreakdownList items={usageBreakdown.byDirectory} locale={locale} title={t("settings.usageByDirectory")} />
-            <UsageBreakdownList items={usageBreakdown.byType} locale={locale} title={t("settings.usageByType")} />
-            <UsageTrendSummary locale={locale} points={usageBreakdown.trend} title={t("settings.usageTrend")} />
+      <aside className="drive-system-settings-nav" aria-label={t("settings.systemSettings")}>
+        {systemSettingNavItems.map((item, index) => (
+          <a data-active={index === 0 ? "true" : undefined} href={`#${item.id}`} key={item.id}>
+            <LocalIcon name={item.icon} size={16} />
+            <span className="icedr-truncate">{t(item.labelKey)}</span>
+          </a>
+        ))}
+      </aside>
+      <div className="drive-system-settings-main">
+        <SettingsBlock id="site-settings" icon="settings" palette={palette} title={t("settings.siteSettings")}>
+          <SettingsField label={t("setup.siteName")}>
+            <AppInput
+              palette={palette}
+              value={site.siteName}
+              onChange={(event) => setSite((value) => ({ ...value, siteName: event.target.value }))}
+            />
+          </SettingsField>
+          <div className="drive-system-fact-grid">
+            <SettingsFact label={t("settings.siteLogo")} value={site.authLogoDataUrl ? t("settings.configured") : t("settings.notConfigured")} />
           </div>
-        ) : null}
-        <QuotaField
-          label={t("settings.workspaceQuota")}
-          onUnitChange={setQuotaUnit}
-          onValueChange={setQuotaDraft}
-          palette={palette}
-          unit={quotaDraft.unit}
-          value={quotaDraft.value}
-        />
-        <QuotaField
-          label={t("settings.defaultUserQuota")}
-          onUnitChange={setDefaultUserQuotaUnit}
-          onValueChange={setDefaultUserQuotaDraft}
-          palette={palette}
-          unit={defaultUserQuotaDraft.unit}
-          value={defaultUserQuotaDraft.value}
-        />
-        <SettingsField label={t("settings.userQuotaEmail")}>
-          <AppInput
-            inputMode="email"
-            palette={palette}
-            value={userQuotaEmail}
-            onChange={(event) => setUserQuotaEmail(event.target.value)}
-          />
-        </SettingsField>
-        <QuotaField
-          label={t("settings.userQuota")}
-          onUnitChange={setUserQuotaUnit}
-          onValueChange={setUserQuotaDraft}
-          palette={palette}
-          unit={userQuotaUnit}
-          value={userQuotaDraft}
-        />
-        <BlockActions>
-          <ToolButton isPending={savingKey === "usage"} label={t("app.refresh")} palette={palette} onClick={refreshUsage} visual="surface">
-            <LocalIcon name="refresh" size={17} />
-          </ToolButton>
-          <ToolButton isPending={savingKey === "user-quota"} label={t("settings.userQuota")} palette={palette} onClick={saveUserQuota} visual="surface">
-            <LocalIcon name="user_check" size={17} />
-          </ToolButton>
-          <ToolButton isPending={savingKey === "quota"} label={t("admin.save")} palette={palette} onClick={saveQuota} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
+          <BlockActions>
+            <ToolButton isPending={savingKey === "site"} label={t("admin.save")} palette={palette} onClick={saveSite} visual="surface">
+              <LocalIcon name="tick" size={17} />
+            </ToolButton>
+          </BlockActions>
+        </SettingsBlock>
 
-      <SettingsBlock icon="trash" palette={palette} title={t("settings.lifecyclePolicy")}>
-        <SettingsSelectRow
-          label={t("settings.trashRetentionDays")}
-          onChange={(value) => setPolicy((current) => ({ ...current, trashRetentionDays: Number(value) }))}
-          options={["7", "30", "90", "180", "365"]}
-          palette={palette}
-          value={String(policy.trashRetentionDays)}
-        />
-        <SettingsSelectRow
-          label={t("settings.versionRetentionCount")}
-          onChange={(value) => setPolicy((current) => ({ ...current, versionRetentionCount: Number(value) }))}
-          options={["5", "10", "20", "50", "100"]}
-          palette={palette}
-          value={String(policy.versionRetentionCount)}
-        />
-        <SettingsSelectRow
-          label={t("settings.versionRetentionDays")}
-          onChange={(value) => setPolicy((current) => ({ ...current, versionRetentionDays: Number(value) }))}
-          options={["30", "90", "180", "365", "730"]}
-          palette={palette}
-          value={String(policy.versionRetentionDays)}
-        />
-        <div className="drive-system-fact-grid">
-          <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(policy.updatedAt, locale)} />
-        </div>
-        <BlockActions>
-          <ToolButton isPending={savingKey === "policy"} label={t("admin.save")} palette={palette} onClick={savePolicy} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
+        <SettingsBlock id="auth-settings" icon="key" palette={palette} title={t("settings.authSettings")}>
+          <div className="drive-system-control-grid">
+            <SettingsSelectRow
+              label={t("admin.localAuth")}
+              onChange={(value) => setAuth((current) => ({ ...current, localEnabled: value === "true" }))}
+              palette={palette}
+              value={String(auth.localEnabled)}
+            />
+            <SettingsSelectRow
+              label={t("admin.oauthAuth")}
+              onChange={(value) => setAuth((current) => ({ ...current, oauthEnabled: value === "true" }))}
+              palette={palette}
+              value={String(auth.oauthEnabled)}
+            />
+            <SettingsSelectRow
+              label={t("admin.passkeyAuth")}
+              onChange={(value) => setAuth((current) => ({ ...current, passkeyEnabled: value === "true" }))}
+              palette={palette}
+              value={String(auth.passkeyEnabled)}
+            />
+          </div>
+          <div className="drive-system-fact-grid">
+            <SettingsFact label={t("settings.oauthConfiguration")} value={auth.oauthConfigured ? t("settings.configured") : t("settings.notConfigured")} />
+            <SettingsFact label={t("settings.passkeyConfiguration")} value={auth.passkeyConfigured ? t("settings.configured") : t("settings.notConfigured")} />
+            <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(auth.updatedAt, locale)} />
+          </div>
+          <BlockActions>
+            <ToolButton isPending={savingKey === "auth"} label={t("admin.save")} palette={palette} onClick={saveAuth} visual="surface">
+              <LocalIcon name="tick" size={17} />
+            </ToolButton>
+          </BlockActions>
+        </SettingsBlock>
+
+        <SettingsBlock id="storage-policy" icon="file" palette={palette} title={t("settings.storagePolicy")}>
+          <div className="drive-system-usage-grid">
+            {usageRows.map((row) => (
+              <div className="drive-settings-fact" key={row.label}>
+                <span className="drive-settings-label">{row.label}</span>
+                <span className="drive-settings-value icedr-truncate">{row.value}</span>
+              </div>
+            ))}
+          </div>
+          {usageBreakdown ? (
+            <div className="drive-system-breakdown-grid">
+              <UsageBreakdownList items={usageBreakdown.byUser} locale={locale} title={t("settings.usageByUser")} />
+              <UsageBreakdownList items={usageBreakdown.byDirectory} locale={locale} title={t("settings.usageByDirectory")} />
+              <UsageBreakdownList items={usageBreakdown.byType} locale={locale} title={t("settings.usageByType")} />
+              <UsageTrendSummary locale={locale} points={usageBreakdown.trend} title={t("settings.usageTrend")} />
+            </div>
+          ) : null}
+          <div className="drive-system-control-grid">
+            <QuotaField
+              label={t("settings.workspaceQuota")}
+              onUnitChange={setQuotaUnit}
+              onValueChange={setQuotaDraft}
+              palette={palette}
+              unit={quotaDraft.unit}
+              value={quotaDraft.value}
+            />
+            <QuotaField
+              label={t("settings.defaultUserQuota")}
+              onUnitChange={setDefaultUserQuotaUnit}
+              onValueChange={setDefaultUserQuotaDraft}
+              palette={palette}
+              unit={defaultUserQuotaDraft.unit}
+              value={defaultUserQuotaDraft.value}
+            />
+            <SettingsField label={t("settings.userQuotaEmail")}>
+              <AppInput
+                inputMode="email"
+                palette={palette}
+                value={userQuotaEmail}
+                onChange={(event) => setUserQuotaEmail(event.target.value)}
+              />
+            </SettingsField>
+            <QuotaField
+              label={t("settings.userQuota")}
+              onUnitChange={setUserQuotaUnit}
+              onValueChange={setUserQuotaDraft}
+              palette={palette}
+              unit={userQuotaUnit}
+              value={userQuotaDraft}
+            />
+          </div>
+          <BlockActions>
+            <ToolButton isPending={savingKey === "usage"} label={t("app.refresh")} palette={palette} onClick={refreshUsage} visual="surface">
+              <LocalIcon name="refresh" size={17} />
+            </ToolButton>
+            <ToolButton isPending={savingKey === "user-quota"} label={t("settings.userQuota")} palette={palette} onClick={saveUserQuota} visual="surface">
+              <LocalIcon name="user_check" size={17} />
+            </ToolButton>
+            <ToolButton isPending={savingKey === "quota"} label={t("admin.save")} palette={palette} onClick={saveQuota} visual="surface">
+              <LocalIcon name="tick" size={17} />
+            </ToolButton>
+          </BlockActions>
+        </SettingsBlock>
+
+        <SettingsBlock id="lifecycle-policy" icon="trash" palette={palette} title={t("settings.lifecyclePolicy")}>
+          <div className="drive-system-control-grid">
+            <SettingsSelectRow
+              label={t("settings.trashRetentionDays")}
+              onChange={(value) => setPolicy((current) => ({ ...current, trashRetentionDays: Number(value) }))}
+              options={["7", "30", "90", "180", "365"]}
+              palette={palette}
+              value={String(policy.trashRetentionDays)}
+            />
+            <SettingsSelectRow
+              label={t("settings.versionRetentionCount")}
+              onChange={(value) => setPolicy((current) => ({ ...current, versionRetentionCount: Number(value) }))}
+              options={["5", "10", "20", "50", "100"]}
+              palette={palette}
+              value={String(policy.versionRetentionCount)}
+            />
+            <SettingsSelectRow
+              label={t("settings.versionRetentionDays")}
+              onChange={(value) => setPolicy((current) => ({ ...current, versionRetentionDays: Number(value) }))}
+              options={["30", "90", "180", "365", "730"]}
+              palette={palette}
+              value={String(policy.versionRetentionDays)}
+            />
+          </div>
+          <div className="drive-system-fact-grid">
+            <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(policy.updatedAt, locale)} />
+          </div>
+          <BlockActions>
+            <ToolButton isPending={savingKey === "policy"} label={t("admin.save")} palette={palette} onClick={savePolicy} visual="surface">
+              <LocalIcon name="tick" size={17} />
+            </ToolButton>
+          </BlockActions>
+        </SettingsBlock>
+      </div>
+
+      <aside className="drive-system-settings-side">
+        <SettingsSideCard icon="shield" title={t("settings.systemStatus")}>
+          <SettingsSideRow label={t("settings.runningStatus")} value={t("setup.toggleEnabled")} tone="secure" />
+          <SettingsSideRow label={t("settings.storageUsagePercent")} value={storageUsage ? formatPercent(storageUsage.usagePercent, locale) : "--"} tone="secure" />
+          <SettingsSideRow label={t("settings.usedStorage")} value={storageUsage ? formatFileSize(storageUsage.usedBytes, locale) : "--"} />
+          <SettingsSideRow label={t("settings.fileCount")} value={storageUsage ? formatCount(storageUsage.fileCount, locale) : "--"} />
+        </SettingsSideCard>
+        <SettingsSideCard icon="refresh" title={t("settings.quickActions")}>
+          <SettingsSideAction icon="refresh" label={t("app.refresh")} onClick={refreshUsage} />
+          <SettingsSideAction icon="settings" label={t("settings.saveSiteSettings")} onClick={saveSite} />
+          <SettingsSideAction icon="key" label={t("settings.saveAuthSettings")} onClick={saveAuth} />
+          <SettingsSideAction icon="trash" label={t("settings.saveLifecyclePolicy")} onClick={savePolicy} />
+        </SettingsSideCard>
+        <SettingsSideCard icon="info" title={t("settings.systemInformation")}>
+          <SettingsSideRow label={t("setup.siteName")} value={site.siteName || "--"} />
+          <SettingsSideRow label={t("settings.authMethodsEnabled")} value={formatCount([auth.localEnabled, auth.oauthEnabled, auth.passkeyEnabled].filter(Boolean).length, locale)} />
+          <SettingsSideRow label={t("settings.trashRetentionDays")} value={String(policy.trashRetentionDays)} />
+          <SettingsSideRow label={t("settings.lastUpdated")} value={storageUsage ? formatSystemDate(storageUsage.updatedAt, locale) : "--"} />
+        </SettingsSideCard>
+      </aside>
     </section>
   );
 }
@@ -372,16 +416,18 @@ export function DriveSystemSettings({
 function SettingsBlock({
   children,
   icon,
+  id,
   palette,
   title,
 }: {
   children: ReactNode;
   icon: ComponentProps<typeof LocalIcon>["name"];
+  id: string;
   palette: Palette;
   title: string;
 }) {
   return (
-    <section className="drive-system-settings-block">
+    <section className="drive-system-settings-block" id={id}>
       <header className="drive-system-settings-block-header">
         <LocalIcon name={icon} size={17} color={palette.primaryHover} />
         <span>{title}</span>
@@ -474,6 +520,60 @@ function SettingsFact({ label, value }: { label: string; value: string }) {
       <span className="drive-settings-label">{label}</span>
       <span className="drive-settings-value icedr-truncate">{value}</span>
     </div>
+  );
+}
+
+function SettingsSideCard({
+  children,
+  icon,
+  title,
+}: {
+  children: ReactNode;
+  icon: ComponentProps<typeof LocalIcon>["name"];
+  title: string;
+}) {
+  return (
+    <section className="drive-system-side-card">
+      <header className="drive-system-side-card-header">
+        <LocalIcon name={icon} size={16} />
+        <span className="icedr-truncate">{title}</span>
+      </header>
+      <div className="drive-system-side-card-body">{children}</div>
+    </section>
+  );
+}
+
+function SettingsSideRow({
+  label,
+  tone,
+  value,
+}: {
+  label: string;
+  tone?: "secure";
+  value: string;
+}) {
+  return (
+    <div className="drive-system-side-row">
+      <span>{label}</span>
+      <span data-tone={tone} className="icedr-truncate">{value}</span>
+    </div>
+  );
+}
+
+function SettingsSideAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ComponentProps<typeof LocalIcon>["name"];
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className="drive-system-side-action" onClick={onClick} type="button">
+      <LocalIcon name={icon} size={15} />
+      <span className="icedr-truncate">{label}</span>
+    </button>
   );
 }
 

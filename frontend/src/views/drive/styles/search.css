@@ -1,0 +1,212 @@
+.drive-search-shell {
+  max-width: 520px;
+  min-width: 0;
+  position: relative;
+  width: min(520px, 100%);
+  z-index: 70;
+}
+
+.drive-search-popover {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--drive-ui-line);
+  border-radius: var(--drive-ui-radius);
+  box-shadow: 0 20px 52px rgba(35, 56, 94, 0.16);
+  display: grid;
+  gap: 12px;
+  left: 0;
+  margin-top: 8px;
+  padding: 12px;
+  position: absolute;
+  top: 100%;
+  width: min(520px, calc(100vw - 32px));
+}
+
+.drive-search-popover-head {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.drive-search-popover-icon {
+  align-items: center;
+  background: #eef3ff;
+  border: 1px solid #dfe7ff;
+  border-radius: var(--drive-ui-radius);
+  color: var(--drive-ui-blue-600);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.drive-search-popover-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-search-popover-head > div span:first-child {
+  color: var(--drive-ui-ink);
+  font-size: 13px;
+  font-weight: 820;
+  line-height: 18px;
+}
+
+.drive-search-popover-head > div span:last-child {
+  color: var(--drive-ui-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 16px;
+}
+
+.drive-search-count {
+  background: #f6f8fc;
+  border: 1px solid #edf2f8;
+  border-radius: 999px;
+  color: var(--drive-ui-muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 18px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.drive-search-count[data-loading="true"] {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-search-popover-query {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #edf2f8;
+  border-radius: var(--drive-ui-radius);
+  color: #334155;
+  display: flex;
+  font-size: 13px;
+  font-weight: 650;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.drive-search-popover-query span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-search-popover-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-search-scope-chip {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--drive-ui-line);
+  border-radius: var(--drive-ui-radius);
+  color: var(--drive-ui-ink);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 760;
+  gap: 7px;
+  min-height: 34px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.drive-search-scope-chip[data-active="true"] {
+  background: #eef3ff;
+  border-color: #dfe7ff;
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-filter-panel-wrap {
+  align-self: stretch;
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 14px;
+  pointer-events: none;
+}
+
+.drive-filter-panel {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--drive-ui-line);
+  border-radius: var(--drive-ui-radius);
+  box-shadow: 0 14px 34px rgba(35, 56, 94, 0.1);
+  display: grid;
+  gap: 12px;
+  max-width: min(680px, 100%);
+  padding: 12px;
+  pointer-events: auto;
+  width: 680px;
+}
+
+.drive-filter-panel-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.drive-filter-panel-head > span {
+  align-items: center;
+  color: var(--drive-ui-ink);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 820;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-filter-panel-head > span svg {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-filter-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.drive-filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.drive-filter-field > span {
+  color: var(--drive-ui-muted);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 14px;
+}
+
+.drive-filter-field .icedr-app-select-shell {
+  min-height: 36px;
+}
+
+@media (max-width: 760px) {
+  .drive-search-popover {
+    width: min(520px, calc(100vw - 24px));
+  }
+
+  .drive-filter-panel {
+    width: 100%;
+  }
+
+  .drive-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .drive-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

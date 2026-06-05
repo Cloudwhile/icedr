@@ -445,7 +445,7 @@ export type TransferResponse = {
   nodeId: string | null;
   objectKey: string | null;
   name: string;
-  type: "upload" | "download";
+  type: "upload";
   progress: number;
   status: "running" | "paused" | "completed" | "failed" | "canceled";
   createdAt: string;

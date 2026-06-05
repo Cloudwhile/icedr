@@ -6,7 +6,7 @@ import { useTranslations } from "@/i18n/react";
 import type { AuthUser } from "@/lib/drive-api";
 import type { LocalIconName, Palette } from "@/features/file/model";
 import { MotionPresence } from "@/components/ui/motion";
-import { LocalIcon } from "@/components/ui/local-icon";
+import { LocalIcon } from "@/components/ui/app-icon";
 import { ToolButton } from "@/components/ui/tool-button";
 import { normalizeAuthCodeValue } from "./auth-code-utils";
 

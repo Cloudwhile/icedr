@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AppDialogBody, AppDialogHeader, AppDialogShell, AppDialogTitle } from "./app-dialog-shell";
-import { LocalIcon } from "./local-icon";
+import { LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
 import { getItemKind, type DriveItem, type Palette } from "@/features/file/model";
 

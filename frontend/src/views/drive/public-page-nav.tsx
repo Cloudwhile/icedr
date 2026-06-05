@@ -18,7 +18,7 @@ export function PublicPageNav({
     flexShrink: "0",
     borderBottomWidth: "1px",
     borderColor: palette.hairline,
-    background: palette.surface1
+    background: "transparent"
   } as React.CSSProperties}>
       <div className="icedr-r-padding-inline" style={{
       alignItems: "center",

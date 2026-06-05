@@ -3,7 +3,7 @@
 import { tailChase } from "ldrs";
 import type { LocalIconName, Palette } from "@/features/file/model";
 import { AnimatedCheckMark, LocalIcon } from "./drive-primitives";
-import { Button, Input } from "@heroui/react";
+import { Input } from "@heroui/react";
 import { AppField } from "@/components/ui/app-field";
 import { AppInput } from "@/components/ui/app-input";
 if (typeof window !== "undefined") {
@@ -60,7 +60,8 @@ export function AuthPrimaryButton({
   onClick,
   onPress,
   palette,
-  type = "button"
+  type = "button",
+  variant = "primary"
 }: {
   busy?: boolean;
   children: React.ReactNode;
@@ -71,20 +72,23 @@ export function AuthPrimaryButton({
   onPress?: () => void;
   palette: Palette;
   type?: "button" | "submit" | "reset";
+  variant?: "primary" | "secondary";
 }) {
-  return <Button type={type} fullWidth isDisabled={disabled || isDisabled || busy} aria-busy={busy} data-busy={busy ? "true" : undefined} className="icedr-auth-primary-button" onPress={onClick ?? onPress} style={{
-    "--auth-primary-bg": palette.primary,
-    "--auth-primary-border": palette.primary,
+  const buttonDisabled = disabled || isDisabled || busy;
+  const secondary = variant === "secondary";
+  return <button type={type} disabled={buttonDisabled} aria-busy={busy} data-busy={busy ? "true" : undefined} data-disabled={buttonDisabled ? "true" : undefined} data-variant={variant} className="icedr-auth-primary-button" onClick={onClick ?? onPress} style={{
+    "--auth-primary-bg": secondary ? (palette.canvas === "#010102" ? palette.surface1 : "#ffffff") : palette.primary,
+    "--auth-primary-border": secondary ? palette.hairlineStrong : palette.primary,
     "--auth-primary-focus": palette.focusRing,
-    "--auth-primary-hover": palette.primaryHover,
-    "--auth-primary-text": "#ffffff"
+    "--auth-primary-hover": secondary ? palette.surface2 : palette.primaryHover,
+    "--auth-primary-text": secondary ? palette.ink : "#ffffff"
   } as React.CSSProperties}>
       <div className="icedr-auth-button-content">
         {busy ? <AuthButtonLoader /> : null}
         <span className="icedr-auth-button-label">{children}</span>
         {!busy && icon ? <LocalIcon name={icon} size={16} /> : null}
       </div>
-    </Button>;
+    </button>;
 }
 export function AuthStatusNotice({
   palette,

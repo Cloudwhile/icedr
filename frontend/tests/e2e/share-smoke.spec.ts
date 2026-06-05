@@ -55,9 +55,17 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
   expect(state.downloaded).toBe(true);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Activity" }).click();
-  await expect(page.getByText("Audit log")).toBeVisible();
-  await expect(page.getByText(/visitor share download_started/)).toBeVisible();
+  await page.getByRole("button", { name: "User menu" }).click();
+  await page.getByRole("menuitem", { name: "Admin panel" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await page.locator(".admin-panel-nav").getByRole("button", { name: "Audit log" }).click();
+  await expect(page).toHaveURL(/\/admin\/audit$/);
+  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  const auditRow = page.locator(".drive-audit-table .drive-audit-row").filter({
+    hasText: /visitor.*Share downloaded.*share-smoke/,
+  });
+  await expect(auditRow).toBeVisible();
 });
 
 async function mockIcedrApi(page: Page) {

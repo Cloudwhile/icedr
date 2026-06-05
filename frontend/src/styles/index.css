@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "./tokens.css";
+@import "./base.css";
+@import "./primitives.css";
+@import "./dialogs.css";
+@import "./preview.css";
+@import "./preview-workspace.css";
+@import "./auth.css";
+@import "./setup.css";

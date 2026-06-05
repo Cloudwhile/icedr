@@ -1,0 +1,130 @@
+.drive-upload-hud-presence {
+  bottom: 22px;
+  pointer-events: none;
+  position: fixed;
+  right: 24px;
+  width: min(440px, calc(100vw - 32px));
+  z-index: 82;
+}
+
+.drive-upload-hud {
+  background: linear-gradient(180deg, rgba(22, 30, 49, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: var(--drive-ui-radius);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.34), 0 0 0 1px rgba(15, 23, 42, 0.2);
+  color: #f8fafc;
+  overflow: hidden;
+  padding: 14px;
+  pointer-events: auto;
+}
+
+.drive-upload-hud-topline {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.drive-upload-hud-icon {
+  align-items: center;
+  background: rgba(94, 106, 210, 0.2);
+  border: 1px solid rgba(141, 151, 244, 0.34);
+  border-radius: var(--drive-ui-radius);
+  color: #aeb7ff;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.drive-upload-hud-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-upload-hud-title span:first-child,
+.drive-upload-hud-percent {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 780;
+  line-height: 18px;
+}
+
+.drive-upload-hud-title span:last-child {
+  color: #aab5c5;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.drive-upload-hud-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.drive-upload-hud .icedr-tool-button {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+  color: #dbe5f5;
+}
+
+.drive-upload-hud .icedr-tool-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.drive-upload-hud-meter {
+  margin-top: 12px;
+}
+
+.drive-upload-hud-meter .progress-bar__track,
+.drive-upload-hud-meter [data-slot="track"] {
+  height: 6px;
+}
+
+.drive-upload-hud-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.drive-upload-hud-row {
+  align-items: center;
+  color: #dbe5f5;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 24px;
+}
+
+.drive-upload-hud-row-icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.drive-upload-hud-row-name {
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.drive-upload-hud-row-meta {
+  color: #98a5b8;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.icedr-toast-region {
+  z-index: 80;
+}
+
+.icedr-toast-region .toast {
+  background: transparent;
+  border: 1px solid var(--drive-ui-line);
+  border-radius: var(--drive-ui-radius);
+  box-shadow: var(--drive-ui-shadow-2);
+}

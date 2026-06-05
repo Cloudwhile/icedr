@@ -31,7 +31,7 @@ function NotFoundContent({
     display: "flex",
     minHeight: "100dvh",
     flexDirection: "column",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink
   }}>
       <PublicPageNav palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />

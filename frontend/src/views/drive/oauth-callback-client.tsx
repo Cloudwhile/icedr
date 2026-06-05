@@ -52,7 +52,7 @@ function OAuthCallbackPage({
     minHeight: "100dvh",
     alignItems: "center",
     justifyContent: "center",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink,
     paddingInline: "16px"
   }}>

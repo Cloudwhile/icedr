@@ -13,22 +13,21 @@ export function getTransferMetricLine(row: TransferRow, locale: Locale, t: Drive
     speed: row.speedBytesPerSecond && row.speedBytesPerSecond > 0 ? formatFileSize(row.speedBytesPerSecond, locale) : "--",
   }));
   parts.push(t("transfers.remainingValue", {
-    time: row.remainingSeconds !== undefined && row.remainingSeconds !== null ? formatRemainingTime(row.remainingSeconds, locale) : "--",
+    time: row.remainingSeconds !== undefined && row.remainingSeconds !== null ? formatRemainingTime(row.remainingSeconds, t) : "--",
   }));
   return parts.join(" / ") || null;
 }
 
-export function formatRemainingTime(seconds: number, locale: Locale) {
+export function formatRemainingTime(seconds: number, t: DriveTranslator) {
   const rounded = Math.max(0, Math.ceil(seconds));
-  if (rounded <= 1) return locale === "zh" ? "1 秒内" : "< 1s";
-  if (rounded < 60) return locale === "zh" ? `${rounded} 秒` : `${rounded}s`;
+  if (rounded <= 1) return t("time.lessThanSecond");
+  if (rounded < 60) return t("time.seconds", { count: rounded });
 
   const minutes = Math.floor(rounded / 60);
   const remainingSeconds = rounded % 60;
-  if (locale === "zh") {
-    return remainingSeconds > 0 ? `${minutes} 分 ${remainingSeconds} 秒` : `${minutes} 分`;
-  }
-  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  return remainingSeconds > 0
+    ? t("time.minutesSeconds", { minutes, seconds: remainingSeconds })
+    : t("time.minutes", { count: minutes });
 }
 
 export function formatAbsoluteDate(value: string, locale: Locale, timeZone?: string) {
@@ -42,6 +41,10 @@ export function formatAbsoluteDate(value: string, locale: Locale, timeZone?: str
   }).format(date);
 }
 
-export function formatAuditAction(action: string) {
-  return action.replace(/\./g, " ");
+export function formatAuditAction(action: string, t: DriveTranslator) {
+  const translationKey = `audit.actions.${action}`;
+  const mapped = t(translationKey);
+  if (mapped !== translationKey) return mapped;
+
+  return t("audit.actions.unknown", { action });
 }

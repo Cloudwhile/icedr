@@ -17,7 +17,7 @@ export function AppToastProvider() {
     <Toast.Provider
       className="icedr-toast-region"
       maxVisibleToasts={4}
-      placement="bottom end"
+      placement="bottom start"
       width="min(420px, calc(100vw - 24px))"
     />
   );

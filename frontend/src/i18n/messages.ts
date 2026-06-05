@@ -32,6 +32,18 @@ export function getLocaleDocument(locale: Locale) {
   return parseTslnLocale(localeSources[locale] ?? localeSources[fallbackLocale]);
 }
 
+export function translateLocaleMessage(locale: Locale, key: string) {
+  const message = readMessage(getMessages(locale), key);
+  return typeof message === "string" ? message : key;
+}
+
+function readMessage(messages: Record<string, unknown>, key: string) {
+  return key.split(".").reduce<unknown>((value, part) => {
+    if (!value || typeof value !== "object") return undefined;
+    return (value as Record<string, unknown>)[part];
+  }, messages);
+}
+
 export function parseTslnLocale(source: string): TslnLocaleDocument {
   const flatMessages: Record<string, string> = {};
   let language = "";

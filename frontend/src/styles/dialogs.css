@@ -1,0 +1,20 @@
+.icedr-dialog-backdrop {
+  background: var(--dialog-backdrop, var(--backdrop));
+}
+
+.icedr-dialog-container {
+  padding: 16px;
+}
+
+.icedr-dialog {
+  background: var(--dialog-bg, var(--surface));
+  border: 1px solid var(--dialog-border, var(--border));
+  border-radius: 8px;
+  box-shadow: var(--overlay-shadow);
+  color: var(--dialog-color, var(--foreground));
+  overflow: hidden;
+}
+
+.directory-picker-body {
+  min-height: 280px;
+}

@@ -3,7 +3,8 @@
 import Link from "@/compat/link";
 import type { CSSProperties } from "react";
 import type { Locale, Palette } from "@/features/file/model";
-import { getLegalPageLabel } from "@/features/legal/content";
+import { getLegalDocumentLabelKey, getLegalTextLocale } from "@/features/legal/content";
+import { useTranslations } from "@/i18n/react";
 export function LegalFooter({
   locale,
   palette
@@ -11,6 +12,8 @@ export function LegalFooter({
   locale: Locale;
   palette: Palette;
 }) {
+  const t = useTranslations();
+  const language = getLegalTextLocale(locale);
   const linkStyle: CSSProperties = {
     color: palette.subtle,
     fontSize: "12px",
@@ -29,7 +32,7 @@ export function LegalFooter({
     color: palette.subtle,
     borderTopWidth: "1px",
     borderColor: palette.hairline,
-    background: palette.surface1,
+    background: "transparent",
     fontSize: "12px",
     flexWrap: "wrap"
   }}>
@@ -49,7 +52,7 @@ export function LegalFooter({
           "--hover-color": palette.primaryHover,
           "--hover-transform": "translateY(-1px)"
         } as React.CSSProperties}>
-          {getLegalPageLabel("terms", locale)}
+          {t(getLegalDocumentLabelKey("terms", language))}
         </Link>
         <Link href="/privacy" className="icedr-has-hover" style={{
           ...linkStyle,
@@ -57,7 +60,7 @@ export function LegalFooter({
           "--hover-color": palette.primaryHover,
           "--hover-transform": "translateY(-1px)"
         } as React.CSSProperties}>
-          {getLegalPageLabel("privacy", locale)}
+          {t(getLegalDocumentLabelKey("privacy", language))}
         </Link>
       </div>
     </footer>;

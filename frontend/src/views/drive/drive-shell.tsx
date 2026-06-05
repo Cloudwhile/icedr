@@ -171,8 +171,8 @@ export function LocalizedDriveShell({
   const palette = palettes[themeMode];
   const languageOptions = useMemo(() => {
     const builtInOptions: LanguageOption[] = [
-      { label: getLocaleDocument("zh").language || "中文-简体", value: "zh" },
-      { label: getLocaleDocument("en").language || "ENGLISH", value: "en" },
+      { label: getLocaleDocument("zh").language || "zh_CN", value: "zh" },
+      { label: getLocaleDocument("en").language || "en_US", value: "en" },
     ];
     const known = new Set(builtInOptions.map((option) => option.value));
     return [

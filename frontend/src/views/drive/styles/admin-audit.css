@@ -1,0 +1,254 @@
+.admin-shell .drive-audit-module {
+  gap: 16px;
+}
+
+.admin-shell .drive-audit-filter-panel {
+  animation: admin-card-in 360ms var(--drive-ui-ease) both;
+  border-color: #dfe7f2;
+  box-shadow: var(--drive-ui-shadow-tight);
+  gap: 16px;
+  padding: 18px;
+}
+
+.admin-shell .drive-audit-filter-panel-header {
+  border-bottom: 0;
+  min-height: 30px;
+  padding-bottom: 0;
+}
+
+.admin-shell .drive-audit-filter-panel-header > div:first-child {
+  color: #1f2937;
+  font-size: 15px;
+}
+
+.admin-shell .drive-audit-filter-actions {
+  gap: 8px;
+}
+
+.admin-shell .drive-audit-filter-grid {
+  align-items: end;
+  gap: 14px 18px;
+  grid-template-columns: 1.2fr repeat(4, minmax(132px, 1fr));
+}
+
+.admin-shell .drive-audit-filter[data-wide="true"] {
+  grid-column: span 2;
+}
+
+.admin-shell .drive-audit-filter > span:first-child {
+  color: #48556b;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.admin-shell .drive-audit-filter .icedr-app-select-shell,
+.admin-shell .drive-audit-filter .icedr-app-input {
+  background: #fff;
+  border-color: #dfe7f2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  min-height: 40px;
+}
+
+.admin-shell .drive-audit-filter .icedr-app-select-shell:focus-within,
+.admin-shell .drive-audit-filter .icedr-app-input:focus-within {
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 42%, #dfe7f2);
+  box-shadow: 0 0 0 4px rgba(94, 106, 210, 0.1);
+}
+
+.admin-shell .drive-audit-split {
+  align-items: start;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 334px;
+}
+
+.admin-shell .drive-audit-module .drive-module-panel,
+.admin-shell .drive-audit-details {
+  animation: admin-card-in 400ms var(--drive-ui-ease) both;
+  border-color: #dfe7f2;
+  box-shadow: var(--drive-ui-shadow-tight);
+}
+
+.admin-shell .drive-audit-module .drive-module-panel-header {
+  background: #fff;
+  border-bottom-color: #e7edf5;
+  min-height: 52px;
+  padding-inline: 18px;
+}
+
+.admin-shell .drive-audit-module .drive-module-panel-header > div:first-child > span:last-child {
+  font-size: 15px;
+  font-weight: 820;
+}
+
+.admin-shell .drive-audit-table {
+  background: #fff;
+}
+
+.admin-shell .drive-audit-table .drive-module-table-head {
+  background: #f8faff;
+  color: #66758e;
+  font-size: 12px;
+  min-height: 42px;
+  padding-inline: 18px;
+}
+
+.admin-shell .drive-audit-table .drive-module-table-row {
+  gap: 12px;
+  grid-template-columns: 138px minmax(150px, 0.95fr) 132px minmax(190px, 1.12fr) 76px 104px 38px;
+  min-height: 58px;
+  padding: 9px 18px;
+}
+
+.admin-shell .drive-audit-row {
+  background: #fff;
+  box-shadow: inset 0 0 0 rgba(94, 106, 210, 0);
+}
+
+.admin-shell .drive-audit-row:hover {
+  background: #fbfdff;
+  box-shadow: inset 3px 0 0 rgba(94, 106, 210, 0.22);
+}
+
+.admin-shell .drive-audit-row[data-active="true"] {
+  background: #f7faff;
+  box-shadow: inset 3px 0 0 var(--drive-ui-blue-600);
+}
+
+.admin-shell .drive-audit-time-cell,
+.admin-shell .drive-audit-ip-cell {
+  color: #475569;
+  font-weight: 720;
+}
+
+.admin-shell .drive-audit-actor-cell {
+  gap: 10px;
+}
+
+.admin-shell .drive-audit-actor-cell .drive-module-row-icon {
+  height: 32px;
+  width: 32px;
+}
+
+.admin-shell .drive-audit-actor-cell .drive-module-row-copy {
+  gap: 2px;
+}
+
+.admin-shell .drive-audit-resource-cell .drive-module-row-title {
+  font-size: 13px;
+}
+
+.admin-shell .drive-audit-resource-cell .drive-module-row-meta {
+  gap: 6px;
+}
+
+.admin-shell .drive-audit-table .drive-module-table-row > .icedr-tool-button {
+  height: 32px;
+  justify-self: end;
+  width: 32px;
+}
+
+.admin-shell .drive-audit-details {
+  background: #fff;
+  min-height: 560px;
+  position: sticky;
+  top: 106px;
+}
+
+.admin-shell .drive-audit-details:hover {
+  border-color: #dfe7f2;
+  box-shadow: var(--drive-ui-shadow-tight);
+  transform: none;
+}
+
+.admin-shell .drive-audit-detail-body {
+  gap: 0;
+  padding: 12px 18px 18px;
+}
+
+.admin-shell .drive-audit-details-section {
+  border-bottom-color: #edf2f8;
+  padding: 14px 0;
+}
+
+.admin-shell .drive-audit-details-section:first-child {
+  padding-top: 8px;
+}
+
+.admin-shell .drive-audit-details-section > span:first-child {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 820;
+  margin-bottom: 10px;
+}
+
+.admin-shell .drive-audit-details-section .drive-module-info-row {
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr);
+  min-height: 34px;
+}
+
+.admin-shell .drive-audit-details-section .drive-module-info-row span:first-child {
+  color: #64748b;
+}
+
+.admin-shell .drive-audit-details-section .drive-module-info-row span:last-child {
+  justify-self: end;
+  max-width: 168px;
+  text-align: right;
+}
+
+.admin-shell .drive-audit-details .drive-module-empty {
+  min-height: 420px;
+}
+
+@media (max-width: 1280px) {
+  .admin-shell .drive-audit-filter-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .admin-shell .drive-audit-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell .drive-audit-details {
+    min-height: 0;
+    position: static;
+  }
+}
+
+@media (max-width: 820px) {
+  .admin-shell .drive-audit-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-shell .drive-audit-filter[data-wide="true"] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-shell .drive-audit-filter-panel {
+    padding: 14px;
+  }
+
+  .admin-shell .drive-audit-filter-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .admin-shell .drive-audit-filter-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .admin-shell .drive-audit-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell .drive-audit-filter[data-wide="true"] {
+    grid-column: auto;
+  }
+}

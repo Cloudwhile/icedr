@@ -1,0 +1,328 @@
+.icedr-dialog-container-media {
+  background: #ffffff;
+}
+
+.icedr-file-preview-dialog-media {
+  background: #ffffff;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-frame {
+  background: #ffffff;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-header {
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom-color: #e5eaf2;
+  min-height: 88px;
+  padding: 0 28px 0 30px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-back {
+  border-radius: 8px;
+  height: 36px;
+  margin-right: 10px;
+  width: 36px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-back:hover {
+  background: #f6f8fc;
+  color: #172033;
+  transform: translateX(-2px);
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-icon {
+  background: transparent;
+  height: 48px;
+  width: 48px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-title-block {
+  gap: 5px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-title-block strong {
+  color: #111827;
+  font-size: 17px;
+  font-weight: 850;
+  line-height: 22px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-title-block span {
+  color: #637089;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-actions {
+  gap: 10px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:first-child {
+  background: linear-gradient(180deg, #4f80ff 0%, #3463ef 100%) !important;
+  border-color: #3463ef !important;
+  box-shadow: 0 10px 24px rgba(52, 99, 239, 0.2) !important;
+  color: #ffffff !important;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-body-media {
+  background: #ffffff;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-layout {
+  background: #ffffff;
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-stage {
+  background: #ffffff;
+  gap: 20px;
+  padding: 16px 42px 28px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-zoom-stage {
+  gap: 24px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-canvas {
+  align-items: center;
+  background: #ffffff;
+  justify-content: center;
+  padding: 0;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-toolbar {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: #dfe6f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(35, 56, 94, 0.08);
+  min-height: 38px;
+  padding: 3px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button:hover,
+.icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button[data-hovered="true"],
+.icedr-file-preview-dialog-media .icedr-preview-zoom-value:hover {
+  transform: translateY(-1px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button:active,
+.icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button[data-pressed="true"],
+.icedr-file-preview-dialog-media .icedr-preview-zoom-value:active {
+  transform: scale(0.96);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-viewer {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  max-height: calc(100dvh - 260px);
+  width: min(100%, 1120px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-media-object {
+  background: transparent;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 22px 54px rgba(35, 56, 94, 0.08);
+  max-height: calc(100dvh - 270px);
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.icedr-file-preview-dialog-media video.icedr-preview-media-object {
+  background: #0f172a;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-workspace[data-mode="document"] .icedr-preview-zoom-surface {
+  max-width: min(100%, 1060px);
+  width: min(100%, 1060px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-document-frame,
+.icedr-file-preview-dialog-media .icedr-preview-document-shell {
+  background: #ffffff;
+  border: 1px solid #dfe6f0;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 46px rgba(35, 56, 94, 0.075);
+  min-height: calc(100dvh - 310px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-document-frame {
+  height: calc(100dvh - 310px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 18px;
+  padding: 0;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-track {
+  gap: 16px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-card {
+  background: #ffffff;
+  border-color: #dfe6f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+  min-width: 132px;
+  padding: 6px;
+  transition: border-color 170ms var(--motion-ease-emphasized), box-shadow 210ms var(--motion-ease-emphasized), transform 210ms var(--motion-ease-emphasized);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-card:hover {
+  border-color: #cbd7ea;
+  box-shadow: 0 14px 32px rgba(51, 71, 116, 0.08);
+  transform: translateY(-2px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-card:active {
+  transform: scale(0.98);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-card[data-active="true"] {
+  border-color: #4f80ff;
+  box-shadow: 0 0 0 1px rgba(79, 128, 255, 0.32), 0 14px 32px rgba(52, 99, 239, 0.1);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-thumb {
+  background: #f8fafc;
+  border-color: #e2e8f2;
+  border-radius: 6px;
+  height: 72px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-edge {
+  border-radius: 8px;
+  height: 36px;
+  width: 36px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-strip-edge:not(:disabled):hover {
+  background: #f6f8fc;
+  transform: translateY(-1px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-panel {
+  background: #ffffff;
+  border-left: 1px solid #e5eaf2;
+  box-shadow: none;
+  padding: 0 24px 28px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-tabs {
+  background: #ffffff;
+  border-bottom: 1px solid #dfe6f0;
+  gap: 22px;
+  min-height: 56px;
+  padding: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-tabs button {
+  color: #53627a;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-tabs button[data-active="true"] {
+  color: #3463ef;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-tabs button[data-active="true"]::after {
+  background: #3463ef;
+  height: 2px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-card,
+.icedr-file-preview-dialog-media .icedr-preview-tags-card,
+.icedr-file-preview-dialog-media .icedr-preview-version-card {
+  background: #ffffff;
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025), 0 14px 34px rgba(51, 71, 116, 0.045);
+  transition: border-color 180ms var(--motion-ease-emphasized), box-shadow 220ms var(--motion-ease-emphasized), transform 220ms var(--motion-ease-emphasized);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-card:hover,
+.icedr-file-preview-dialog-media .icedr-preview-tags-card:hover,
+.icedr-file-preview-dialog-media .icedr-preview-version-card:hover {
+  border-color: #ccd8ea;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035), 0 18px 42px rgba(51, 71, 116, 0.06);
+  transform: translateY(-1px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-title span {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-title strong {
+  color: #627089;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-row {
+  border-color: #edf2f8;
+  grid-template-columns: minmax(96px, 0.72fr) minmax(0, 1fr);
+  min-height: 34px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-row span {
+  color: #65738c;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-row strong {
+  color: #172033;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-tags-list span {
+  background: #eef2ff;
+  border-color: #dbe4ff;
+  color: #4361dd;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-version-row:hover {
+  background: #f8faff;
+  transform: translateX(2px);
+}
+
+@media (max-width: 1180px) {
+  .icedr-file-preview-dialog-media .icedr-preview-media-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .icedr-file-preview-dialog-media .icedr-preview-metadata-panel {
+    border-left: 0;
+    border-top: 1px solid #e5eaf2;
+  }
+}
+
+@media (max-width: 760px) {
+  .icedr-file-preview-dialog-media .icedr-file-preview-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .icedr-file-preview-dialog-media .icedr-file-preview-actions {
+    justify-content: flex-end;
+  }
+
+  .icedr-file-preview-dialog-media .icedr-preview-media-stage {
+    padding: 14px;
+  }
+
+  .icedr-file-preview-dialog-media .icedr-preview-media-viewer,
+  .icedr-file-preview-dialog-media .icedr-preview-media-object {
+    max-height: 54dvh;
+  }
+}

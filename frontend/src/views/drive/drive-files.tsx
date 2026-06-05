@@ -1,10 +1,11 @@
 "use client";
 
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { MotionLayoutGroup, MotionList, MotionSurface } from "@/components/ui/motion";
 import { AppContextMenu, type AppContextMenuPosition } from "@/components/ui/app-context-menu";
 import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
+import { DriveItemPreview } from "@/components/ui/drive-item-preview";
 import { InlineRenameInput } from "@/components/ui/inline-rename-input";
 import {
   formatDriveItemModified,
@@ -16,9 +17,9 @@ import {
   type LocalIconName,
   type Palette,
 } from "@/features/file/model";
-import { isImagePreviewFile, isTextEditableFile, isVideoPreviewFile } from "@/features/file/open-with";
-import { createWorkspaceDriveItemSourceUrl } from "@/features/file/actions";
+import { isTextEditableFile } from "@/features/file/open-with";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
+import type { DriveSortBy, DriveSortDirection } from "./drive-search-model";
 
 const buttonTypeAttr: { type?: "button" } = {
   type: "button",
@@ -68,12 +69,15 @@ export type FilesModuleProps = {
   onSetViewMode: (mode: "list" | "grid") => void;
   onShareItem: FileAction;
   onShowDetailsItem: FileAction;
+  onSortChange: (sortBy: DriveSortBy, sortDirection: DriveSortDirection) => void;
   openFolder: (id: string) => void;
   openPreview: (id: string) => void;
   palette: Palette;
   renamingItemId: string | null;
   selected: string[];
   sourceItems: DriveItem[];
+  sortBy: DriveSortBy;
+  sortDirection: DriveSortDirection;
   toggleSelected: (id: string, checked: boolean) => void;
   toggleStar: (id: string) => void;
   viewMode: "list" | "grid";
@@ -115,12 +119,15 @@ export function FilesModule({
   onSetViewMode,
   onShareItem,
   onShowDetailsItem,
+  onSortChange,
   openFolder,
   openPreview,
   palette,
   renamingItemId,
   selected,
   sourceItems,
+  sortBy,
+  sortDirection,
   toggleSelected,
   toggleStar,
   viewMode,
@@ -242,12 +249,15 @@ export function FilesModule({
             onSecurityItem={onSecurityItem}
             onShareItem={onShareItem}
             onShowDetailsItem={onShowDetailsItem}
+            onSortChange={onSortChange}
             openFolder={openFolder}
             openPreview={openPreview}
             palette={palette}
             renamingItemId={renamingItemId}
             selected={selected}
             sourceItems={sourceItems}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
             onSelectItem={handleItemSelection}
             onSelectItemCheckbox={handleCheckboxSelection}
             selectSingleItem={selectSingleItem}
@@ -591,34 +601,28 @@ function getFilePathHint(item: DriveItem) {
   return item.searchPath || item.originalPath || null;
 }
 
-function DriveCardPreview({ item, palette }: { item: DriveItem; palette: Palette }) {
-  const previewableImage = isImagePreviewFile(item);
-  const previewableVideo = isVideoPreviewFile(item);
-  const [sourceUrl, setSourceUrl] = useState<{ itemId: string; url: string | null } | null>(null);
-
-  useEffect(() => {
-    if (!previewableImage && !previewableVideo) return;
-    let cancelled = false;
-    void createWorkspaceDriveItemSourceUrl(item, item.workspaceId)
-      .then((url) => {
-        if (!cancelled) setSourceUrl({ itemId: item.id, url });
-      })
-      .catch(() => {
-        if (!cancelled) setSourceUrl({ itemId: item.id, url: null });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [item, previewableImage, previewableVideo]);
-
-  const activeUrl = (previewableImage || previewableVideo) && sourceUrl?.itemId === item.id ? sourceUrl.url : null;
-
+function DriveTableSortHeader({
+  active,
+  direction,
+  label,
+  onSort,
+}: {
+  active: boolean;
+  direction: DriveSortDirection;
+  label: string;
+  onSort: () => void;
+}) {
   return (
-    <div className="drive-card-preview">
-      {previewableImage && activeUrl ? <img alt="" className="drive-card-media" src={activeUrl} /> : null}
-      {previewableVideo && activeUrl ? <video aria-label={item.name} className="drive-card-media" muted playsInline preload="metadata" src={activeUrl} /> : null}
-      {(!activeUrl || (!previewableImage && !previewableVideo)) ? <ItemIcon item={item} palette={palette} size={44} /> : null}
-    </div>
+    <button
+      {...buttonTypeAttr}
+      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : undefined}
+      className="drive-table-sort-header"
+      data-active={active ? "true" : undefined}
+      onClick={onSort}
+    >
+      <span>{label}</span>
+      <LocalIcon name={direction === "asc" ? "arrow_up" : "arrow_down"} size={12} />
+    </button>
   );
 }
 
@@ -641,12 +645,15 @@ function FileTable({
   onSecurityItem,
   onShareItem,
   onShowDetailsItem,
+  onSortChange,
   openFolder,
   openPreview,
   palette,
   renamingItemId,
   selected,
   sourceItems,
+  sortBy,
+  sortDirection,
   onSelectItem,
   onSelectItemCheckbox,
   selectSingleItem,
@@ -709,9 +716,12 @@ function FileTable({
     const isRenaming = renamingItemId === item.id;
     const itemSize = formatFileSize(sumDriveItemSizes([item], sourceItems), locale);
     const pathHint = getFilePathHint(item);
+    const kindLabel = t(`files.kind.${getItemKind(item)}`);
+    const metaLabel = pathHint ? `${kindLabel} · ${itemSize} · ${pathHint}` : `${kindLabel} · ${itemSize}`;
     const modifiedLabel = activeNav === "trash" && item.archivedAt
       ? formatDriveItemDate(item.archivedAt, locale, timeZone)
       : formatDriveItemModified(item, locale, timeZone);
+    const createdLabel = formatDriveItemDate(item.createdAt, locale, timeZone);
     const actionItems = buildActions(item);
 
     return (
@@ -729,7 +739,7 @@ function FileTable({
         </td>
         <td>
           <span className="drive-file-name-button" data-renaming={isRenaming ? "" : undefined}>
-            <ItemIcon item={item} palette={palette} />
+            <DriveItemPreview className="drive-row-preview" iconSize={28} item={item} palette={palette} />
             {isRenaming ? (
               <InlineRenameInput
                 ariaLabel={t("actions.rename")}
@@ -743,7 +753,7 @@ function FileTable({
               <>
                 <span className="drive-file-name-text icedr-truncate">{item.name}</span>
                 {item.shared ? <LocalIcon name="user_group" size={15} color={palette.subtle} /> : null}
-                {pathHint ? <span className="drive-file-path-text icedr-truncate">{pathHint}</span> : null}
+                <span className="drive-file-meta-text icedr-truncate">{metaLabel}</span>
               </>
             )}
           </span>
@@ -752,6 +762,7 @@ function FileTable({
           <span className="icedr-truncate">{item.owner}</span>
         </td>
         <td>{itemSize}</td>
+        <td>{createdLabel}</td>
         <td>{modifiedLabel}</td>
         <td onClick={(event) => event.stopPropagation()}>
           <div className="drive-row-actions">
@@ -777,6 +788,7 @@ function FileTable({
             <col className="drive-col-name" />
             <col className="drive-col-owner" />
             <col className="drive-col-size" />
+            <col className="drive-col-created" />
             <col className="drive-col-modified" />
             <col className="drive-col-actions" />
           </colgroup>
@@ -785,10 +797,39 @@ function FileTable({
               <th>
                 <SelectBox checked={allSelected} indeterminate={indeterminate} label={t("files.selectAll")} palette={palette} onChange={(checked) => allFileIds.forEach((id) => toggleSelected(id, checked))} />
               </th>
-              <th>{t("files.name")}</th>
+              <th>
+                <DriveTableSortHeader
+                  active={sortBy === "name"}
+                  direction={sortDirection}
+                  label={t("files.name")}
+                  onSort={() => onSortChange("name", "asc")}
+                />
+              </th>
               <th>{t("files.owner")}</th>
-              <th>{t("files.size")}</th>
-              <th>{t("files.modified")}</th>
+              <th>
+                <DriveTableSortHeader
+                  active={sortBy === "sizeBytes"}
+                  direction={sortDirection}
+                  label={t("files.size")}
+                  onSort={() => onSortChange("sizeBytes", "desc")}
+                />
+              </th>
+              <th>
+                <DriveTableSortHeader
+                  active={sortBy === "createdAt"}
+                  direction={sortDirection}
+                  label={t("filters.created")}
+                  onSort={() => onSortChange("createdAt", "desc")}
+                />
+              </th>
+              <th>
+                <DriveTableSortHeader
+                  active={sortBy === "updatedAt"}
+                  direction={sortDirection}
+                  label={t("files.modified")}
+                  onSort={() => onSortChange("updatedAt", "desc")}
+                />
+              </th>
               <th aria-label={t("actions.more")} />
             </tr>
           </thead>
@@ -802,6 +843,7 @@ function FileTable({
                     <span className="icedr-truncate">{t("files.parentDirectory")}</span>
                   </span>
                 </td>
+                <td>--</td>
                 <td>--</td>
                 <td>--</td>
                 <td>--</td>
@@ -869,7 +911,10 @@ function FileGrid({
   | "onBlankGoUp"
   | "onBlankSelect"
   | "onBlankRefresh"
+  | "onSortChange"
   | "onSetViewMode"
+  | "sortBy"
+  | "sortDirection"
   | "viewMode"
 > & FileSelectionHandlers) {
   const t = useTranslations();
@@ -941,7 +986,7 @@ function FileGrid({
           </span>
           <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
         </div>
-        <DriveCardPreview item={item} palette={palette} />
+        <DriveItemPreview className="drive-card-preview" iconSize={44} item={item} palette={palette} />
         <div className="drive-card-meta">
           <span className="icedr-truncate">{itemSize}</span>
           <div className="drive-card-actions" onClick={(event) => event.stopPropagation()}>

@@ -19,6 +19,8 @@ import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-men
 import { collectShareDescendants, createRegisteredShare, fetchRegisteredShare, getRegisteredShareParent, getShareItems, getVisibleRegisteredShareItems, type RegisteredShare, type RegisteredShareItem, type RegisteredSharePolicy } from "@/features/share/registry";
 import { AppImage } from "@/components/ui/app-image";
 import { ReadOnlyFilePreview } from "@/components/ui/read-only-file-preview";
+import { ExternalShareHeroCard } from "./external-share-hero-card";
+import { ExternalShareSidePanel } from "./external-share-side-panel";
 const buttonTypeAttr: {
   type?: "button";
 } = {
@@ -77,7 +79,9 @@ type AuthMethod = "account" | "email";
 type VisitorLevel = "anonymous" | "email" | "ica";
 type AnonymousAccessPolicy = "blocked" | "email-required" | "public";
 export type ExternalSharePolicy = RegisteredSharePolicy;
+type DriveTranslator = ReturnType<typeof useTranslations>;
 type IdentityExperience = {
+  hasSpeedLimit: boolean;
   label: string;
   waitSeconds: number;
   speedLabel: string;
@@ -109,18 +113,18 @@ export function policyFromWorkspaceSettings(settings?: WorkspaceShareSettings | 
 function formatSpeedLimit(speedLimit: {
   value: number;
   unit: "KB/s" | "MB/s";
-} | null) {
-  return speedLimit ? `${speedLimit.value} ${speedLimit.unit}` : "Unlimited";
+} | null, t: DriveTranslator) {
+  return speedLimit ? `${speedLimit.value} ${speedLimit.unit}` : t("share.unlimited");
 }
 function formatPolicyWaitSeconds(policy: RegisteredSharePolicy) {
   return policy.waitUnit === "minutes" ? policy.waitValue * 60 : policy.waitValue;
 }
-function getVisitorLabel(level: VisitorLevel) {
-  if (level === "ica") return "ICA User";
-  if (level === "email") return "Email verified visitor";
-  return "Anonymous visitor";
+function getVisitorLabel(level: VisitorLevel, t: DriveTranslator) {
+  if (level === "ica") return t("share.visitor.icaUser");
+  if (level === "email") return t("share.visitor.emailVerified");
+  return t("share.visitor.anonymous");
 }
-function getSharePolicyExperience(share: RegisteredShare, level: VisitorLevel, accessSession: ShareAccessSession | null): AccessPolicyExperience {
+function getSharePolicyExperience(share: RegisteredShare, level: VisitorLevel, accessSession: ShareAccessSession | null, t: DriveTranslator): AccessPolicyExperience {
   const policyRule = share.downloadPolicy?.rules[level];
   const policyDecision = accessSession?.policyDecision;
   const waitSeconds = policyDecision?.waitSeconds ?? policyRule?.waitSeconds ?? (accessSession ? accessSession.waitSeconds : level === "ica" ? 0 : formatPolicyWaitSeconds(share.policy));
@@ -129,18 +133,19 @@ function getSharePolicyExperience(share: RegisteredShare, level: VisitorLevel, a
     unit: share.policy.speedUnit
   } : null);
   return {
-    label: getVisitorLabel(level),
+    hasSpeedLimit: Boolean(speedLimit),
+    label: getVisitorLabel(level, t),
     waitSeconds,
-    speedLabel: formatSpeedLimit(speedLimit),
-    sessionLabel: formatDownloadLimitLabel(policyDecision?.maxDownloads ?? share.downloadPolicy?.maxDownloads ?? 0, policyDecision?.downloadLimit ?? share.downloadPolicy?.downloadLimit ?? share.policy.downloadLimit)
+    speedLabel: formatSpeedLimit(speedLimit, t),
+    sessionLabel: formatDownloadLimitLabel(policyDecision?.maxDownloads ?? share.downloadPolicy?.maxDownloads ?? 0, policyDecision?.downloadLimit ?? share.downloadPolicy?.downloadLimit ?? share.policy.downloadLimit, t)
   };
 }
 function getShareAccessRequired(share: RegisteredShare) {
   return share.downloadPolicy?.requiresAccessSession ?? Boolean(share.policy.allowedDomain || share.policy.downloadLimit || formatPolicyWaitSeconds(share.policy) > 0);
 }
-function formatDownloadLimitLabel(maxDownloads: number, downloadLimit: string) {
-  if (maxDownloads > 0) return `${maxDownloads} downloads`;
-  return downloadLimit || "No download limit";
+function formatDownloadLimitLabel(maxDownloads: number, downloadLimit: string, t: DriveTranslator) {
+  if (maxDownloads > 0) return t("share.downloadLimitValue", { count: maxDownloads });
+  return downloadLimit || t("share.noDownloadLimit");
 }
 function createAccountPolicyDecision(share: RegisteredShare) {
   const rule = share.downloadPolicy?.rules.ica ?? {
@@ -515,7 +520,8 @@ function ExternalSharePanel({
     "--r-width-base": "100%",
     "--r-width-md": "560px",
     maxWidth: "100vw",
-    background: palette.canvas,
+    background: "transparent",
+    backdropFilter: "blur(18px)",
     color: palette.ink,
     "--r-border-left-width-base": "0px",
     "--r-border-left-width-md": "1px",
@@ -590,9 +596,9 @@ export function ExternalShareStandalone({
       cancelled = true;
     };
   }, [initialShare?.token, resolvedShare.token, token]);
-  return <div style={{
+  return <div className="external-share-root" style={{
     minHeight: "100vh",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink,
     fontSize: "14px",
     letterSpacing: "0px"
@@ -601,20 +607,34 @@ export function ExternalShareStandalone({
     </div>;
 }
 export function ExternalShareAdminSettingsPage({
+  embedded = false,
   setThemeMode,
   themeMode
 }: {
+  embedded?: boolean;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   themeMode: ThemeMode;
 }) {
   const t = useTranslations();
   const router = useRouter();
   const palette = palettes[themeMode];
+  if (embedded) {
+    return <div className="external-share-admin-embedded" style={{
+      background: "transparent",
+      color: palette.ink,
+      fontSize: "14px",
+      letterSpacing: "0px"
+    }}>
+        <div className="external-share-admin-embedded-inner">
+          <ExternalShareAdminSettingsPanel palette={palette} />
+        </div>
+      </div>;
+  }
   return <div style={{
     height: "100dvh",
     minHeight: "100dvh",
     overflow: "hidden",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink,
     fontSize: "14px",
     letterSpacing: "0px"
@@ -1253,11 +1273,10 @@ export function ExternalShareAdminSettingsPanel({
     setEmailRule(savedWorkspaceSnapshot.emailRule);
     setDomains(savedWorkspaceSnapshot.allowedDomains.join("\n"));
   };
-  return <div style={{
+  return <div className="external-share-admin-settings-panel" style={{
     display: "flex",
     flexDirection: "column",
     gap: "16px",
-    maxWidth: "920px"
   }}>
       <div style={{
       alignItems: "center",
@@ -1283,7 +1302,7 @@ export function ExternalShareAdminSettingsPanel({
           alignItems: "center",
           justifyContent: "center",
           height: "112px",
-          background: palette.surface2,
+          background: "transparent",
           borderRadius: "8px",
           borderWidth: "1px",
           borderColor: palette.hairline
@@ -1367,7 +1386,7 @@ export function ExternalShareAdminSettingsPanel({
             minHeight: "34px",
             paddingInline: "8px",
             borderRadius: "8px",
-            background: palette.surface2,
+            background: "transparent",
             borderWidth: "1px",
             borderColor: palette.hairline
           }}>
@@ -1674,7 +1693,7 @@ export function ExternalShareAdminSettingsPanel({
               gap: "12px",
               padding: "12px",
               borderRadius: "8px",
-              background: palette.surface2,
+              background: "transparent",
               borderWidth: "1px",
               borderColor: palette.hairline
             }}>
@@ -1816,8 +1835,8 @@ export function ExternalShareAdminSettingsPanel({
         allowPermanent,
         audit,
         updatedAt: ""
-      }))} palette={palette} />
-        <IdentityPolicyRow experience={buildIcaPolicyExperience(authSettings)} palette={palette} />
+      }), t)} palette={palette} />
+        <IdentityPolicyRow experience={buildIcaPolicyExperience(authSettings, t)} palette={palette} />
       </AdminSection>
 
       <AdminSection icon={<LocalIcon name="mention" size={16} />} palette={palette} title={t("admin.emailRules")}>
@@ -1833,7 +1852,7 @@ export function ExternalShareAdminSettingsPanel({
         <MotionPresence show={emailRule === "domains"} preset="surface">
           <InlineConfigPanel palette={palette}>
             <TextArea value={domains} onChange={event => setDomains(event.target.value)} className="icedr-has-focus" style={{
-            background: palette.surface2,
+            background: "transparent",
             borderColor: palette.hairline,
             color: palette.ink,
             minHeight: "84px",
@@ -2129,23 +2148,26 @@ function RadioRow({
       </div>
     </button>;
 }
-function buildAnonymousPolicyExperience(anonymousPolicy: AnonymousAccessPolicy, policy: ExternalSharePolicy): IdentityExperience {
+function buildAnonymousPolicyExperience(anonymousPolicy: AnonymousAccessPolicy, policy: ExternalSharePolicy, t: DriveTranslator): IdentityExperience {
+  const speedLimit = policy.speedValue > 0 ? {
+    value: policy.speedValue,
+    unit: policy.speedUnit
+  } : null;
   return {
-    label: anonymousPolicy === "public" ? "Public visitor" : anonymousPolicy === "blocked" ? "Anonymous blocked" : "Email verified visitor",
+    hasSpeedLimit: Boolean(speedLimit),
+    label: anonymousPolicy === "public" ? t("share.visitor.public") : anonymousPolicy === "blocked" ? t("share.visitor.blocked") : t("share.visitor.emailVerified"),
     waitSeconds: formatPolicyWaitSeconds(policy),
-    speedLabel: formatSpeedLimit(policy.speedValue > 0 ? {
-      value: policy.speedValue,
-      unit: policy.speedUnit
-    } : null),
-    sessionLabel: policy.downloadLimit || "No download limit"
+    speedLabel: formatSpeedLimit(speedLimit, t),
+    sessionLabel: policy.downloadLimit || t("share.noDownloadLimit")
   };
 }
-function buildIcaPolicyExperience(authSettings: AuthSettings | null): IdentityExperience {
+function buildIcaPolicyExperience(authSettings: AuthSettings | null, t: DriveTranslator): IdentityExperience {
   return {
-    label: authSettings?.oauthConfigured ? "ICA OAuth visitor" : "ICA OAuth unavailable",
+    hasSpeedLimit: true,
+    label: authSettings?.oauthConfigured ? t("share.visitor.icaOAuth") : t("share.visitor.icaOAuthUnavailable"),
     waitSeconds: 0,
-    speedLabel: "Policy limit",
-    sessionLabel: authSettings?.oauthConfigured ? "OAuth session" : "Configuration required"
+    speedLabel: t("share.policyLimit"),
+    sessionLabel: authSettings?.oauthConfigured ? t("share.oauthSession") : t("share.configurationRequired")
   };
 }
 function IdentityPolicyRow({
@@ -2164,7 +2186,7 @@ function IdentityPolicyRow({
     alignItems: "center",
     padding: "12px",
     borderRadius: "8px",
-    background: palette.surface2,
+    background: "transparent",
     borderWidth: "1px",
     borderColor: palette.hairline
   } as React.CSSProperties}>
@@ -2493,7 +2515,7 @@ function ShareCreateOptions({
       }}>{t("share.remark")}</span>
         <TextArea value={remark} onChange={event => setRemark(event.target.value)} placeholder={t("share.optional")} className="icedr-has-placeholder icedr-has-focus" style={{
         minHeight: "78px",
-        background: palette.surface2,
+        background: "transparent",
         borderColor: palette.hairline,
         color: palette.ink,
         "--placeholder-color": palette.tertiary,
@@ -2522,7 +2544,7 @@ function PolicyCheck({
     paddingInline: "8px",
     paddingBlock: "6px",
     transition: "background-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)",
-    "--hover-bg": palette.surface2,
+    "--hover-bg": "transparent",
     "--hover-transform": "translateX(1px)",
     "--active-transform": "scale(0.99)",
     "--focus-visible-outline": "2px solid",
@@ -2543,7 +2565,7 @@ function PolicyCheck({
         borderRadius: "6px",
         borderWidth: "1px",
         borderColor: checked ? palette.primary : palette.hairlineStrong,
-        background: checked ? palette.selected : "transparent",
+        background: "transparent",
         transition: "background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)",
         transform: checked ? "scale(1)" : "scale(0.96)"
       }}>
@@ -2606,7 +2628,7 @@ function ShareCreatedPanel({
             width: "40px",
             height: "40px",
             borderRadius: "8px",
-            background: palette.selected,
+            background: "transparent",
             color: palette.primaryHover
           }}>
               <AnimatedCheckMark size={20} />
@@ -2635,7 +2657,7 @@ function ShareCreatedPanel({
           gap: "12px",
           padding: "12px",
           borderRadius: "8px",
-          background: palette.surface2,
+          background: "transparent",
           borderWidth: "1px",
           borderColor: palette.hairline
         }}>
@@ -2689,6 +2711,7 @@ function ExternalSharePreview({
   totalSize: string;
 }) {
   const t = useTranslations();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [stage, setStage] = useState<VisitorStage>("choose");
   const [visitorLevel, setVisitorLevel] = useState<VisitorLevel>("anonymous");
@@ -2711,9 +2734,11 @@ function ExternalSharePreview({
   } | null>(null);
   const visibleItems = getVisibleRegisteredShareItems(registeredShare, folderId, sourceItems);
   const currentFolder = folderId ? findDriveItem(folderId, sourceItems) : undefined;
-  const experience = getSharePolicyExperience(registeredShare, visitorLevel, accessSession);
+  const experience = getSharePolicyExperience(registeredShare, visitorLevel, accessSession, t);
   const verified = stage === "verified" || stage === "waiting" || stage === "download";
   const accessSessionRequired = getShareAccessRequired(registeredShare);
+  const primaryAccessItem = getPrimaryShareAccessItem(visibleItems, sourceItems, registeredShare);
+  const primaryAccessAction: VisitorAccessAction | null = registeredShare.allowDownload ? "download" : registeredShare.allowPreview ? "preview" : null;
   const visibleListRef = useMotionStagger<HTMLDivElement>([folderId, visibleItems.map(item => item.id).join("|")]);
   useEffect(() => {
     if (stage !== "waiting") return;
@@ -2844,165 +2869,74 @@ function ExternalSharePreview({
       setFeedback(accessAction === "download" ? t("share.downloadFailed") : t("preview.notConfigured"));
     });
   };
-  return <div style={{
+  return <div className="external-share-preview" style={{
     minHeight: "100vh"
   }}>
-      <div className="icedr-r-padding-inline" style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      height: "56px",
+      <div className="icedr-r-padding-inline external-share-topbar" style={{
       "--r-padding-inline-base": "16px",
       "--r-padding-inline-md": "24px",
       borderBottomWidth: "1px",
       borderColor: palette.hairline
     } as React.CSSProperties}>
-        <div style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "12px",
-        minWidth: "0px"
-      }}>
-          <div style={{
-          width: "28px",
-          height: "28px",
-          borderRadius: "8px",
-          background: palette.surface2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: palette.primaryHover
-        }}>
-            <LocalIcon name="link" size={17} />
-          </div>
-          <div style={{
-          minWidth: "0px"
-        }}>
-            <span className="icedr-truncate" style={{
-            color: palette.ink,
-            fontWeight: "600"
-          }}>
-              ICEDR
-            </span>
-            <span className="icedr-truncate" style={{
-            color: palette.subtle,
-            fontSize: "12px"
-          }}>
-              {t("share.title")}
-            </span>
-          </div>
+        <div className="external-share-brand">
+          <AppImage
+            src="/logo.png"
+            alt="ICEDR"
+            height={28}
+            width={28}
+            className="external-share-brand-logo"
+          />
+          <span className="external-share-brand-name icedr-truncate">ICEDR</span>
         </div>
-        <div style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "4px",
-        flexShrink: "0"
-      }}>
-          <StatusPill palette={palette} tone={verified ? "accent" : "neutral"}>
-            {verified ? t("share.verifiedAccess") : t("share.secureShare")}
-          </StatusPill>
+        <div className="external-share-topbar-actions">
+          <span className="external-share-topbar-status">
+            <LocalIcon name="shield" size={16} />
+            <span>{verified ? t("share.verifiedAccess") : t("share.title")}</span>
+          </span>
+          <button className="external-share-topbar-home" type="button" onClick={() => router.push("/")}>
+            <LocalIcon name="house" size={16} />
+            <span>{t("share.returnHome")}</span>
+          </button>
           <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
         </div>
       </div>
 
-      <div className="icedr-r-padding-inline" style={{
+      <div className="icedr-r-padding-inline external-share-content" style={{
       display: "grid",
       gridTemplateColumns: "1fr",
-      gap: "16px",
-      maxWidth: "1180px",
+      gap: "18px",
+      maxWidth: "1280px",
       "--r-padding-inline-base": "12px",
       "--r-padding-inline-md": "24px",
-      paddingBlock: "16px",
+      paddingBlock: "26px",
       minHeight: "calc(100vh - 56px)"
     } as React.CSSProperties}>
-        <div style={{
+        <div className="external-share-main-column" style={{
         display: "flex",
         flexDirection: "column",
         gap: "16px",
         minWidth: "0px"
       }}>
-          <Surface palette={palette} className="icedr-r-padding" style={{
-          "--r-padding-base": "16px",
-          "--r-padding-md": "20px"
-        } as React.CSSProperties}>
-            <div className="icedr-r-align-items icedr-r-flex-direction" style={{
-            display: "flex",
-            "--r-align-items-base": "flex-start",
-            "--r-align-items-md": "center",
-            justifyContent: "space-between",
-            gap: "16px",
-            "--r-flex-direction-base": "column",
-            "--r-flex-direction-md": "row"
-          } as React.CSSProperties}>
-              <div style={{
-              display: "flex",
-              gap: "16px",
-              minWidth: "0px",
-              alignItems: "flex-start"
-            }}>
-                <div style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "8px",
-                background: palette.surface2,
-                borderWidth: "1px",
-                borderColor: palette.hairline,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: "0"
-              }}>
-                  <ShareModeIcon mode={collection.mode} palette={palette} />
-                </div>
-                <div style={{
-                minWidth: "0px"
-              }}>
-                  <span className="icedr-truncate" style={{
-                  color: palette.ink,
-                  fontSize: "24px",
-                  lineHeight: "1.2",
-                  fontWeight: "600"
-                }}>
-                    {collection.title}
-                  </span>
-                  <span style={{
-                  color: palette.subtle,
-                  marginTop: "8px"
-                }}>
-                    {t("share.sharedBy", {
-                    owner: collection.owner,
-                    count: collection.rootItems.length
-                  })}
-                  </span>
-                </div>
-              </div>
-              <div style={{
-              alignItems: "center",
-              display: "flex",
-              gap: "8px",
-              flexWrap: "wrap"
-            }}>
-                <StatusPill palette={palette}>
-                  {collection.rootItems.length} {t("share.items")}
-                </StatusPill>
-                <StatusPill palette={palette}>
-                  {totalSize}
-                </StatusPill>
-                <StatusPill palette={palette}>
-                  {expiresLabel}
-                </StatusPill>
-              </div>
-            </div>
-          </Surface>
+          <ExternalShareHeroCard collection={collection} expiresLabel={expiresLabel} locale={locale} palette={palette} shareToken={registeredShare.token} sourceItems={sourceItems} totalSize={totalSize} />
 
-          <VisitorShareBrowser activeItemId={accessItem?.id ?? null} allowDownload={registeredShare.allowDownload} allowPreview={registeredShare.allowPreview} collectionTitle={collection.title} currentFolder={currentFolder} folderId={folderId} goUp={goUp} locale={locale} onDownloadItem={item => requestVisitorAction(item, "download")} onOpenFolder={setFolderId} onPreviewItem={item => requestVisitorAction(item, "preview")} palette={palette} registeredShare={registeredShare} sourceItems={sourceItems} visibleItems={visibleItems} visibleListRef={visibleListRef} />
+          <VisitorShareBrowser activeItemId={accessItem?.id ?? null} allowDownload={registeredShare.allowDownload} allowPreview={registeredShare.allowPreview} collectionTitle={collection.title} currentFolder={currentFolder} folderId={folderId} goUp={goUp} locale={locale} onDownloadItem={item => requestVisitorAction(item, "download")} onOpenFolder={setFolderId} onPreviewItem={item => requestVisitorAction(item, "preview")} palette={palette} registeredShare={registeredShare} sourceItems={sourceItems} totalItems={collection.rootItems.length} visibleItems={visibleItems} visibleListRef={visibleListRef} />
         </div>
 
+        <ExternalShareSidePanel
+          collectionItems={collection.rootItems}
+          experience={experience}
+          expiresLabel={expiresLabel}
+          onStartAccess={primaryAccessItem && primaryAccessAction ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction) : undefined}
+          registeredShare={registeredShare}
+          selectedEmail={email}
+          totalSize={totalSize}
+          verified={verified}
+        />
       </div>
 
       <ShareAuthDialog action={accessAction} accessExperience={experience} authMethod={authMethod} code={code} accessItem={accessItem} email={email} locale={locale} accountConfigured={icaConfigured} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onEmailChange={setEmail} onMethodChange={selectAuthMethod} onSendCode={sendCode} onVerifyCode={verifyCode} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} setCode={setCode} sourceItems={sourceItems} stage={stage} />
       <SharePreviewDialog accessSessionId={accessSessionId} onClose={() => setPreview(null)} open={Boolean(preview)} palette={palette} preview={preview} locale={locale} shareToken={registeredShare.token} />
-      {feedback ? <div className="icedr-r-right" style={{
+      {feedback ? <div className="icedr-r-right external-share-feedback" style={{
       display: "flex",
       position: "fixed",
       "--r-right-base": "12px",
@@ -3015,7 +2949,7 @@ function ExternalSharePreview({
       maxWidth: "min(360px, calc(100vw - 24px))",
       paddingInline: "12px",
       borderRadius: "8px",
-      background: palette.surface3,
+      background: "transparent",
       color: palette.ink,
       borderWidth: "1px",
       borderColor: palette.hairlineStrong,
@@ -3045,6 +2979,7 @@ function VisitorShareBrowser({
   palette,
   registeredShare,
   sourceItems,
+  totalItems,
   visibleItems,
   visibleListRef
 }: {
@@ -3062,18 +2997,19 @@ function VisitorShareBrowser({
   palette: Palette;
   registeredShare: RegisteredShare;
   sourceItems: DriveItem[];
+  totalItems: number;
   visibleItems: DriveItem[];
   visibleListRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const t = useTranslations();
   const timeZone = useTimeZone();
-  return <Surface palette={palette} className="icedr-r-min-height" style={{
+  return <Surface palette={palette} className="icedr-r-min-height external-share-browser" style={{
     overflow: "hidden",
-    flex: "1 1 auto",
+    flex: "0 0 auto",
     "--r-min-height-base": "360px",
     "--r-min-height-lg": "0px"
   } as React.CSSProperties}>
-      <div style={{
+      <div className="external-share-browser-header" style={{
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -3082,7 +3018,7 @@ function VisitorShareBrowser({
       borderBottomWidth: "1px",
       borderColor: palette.hairline
     }}>
-        <div style={{
+        <div className="external-share-browser-heading" style={{
         alignItems: "center",
         display: "flex",
         gap: "8px",
@@ -3091,17 +3027,15 @@ function VisitorShareBrowser({
           {folderId ? <ToolButton label={t("app.up")} palette={palette} onClick={goUp}>
               <LocalIcon name="arrow_up" size={16} />
             </ToolButton> : null}
-          <span className="icedr-truncate" style={{
-          color: palette.muted,
-          fontWeight: "600"
-        }}>
-            {currentFolder?.name ?? collectionTitle}
-          </span>
+          <div className="external-share-browser-title-stack">
+            <span className="external-share-browser-title icedr-truncate">{t("share.contentPreview")}</span>
+            <span className="external-share-browser-subtitle icedr-truncate">{currentFolder?.name ?? collectionTitle}</span>
+          </div>
         </div>
-        <StatusPill palette={palette}>{visibleItems.length}</StatusPill>
+        <StatusPill palette={palette}>{t("share.itemCountValue", { count: totalItems })}</StatusPill>
       </div>
 
-      {visibleItems.length === 0 ? <div style={{
+      {visibleItems.length === 0 ? <div className="external-share-browser-empty" style={{
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
@@ -3114,16 +3048,22 @@ function VisitorShareBrowser({
           <span style={{
         fontWeight: "600"
       }}>{t("files.emptyTitle")}</span>
-        </div> : <div ref={visibleListRef} style={{
+        </div> : <div ref={visibleListRef} className="external-share-browser-list" style={{
       display: "flex",
       flexDirection: "column",
       gap: "0px"
     }}>
+          <div className="external-share-browser-table-head" aria-hidden="true">
+            <span>{t("files.name")}</span>
+            <span>{t("files.size")}</span>
+            <span>{t("files.type")}</span>
+            <span />
+          </div>
           {visibleItems.map(item => {
         const isFolder = getItemKind(item) === "folder";
         const canOpen = isFolder && collectShareDescendants(item, sourceItems).some(child => registeredShare.allowedItemIds.includes(child.id));
         const isActive = activeItemId === item.id;
-        return <div key={item.id} data-motion-row className="icedr-has-hover" style={{
+        return <div key={item.id} data-motion-row className="icedr-has-hover external-share-file-row" style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -3134,13 +3074,13 @@ function VisitorShareBrowser({
           textAlign: "left",
           borderBottomWidth: "1px",
           borderColor: palette.hairline,
-          background: isActive ? palette.selected : "transparent",
+          background: "transparent",
           boxShadow: isActive ? `inset 2px 0 0 ${palette.primary}` : "none",
           transition: "background-color var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease)",
-          "--hover-bg": palette.surface2,
+          "--hover-bg": "transparent",
           "--hover-box-shadow": `inset 2px 0 0 ${palette.primary}`
         } as React.CSSProperties}>
-                <div style={{
+                <div className="external-share-file-primary" style={{
             alignItems: "center",
             display: "flex",
             gap: "12px",
@@ -3183,21 +3123,19 @@ function VisitorShareBrowser({
                   </div>
                 </div>
 
-                <div style={{
+                <span className="external-share-file-size">
+                  {formatFileSize(sumDriveItemSizes([item], sourceItems), locale)}
+                </span>
+                <span className="external-share-file-type icedr-truncate">
+                  {t(`files.kind.${getItemKind(item)}`)}
+                </span>
+                <div className="external-share-file-actions" style={{
             alignItems: "center",
             display: "flex",
             gap: "8px",
             marginLeft: "12px",
             flexShrink: "0"
           }}>
-                  <span className="icedr-r-display" style={{
-              color: palette.subtle,
-              fontSize: "12px",
-              "--r-display-base": "none",
-              "--r-display-sm": "block"
-            } as React.CSSProperties}>
-                    {formatFileSize(sumDriveItemSizes([item], sourceItems), locale)}
-                  </span>
                   {isFolder ? <ToolButton label={canOpen ? t("actions.open") : t("share.unavailable")} palette={palette} disabled={!canOpen} onClick={() => canOpen && onOpenFolder(item.id)}>
                       <LocalIcon name="folder" size={16} />
                     </ToolButton> : <>
@@ -3257,6 +3195,21 @@ function VisitorActionsMenu({
       </button>
     </ActionMenu>;
 }
+
+function getPrimaryShareAccessItem(
+  visibleItems: DriveItem[],
+  sourceItems: DriveItem[],
+  registeredShare: RegisteredShare,
+) {
+  const directFile = visibleItems.find((item) => getItemKind(item) !== "folder");
+  if (directFile) return directFile;
+  const visibleFolder = visibleItems.find((item) => getItemKind(item) === "folder");
+  if (!visibleFolder) return null;
+  return collectShareDescendants(visibleFolder, sourceItems).find((item) =>
+    getItemKind(item) !== "folder" && registeredShare.allowedItemIds.includes(item.id)
+  ) ?? null;
+}
+
 function SharePreviewDialog({
   accessSessionId,
   locale,
@@ -3289,7 +3242,7 @@ function SharePreviewDialog({
       }}>
         <Modal.Container placement="center">
           <Modal.Dialog style={{
-          background: palette.canvas,
+    background: "transparent",
           color: palette.ink,
           borderWidth: "1px",
           borderColor: palette.hairlineStrong,
@@ -3606,7 +3559,7 @@ function ShareAuthDialog({
                   gap: "12px"
                 }}>
                     <AuthStatusNotice palette={palette} status={{
-                    message: experience.speedLabel === "Unlimited" ? t("share.ready") : t("share.speedValue", {
+                    message: !experience.hasSpeedLimit ? t("share.ready") : t("share.speedValue", {
                       speed: experience.speedLabel
                     }),
                     tone: "success"
@@ -3648,7 +3601,7 @@ function PolicyInput({
     textAlign: align,
     paddingInline: "16px",
     borderRadius: "8px",
-    background: palette.surface2,
+    background: "transparent",
     borderWidth: "1px",
     borderColor: palette.hairline,
     color: palette.ink,
