@@ -22,3 +22,5 @@ skills*
 # private settings
 *.drawio
 data/
+designpics/
+test*/
