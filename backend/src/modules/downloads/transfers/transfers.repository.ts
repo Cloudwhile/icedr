@@ -66,8 +66,8 @@ export class TransfersRepository {
       input.nodeId !== undefined;
     if (!hasUpdate) return this.findById(id);
 
-    const existing = await this.prisma.transferTask.findUnique({
-      where: { id },
+    const existing = await this.prisma.transferTask.findFirst({
+      where: { id, transferType: 'upload' },
       select: { id: true },
     });
     if (!existing) return null;
@@ -95,6 +95,7 @@ export class TransfersRepository {
   async failStaleRunning(cutoff: Date, workspaceId?: string) {
     const where: Prisma.TransferTaskWhereInput = {
       status: 'running',
+      transferType: 'upload',
       updatedAt: { lt: cutoff },
     };
     if (workspaceId) where.workspaceId = workspaceId;
@@ -107,14 +108,14 @@ export class TransfersRepository {
 
     const ids = staleRows.map((row) => row.id);
     await this.prisma.transferTask.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, transferType: 'upload' },
       data: {
         status: 'failed',
         updatedAt: new Date(),
       },
     });
     const rows = await this.prisma.transferTask.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, transferType: 'upload' },
       orderBy: { createdAt: 'desc' },
     });
     const transfers = rows.map((row) => this.mapRow(row));
@@ -125,13 +126,18 @@ export class TransfersRepository {
   }
 
   async findById(id: string) {
-    const row = await this.prisma.transferTask.findUnique({ where: { id } });
+    const row = await this.prisma.transferTask.findFirst({
+      where: { id, transferType: 'upload' },
+    });
     return row ? this.mapRow(row) : null;
   }
 
   async list(workspaceId?: string, limit = 100) {
     const rows = await this.prisma.transferTask.findMany({
-      where: workspaceId ? { workspaceId } : undefined,
+      where: {
+        transferType: 'upload',
+        ...(workspaceId ? { workspaceId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(Math.trunc(limit), 1), 500),
     });
