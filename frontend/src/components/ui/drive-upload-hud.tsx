@@ -1,21 +1,17 @@
 "use client";
 
 import { useMemo, type CSSProperties } from "react";
-import { MotionPresence, MotionSurface } from "@/components/ui/motion";
+import { createPortal } from "react-dom";
+import { MotionPresence } from "@/components/ui/motion";
 import { ProgressMeter } from "@/components/ui/progress-meter";
-import { ToolButton } from "@/components/ui/tool-button";
 import { LocalIcon } from "@/components/ui/app-icon";
 import { useTranslations } from "@/i18n/react";
 import { formatFileSize, type Locale, type Palette } from "@/features/file/model";
 import type { TransferRow } from "@/views/drive/drive-types";
 
 type DriveUploadHudProps = {
-  controllableTransferIds: string[];
   locale: Locale;
-  onCancelTransfer?: (id: string) => void;
   onOpenTransfers?: () => void;
-  onPauseTransfer?: (id: string) => void;
-  onResumeTransfer?: (id: string) => void;
   palette: Palette;
   rows: TransferRow[];
 };
@@ -40,12 +36,6 @@ function getOverallProgress(rows: TransferRow[]) {
   return rows.length > 0 ? clampProgress(progressTotal / rows.length) : 0;
 }
 
-function getProgressColor(row: TransferRow, palette: Palette) {
-  if (row.status === "paused") return palette.warning;
-  if (row.status === "queued") return palette.info;
-  return palette.primary;
-}
-
 function getMetricLine(row: TransferRow, locale: Locale, t: ReturnType<typeof useTranslations>) {
   if (row.totalBytes && row.totalBytes > 0) {
     const loaded = formatFileSize(Math.min(row.loadedBytes ?? 0, row.totalBytes), locale);
@@ -57,61 +47,46 @@ function getMetricLine(row: TransferRow, locale: Locale, t: ReturnType<typeof us
 }
 
 export function DriveUploadHud({
-  controllableTransferIds,
   locale,
-  onCancelTransfer,
   onOpenTransfers,
-  onPauseTransfer,
-  onResumeTransfer,
   palette,
   rows,
 }: DriveUploadHudProps) {
   const t = useTranslations();
-  const controllableIds = useMemo(() => new Set(controllableTransferIds), [controllableTransferIds]);
   const activeRows = useMemo(
     () => rows.filter((row) => visibleUploadStatuses.has(row.status)).slice(0, 6),
     [rows],
   );
+  const canRenderPortal = typeof document !== "undefined";
   const primaryRow = activeRows[0];
   const overallProgress = getOverallProgress(activeRows);
-  const canControlPrimary = Boolean(primaryRow && controllableIds.has(primaryRow.id));
-  const canPausePrimary = canControlPrimary && primaryRow?.status === "running";
-  const canResumePrimary = canControlPrimary && primaryRow?.status === "paused";
-  const canCancelPrimary = canControlPrimary && primaryRow ? visibleUploadStatuses.has(primaryRow.status) : false;
+  const primaryMetric = primaryRow ? getMetricLine(primaryRow, locale, t) : t("transfers.queued");
 
-  return (
+  const hud = (
     <MotionPresence className="drive-upload-hud-presence" preset="toast" show={activeRows.length > 0}>
       {activeRows.length > 0 ? (
-        <MotionSurface className="drive-upload-hud" preset="toast" role="status" aria-live="polite">
+        <div
+          aria-label={t("nav.transfers")}
+          className="drive-upload-hud"
+          onClick={onOpenTransfers}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onOpenTransfers?.();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
           <div className="drive-upload-hud-topline">
             <span className="drive-upload-hud-icon">
               <LocalIcon name={primaryRow?.status === "paused" ? "pause" : "upload"} size={16} />
             </span>
             <div className="drive-upload-hud-title">
-              <span>{t("transfers.uploadActiveTitle", { count: activeRows.length })}</span>
-              <span>{primaryRow ? t(`transfers.${primaryRow.status}`) : t("transfers.queued")}</span>
+              <span className="icedr-truncate">{primaryRow?.name ?? t("transfers.uploadActiveTitle", { count: activeRows.length })}</span>
+              <span className="icedr-truncate">{primaryMetric}</span>
             </div>
             <span className="drive-upload-hud-percent">{overallProgress}%</span>
-            <div className="drive-upload-hud-actions">
-              <ToolButton label={t("nav.transfers")} palette={palette} size="sm" tooltipPlacement="top" onClick={onOpenTransfers}>
-                <LocalIcon name="menu7" size={15} />
-              </ToolButton>
-              {canPausePrimary ? (
-                <ToolButton label={t("transfers.pause")} palette={palette} size="sm" tooltipPlacement="top" onClick={() => primaryRow && onPauseTransfer?.(primaryRow.id)}>
-                  <LocalIcon name="pause" size={15} />
-                </ToolButton>
-              ) : null}
-              {canResumePrimary ? (
-                <ToolButton label={t("transfers.resume")} palette={palette} size="sm" tooltipPlacement="top" onClick={() => primaryRow && onResumeTransfer?.(primaryRow.id)}>
-                  <LocalIcon name="arrow_right" size={15} />
-                </ToolButton>
-              ) : null}
-              {canCancelPrimary ? (
-                <ToolButton label={t("transfers.cancel")} palette={palette} size="sm" tooltipPlacement="top" onClick={() => primaryRow && onCancelTransfer?.(primaryRow.id)}>
-                  <LocalIcon name="cross" size={15} />
-                </ToolButton>
-              ) : null}
-            </div>
           </div>
 
           <ProgressMeter
@@ -122,20 +97,10 @@ export function DriveUploadHud({
             style={{ "--progress-track": "rgba(148, 163, 184, 0.24)" } as CSSProperties}
             value={overallProgress}
           />
-
-          <div className="drive-upload-hud-list">
-            {activeRows.slice(0, 3).map((row) => (
-              <div className="drive-upload-hud-row" key={row.id}>
-                <span className="drive-upload-hud-row-icon" style={{ color: getProgressColor(row, palette) }}>
-                  <LocalIcon name={row.status === "queued" ? "clock" : row.status === "paused" ? "pause" : "upload"} size={14} />
-                </span>
-                <span className="drive-upload-hud-row-name icedr-truncate">{row.name}</span>
-                <span className="drive-upload-hud-row-meta">{getMetricLine(row, locale, t)}</span>
-              </div>
-            ))}
-          </div>
-        </MotionSurface>
+        </div>
       ) : null}
     </MotionPresence>
   );
+
+  return canRenderPortal ? createPortal(hud, document.body) : hud;
 }

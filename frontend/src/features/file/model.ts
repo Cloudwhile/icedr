@@ -54,6 +54,7 @@ export type LocalIconName =
   | "share2"
   | "shield"
   | "slider"
+  | "sort"
   | "star"
   | "stop"
   | "sun"

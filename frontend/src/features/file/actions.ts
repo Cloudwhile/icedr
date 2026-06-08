@@ -4,6 +4,7 @@ import {
   createBatchFileDownloadIntents,
   createFileDownloadIntent,
   createFileVersionDownloadIntent,
+  DriveApiError,
   getApiBaseUrl,
   getAuthHeaders,
   updateTransfer,
@@ -53,6 +54,35 @@ type UploadPartIntentResponse = {
   sessionId: string;
   uploadUrl: string;
 };
+
+async function createDriveFetchError(response: Response, fallback: string) {
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    return new DriveApiError(fallback, response.status);
+  }
+
+  try {
+    const body = (await response.json()) as unknown;
+    if (!body || typeof body !== "object") {
+      return new DriveApiError(fallback, response.status);
+    }
+
+    const message = (body as { message?: unknown }).message;
+    const code = (body as { code?: unknown }).code;
+    const resolvedMessage = Array.isArray(message)
+      ? message.filter((item): item is string => typeof item === "string").join("; ")
+      : typeof message === "string"
+        ? message
+        : fallback;
+
+    return new DriveApiError(
+      resolvedMessage || fallback,
+      response.status,
+      typeof code === "string" ? code : undefined,
+    );
+  } catch {
+    return new DriveApiError(fallback, response.status);
+  }
+}
 
 export type UploadDriveFileProgress = {
   fileName: string;
@@ -307,7 +337,10 @@ export function createUploadDriveFileTask({
         resumeKey,
       }),
     });
-    if (!intentResponse.ok) throw new Error("Upload intent failed");
+    if (!intentResponse.ok) {
+      const error = await createDriveFetchError(intentResponse, "Upload intent failed");
+      throw error;
+    }
 
     intent = (await intentResponse.json()) as UploadIntentResponse;
     uploadedPartIndexes = new Set(intent.uploadedPartIndexes ?? []);
@@ -401,7 +434,8 @@ export function createUploadDriveFileTask({
     if (!completionResponse.ok) {
       emitProgress(file.size, 96, "failed");
       await updateTransfer(currentIntent.transferId, { status: "failed", progress: 96 }).catch(() => undefined);
-      throw new Error("Upload completion failed");
+      const error = await createDriveFetchError(completionResponse, "Upload completion failed");
+      throw error;
     }
     emitProgress(file.size, 100, "completed");
     status = "completed";

@@ -34,6 +34,7 @@ function LegalPage({
   locale,
   palette,
   setThemeMode,
+  siteSettings,
   themeMode
 }: {
   documentKey: LegalDocumentKey;
@@ -50,7 +51,7 @@ function LegalPage({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      <PublicPageNav palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <PublicPageNav palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} themeMode={themeMode} />
 
       <main style={{
       flex: "1 1 auto",
@@ -118,7 +119,7 @@ function LegalPage({
           </div>
         </div>
 
-        <LegalFooter locale={locale} palette={palette} />
+        <LegalFooter locale={locale} palette={palette} siteName={siteSettings.siteName} />
       </main>
     </div>;
 }

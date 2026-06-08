@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { LdrsLoadingState } from "@/components/common/ui/loading-state";
+import { EChart, type EChartOption } from "@/components/ui/e-chart";
 import { UserAccountMenu } from "@/components/ui/user-account-menu";
 import { usePathname, useRouter } from "@/compat/navigation";
 import { isAdminUser } from "@/features/auth/permissions";
@@ -9,23 +10,28 @@ import { formatFileSize, getIntlLocale, type Locale, type LocalIconName, type Pa
 import { useTranslations } from "@/i18n/react";
 import {
   clearStoredAuthToken,
+  defaultPublicSiteSettings,
   fetchAuditEvents,
   fetchPublicSiteSettings,
+  fetchStorageSettings,
   fetchStorageUsage,
+  fetchSystemOverview,
   fetchWorkspaces,
   logoutLocalUser,
   type AuditEventResponse,
   type AuthUser,
   type PublicSiteSettings,
+  type StorageSettings,
+  type SystemOverview,
   type StorageUsage,
   type WorkspaceResponse,
 } from "@/lib/drive-api";
 import { AuthGate } from "./auth-client";
 import { LocalizedDriveShell } from "./drive-shell";
-import { AuditModule } from "./drive-modules";
+import { AuditModule, getAuditActorIdentity, getAuditResult } from "./drive-modules";
 import { DriveSystemSettings } from "./drive-system-settings";
-import { ExternalShareAdminSettingsPage } from "./external-share";
-import { formatAbsoluteDate, formatAuditAction } from "./drive-formatters";
+import { ExternalShareAdminSettingsPage } from "./external-share-admin-settings";
+import { formatAbsoluteDate, formatAuditAction, formatSystemDuration, formatSystemOperatingSystem } from "./drive-formatters";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 import "./styles/modules.css";
 import "./styles/settings.css";
@@ -85,6 +91,8 @@ function AdminOverviewPanel({
   onOpenPanel,
   palette,
   storageUsage,
+  storageSettings,
+  systemOverview,
   timeZone,
   workspaces,
 }: {
@@ -93,13 +101,15 @@ function AdminOverviewPanel({
   locale: Locale;
   onOpenPanel: (panel: AdminPanel) => void;
   palette: Palette;
+  storageSettings: StorageSettings | null;
   storageUsage: StorageUsage | null;
+  systemOverview: SystemOverview | null;
   timeZone: string;
   workspaces: WorkspaceResponse[];
 }) {
   const t = useTranslations();
   const formatter = useMemo(() => new Intl.NumberFormat(getIntlLocale(locale)), [locale]);
-  const failedEvents = useMemo(() => auditEvents.filter((event) => getAdminAuditResult(event) === "failed"), [auditEvents]);
+  const failedEvents = useMemo(() => auditEvents.filter((event) => getAuditResult(event) === "failed"), [auditEvents]);
   const shareEvents = useMemo(() => auditEvents.filter((event) => event.action.startsWith("share.")), [auditEvents]);
   const normalizedActivityQuery = activityQuery.trim().toLocaleLowerCase();
   const visibleActivityEvents = useMemo(() => {
@@ -116,17 +126,30 @@ function AdminOverviewPanel({
     ].some((value) => String(value ?? "").toLocaleLowerCase().includes(normalizedActivityQuery)));
   }, [auditEvents, normalizedActivityQuery, t]);
   const latestEvents = visibleActivityEvents.slice(0, 5);
-  const usagePercent = Math.max(0, Math.min(100, storageUsage?.usagePercent ?? 0));
-  const usagePercentLabel = storageUsage?.usagePercent !== null && storageUsage?.usagePercent !== undefined
-    ? `${storageUsage.usagePercent.toFixed(1)}%`
-    : t("settings.storageUsagePercent");
-  const storageLabel = storageUsage?.quotaBytes
-    ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${formatFileSize(storageUsage.quotaBytes, locale)}`
+  const storageQuotaBytes = storageSettings?.quotaBytes ?? storageUsage?.storagePolicyQuotaBytes ?? storageUsage?.quotaBytes ?? null;
+  const storageLabel = storageUsage && storageQuotaBytes
+    ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${formatFileSize(storageQuotaBytes, locale)}`
     : storageUsage
       ? formatFileSize(storageUsage.usedBytes, locale)
       : "--";
+  const usagePercent = storageUsage && storageQuotaBytes
+    ? Math.min(100, Math.round((storageUsage.usedBytes / storageQuotaBytes) * 1000) / 10)
+    : Math.max(0, Math.min(100, storageUsage?.usagePercent ?? 0));
+  const usagePercentLabel = storageUsage && storageQuotaBytes
+    ? `${usagePercent.toFixed(1)}%`
+    : storageUsage?.usagePercent !== null && storageUsage?.usagePercent !== undefined
+      ? `${storageUsage.usagePercent.toFixed(1)}%`
+      : t("settings.storageUsagePercent");
+  const storageBreakdownRows = useMemo(() => buildStorageOverviewRows(storageUsage, locale, t), [locale, storageUsage, t]);
+  const systemResourceRows = useMemo(() => buildSystemResourceRows(systemOverview, locale, t), [locale, systemOverview, t]);
   const activityTrend = useMemo(() => buildActivityTrend(auditEvents, locale), [auditEvents, locale]);
-  const fileTypeRows = buildAdminDistributionRows(t, storageUsage, auditEvents, formatter);
+  const fileTypeRows = useMemo(() => buildAdminDistributionRows(t, storageUsage, auditEvents, formatter), [auditEvents, formatter, storageUsage, t]);
+  const activityTrendOption = useMemo(() => buildActivityTrendOption(activityTrend, palette), [activityTrend, palette]);
+  const distributionCenterLabel = storageUsage ? t("settings.fileCount") : t("audit.title");
+  const distributionOption = useMemo(
+    () => buildAdminDistributionOption(fileTypeRows, formatter.format(storageUsage?.fileCount ?? auditEvents.length), distributionCenterLabel, palette),
+    [auditEvents.length, distributionCenterLabel, fileTypeRows, formatter, palette, storageUsage?.fileCount],
+  );
   const hasFailedEvents = failedEvents.length > 0;
   const statusValue = hasFailedEvents ? t("admin.needsReview") : t("admin.running");
   const statusMeta = hasFailedEvents
@@ -136,8 +159,9 @@ function AdminOverviewPanel({
     { label: t("settings.runningStatus"), tone: hasFailedEvents ? "warning" : "success", value: statusValue },
     { label: t("settings.storageSpace"), value: storageLabel },
     { label: t("settings.fileCount"), value: storageUsage ? formatter.format(storageUsage.fileCount) : "--" },
-    { label: t("admin.workspaceCount"), value: formatter.format(workspaces.length) },
-    { label: t("admin.lastAuditAt"), value: auditEvents[0]?.createdAt ? formatAbsoluteDate(auditEvents[0].createdAt, locale, timeZone) : "--" },
+    { label: t("settings.operatingSystem"), value: systemOverview ? formatSystemOperatingSystem(systemOverview) : "--" },
+    { label: t("settings.appVersion"), value: systemOverview?.appVersion || "--" },
+    { label: t("settings.driveUptime"), value: systemOverview ? formatSystemDuration(systemOverview.processUptimeSeconds, t) : "--" },
   ];
 
   return (
@@ -154,41 +178,14 @@ function AdminOverviewPanel({
       <section className="admin-overview-card admin-overview-trend">
         <AdminOverviewCardHeader icon="clock" title={t("admin.activityTrend")} />
         <div className="admin-activity-chart admin-activity-line-chart" aria-label={t("admin.activityTrend")}>
-          <div className="admin-activity-y-axis" aria-hidden="true">
-            <span>{activityTrend.maxLabel}</span>
-            <span>{activityTrend.midLabel}</span>
-            <span>0</span>
-          </div>
-          <div className="admin-activity-plot">
-            <svg aria-hidden="true" focusable="false" preserveAspectRatio="none" viewBox="0 0 640 180">
-              <defs>
-                <linearGradient id="admin-activity-area" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="currentColor" stopOpacity="0.22" />
-                  <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
-                </linearGradient>
-              </defs>
-              <polygon className="admin-activity-area" points={activityTrend.areaPoints} />
-              <polyline className="admin-activity-line" points={activityTrend.linePoints} />
-              {activityTrend.points.map((point) => (
-                <circle className="admin-activity-point" cx={point.x} cy={point.y} key={point.key} r="4" />
-              ))}
-            </svg>
-            <div className="admin-activity-x-axis" aria-hidden="true">
-              {activityTrend.points.map((point) => (
-                <span key={point.key}>{point.label}</span>
-              ))}
-            </div>
-          </div>
+          <EChart ariaLabel={t("admin.activityTrend")} className="admin-activity-echart" option={activityTrendOption} />
         </div>
       </section>
 
       <section className="admin-overview-card admin-overview-distribution">
         <AdminOverviewCardHeader actionLabel={t("links.viewDetails")} icon="grid" onAction={() => onOpenPanel("audit")} title={t("admin.activityDistribution")} />
         <div className="admin-donut-summary">
-          <div className="admin-donut" style={{ "--admin-donut-a": `${fileTypeRows[0]?.percent ?? 0}%`, "--admin-donut-b": `${fileTypeRows[1]?.percent ?? 0}%`, "--admin-donut-c": `${fileTypeRows[2]?.percent ?? 0}%` } as CSSProperties}>
-            <span>{formatter.format(storageUsage?.fileCount ?? auditEvents.length)}</span>
-            <small>{storageUsage ? t("settings.fileCount") : t("audit.title")}</small>
-          </div>
+          <EChart ariaLabel={t("admin.activityDistribution")} className="admin-donut-echart" option={distributionOption} />
           <div className="admin-distribution-list">
             {fileTypeRows.map((row) => (
               <div className="admin-distribution-row" data-tone={row.tone} key={row.label}>
@@ -216,18 +213,35 @@ function AdminOverviewPanel({
       <section className="admin-overview-card admin-overview-activity">
         <AdminOverviewCardHeader actionLabel={t("links.viewDetails")} icon="shield" onAction={() => onOpenPanel("audit")} title={t("admin.recentActivity")} />
         <div className="admin-recent-activity-list">
-          {latestEvents.length > 0 ? latestEvents.map((event) => (
-            <div className="admin-recent-activity-row" data-tone={getAdminAuditResult(event) === "failed" ? "danger" : "secure"} key={event.id}>
-              <span className="admin-recent-activity-avatar">
-                <LocalIcon name={event.action.startsWith("share.") ? "link" : event.action.startsWith("transfer.") ? "upload" : "shield"} size={14} />
-              </span>
-              <div>
-                <span className="icedr-truncate">{event.actor} · {formatAuditAction(event.action, t)}</span>
-                <small className="icedr-truncate">{event.target || event.id}</small>
+          {latestEvents.length > 0 ? latestEvents.map((event) => {
+            const actor = getAuditActorIdentity(event, t);
+            const failed = getAuditResult(event) === "failed";
+
+            return (
+              <div className="admin-recent-activity-row" data-tone={failed ? "danger" : "secure"} key={event.id}>
+                <span className="admin-recent-activity-avatar" data-actor={event.actor}>
+                  {actor.avatarUrl ? (
+                    <img alt="" src={actor.avatarUrl} />
+                  ) : actor.initials ? (
+                    <span>{actor.initials}</span>
+                  ) : (
+                    <LocalIcon name={actor.icon} size={14} />
+                  )}
+                </span>
+                <div className="admin-recent-activity-copy">
+                  <span className="icedr-truncate">{t("admin.activityEventLine", { actor: actor.name, action: formatAuditAction(event.action, t) })}</span>
+                  <small className="admin-recent-activity-meta">
+                    <span className="admin-recent-activity-source icedr-truncate" data-empty={actor.ipAddress === "--" ? "true" : undefined}>
+                      <LocalIcon name="earth" size={11} />
+                      <span className="icedr-truncate">{actor.ipAddress}</span>
+                    </span>
+                    <span className="admin-recent-activity-target icedr-truncate">{event.target || event.id}</span>
+                  </small>
+                </div>
+                <time>{formatAbsoluteDate(event.createdAt, locale, timeZone)}</time>
               </div>
-              <time>{formatAbsoluteDate(event.createdAt, locale, timeZone)}</time>
-            </div>
-          )) : (
+            );
+          }) : (
             <div className="admin-overview-empty">
               <LocalIcon name="shield" size={18} color={palette.subtle} />
               <span>{t("audit.emptyTitle")}</span>
@@ -246,11 +260,40 @@ function AdminOverviewPanel({
           <div className="admin-storage-track" aria-hidden="true">
             <span style={{ "--admin-storage-width": `${usagePercent}%` } as CSSProperties} />
           </div>
-          <div className="admin-storage-facts">
-            <span>{t("settings.activeStorage")}: {storageUsage ? formatFileSize(storageUsage.activeBytes, locale) : "--"}</span>
-            <span>{t("settings.trashStorage")}: {storageUsage ? formatFileSize(storageUsage.trashBytes, locale) : "--"}</span>
-            <span>{t("settings.versionStorage")}: {storageUsage ? formatFileSize(storageUsage.versionBytes, locale) : "--"}</span>
+          <div className="admin-storage-breakdown-list">
+            {storageBreakdownRows.map((row) => (
+              <div className="admin-storage-breakdown-row" data-tone={row.tone} key={row.label}>
+                <div className="admin-storage-breakdown-copy">
+                  <span className="icedr-truncate">{row.label}</span>
+                  <strong>{row.value}</strong>
+                  <em>{row.percentLabel}</em>
+                </div>
+                <div className="admin-storage-breakdown-track" aria-hidden="true">
+                  <span style={{ "--admin-storage-row-width": `${row.percent}%` } as CSSProperties} />
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+      </section>
+
+      <section className="admin-overview-card admin-overview-resources">
+        <AdminOverviewCardHeader actionLabel={t("links.viewDetails")} icon="settings" onAction={() => onOpenPanel("system")} title={t("admin.systemResources")} />
+        <div className="admin-resource-list">
+          {systemResourceRows.map((row) => (
+            <div className="admin-resource-row" data-tone={row.tone} key={row.label}>
+              <span className="admin-resource-icon">
+                <LocalIcon name={row.icon} size={15} />
+              </span>
+              <div className="admin-resource-copy">
+                <span className="icedr-truncate">{row.label}</span>
+                <strong className="icedr-truncate">{row.value}</strong>
+              </div>
+              <div className="admin-resource-track" aria-hidden="true">
+                <span style={{ "--admin-resource-width": `${row.percent}%` } as CSSProperties} />
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>
@@ -324,23 +367,143 @@ function buildActivityTrend(events: AuditEventResponse[], locale: Locale) {
     const day = counts.get(key);
     if (day) day.count += 1;
   });
-  const max = Math.max(1, ...days.map((day) => day.count));
-  const chartWidth = 640;
-  const chartHeight = 180;
-  const points = days.map((day, index) => ({
-    ...day,
-    x: (chartWidth / Math.max(1, days.length - 1)) * index,
-    y: chartHeight - (day.count / max) * (chartHeight - 24) - 12,
-  }));
-  const linePoints = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
-  const areaPoints = `0,${chartHeight} ${linePoints} ${chartWidth},${chartHeight}`;
 
   return {
-    areaPoints,
-    linePoints,
-    maxLabel: String(max),
-    midLabel: String(Math.ceil(max / 2)),
-    points,
+    labels: days.map((day) => day.label),
+    values: days.map((day) => day.count),
+  };
+}
+
+function buildActivityTrendOption(
+  trend: ReturnType<typeof buildActivityTrend>,
+  palette: Palette,
+): EChartOption {
+  return {
+    animationDuration: 460,
+    animationEasing: "cubicOut",
+    backgroundColor: "transparent",
+    grid: { bottom: 28, containLabel: false, left: 28, right: 12, top: 14 },
+    series: [
+      {
+        areaStyle: {
+          color: {
+            colorStops: [
+              { color: "rgba(94, 106, 210, 0.2)", offset: 0 },
+              { color: "rgba(94, 106, 210, 0.02)", offset: 1 },
+            ],
+            type: "linear",
+            x: 0,
+            x2: 0,
+            y: 0,
+            y2: 1,
+          },
+        },
+        data: trend.values,
+        emphasis: { focus: "series" },
+        itemStyle: { color: palette.primary },
+        lineStyle: { color: palette.primary, width: 3 },
+        name: "activity",
+        showSymbol: true,
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 7,
+        type: "line",
+      },
+    ],
+    tooltip: {
+      backgroundColor: palette.surface1,
+      borderColor: palette.hairline,
+      borderWidth: 1,
+      confine: true,
+      textStyle: { color: palette.ink, fontSize: 12, fontWeight: 700 },
+      trigger: "axis",
+    },
+    xAxis: {
+      axisLabel: { color: palette.subtle, fontSize: 11, fontWeight: 700 },
+      axisLine: { lineStyle: { color: palette.hairline } },
+      axisTick: { show: false },
+      boundaryGap: false,
+      data: trend.labels,
+      type: "category",
+    },
+    yAxis: {
+      axisLabel: { color: palette.subtle, fontSize: 11, fontWeight: 700 },
+      max: (value: { max: number }) => Math.max(1, value.max),
+      minInterval: 1,
+      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.18)" } },
+      type: "value",
+    },
+  };
+}
+
+function buildAdminDistributionOption(
+  rows: ReturnType<typeof buildAdminDistributionRows>,
+  centerValue: string,
+  centerLabel: string,
+  palette: Palette,
+): EChartOption {
+  const colorByTone: Record<string, string> = {
+    primary: palette.primary,
+    success: palette.success,
+    warning: palette.warning,
+  };
+
+  return {
+    animationDuration: 460,
+    animationEasing: "cubicOut",
+    backgroundColor: "transparent",
+    color: rows.map((row) => colorByTone[row.tone] ?? palette.info),
+    graphic: [
+      {
+        left: "center",
+        style: {
+          fill: palette.ink,
+          fontSize: 20,
+          fontWeight: 860,
+          text: centerValue,
+          textAlign: "center",
+        },
+        top: "39%",
+        type: "text",
+      },
+      {
+        left: "center",
+        style: {
+          fill: palette.subtle,
+          fontSize: 11,
+          fontWeight: 720,
+          text: centerLabel,
+          textAlign: "center",
+        },
+        top: "54%",
+        type: "text",
+      },
+    ],
+    series: [
+      {
+        avoidLabelOverlap: true,
+        data: rows.map((row) => ({ name: row.label, value: row.percent })),
+        emphasis: { scale: true, scaleSize: 4 },
+        itemStyle: {
+          borderColor: palette.surface1,
+          borderRadius: 5,
+          borderWidth: 3,
+        },
+        label: { show: false },
+        radius: ["66%", "88%"],
+        silent: false,
+        type: "pie",
+      },
+    ],
+    tooltip: {
+      backgroundColor: palette.surface1,
+      borderColor: palette.hairline,
+      borderWidth: 1,
+      confine: true,
+      formatter: "{b}",
+      textStyle: { color: palette.ink, fontSize: 12, fontWeight: 700 },
+      trigger: "item",
+    },
   };
 }
 
@@ -369,9 +532,99 @@ function buildAdminDistributionRows(
   ];
 }
 
-function getAdminAuditResult(row: AuditEventResponse) {
-  const value = row.metadata.result;
-  return typeof value === "string" && value.toLowerCase().includes("fail") ? "failed" : "success";
+function buildStorageOverviewRows(
+  storageUsage: StorageUsage | null,
+  locale: Locale,
+  t: ReturnType<typeof useTranslations>,
+) {
+  const rows = [
+    {
+      bytes: storageUsage?.activeBytes ?? 0,
+      label: t("settings.activeStorage"),
+      tone: "primary",
+    },
+    {
+      bytes: storageUsage?.trashBytes ?? 0,
+      label: t("settings.trashStorage"),
+      tone: "warning",
+    },
+    {
+      bytes: storageUsage?.versionBytes ?? 0,
+      label: t("settings.versionStorage"),
+      tone: "success",
+    },
+  ] as const;
+  const total = Math.max(1, rows.reduce((sum, row) => sum + row.bytes, 0));
+  return rows.map((row) => {
+    const percent = Math.round((row.bytes / total) * 1000) / 10;
+    return {
+      ...row,
+      percent,
+      percentLabel: `${percent.toFixed(1)}%`,
+      value: storageUsage ? formatFileSize(row.bytes, locale) : "--",
+    };
+  });
+}
+
+function buildSystemResourceRows(
+  systemOverview: SystemOverview | null,
+  locale: Locale,
+  t: ReturnType<typeof useTranslations>,
+) {
+  if (!systemOverview) {
+    return [
+      {
+        icon: "clock" as const,
+        label: t("admin.loadAverage"),
+        percent: 0,
+        tone: "primary" as const,
+        value: "--",
+      },
+      {
+        icon: "grid" as const,
+        label: t("admin.memoryUsage"),
+        percent: 0,
+        tone: "success" as const,
+        value: "--",
+      },
+      {
+        icon: "time" as const,
+        label: t("admin.processRuntime"),
+        percent: 0,
+        tone: "warning" as const,
+        value: "--",
+      },
+    ];
+  }
+
+  const loadAverage = systemOverview.loadAverage[0] ?? 0;
+  const loadPercent = Math.min(100, Math.max(0, Math.round(loadAverage * 25)));
+  const memoryPercent = Math.min(100, Math.max(0, systemOverview.memoryUsagePercent));
+  const uptimePercent = Math.min(100, Math.max(8, Math.round(systemOverview.processUptimeSeconds / 3600)));
+
+  return [
+    {
+      icon: "clock" as const,
+      label: t("admin.loadAverage"),
+      percent: loadPercent,
+      tone: "primary" as const,
+      value: loadAverage.toFixed(2),
+    },
+    {
+      icon: "grid" as const,
+      label: t("admin.memoryUsage"),
+      percent: memoryPercent,
+      tone: "success" as const,
+      value: `${systemOverview.memoryUsagePercent.toFixed(1)}% / ${formatFileSize(systemOverview.memoryTotalBytes, locale)}`,
+    },
+    {
+      icon: "time" as const,
+      label: t("admin.processRuntime"),
+      percent: uptimePercent,
+      tone: "warning" as const,
+      value: formatSystemDuration(systemOverview.processUptimeSeconds, t),
+    },
+  ];
 }
 
 function AdminPanelGate({
@@ -393,11 +646,10 @@ function AdminPanelGate({
   const pathname = usePathname();
   const t = useTranslations();
   const activePanel = resolveAdminPanelFromPath(pathname);
-  const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>({
-    authLogoDataUrl: null,
-    siteName: "ICEDR",
-  });
+  const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([]);
+  const [storageSettings, setStorageSettings] = useState<StorageSettings | null>(null);
+  const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(null);
   const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -445,11 +697,26 @@ function AdminPanelGate({
   const refreshStorage = useCallback(async (targetWorkspaceId = workspaceId) => {
     if (!canUseAdminPanel || !targetWorkspaceId) return;
     try {
-      setStorageUsage(await fetchStorageUsage(targetWorkspaceId));
+      const [nextStorageSettings, nextStorageUsage] = await Promise.all([
+        fetchStorageSettings(),
+        fetchStorageUsage(targetWorkspaceId),
+      ]);
+      setStorageSettings(nextStorageSettings);
+      setStorageUsage(nextStorageUsage);
     } catch {
+      setStorageSettings(null);
       setStorageUsage(null);
     }
   }, [canUseAdminPanel, workspaceId]);
+
+  const refreshSystemOverview = useCallback(async () => {
+    if (!canUseAdminPanel) return;
+    try {
+      setSystemOverview(await fetchSystemOverview());
+    } catch {
+      setSystemOverview(null);
+    }
+  }, [canUseAdminPanel]);
 
   const refreshAdminData = useCallback(async () => {
     if (!canUseAdminPanel) {
@@ -464,11 +731,12 @@ function AdminPanelGate({
       await Promise.all([
         refreshAudit(targetWorkspaceId),
         refreshStorage(targetWorkspaceId),
+        refreshSystemOverview(),
       ]);
     } finally {
       setLoading(false);
     }
-  }, [canUseAdminPanel, refreshAudit, refreshSite, refreshStorage, refreshWorkspace]);
+  }, [canUseAdminPanel, refreshAudit, refreshSite, refreshStorage, refreshSystemOverview, refreshWorkspace]);
 
   useEffect(() => {
     if (!canUseAdminPanel) return;
@@ -533,10 +801,6 @@ function AdminPanelGate({
 
       <section className="admin-main">
         <header className="admin-header">
-          <div className="admin-header-title">
-            <span className="admin-header-kicker">{t("app.adminPanel")}</span>
-            <span className="icedr-truncate">{siteSettings.siteName}</span>
-          </div>
           <form className="admin-header-search" onSubmit={submitAdminSearch} role="search">
             <LocalIcon name="search" size={17} />
             <input
@@ -591,7 +855,9 @@ function AdminPanelGate({
                 locale={locale}
                 onOpenPanel={openPanel}
                 palette={palette}
+                storageSettings={storageSettings}
                 storageUsage={storageUsage}
+                systemOverview={systemOverview}
                 timeZone={timeZone}
                 workspaces={workspaces}
               />
@@ -610,9 +876,13 @@ function AdminPanelGate({
               workspaceId ? (
                 <DriveSystemSettings
                   locale={locale}
-                  onStorageUsageUpdated={setStorageUsage}
+                  onStorageUsageUpdated={(usage) => {
+                    setStorageUsage(usage);
+                    void refreshStorage(workspaceId);
+                  }}
                   palette={palette}
                   storageUsage={storageUsage}
+                  systemOverview={systemOverview}
                   workspaceId={workspaceId}
                 />
               ) : (

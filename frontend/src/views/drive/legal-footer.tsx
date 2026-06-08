@@ -4,16 +4,20 @@ import Link from "@/compat/link";
 import type { CSSProperties } from "react";
 import type { Locale, Palette } from "@/features/file/model";
 import { getLegalDocumentLabelKey, getLegalTextLocale } from "@/features/legal/content";
+import { resolvePublicSiteName } from "@/lib/drive-api";
 import { useTranslations } from "@/i18n/react";
 export function LegalFooter({
   locale,
-  palette
+  palette,
+  siteName
 }: {
   locale: Locale;
   palette: Palette;
+  siteName: string;
 }) {
   const t = useTranslations();
   const language = getLegalTextLocale(locale);
+  const resolvedSiteName = resolvePublicSiteName(siteName);
   const linkStyle: CSSProperties = {
     color: palette.subtle,
     fontSize: "12px",
@@ -38,7 +42,7 @@ export function LegalFooter({
   }}>
       <span style={{
       color: palette.tertiary
-    }}>© 2026 ICEDR</span>
+    }}>© 2026 {resolvedSiteName}</span>
       <div style={{
       alignItems: "center",
       display: "flex",

@@ -3,9 +3,9 @@
 import { Input } from "@heroui/react";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { AppSelect } from "@/components/ui/app-select";
-import { MotionSurface } from "@/components/ui/motion";
-import { useTranslations } from "@/i18n/react";
-import type { Palette } from "@/features/file/model";
+import { DriveItemPreview } from "@/components/ui/drive-item-preview";
+import { useLocale, useTranslations } from "@/i18n/react";
+import { formatFileSize, getItemKind, type DriveItem, type Locale, type Palette } from "@/features/file/model";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 import type { DriveSearchFilters, SearchSharedFilter, SearchSizeFilter, SearchStateFilter, SearchTypeFilter, SearchUpdatedFilter } from "./drive-search-model";
 
@@ -16,26 +16,28 @@ const buttonTypeAttr: { type?: "button" } = {
 export function DriveSearchBox({
   activeScopeLabel,
   loading,
-  onToggleFilters,
+  onOpenResult,
   palette,
   query,
+  results,
   resultCount,
-  searchFiltersActive,
   setQuery,
 }: {
   activeScopeLabel: string;
   loading: boolean;
-  onToggleFilters: () => void;
+  onOpenResult: (item: DriveItem) => void;
   palette: Palette;
   query: string;
+  results: DriveItem[];
   resultCount: number;
-  searchFiltersActive: boolean;
   setQuery: Dispatch<SetStateAction<string>>;
 }) {
   const t = useTranslations();
+  const locale = useLocale() as Locale;
   const [open, setOpen] = useState(false);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const trimmedQuery = query.trim();
+  const visibleResults = results.slice(0, 6);
 
   useEffect(() => {
     if (!open) return;
@@ -82,13 +84,10 @@ export function DriveSearchBox({
             <LocalIcon name="cross" size={15} />
           </ToolButton>
         ) : null}
-        <ToolButton label={t("app.filter")} active={searchFiltersActive} palette={palette} size="sm" tooltipPlacement="bottom" onClick={onToggleFilters}>
-          <LocalIcon name="slider" size={15} />
-        </ToolButton>
       </div>
 
       {open ? (
-        <MotionSurface className="drive-search-popover" preset="menu">
+        <div className="drive-search-popover">
           <div className="drive-search-popover-head">
             <span className="drive-search-popover-icon">
               <LocalIcon name="search" size={16} />
@@ -102,23 +101,52 @@ export function DriveSearchBox({
             </span>
           </div>
           <div className="drive-search-popover-query">
-            <span>{trimmedQuery || t("search.emptyQuery")}</span>
+            <span>{trimmedQuery || activeScopeLabel}</span>
           </div>
-          <div className="drive-search-popover-actions">
-            <button
-              {...buttonTypeAttr}
-              className="drive-search-scope-chip"
-              data-active="true"
-              onClick={() => setOpen(false)}
-            >
-              <LocalIcon name="folder" size={14} />
-              <span className="icedr-truncate">{activeScopeLabel}</span>
-            </button>
+
+          <div className="drive-search-result-panel">
+            <div className="drive-search-section-title">
+              <span>{trimmedQuery ? t("search.suggestions") : t("search.quickAccess")}</span>
+              <span>{loading ? t("search.loading") : t("search.resultCount", { count: resultCount })}</span>
+            </div>
+            <div className="drive-search-result-list">
+              {visibleResults.length > 0 ? visibleResults.map((item) => (
+                <button
+                  {...buttonTypeAttr}
+                  aria-label={`${t("actions.open")} ${item.name}`}
+                  className="drive-search-result-row"
+                  key={item.id}
+                  onClick={() => {
+                    onOpenResult(item);
+                    setOpen(false);
+                  }}
+                >
+                  <DriveItemPreview className="drive-search-result-preview" iconSize={24} item={item} palette={palette} />
+                  <span className="drive-search-result-copy">
+                    <span className="icedr-truncate">{item.name}</span>
+                    <span className="icedr-truncate">{formatSearchResultMeta(item, locale, t)}</span>
+                  </span>
+                  <LocalIcon name="arrow_right" size={13} />
+                </button>
+              )) : (
+                <div className="drive-search-empty-row">
+                  <LocalIcon name="search" size={16} color={palette.subtle} />
+                  <span>{trimmedQuery ? t("search.noResults") : t("search.quickAccessEmpty")}</span>
+                </div>
+              )}
+            </div>
           </div>
-        </MotionSurface>
+        </div>
       ) : null}
     </div>
   );
+}
+
+function formatSearchResultMeta(item: DriveItem, locale: Locale, t: ReturnType<typeof useTranslations>) {
+  const kindLabel = t(`files.kind.${getItemKind(item)}`);
+  const sizeLabel = item.sizeBytes ? formatFileSize(item.sizeBytes, locale) : "";
+  const pathLabel = item.searchPath || item.originalPath || "";
+  return [kindLabel, sizeLabel, pathLabel].filter(Boolean).join(" / ");
 }
 
 export function DriveFilterPanel({
@@ -139,7 +167,7 @@ export function DriveFilterPanel({
 
   return (
     <div className="drive-filter-panel-wrap">
-      <MotionSurface className="drive-filter-panel" preset="surface">
+      <div className="drive-filter-panel">
         <div className="drive-filter-panel-head">
           <span>
             <LocalIcon name="slider" size={15} />
@@ -232,7 +260,7 @@ export function DriveFilterPanel({
             />
           </DriveFilterField>
         </div>
-      </MotionSurface>
+      </div>
     </div>
   );
 }

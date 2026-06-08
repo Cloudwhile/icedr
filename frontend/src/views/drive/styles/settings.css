@@ -536,6 +536,19 @@
   white-space: nowrap;
 }
 
+.drive-system-trend-panel {
+  min-height: 186px;
+}
+
+.drive-system-trend-echart {
+  height: 96px;
+  min-height: 96px;
+}
+
+.drive-system-trend-panel > .drive-system-trend-echart + div {
+  margin-top: 2px;
+}
+
 .drive-system-side-action {
   align-items: center;
   background: transparent;
@@ -631,14 +644,14 @@
   background: var(--drive-ui-surface);
   border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
-  box-shadow: var(--drive-ui-shadow-tight);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.028), 0 16px 42px rgba(35, 56, 94, 0.045);
   box-sizing: border-box;
   padding: 22px 24px;
 }
 
 .drive-settings-profile-card {
   gap: 18px;
-  min-height: 316px;
+  min-height: 324px;
 }
 
 .drive-settings-section-header {
@@ -675,12 +688,13 @@
 .drive-settings-profile-hero {
   border-bottom: 0;
   gap: 22px;
-  padding: 18px 0 12px;
+  padding: 18px 0 14px;
 }
 
 .drive-settings-profile-avatar {
   background: #eef2f8;
   border-color: #dbe6f5;
+  border-radius: 999px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   height: 92px;
   width: 92px;
@@ -717,12 +731,13 @@
 }
 
 .drive-settings-avatar-wrap {
-  padding: 24px 20px 22px;
+  padding: 26px 20px 22px;
 }
 
 .drive-settings-avatar {
   background: #eef2f8;
   border-color: #dbe6f5;
+  border-radius: 999px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 24px rgba(51, 71, 116, 0.08);
   height: 118px;
   width: 118px;
@@ -765,7 +780,7 @@
 }
 
 .drive-settings-side-panel {
-  box-shadow: var(--drive-ui-shadow-tight);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.026), 0 14px 36px rgba(35, 56, 94, 0.04);
 }
 
 .drive-settings-action-row {

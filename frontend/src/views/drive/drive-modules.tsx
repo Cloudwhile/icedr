@@ -5,7 +5,7 @@ import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { AppInput } from "@/components/ui/app-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { MotionList } from "@/components/ui/motion";
-import { findDriveItem, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
+import { findDriveItem, getIntlLocale, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
 import type { AuditEventResponse } from "@/lib/drive-api";
 import type { RegisteredShare } from "@/features/share/registry";
 import { formatAbsoluteDate, formatAuditAction } from "./drive-formatters";
@@ -203,14 +203,13 @@ export function AuditModule({
   const [resultFilter, setResultFilter] = useState<AuditResultFilter>("all");
   const [resourceFilter, setResourceFilter] = useState<AuditResourceFilter>("all");
   const [timeFilter, setTimeFilter] = useState<AuditTimeFilter>("all");
-  const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
   const [ipQuery, setIpQuery] = useState("");
   const [localQuery, setLocalQuery] = useState("");
   const query = controlledQuery ?? localQuery;
   const setQuery = onQueryChange ?? setLocalQuery;
   const actorOptions = useMemo(() => {
     const actors = Array.from(new Set(events.map((event) => event.actor))).sort();
-    return [{ label: t("filters.allTypes"), value: "all" }, ...actors.map((actor) => ({ label: actor, value: actor }))];
+    return [{ label: t("filters.allTypes"), value: "all" }, ...actors.map((actor) => ({ label: getAuditActorLabel(actor, t), value: actor }))];
   }, [events, t]);
   const actionOptions = useMemo(() => {
     const actions = Array.from(new Set(events.map((event) => event.action))).sort();
@@ -248,25 +247,28 @@ export function AuditModule({
     const normalizedIpQuery = ipQuery.trim().toLocaleLowerCase();
     const createdAfter = getAuditCreatedAfter(timeFilter);
     return events.filter((event) => {
+      const actor = getAuditActorIdentity(event, t);
+      const activity = getAuditActivity(event, t);
+      const result = getAuditResult(event);
       if (actorFilter !== "all" && event.actor !== actorFilter) return false;
       if (actionFilter !== "all" && event.action !== actionFilter) return false;
-      if (resultFilter !== "all" && getAuditResult(event) !== resultFilter) return false;
+      if (resultFilter !== "all" && result !== resultFilter) return false;
       if (resourceFilter !== "all" && getAuditResourceType(event) !== resourceFilter) return false;
       if (createdAfter && new Date(event.createdAt).getTime() < createdAfter) return false;
-      if (normalizedIpQuery && !getAuditMetadataValue(event, ["ip", "ipAddress", "visitorIp"]).toLocaleLowerCase().includes(normalizedIpQuery)) return false;
+      if (normalizedIpQuery && !actor.ipAddress.toLocaleLowerCase().includes(normalizedIpQuery)) return false;
       if (!normalizedQuery) return true;
       return [
-        event.id,
-        event.action,
-        event.actor,
-        event.target,
-        event.shareToken,
-        event.nodeId,
-        JSON.stringify(event.metadata),
+        actor.name,
+        actor.detail,
+        actor.ipAddress,
+        activity.actionLabel,
+        activity.objectLabel,
+        activity.nameLabel,
+        result === "failed" ? t("transfers.failed") : t("audit.success"),
+        formatAbsoluteDate(event.createdAt, locale, timeZone),
       ].some((value) => String(value ?? "").toLocaleLowerCase().includes(normalizedQuery));
     });
-  }, [actionFilter, actorFilter, events, ipQuery, query, resourceFilter, resultFilter, timeFilter]);
-  const focusedEvent = filteredEvents.find((event) => event.id === focusedEventId) ?? filteredEvents[0] ?? events[0];
+  }, [actionFilter, actorFilter, events, ipQuery, locale, query, resourceFilter, resultFilter, t, timeFilter, timeZone]);
   const resetFilters = () => {
     setActorFilter("all");
     setActionFilter("all");
@@ -276,22 +278,30 @@ export function AuditModule({
     setIpQuery("");
     setQuery("");
   };
+  const activeFilterCount = [
+    actorFilter !== "all",
+    actionFilter !== "all",
+    resultFilter !== "all",
+    resourceFilter !== "all",
+    timeFilter !== "all",
+    Boolean(query.trim()),
+    Boolean(ipQuery.trim()),
+  ].filter(Boolean).length;
+  const failedEventCount = filteredEvents.filter((event) => getAuditResult(event) === "failed").length;
 
   return (
     <div className="drive-module-stack drive-audit-module">
-      <div className="drive-audit-filter-panel">
+      <div className="drive-audit-filter-panel" data-active={activeFilterCount > 0 ? "true" : undefined}>
         <div className="drive-audit-filter-panel-header">
-          <div>
+          <div className="drive-audit-filter-title">
             <LocalIcon name="slider" size={17} />
-            <span>{t("audit.filters")}</span>
+            <span className="icedr-truncate">{t("audit.filters")}</span>
+            <small>{t("audit.activeFiltersValue", { count: String(activeFilterCount) })}</small>
           </div>
           <div className="drive-audit-filter-actions">
-            <StatusPill palette={palette}>{filteredEvents.length}</StatusPill>
+            <StatusPill palette={palette}>{t("audit.recordsValue", { count: String(filteredEvents.length) })}</StatusPill>
             <ToolButton label={t("audit.resetFilters")} palette={palette} onClick={resetFilters} tooltipPlacement="bottom">
               <LocalIcon name="cross" size={16} />
-            </ToolButton>
-            <ToolButton label={t("app.refresh")} palette={palette} onClick={onRefresh} tooltipPlacement="bottom end">
-              <LocalIcon name="refresh" size={16} />
             </ToolButton>
           </div>
         </div>
@@ -318,17 +328,17 @@ export function AuditModule({
           </label>
           <label className="drive-audit-filter" data-wide="true">
             <span>{t("audit.keyword")}</span>
-            <AppInput aria-label={t("audit.keyword")} palette={palette} value={query} onChange={(event) => setQuery(event.target.value)} />
+            <AppInput aria-label={t("audit.keyword")} palette={palette} placeholder={t("audit.keywordPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} />
           </label>
           <label className="drive-audit-filter" data-wide="true">
             <span>{t("audit.ipAddress")}</span>
-            <AppInput aria-label={t("audit.ipAddress")} palette={palette} value={ipQuery} onChange={(event) => setIpQuery(event.target.value)} />
+            <AppInput aria-label={t("audit.ipAddress")} palette={palette} placeholder={t("audit.ipPlaceholder")} value={ipQuery} onChange={(event) => setIpQuery(event.target.value)} />
           </label>
         </div>
       </div>
 
-      <section className="drive-module-split drive-audit-split">
-        <div className="drive-module-panel">
+      <section className="drive-audit-split">
+        <div className="drive-module-panel drive-audit-panel">
           <ModulePanelHeader
             icon="shield"
             title={t("audit.title")}
@@ -338,6 +348,15 @@ export function AuditModule({
               </ToolButton>
             )}
           />
+          <div className="drive-audit-table-toolbar">
+            <div className="drive-audit-table-summary">
+              <span>{t("audit.recordsValue", { count: String(filteredEvents.length) })}</span>
+              <span>{t("audit.failedRecordsValue", { count: String(failedEventCount) })}</span>
+            </div>
+            <div className="drive-audit-table-tools">
+              <StatusPill palette={palette}>{t("audit.activeFiltersValue", { count: String(activeFilterCount) })}</StatusPill>
+            </div>
+          </div>
           {error ? (
             <div className="drive-module-error">
               <StatusPill palette={palette} tone="risk">
@@ -353,74 +372,59 @@ export function AuditModule({
                 <span>{t("audit.actor")}</span>
                 <span>{t("audit.actionType")}</span>
                 <span>{t("audit.resource")}</span>
-                <span>{t("audit.result")}</span>
+                <span>{t("audit.actionContent")}</span>
                 <span>{t("audit.ipAddress")}</span>
-                <span>{t("actions.more")}</span>
+                <span>{t("audit.result")}</span>
               </div>
             ) : null}
-            {filteredEvents.map((row) => (
-              <div key={row.id} data-motion-row data-active={focusedEvent?.id === row.id ? "true" : undefined} className="drive-module-table-row drive-audit-row">
-                <span className="drive-audit-time-cell icedr-truncate">{formatAbsoluteDate(row.createdAt, locale, timeZone)}</span>
-                <div className="drive-audit-actor-cell">
-                  <span className="drive-module-row-icon" data-tone={getAuditResult(row) === "failed" ? "danger" : getAuditIconTone(row.action)}>
-                    <LocalIcon name={getAuditIcon(row.action, getAuditResult(row))} size={18} />
-                  </span>
-                  <div className="drive-module-row-copy">
-                    <span className="drive-module-row-title icedr-truncate">{row.actor}</span>
-                    <span className="drive-module-inline-note icedr-truncate">{row.id}</span>
-                  </div>
-                </div>
+            {filteredEvents.map((row) => {
+              const actor = getAuditActorIdentity(row, t);
+              const activity = getAuditActivity(row, t);
+              const ipAddress = actor.ipAddress;
+              const failed = getAuditResult(row) === "failed";
+              const timeParts = formatAuditDateParts(row.createdAt, locale, timeZone);
 
-                <StatusPill palette={palette} tone={getAuditResult(row) === "failed" ? "risk" : getAuditActionTone(row.action)}>
-                  {formatAuditAction(row.action, t)}
-                </StatusPill>
-                <div className="drive-audit-resource-cell">
-                  <span className="drive-module-row-title icedr-truncate">{row.target}</span>
-                  <div className="drive-module-row-meta">
-                    {[row.shareToken, row.nodeId].filter(Boolean).map((value) => (
-                      <MetaIcon key={value} icon="key">{value}</MetaIcon>
-                    ))}
+              return (
+                <div key={row.id} data-motion-row className="drive-module-table-row drive-audit-row" data-result={failed ? "failed" : "success"}>
+                  <span className="drive-audit-time-cell" title={formatAbsoluteDate(row.createdAt, locale, timeZone)}>
+                    <span className="icedr-truncate">{timeParts.date}</span>
+                    <span className="icedr-truncate">{timeParts.time}</span>
+                  </span>
+                  <div className="drive-audit-actor-cell">
+                    <span className="drive-audit-actor-avatar" data-actor={row.actor} data-tone={failed ? "danger" : getAuditIconTone(row.action)}>
+                      {actor.avatarUrl ? <img alt="" src={actor.avatarUrl} /> : actor.initials ? <span>{actor.initials}</span> : <LocalIcon name={actor.icon} size={17} />}
+                    </span>
+                    <div className="drive-module-row-copy">
+                      <span className="drive-module-row-title icedr-truncate">{actor.name}</span>
+                      <span className="drive-audit-actor-meta icedr-truncate">{actor.detail}</span>
+                    </div>
                   </div>
+
+                  <span className="drive-audit-action-cell" data-tone={failed ? "risk" : getAuditActionTone(row.action)}>
+                    <span className="drive-audit-action-icon" aria-hidden="true">
+                      <LocalIcon name={getAuditActionIcon(row.action)} size={14} />
+                    </span>
+                    <span className="icedr-truncate">{activity.actionLabel}</span>
+                  </span>
+                  <span className="drive-audit-resource-cell" title={`${activity.objectLabel} / ${activity.nameLabel}`}>
+                    <span className="drive-audit-object-cell icedr-truncate">{activity.objectLabel}</span>
+                    <span className="drive-audit-name-cell icedr-truncate">{activity.nameLabel}</span>
+                  </span>
+                  <span className="drive-audit-content-cell icedr-truncate" title={activity.contentLabel}>
+                    {activity.contentLabel}
+                  </span>
+                  <span className="drive-audit-ip-cell" data-empty={ipAddress === "--" ? "true" : undefined} title={ipAddress}>
+                    <LocalIcon name="earth" size={13} />
+                    <span className="icedr-truncate">{ipAddress}</span>
+                  </span>
+                  <StatusPill className="drive-audit-result-pill" palette={palette} tone={failed ? "risk" : "secure"}>
+                    {failed ? t("transfers.failed") : t("audit.success")}
+                  </StatusPill>
                 </div>
-                <StatusPill palette={palette} tone={getAuditResult(row) === "failed" ? "risk" : "secure"}>
-                  {getAuditResult(row) === "failed" ? t("transfers.failed") : t("audit.success")}
-                </StatusPill>
-                <span className="drive-audit-ip-cell icedr-truncate">{getAuditMetadataValue(row, ["ip", "ipAddress", "visitorIp"])}</span>
-                <ToolButton active={focusedEvent?.id === row.id} label={t("links.viewDetails")} palette={palette} size="sm" onClick={() => setFocusedEventId(row.id)}>
-                  <LocalIcon name="visible" size={15} />
-                </ToolButton>
-              </div>
-            ))}
+              );
+            })}
           </MotionList>
         </div>
-
-        <aside className="drive-module-side-card drive-audit-details">
-          <ModulePanelHeader icon="info" title={t("audit.details")} compact />
-          {focusedEvent ? (
-            <div className="drive-audit-detail-body">
-              <section className="drive-audit-details-section">
-                <span>{t("audit.basicInfo")}</span>
-                <InfoRow label={t("audit.id")} value={focusedEvent.id} />
-                <InfoRow label={t("files.modified")} value={formatAbsoluteDate(focusedEvent.createdAt, locale, timeZone)} />
-                <InfoRow label={t("audit.actor")} value={focusedEvent.actor} />
-                <InfoRow label={t("audit.ipAddress")} value={getAuditMetadataValue(focusedEvent, ["ip", "ipAddress", "visitorIp"])} />
-                <InfoRow label={t("audit.result")} value={getAuditResult(focusedEvent) === "failed" ? t("transfers.failed") : t("audit.success")} />
-              </section>
-              <section className="drive-audit-details-section">
-                <span>{t("audit.actionContent")}</span>
-                <InfoRow label={t("audit.actionType")} value={formatAuditAction(focusedEvent.action, t)} />
-                <InfoRow label={t("audit.resource")} value={focusedEvent.target} />
-              </section>
-              <section className="drive-audit-details-section">
-                <span>{t("audit.moreInfo")}</span>
-                <InfoRow label={t("links.code")} value={focusedEvent.shareToken ?? "--"} />
-                <InfoRow label={t("files.name")} value={focusedEvent.nodeId ?? "--"} />
-              </section>
-            </div>
-          ) : (
-            <EmptyModuleState icon="info" title={t("audit.emptyTitle")} hint={t("audit.emptyHint")} compact />
-          )}
-        </aside>
       </section>
     </div>
   );
@@ -512,12 +516,66 @@ function EmptyModuleState({
   );
 }
 
-function getAuditResult(row: AuditEventResponse) {
+export function getAuditResult(row: AuditEventResponse) {
   const value = row.metadata.result;
-  return typeof value === "string" && value.toLowerCase().includes("fail") ? "failed" : "success";
+  const status = row.metadata.status;
+  const values = [value, status, row.action]
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.toLowerCase());
+  return values.some((item) => item.includes("fail")) ? "failed" : "success";
+}
+
+function getAuditActivity(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  return {
+    actionLabel: getAuditActivityName(row, t),
+    contentLabel: getAuditActivityContent(row, t),
+    nameLabel: getAuditActivityName(row, t),
+    objectLabel: getAuditObjectLabel(row, t),
+  };
+}
+
+function getAuditActivityContent(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  return formatAuditAction(row.action, t);
+}
+
+function getAuditObjectLabel(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  if (row.action.startsWith("auth.")) return t("audit.objects.account");
+  if (row.action === "file.folder_created") return t("audit.objects.folder");
+  if (row.action.startsWith("file.")) return t("audit.objects.file");
+  if (row.action.startsWith("share.")) return t("audit.objects.share");
+  if (row.action.startsWith("transfer.")) return t("audit.objects.upload");
+  return t("audit.objects.system");
+}
+
+function getAuditActivityName(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  if (row.action === "auth.login") return getAuditLoginMethodLabel(row, t);
+  if (row.action === "auth.registered") {
+    return readAuditString(row.metadata, "authMethod") === "setup" ? t("audit.names.setupRegister") : t("audit.names.register");
+  }
+  if (row.action === "auth.password_reset_completed") return t("audit.names.passwordReset");
+  if (row.action === "file.upload_completed" || row.action === "transfer.completed") return t("audit.names.upload");
+  if (row.action === "transfer.failed") return t("audit.names.upload");
+  if (row.action === "file.download_started" || row.action === "share.download_started") return t("audit.names.download");
+  if (row.action === "share.created") return t("audit.names.share");
+  if (row.action === "share.revoked") return t("audit.names.revokeShare");
+  if (row.action === "file.copied") return t("audit.names.copy");
+  if (row.action === "file.moved" || row.action === "file.batch_moved") return t("audit.names.move");
+  if (row.action === "file.archived" || row.action === "file.batch_archived") return t("audit.names.delete");
+  if (row.action === "file.permanently_deleted") return t("audit.names.permanentDelete");
+  if (row.action === "file.folder_created") return t("audit.names.create");
+  return formatAuditAction(row.action, t);
+}
+
+function getAuditLoginMethodLabel(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  const method = readAuditString(row.metadata, "authMethod") || readAuditString(row.metadata, "method");
+  if (method === "oauth") return t("audit.names.oauthLogin");
+  if (method === "passkey") return t("audit.names.passkeyLogin");
+  if (method === "setup") return t("audit.names.setupLogin");
+  return t("audit.names.localLogin");
 }
 
 function getAuditResourceType(row: AuditEventResponse): AuditResourceFilter {
+  if (row.action.startsWith("auth.")) return "system";
   if (row.action.startsWith("file.")) return "file";
   if (row.action.startsWith("share.") || row.shareToken) return "share";
   if (row.action.startsWith("transfer.")) return "transfer";
@@ -530,11 +588,48 @@ function getAuditCreatedAfter(filter: AuditTimeFilter) {
   return Date.now() - days * 24 * 60 * 60 * 1000;
 }
 
+function formatAuditDateParts(value: string, locale: Locale, timeZone?: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: value, time: "--" };
+  }
+
+  const intlLocale = getIntlLocale(locale);
+  const timeZoneOptions = timeZone ? { timeZone } : {};
+
+  return {
+    date: new Intl.DateTimeFormat(intlLocale, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      ...timeZoneOptions,
+    }).format(date),
+    time: new Intl.DateTimeFormat(intlLocale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      ...timeZoneOptions,
+    }).format(date),
+  };
+}
+
 function getAuditActionTone(action: string) {
   if (action.startsWith("share.")) return "accent" as const;
   if (action.includes("download") || action.includes("preview")) return "secure" as const;
   if (action.includes("deleted") || action.includes("archived") || action.includes("revoked")) return "risk" as const;
   return "neutral" as const;
+}
+
+function getAuditActionIcon(action: string): LocalIconName {
+  if (action.startsWith("auth.")) return action.includes("registered") ? "user_check" : "key";
+  if (action.startsWith("share.")) return "share2";
+  if (action.includes("download")) return "download";
+  if (action.includes("upload") || action.startsWith("transfer.")) return "upload";
+  if (action.includes("copied")) return "copy";
+  if (action.includes("moved")) return "arrow_right";
+  if (action.includes("archived") || action.includes("deleted") || action.includes("revoked")) return "trash";
+  if (action.includes("folder")) return "folder";
+  return "shield";
 }
 
 function getAuditIconTone(action: string) {
@@ -544,21 +639,118 @@ function getAuditIconTone(action: string) {
   return "blue";
 }
 
-function getAuditIcon(action: string, result: ReturnType<typeof getAuditResult>): LocalIconName {
-  if (result === "failed") return "exclamation";
-  if (action.startsWith("share.")) return "link";
-  if (action.startsWith("transfer.")) return "upload";
-  if (action.includes("download")) return "download";
-  if (action.includes("preview")) return "visible";
-  if (action.includes("deleted") || action.includes("archived")) return "trash";
-  return "shield";
+export function getAuditActorIdentity(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  const actorLabel = getAuditActorLabel(row.actor, t);
+  const displayName = getAuditMetadataValue(row, [
+    "actorName",
+    "actorDisplayName",
+    "displayName",
+    "userName",
+    "visitorName",
+    "visitorEmail",
+    "identity.email",
+    "accessSession.email",
+    "actor.name",
+    "actor.displayName",
+    "user.displayName",
+    "user.name",
+    "session.user.displayName",
+    "session.user.name",
+  ]);
+  const email = getAuditMetadataValue(row, [
+    "actorEmail",
+    "email",
+    "visitorEmail",
+    "identity.email",
+    "accessSession.email",
+    "actor.email",
+    "user.email",
+    "session.email",
+    "session.user.email",
+  ]);
+  const avatarUrl = getAuditMetadataValue(row, [
+    "actorAvatarUrl",
+    "avatarUrl",
+    "avatar",
+    "actor.avatarUrl",
+    "user.avatarUrl",
+    "session.user.avatarUrl",
+  ]);
+  const userId = getAuditMetadataValue(row, [
+    "actorUserId",
+    "userId",
+    "visitorId",
+    "actor.id",
+    "user.id",
+    "session.user.id",
+  ]);
+  const ipAddress = getAuditMetadataValue(row, [
+    "ip",
+    "ipAddress",
+    "visitorIp",
+    "requestIp",
+    "remoteAddress",
+    "clientIp",
+    "sourceIp",
+    "request.ip",
+    "request.clientIp",
+    "network.ip",
+    "network.clientIp",
+    "client.ip",
+  ]);
+  const name = displayName !== "--" ? displayName : email !== "--" ? email : userId !== "--" ? userId : actorLabel;
+  const detail = email !== "--" ? email : userId !== "--" ? userId : ipAddress !== "--" ? ipAddress : actorLabel;
+
+  return {
+    avatarUrl: avatarUrl === "--" ? null : avatarUrl,
+    detail,
+    icon: getAuditActorIcon(row.actor),
+    initials: createAuditActorInitials(name, actorLabel),
+    ipAddress,
+    name,
+  };
+}
+
+function getAuditActorLabel(actor: AuditEventResponse["actor"], t: ReturnType<typeof useTranslations>) {
+  return t(`audit.actors.${actor}`);
+}
+
+function getAuditActorIcon(actor: AuditEventResponse["actor"]): LocalIconName {
+  if (actor === "visitor") return "user_avatar";
+  if (actor === "system") return "settings";
+  return "user_group";
 }
 
 function getAuditMetadataValue(row: AuditEventResponse, keys: string[]) {
   for (const key of keys) {
-    const value = row.metadata[key];
+    const value = readAuditMetadataPath(row.metadata, key);
     if (typeof value === "string" && value.trim()) return value;
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
   return "--";
+}
+
+function readAuditString(metadata: Record<string, unknown>, key: string) {
+  const value = readAuditMetadataPath(metadata, key);
+  return typeof value === "string" && value.trim() ? value.trim().toLocaleLowerCase() : "";
+}
+
+function readAuditMetadataPath(metadata: Record<string, unknown>, key: string): unknown {
+  if (!key.includes(".")) return metadata[key];
+  return key.split(".").reduce<unknown>((value, segment) => {
+    if (!value || typeof value !== "object") return undefined;
+    return (value as Record<string, unknown>)[segment];
+  }, metadata);
+}
+
+function createAuditActorInitials(name: string, fallback: string) {
+  const source = (name === "--" ? fallback : name).trim();
+  const normalized = source.includes("@") ? source.split("@")[0] : source;
+  const parts = normalized
+    .split(/[\s._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return "";
+  const initials = parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`;
+  return initials.toLocaleUpperCase();
 }

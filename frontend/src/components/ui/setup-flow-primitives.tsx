@@ -63,7 +63,11 @@ export function SetupStepNavItem({
       <span className="icedr-setup-step-index">
         {completed ? <AnimatedCheckMark /> : String(index + 1).padStart(2, "0")}
       </span>
-      {compact ? null : <LocalIcon name={step.icon} size={16} />}
+      {compact ? null : (
+        <span className="icedr-setup-step-icon">
+          <LocalIcon name={step.icon} size={16} />
+        </span>
+      )}
       <span className="icedr-truncate">{label}</span>
     </button>
   );
@@ -195,4 +199,3 @@ export function SetupSelectCard({
     </button>
   );
 }
-

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
-import { completeSetup, fetchSetupStatus, getApiBaseUrl, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
@@ -49,7 +49,7 @@ const defaultMailSettings: MailSettings = {
   port: 587,
   secure: false,
   username: "",
-  fromName: "ICEDR",
+  fromName: defaultPublicSiteSettings.siteName,
   fromEmail: "",
   replyTo: "",
   configured: false,
@@ -137,10 +137,7 @@ function SetupPage({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthNoticeStatus | null>(null);
   const [database, setDatabase] = useState<DatabaseProfile>(emptyDatabase);
-  const [site, setSite] = useState<PublicSiteSettings>({
-    siteName: "ICEDR",
-    authLogoDataUrl: null
-  });
+  const [site, setSite] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [oauth, setOAuth] = useState<OAuthSettings>({
     enabled: false,
     providerProfile: "oidc",
@@ -159,7 +156,7 @@ function SetupPage({
   const [mailTestEmailTouched, setMailTestEmailTouched] = useState(false);
   const [passkey, setPasskey] = useState<PasskeySettings>({
     enabled: false,
-    rpName: "ICEDR",
+    rpName: defaultPublicSiteSettings.siteName,
     rpId: "localhost",
     origin: "http://localhost:13000"
   });
@@ -365,16 +362,6 @@ function SetupPage({
     reader.readAsDataURL(file);
   };
   const authSummary = [localEnabled ? t("admin.localAuth") : "", oauthEnabled ? t("admin.oauthAuth") : "", passkeyEnabled ? t("admin.passkeyAuth") : ""].filter(Boolean).join(" / ") || "--";
-  const policySummary = distributedStorageEnabled ? t("admin.useDistributedStorage") : t("admin.localFileStorage");
-  const completedCount = setupSteps.filter(step => stepCompletion[step.id]).length;
-  const setupSummaryRows = [
-    { label: t("setup.database"), value: database.verified ? t("share.ready") : t("setup.verifyDatabase") },
-    { label: t("setup.admin"), value: admin.email || "--" },
-    { label: t("setup.auth"), value: authSummary },
-    { label: t("setup.mail"), value: mail.verifiedAt ? t("setup.mailVerified") : t("setup.testMail") },
-    { label: t("setup.policy"), value: policySummary },
-    { label: t("setup.brand"), value: site.siteName || "--" }
-  ];
   const setupFlowCards = setupSteps.map((step, index) => ({
     active: index === stepIndex,
     completed: stepCompletion[step.id],
@@ -398,7 +385,7 @@ function SetupPage({
         <div className="icedr-setup-brand">
           <AppImage src={logoPreview} alt="" className="icedr-setup-logo" />
           <div className="icedr-setup-brand-text">
-            <strong className="icedr-truncate">{site.siteName || "ICEDR"}</strong>
+            <strong className="icedr-truncate">{resolvePublicSiteName(site.siteName)}</strong>
             <span className="icedr-truncate">{t("setup.title")}</span>
           </div>
         </div>
@@ -841,43 +828,6 @@ function SetupPage({
             </div>
           </div>
         </main>
-
-        <aside className="icedr-setup-side">
-          <section className="icedr-setup-side-card">
-            <div className="icedr-setup-side-header">
-              <LocalIcon name="shield" size={16} />
-              <span>{t("setup.finish")}</span>
-              <StatusPill palette={palette} tone={canComplete ? "secure" : "accent"} style={{ marginLeft: "auto" }}>
-                {completedCount}/{setupSteps.length}
-              </StatusPill>
-            </div>
-            <div className="icedr-setup-summary-list">
-              {setupSummaryRows.map(row => (
-                <div className="icedr-setup-summary-row" key={row.label}>
-                  <span>{row.label}</span>
-                  <strong title={row.value}>{row.value}</strong>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="icedr-setup-side-card" aria-hidden="true">
-            <div className="icedr-setup-mini-dashboard">
-              <div className="icedr-setup-mini-nav">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="icedr-setup-mini-content">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-          </section>
-        </aside>
       </div>
     </div>;
 }

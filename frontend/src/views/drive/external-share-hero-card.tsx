@@ -21,6 +21,7 @@ export function ExternalShareHeroCard({
   palette,
   shareToken,
   sourceItems,
+  totalItems,
   totalSize,
 }: {
   collection: ShareHeroCollection;
@@ -29,6 +30,7 @@ export function ExternalShareHeroCard({
   palette: Palette;
   shareToken: string;
   sourceItems: DriveItem[];
+  totalItems: number;
   totalSize: string;
 }) {
   const t = useTranslations();
@@ -40,11 +42,11 @@ export function ExternalShareHeroCard({
   return (
     <section className="external-share-hero-card" aria-label={collection.title}>
       <div className="external-share-hero-badge-row">
-        <StatusPill palette={palette} tone="accent">
+        <StatusPill indicator={false} palette={palette} tone="accent">
           <LocalIcon name="earth" size={13} />
           {t("share.publicShare")}
         </StatusPill>
-        <StatusPill palette={palette} tone="neutral">
+        <StatusPill indicator={false} palette={palette} tone="neutral">
           <LocalIcon name="visible" size={13} />
           {t("share.readOnly")}
         </StatusPill>
@@ -56,23 +58,23 @@ export function ExternalShareHeroCard({
         <div className="external-share-hero-copy">
           <div className="external-share-hero-title-row">
             <h1>{collection.title}</h1>
-            <StatusPill palette={palette}>{expiresLabel}</StatusPill>
+            <StatusPill indicator={false} palette={palette}>{expiresLabel}</StatusPill>
           </div>
-          <p>{t("share.sharedBy", { owner: collection.owner, count: collection.rootItems.length })}</p>
+          <p>{t("share.sharedBy", { owner: collection.owner, count: totalItems })}</p>
 
           <div className="external-share-hero-chip-row">
-            <StatusPill palette={palette}>
+            <StatusPill indicator={false} palette={palette}>
               <LocalIcon name="folder" size={13} />
               {t(`share.mode.${collection.mode}`)}
             </StatusPill>
-            <StatusPill palette={palette}>
-              {t("share.itemCountValue", { count: collection.rootItems.length })}
+            <StatusPill indicator={false} palette={palette}>
+              {t("share.itemCountValue", { count: totalItems })}
             </StatusPill>
-            <StatusPill palette={palette}>
+            <StatusPill indicator={false} palette={palette}>
               <LocalIcon name="file" size={13} />
               {totalSize}
             </StatusPill>
-            <StatusPill palette={palette} tone="accent">
+            <StatusPill indicator={false} palette={palette} tone="accent">
               <LocalIcon name="shield" size={13} />
               {t("share.secureShare")}
             </StatusPill>
@@ -125,13 +127,15 @@ function ShareHeroCover({
   }, [coverItem, shareToken]);
 
   return (
-    <div className="external-share-hero-cover">
+    <div className="external-share-hero-cover" data-has-cover={coverUrl && coverItem ? "true" : undefined}>
       {coverUrl && coverItem ? (
         <AppImage alt={coverItem.name} src={coverUrl} width="100%" height="100%" className="external-share-hero-cover-image" />
       ) : (
         <div className="external-share-hero-cover-fallback">
-          {coverItem ? <ItemIcon item={coverItem} palette={palette} size={34} /> : <LocalIcon name="folder" size={38} color={palette.primaryHover} />}
-          <span />
+          <span className="external-share-hero-cover-emblem">
+            {coverItem ? <ItemIcon item={coverItem} palette={palette} size={28} /> : <LocalIcon name="folder" size={28} color={palette.primaryHover} />}
+          </span>
+          <span className="external-share-hero-cover-mark" />
         </div>
       )}
     </div>

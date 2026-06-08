@@ -1,11 +1,11 @@
 "use client";
 
-import { Avatar } from "@heroui/react";
 import { AppMenu, type AppMenuItem } from "./app-menu";
 import { isAdminUser } from "@/features/auth/permissions";
 import type { AuthUser } from "@/lib/drive-api";
 import type { Palette } from "@/features/file/model";
 import { LocalIcon } from "./app-icon";
+import { AppUserAvatar } from "./app-user-avatar";
 
 export type UserAccountMenuProps = {
   currentUser: AuthUser | null;
@@ -74,12 +74,13 @@ export function UserAccountMenu({
         }
         type="button"
       >
-        <Avatar size="sm" className="drive-user-avatar">
-          {currentUser?.avatarUrl ? <Avatar.Image alt={displayName} src={currentUser.avatarUrl} /> : null}
-          <Avatar.Fallback className="drive-user-avatar-fallback">
-            <LocalIcon name="user_avatar" size={20} color={palette.primaryHover} />
-          </Avatar.Fallback>
-        </Avatar>
+        <AppUserAvatar
+          className="drive-user-avatar"
+          fallbackClassName="drive-user-avatar-fallback"
+          label={displayName}
+          size="sm"
+          src={currentUser?.avatarUrl}
+        />
         <span className="drive-account-text">
           <span className="drive-account-name icedr-truncate">{displayName}</span>
         </span>

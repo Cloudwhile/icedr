@@ -1,6 +1,6 @@
 .icedr-setup-page {
   background:
-    linear-gradient(180deg, rgba(246, 249, 255, 0.94), rgba(255, 255, 255, 0.98) 42%, rgba(245, 248, 252, 0.98)),
+    linear-gradient(180deg, rgba(250, 252, 255, 0.98), rgba(255, 255, 255, 0.99) 38%, rgba(247, 250, 255, 0.98)),
     var(--background);
   color: var(--foreground);
   font-size: 14px;
@@ -18,19 +18,19 @@
 
 .icedr-setup-topbar {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 8%, var(--border));
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(180px, 0.55fr) minmax(0, 1fr) auto;
-  height: 76px;
-  padding: 0 28px;
+  gap: 22px;
+  grid-template-columns: minmax(240px, 0.42fr) minmax(760px, 1fr) auto;
+  height: 78px;
+  padding: 0 30px;
 }
 
 .icedr-setup-brand {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 13px;
   min-width: 0;
 }
 
@@ -50,7 +50,7 @@
 
 .icedr-setup-brand-text strong {
   color: var(--foreground);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 840;
   line-height: 21px;
 }
@@ -68,6 +68,7 @@
   gap: 0;
   grid-template-columns: repeat(var(--setup-step-count, 7), minmax(0, 1fr));
   min-width: 0;
+  padding-top: 2px;
 }
 
 .icedr-setup-step-button {
@@ -76,10 +77,11 @@
   border: 0;
   color: var(--setup-step-color);
   display: grid;
-  gap: 6px;
+  gap: 5px;
+  grid-template-rows: 30px auto;
   justify-items: center;
   min-width: 0;
-  padding: 0 4px;
+  padding: 0 3px;
   position: relative;
   text-align: center;
   transition: color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
@@ -122,10 +124,27 @@
 }
 
 .icedr-setup-step-button > span:last-child {
-  font-size: 12px;
+  display: -webkit-box;
+  font-size: 11px;
   font-weight: 720;
-  line-height: 16px;
-  max-width: 100%;
+  line-height: 14px;
+  max-width: 132px;
+  min-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.icedr-setup-step-icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.icedr-setup-progress .icedr-setup-step-icon {
+  display: none;
 }
 
 .icedr-setup-step-index {
@@ -136,11 +155,11 @@
   box-shadow: 0 2px 8px rgba(51, 84, 142, 0.08);
   color: var(--setup-step-muted);
   display: inline-flex;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 820;
-  height: 30px;
+  height: 28px;
   justify-content: center;
-  min-width: 30px;
+  min-width: 28px;
   position: relative;
   z-index: 1;
 }
@@ -154,12 +173,12 @@
 
 .icedr-setup-body {
   display: grid;
-  gap: 20px;
+  gap: 14px;
   grid-template-columns: minmax(0, 1fr);
-  height: calc(100dvh - 76px);
+  height: calc(100dvh - 78px);
   min-height: 0;
   overflow: hidden;
-  padding: 18px 28px 22px;
+  padding: 10px 26px 18px;
 }
 
 .icedr-setup-main-scroll {
@@ -173,7 +192,7 @@
 .icedr-setup-main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -191,7 +210,7 @@
 
 .icedr-setup-flow-board {
   display: grid;
-  gap: 12px;
+  gap: 9px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   min-width: 0;
 }
@@ -200,18 +219,19 @@
   align-items: start;
   animation: icedr-setup-rise var(--motion-base) var(--motion-ease-emphasized) both;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 253, 255, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(252, 254, 255, 0.96)),
     var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent) 7%, var(--border));
   border-radius: 8px;
-  box-shadow: var(--surface-shadow);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.016), 0 10px 26px rgba(51, 84, 142, 0.032);
   color: var(--foreground);
   display: grid;
-  gap: 10px;
+  gap: 8px 11px;
   grid-template-columns: auto minmax(0, 1fr);
-  min-height: 148px;
+  min-height: 126px;
   min-width: 0;
-  padding: 16px;
+  padding: 14px 14px 12px;
+  position: relative;
   text-align: left;
   transition:
     border-color var(--motion-fast) var(--motion-ease),
@@ -221,7 +241,7 @@
 
 .icedr-setup-flow-card:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-  box-shadow: 0 12px 34px rgba(51, 84, 142, 0.12);
+  box-shadow: 0 18px 42px rgba(51, 84, 142, 0.075);
   transform: translateY(-2px);
 }
 
@@ -232,7 +252,7 @@
 
 .icedr-setup-flow-card[data-active="true"] {
   border-color: color-mix(in srgb, var(--accent) 64%, var(--border));
-  box-shadow: 0 14px 36px rgba(37, 99, 235, 0.16);
+  box-shadow: 0 14px 34px rgba(37, 99, 235, 0.11);
 }
 
 .icedr-setup-flow-card-index,
@@ -261,10 +281,7 @@
 }
 
 .icedr-setup-flow-card-icon {
-  color: var(--accent-hover);
-  grid-column: 1;
-  height: 30px;
-  width: 28px;
+  display: none;
 }
 
 .icedr-setup-flow-card-copy {
@@ -272,8 +289,9 @@
   flex-direction: column;
   gap: 6px;
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1;
   min-width: 0;
+  padding-right: 50px;
 }
 
 .icedr-setup-flow-card-copy strong {
@@ -287,23 +305,78 @@
   color: var(--muted);
   font-size: 12px;
   font-weight: 620;
-  line-height: 18px;
+  line-height: 16px;
 }
 
 .icedr-setup-flow-card .icedr-status-pill {
+  bottom: 11px;
   grid-column: 1 / -1;
   justify-self: start;
-  margin-top: auto;
+  margin-top: 4px;
+  min-height: 24px;
+  padding-inline: 9px;
 }
 
 .icedr-setup-flow-card-preview {
   pointer-events: none;
 }
 
+.icedr-setup-flow-card:first-child {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.9) 44%, rgba(235, 244, 255, 0.86)),
+    var(--surface);
+  overflow: hidden;
+}
+
+.icedr-setup-flow-card:first-child > * {
+  position: relative;
+  z-index: 1;
+}
+
+.icedr-setup-flow-card:first-child .icedr-setup-flow-card-copy {
+  padding-right: 116px;
+}
+
+.icedr-setup-flow-card:first-child::before,
+.icedr-setup-flow-card:first-child::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.icedr-setup-flow-card:first-child::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(240, 247, 255, 0.96)),
+    linear-gradient(90deg, transparent 18%, rgba(47, 101, 255, 0.12) 18% 20%, transparent 20% 48%, rgba(47, 101, 255, 0.1) 48% 50%, transparent 50%);
+  border: 1px solid rgba(111, 157, 232, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 18px 30px rgba(43, 91, 160, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  height: 52px;
+  opacity: 0.82;
+  right: 18px;
+  top: 48px;
+  transform: rotate(-12deg);
+  width: 72px;
+}
+
+.icedr-setup-flow-card:first-child::after {
+  background:
+    linear-gradient(90deg, rgba(47, 101, 255, 0.28) 0 26%, transparent 26% 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  height: 6px;
+  opacity: 0.68;
+  right: 72px;
+  top: 100px;
+  transform: rotate(3deg);
+  width: 62px;
+}
+
 .icedr-setup-flow-preview-window {
   align-items: end;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, #fff), rgba(255, 255, 255, 0.92));
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, #fff), rgba(255, 255, 255, 0.9));
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
   border-radius: 8px;
   display: grid;
@@ -329,10 +402,11 @@
 .icedr-setup-section {
   animation: icedr-setup-rise var(--motion-base) var(--motion-ease-emphasized) both;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(251, 253, 255, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(252, 254, 255, 0.98)),
     var(--surface);
-  box-shadow: var(--surface-shadow);
-  padding: 18px;
+  border-color: color-mix(in srgb, var(--accent) 7%, var(--border)) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.018), 0 12px 30px rgba(51, 84, 142, 0.034);
+  padding: 16px 18px;
 }
 
 [data-theme="dark"] .icedr-setup-section {
@@ -341,7 +415,7 @@
 
 .icedr-setup-section-header {
   align-items: center;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 9%, var(--border));
   color: var(--foreground);
   display: flex;
   font-size: 14px;
@@ -366,9 +440,9 @@
 .icedr-setup-section-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
-  padding-top: 14px;
+  padding-top: 13px;
 }
 
 .icedr-setup-form-grid {
@@ -389,13 +463,13 @@
 
 .icedr-setup-info-tile {
   background: var(--setup-info-bg);
-  border: 1px solid var(--setup-info-border);
+  border: 1px solid color-mix(in srgb, var(--accent) 7%, var(--setup-info-border));
   border-radius: 8px;
   display: flex;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
-  padding: 12px;
+  padding: 11px 12px;
 }
 
 .icedr-setup-info-tile span {
@@ -413,29 +487,35 @@
 }
 
 .icedr-setup-reference-grid {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 254, 255, 0.96)),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 7%, var(--border));
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.016), 0 12px 30px rgba(51, 84, 142, 0.028);
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(320px, 1.25fr);
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(420px, 1.34fr);
   min-width: 0;
+  overflow: hidden;
 }
 
 .icedr-setup-reference-panel,
 .icedr-setup-dashboard-preview {
   animation: icedr-setup-rise var(--motion-base) var(--motion-ease-emphasized) both;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 253, 255, 0.96)),
-    var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--surface-shadow);
   min-width: 0;
 }
 
 .icedr-setup-reference-panel {
+  background: transparent;
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--accent) 7%, var(--border));
+  border-radius: 0;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 11px;
+  padding: 17px 20px;
 }
 
 .icedr-setup-reference-header {
@@ -462,15 +542,15 @@
 .icedr-setup-reference-row,
 .icedr-setup-reference-item {
   align-items: start;
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface-secondary));
-  border: 1px solid color-mix(in srgb, var(--accent) 10%, var(--border));
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 6%, var(--border));
   border-radius: 8px;
   color: var(--foreground);
   display: grid;
   gap: 8px;
   grid-template-columns: auto minmax(0, 1fr);
   min-width: 0;
-  padding: 9px;
+  padding: 9px 10px;
   text-align: left;
 }
 
@@ -499,14 +579,15 @@
 }
 
 .icedr-setup-reference-row[data-active="true"] {
-  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, #ffffff);
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
 }
 
 .icedr-setup-reference-row > span,
 .icedr-setup-reference-item > svg {
   align-items: center;
-  background: color-mix(in srgb, var(--accent) 10%, #fff);
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
   border-radius: 8px;
   color: var(--accent-hover);
   display: inline-flex;
@@ -543,10 +624,16 @@
 }
 
 .icedr-setup-dashboard-preview {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.98)),
+    var(--surface);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   display: grid;
   gap: 0;
-  grid-template-columns: 94px minmax(0, 1fr);
-  min-height: 246px;
+  grid-template-columns: 102px minmax(0, 1fr);
+  min-height: 252px;
   overflow: hidden;
   padding: 0;
 }
@@ -557,7 +644,7 @@
   display: flex;
   flex-direction: column;
   gap: 13px;
-  padding: 22px 14px;
+  padding: 22px 16px;
 }
 
 .icedr-setup-dashboard-sidebar span,
@@ -580,9 +667,9 @@
 .icedr-setup-dashboard-main {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
-  padding: 22px;
+  padding: 20px 22px;
 }
 
 .icedr-setup-dashboard-topline {
@@ -710,127 +797,12 @@
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  padding: 0 0 2px;
+  padding: 0 0 1px;
   position: static;
 }
 
 .icedr-setup-primary-action {
   width: 260px;
-}
-
-.icedr-setup-side {
-  display: none;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  min-width: 0;
-}
-
-.icedr-setup-side-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--surface-shadow);
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.icedr-setup-side-header {
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  color: var(--foreground);
-  display: flex;
-  font-size: 14px;
-  font-weight: 820;
-  gap: 8px;
-  min-height: 48px;
-  padding: 0 14px;
-}
-
-.icedr-setup-side-header svg {
-  color: var(--accent-hover);
-}
-
-.icedr-setup-summary-list {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 14px 14px;
-}
-
-.icedr-setup-summary-row {
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  min-height: 38px;
-  min-width: 0;
-}
-
-.icedr-setup-summary-row:last-child {
-  border-bottom: 0;
-}
-
-.icedr-setup-summary-row span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 680;
-}
-
-.icedr-setup-summary-row strong {
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 760;
-  min-width: 0;
-  overflow: hidden;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.icedr-setup-mini-dashboard {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: 92px minmax(0, 1fr);
-  padding: 14px;
-}
-
-.icedr-setup-mini-nav {
-  background: var(--surface-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 10px;
-}
-
-.icedr-setup-mini-nav span {
-  background: color-mix(in srgb, var(--muted) 14%, transparent);
-  border-radius: 999px;
-  height: 7px;
-}
-
-.icedr-setup-mini-nav span:first-child {
-  background: var(--accent);
-}
-
-.icedr-setup-mini-content {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 10px;
-}
-
-.icedr-setup-mini-content span {
-  background: var(--surface-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  min-height: 40px;
 }
 
 @keyframes icedr-setup-rise {
@@ -889,10 +861,6 @@
   .icedr-setup-step-button[data-compact="true"] .icedr-setup-step-index {
     height: 24px;
     min-width: 24px;
-  }
-
-  .icedr-setup-side {
-    display: none;
   }
 
   .icedr-setup-flow-board,

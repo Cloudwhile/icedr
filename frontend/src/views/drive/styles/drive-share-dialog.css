@@ -1,0 +1,550 @@
+.drive-share-dialog-layer {
+  align-items: center;
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 72;
+}
+
+.drive-share-dialog-scrim {
+  appearance: none;
+  background: rgba(14, 20, 34, 0.24);
+  border: 0;
+  cursor: default;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+}
+
+.drive-share-dialog-layer[data-theme="dark"] .drive-share-dialog-scrim {
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.drive-share-dialog {
+  animation: drive-share-dialog-in 360ms var(--motion-ease-emphasized) both;
+  background: var(--share-dialog-bg);
+  border: 1px solid var(--share-dialog-border-strong);
+  border-radius: 8px;
+  box-shadow:
+    0 28px 70px rgba(15, 23, 42, 0.18),
+    0 1px 2px rgba(15, 23, 42, 0.06);
+  color: var(--share-dialog-text);
+  display: flex;
+  flex-direction: column;
+  max-height: min(760px, calc(100dvh - 48px));
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: min(492px, calc(100vw - 32px));
+}
+
+.drive-share-dialog-header {
+  align-items: center;
+  border-bottom: 1px solid var(--share-dialog-border);
+  display: grid;
+  gap: 11px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 58px;
+  padding: 0 15px 0 17px;
+}
+
+.drive-share-dialog-heading-icon {
+  color: var(--share-dialog-accent-hover);
+  display: inline-flex;
+}
+
+.drive-share-dialog-heading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-share-dialog-close {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--share-dialog-subtle);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  transition: color 150ms var(--motion-ease), opacity 150ms var(--motion-ease), transform 160ms var(--motion-ease);
+  width: 30px;
+}
+
+.drive-share-dialog-close:hover {
+  color: var(--share-dialog-text);
+  transform: scale(1.06);
+}
+
+.drive-share-dialog-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.drive-share-dialog-close:focus-visible {
+  outline: 2px solid var(--share-dialog-focus);
+  outline-offset: 2px;
+}
+
+.drive-share-dialog-title {
+  color: var(--share-dialog-text);
+  font-size: 15px;
+  font-weight: 840;
+  line-height: 20px;
+}
+
+.drive-share-dialog-subtitle {
+  color: var(--share-dialog-subtle);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 16px;
+}
+
+.drive-share-dialog-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.drive-share-target {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 17px;
+}
+
+.drive-share-target-file {
+  align-items: center;
+  background: linear-gradient(180deg, var(--share-dialog-surface) 0%, var(--share-dialog-bg) 100%);
+  border: 1px solid var(--share-dialog-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 62px;
+  padding: 11px 13px;
+}
+
+.drive-share-target-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.drive-share-target-name {
+  color: var(--share-dialog-text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 19px;
+}
+
+.drive-share-target-meta {
+  color: var(--share-dialog-subtle);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 16px;
+}
+
+.drive-share-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.drive-share-metric {
+  border-right: 1px solid var(--share-dialog-border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-right: 11px;
+}
+
+.drive-share-metric:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.drive-share-metric > span {
+  color: var(--share-dialog-subtle);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 14px;
+}
+
+.drive-share-metric > strong {
+  color: var(--share-dialog-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.drive-share-dialog-notice,
+.drive-share-dialog-feedback {
+  border-top: 1px solid var(--share-dialog-border);
+  padding: 10px 17px;
+}
+
+.drive-share-options {
+  border-top: 1px solid var(--share-dialog-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 15px 17px 16px;
+}
+
+.drive-share-section-label {
+  color: var(--share-dialog-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+}
+
+.drive-share-option-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drive-share-option-toggle {
+  align-items: center;
+  appearance: none;
+  background: var(--share-dialog-bg);
+  border: 1px solid var(--share-dialog-border);
+  border-radius: 8px;
+  color: var(--share-dialog-muted);
+  cursor: pointer;
+  display: grid;
+  font-size: 13px;
+  font-weight: 740;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) 18px;
+  min-height: 38px;
+  padding: 0 10px;
+  text-align: left;
+  transition:
+    background-color 150ms var(--motion-ease),
+    border-color 150ms var(--motion-ease),
+    color 150ms var(--motion-ease),
+    transform 170ms var(--motion-ease);
+}
+
+.drive-share-option-toggle:hover {
+  background: var(--share-dialog-surface-2);
+  border-color: var(--share-dialog-border-strong);
+  transform: translateY(-1px);
+}
+
+.drive-share-option-toggle:focus-visible {
+  outline: 2px solid var(--share-option-focus);
+  outline-offset: 2px;
+}
+
+.drive-share-option-toggle[data-checked="true"] {
+  background: var(--share-dialog-selected);
+  border-color: color-mix(in srgb, var(--share-dialog-accent) 38%, var(--share-dialog-border));
+  color: var(--share-dialog-accent-hover);
+}
+
+.drive-share-option-check {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.drive-share-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr);
+}
+
+.drive-share-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.drive-share-field > span:first-child {
+  color: var(--share-dialog-subtle);
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 16px;
+}
+
+.drive-share-expiry-control {
+  align-items: center;
+  border: 1px solid var(--share-dialog-border);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  height: 38px;
+  overflow: hidden;
+}
+
+.drive-share-input,
+.drive-share-textarea {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--share-dialog-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 720;
+  min-width: 0;
+  outline: 0;
+}
+
+.drive-share-input {
+  height: 100%;
+  padding: 0 12px;
+}
+
+.drive-share-unit {
+  align-items: center;
+  border-left: 1px solid var(--share-dialog-border);
+  color: var(--share-dialog-subtle);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 760;
+  height: 100%;
+  padding: 0 11px;
+}
+
+.drive-share-field-note {
+  color: var(--share-dialog-subtle);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 14px;
+}
+
+.drive-share-field-note[data-risk="true"] {
+  color: var(--share-dialog-danger);
+}
+
+.drive-share-textarea {
+  border: 1px solid var(--share-dialog-border);
+  border-radius: 8px;
+  min-height: 65px;
+  padding: 10px 12px;
+  resize: none;
+}
+
+.drive-share-input:focus,
+.drive-share-textarea:focus {
+  box-shadow: inset 0 0 0 1px var(--share-dialog-focus);
+}
+
+.drive-share-textarea::placeholder {
+  color: color-mix(in srgb, var(--share-dialog-subtle) 72%, transparent);
+}
+
+.drive-share-collection {
+  border-top: 1px solid var(--share-dialog-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.drive-share-collection-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 17px;
+}
+
+.drive-share-collection-list {
+  border-top: 1px solid var(--share-dialog-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.drive-share-collection-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 46px;
+  padding: 0 17px;
+}
+
+.drive-share-collection-row + .drive-share-collection-row,
+.drive-share-collection-more {
+  border-top: 1px solid var(--share-dialog-border);
+}
+
+.drive-share-collection-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-share-collection-copy > span:first-child {
+  color: var(--share-dialog-text);
+  font-size: 13px;
+  font-weight: 730;
+  line-height: 18px;
+}
+
+.drive-share-collection-copy > span:last-child,
+.drive-share-collection-size,
+.drive-share-collection-more {
+  color: var(--share-dialog-subtle);
+  font-size: 12px;
+  font-weight: 660;
+}
+
+.drive-share-collection-size {
+  white-space: nowrap;
+}
+
+.drive-share-collection-more {
+  min-height: 36px;
+  padding: 10px 17px;
+}
+
+.drive-share-dialog-created {
+  align-items: center;
+  gap: 14px;
+  overflow: visible;
+  padding: 24px 18px 19px;
+  text-align: center;
+}
+
+.drive-share-created-mark {
+  align-items: center;
+  background: var(--share-dialog-selected);
+  border: 1px solid color-mix(in srgb, var(--share-dialog-accent) 28%, var(--share-dialog-border));
+  border-radius: 8px;
+  color: var(--share-dialog-accent-hover);
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.drive-share-created-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.drive-share-created-copy > span:first-child {
+  color: var(--share-dialog-text);
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 22px;
+}
+
+.drive-share-created-copy > span:last-child {
+  color: var(--share-dialog-subtle);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.drive-share-link-field {
+  align-items: center;
+  background: var(--share-dialog-surface);
+  border: 1px solid var(--share-dialog-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 42px;
+  padding: 0 7px 0 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.drive-share-link-field > span {
+  color: var(--share-dialog-muted);
+  font-size: 12px;
+  font-weight: 690;
+}
+
+.drive-share-open-inline {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--share-dialog-accent-hover);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 780;
+  gap: 6px;
+  padding: 0;
+  transition: color 150ms var(--motion-ease), transform 170ms var(--motion-ease);
+}
+
+.drive-share-open-inline:hover {
+  color: var(--share-dialog-accent);
+  transform: translateY(-1px);
+}
+
+.drive-share-dialog-footer {
+  align-items: center;
+  border-top: 1px solid var(--share-dialog-border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  min-height: 58px;
+  padding: 10px 15px;
+}
+
+@keyframes drive-share-dialog-in {
+  from {
+    filter: blur(6px);
+    opacity: 0;
+    transform: translateY(18px) scale(0.976);
+  }
+
+  to {
+    filter: blur(0);
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 560px) {
+  .drive-share-dialog-layer {
+    padding: 14px;
+  }
+
+  .drive-share-dialog {
+    max-height: calc(100dvh - 28px);
+    width: min(100%, calc(100vw - 28px));
+  }
+
+  .drive-share-metrics,
+  .drive-share-option-grid,
+  .drive-share-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-share-metric {
+    border-right: 0;
+    border-bottom: 1px solid var(--share-dialog-border);
+    padding: 0 0 8px;
+  }
+
+  .drive-share-metric:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+}

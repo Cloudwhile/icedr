@@ -6,15 +6,13 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import { DrivePreviewMetadataPanel, type PreviewMediaMetadata } from "./drive-preview-metadata-panel";
 import { AppDialogShell } from "./app-dialog-shell";
-import { showAppToast } from "./app-toast";
+import { showAppToast } from "./app-toast-store";
 import { cn } from "./cn";
 import { ItemIcon, LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
 import { useTimeZone, useTranslations } from "@/i18n/react";
 import {
   formatFileSize,
-  formatDriveItemModified,
-  getIntlLocale,
   getItemExtension,
   getItemKind,
   sumDriveItemSizes,
@@ -23,6 +21,7 @@ import {
   type Palette,
 } from "@/features/file/model";
 import {
+  canOpenFilePreview,
   getDefaultFileOpenWith,
   isFileOpenWithAvailable,
   isImagePreviewFile,
@@ -42,7 +41,7 @@ import {
   type PreviewIntentResponse,
 } from "@/features/file/actions";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
-import { fetchFileNode, fetchFileNodeContent, fetchFileVersions, updateFileNodeContent, type FileVersionResponse } from "@/lib/drive-api";
+import { fetchFileNode, fetchFileNodeContent, updateFileNodeContent } from "@/lib/drive-api";
 
 const mediaDetailsPreferenceKey = "icedr.preview.mediaDetailsOpen";
 
@@ -80,6 +79,7 @@ export function DriveFilePreviewDialog({
   const [mediaDetailsOpen, setMediaDetailsOpen] = useState(() => readMediaDetailsPreference());
   const activeItem = item ?? (resolvedItem?.itemId === targetItemId ? resolvedItem.item : null);
   const itemResolved = Boolean(item) || (Boolean(targetItemId) && resolvedItem?.itemId === targetItemId);
+  const previewAvailable = activeItem ? canOpenFilePreview(activeItem) : true;
   const effectiveWorkspaceId = workspaceId ?? activeItem?.workspaceId ?? undefined;
   const effectiveOpenWith = activeItem ? resolveFileOpenWith(activeItem, openWith ?? null) : null;
   const workspacePreview = isWorkspacePreview(activeItem, effectiveOpenWith);
@@ -100,7 +100,7 @@ export function DriveFilePreviewDialog({
   }, [item, open, targetItemId]);
 
   useEffect(() => {
-    if (!open || !activeItem) return;
+    if (!open || !activeItem || !previewAvailable) return;
     let cancelled = false;
     void createFilePreviewIntent(activeItem.id)
       .then((intent) => {
@@ -112,7 +112,17 @@ export function DriveFilePreviewDialog({
     return () => {
       cancelled = true;
     };
-  }, [activeItem, open]);
+  }, [activeItem, open, previewAvailable]);
+
+  useEffect(() => {
+    if (!open || !activeItem || previewAvailable) return;
+    showAppToast({
+      dedupeKey: `preview-no-artifact-${activeItem.id}`,
+      title: t("preview.noArtifact"),
+      tone: "info",
+    });
+    onClose();
+  }, [activeItem, onClose, open, previewAvailable, t]);
 
   const updateMediaDetailsOpen = (nextOpen: boolean) => {
     setMediaDetailsOpen(nextOpen);
@@ -134,6 +144,8 @@ export function DriveFilePreviewDialog({
       .then(() => showAppToast({ title: t("app.copied"), tone: "success" }))
       .catch(() => showAppToast({ title: t("share.createFailed"), tone: "error" }));
   };
+
+  if (activeItem && !previewAvailable) return null;
 
   return (
     <AppDialogShell
@@ -239,8 +251,8 @@ export function DriveFilePreviewDialog({
 }
 
 function readMediaDetailsPreference() {
-  if (typeof window === "undefined") return true;
-  return window.localStorage.getItem(mediaDetailsPreferenceKey) !== "false";
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(mediaDetailsPreferenceKey) === "true";
 }
 
 function writeMediaDetailsPreference(open: boolean) {
@@ -258,7 +270,7 @@ function DriveFilePreviewContent({
   locale,
   mediaDetailsOpen,
   onMediaDetailsClose,
-  onMediaDetailsOpen: _onMediaDetailsOpen,
+  onMediaDetailsOpen,
   onSaved,
   openWith: requestedOpenWith,
   palette,
@@ -457,19 +469,18 @@ function DriveFilePreviewContent({
           data-details-open={(showMetadata && mediaDetailsOpen) || (canPreviewDocument && openWith === "office") ? "true" : "false"}
         >
           <div className="icedr-preview-media-stage">
-            <PreviewZoomStage key={`${previewItem.id}-${openWith}`} mode={workspaceMode} palette={palette}>
+            <PreviewZoomStage
+              detailsOpen={showMetadata ? mediaDetailsOpen : undefined}
+              key={`${previewItem.id}-${openWith}`}
+              mode={workspaceMode}
+              onToggleDetails={showMetadata ? () => {
+                if (mediaDetailsOpen) onMediaDetailsClose();
+                else onMediaDetailsOpen();
+              } : undefined}
+              palette={palette}
+            >
               {previewNode}
             </PreviewZoomStage>
-            <PreviewMediaRail
-              item={previewItem}
-              locale={locale}
-              mediaMetadata={showMetadata ? mediaMetadata : {}}
-              mediaUrl={showMetadata ? mediaUrl : documentUrl}
-              openWith={openWith}
-              palette={palette}
-              sizeLabel={size}
-              timeZone={timeZone}
-            />
           </div>
           {showMetadata && mediaDetailsOpen ? (
             <DrivePreviewMetadataPanel
@@ -503,163 +514,6 @@ function DriveFilePreviewContent({
   );
 }
 
-function PreviewMediaRail({
-  item,
-  locale,
-  mediaMetadata,
-  mediaUrl,
-  openWith,
-  palette,
-  sizeLabel,
-  timeZone,
-}: {
-  item: DriveItem;
-  locale: Locale;
-  mediaMetadata: PreviewMediaMetadata;
-  mediaUrl: string | null;
-  openWith: FileOpenWithApp;
-  palette: Palette;
-  sizeLabel: string;
-  timeZone?: string;
-}) {
-  const t = useTranslations();
-  const extension = getItemExtension(item);
-  const [versionState, setVersionState] = useState<{ itemId: string | null; versions: FileVersionResponse[] }>({
-    itemId: null,
-    versions: [],
-  });
-  const canLoadVersions = Boolean(item.objectKey && !item.archivedAt);
-  const versions = canLoadVersions && versionState.itemId === item.id ? versionState.versions : [];
-  const currentVersion = versions[0] ?? null;
-  const secondaryVersions = versions.slice(1, 6);
-  const showVideoThumb = openWith === "video" && mediaUrl;
-  const showImageThumb = openWith === "image" && mediaUrl;
-  const mediaMetaLine = mediaMetadata.width && mediaMetadata.height
-    ? `${mediaMetadata.width} x ${mediaMetadata.height}${mediaMetadata.duration ? ` / ${mediaMetadata.duration}` : ""}`
-    : formatDriveItemModified(item, locale, timeZone);
-  const currentTitle =
-    openWith === "office"
-      ? t("preview.currentPage")
-      : currentVersion
-        ? t("files.versionNumber", { number: currentVersion.versionNumber })
-        : t("preview.currentFrame");
-  const currentMeta = currentVersion
-    ? `${formatFileSize(currentVersion.sizeBytes, locale)} / ${formatRailDate(currentVersion.createdAt, locale, timeZone)}`
-    : extension
-      ? `${extension.toUpperCase()} / ${sizeLabel}`
-      : `${t(`files.kind.${getItemKind(item)}`)} / ${sizeLabel}`;
-
-  useEffect(() => {
-    if (!canLoadVersions) return;
-    let cancelled = false;
-    void fetchFileVersions(item.id)
-      .then((versions) => {
-        if (!cancelled) setVersionState({ itemId: item.id, versions });
-      })
-      .catch(() => {
-        if (!cancelled) setVersionState({ itemId: item.id, versions: [] });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [canLoadVersions, item.id]);
-
-  return (
-    <div
-      className="icedr-preview-strip"
-      data-mode={openWith === "office" ? "pages" : "frames"}
-      style={
-        {
-          "--preview-strip-accent": palette.primaryHover,
-          "--preview-strip-border": palette.hairline,
-          "--preview-strip-muted": palette.subtle,
-          "--preview-strip-text": palette.ink,
-        } as CSSProperties
-      }
-    >
-      <button aria-label={t("preview.previousFrame")} className="icedr-preview-strip-edge" disabled type="button">
-        <LocalIcon name="arrow_left" size={18} />
-      </button>
-      <div className="icedr-preview-strip-track">
-        <div className="icedr-preview-strip-card icedr-preview-strip-card-current" data-active="true">
-          <span className="icedr-preview-strip-thumb">
-            {showImageThumb ? <img alt="" src={mediaUrl} /> : null}
-            {showVideoThumb ? <video aria-label={item.name} muted playsInline preload="metadata" src={mediaUrl} /> : null}
-            {!showImageThumb && !showVideoThumb ? <ItemIcon item={item} palette={palette} size={34} /> : null}
-          </span>
-          <span className="icedr-preview-strip-copy">
-            <span>{currentTitle}</span>
-            <span className="icedr-truncate">{currentMeta}</span>
-          </span>
-        </div>
-        {secondaryVersions.map((version) => (
-          <PreviewVersionRailTile
-            key={version.id}
-            item={item}
-            locale={locale}
-            palette={palette}
-            timeZone={timeZone}
-            version={version}
-          />
-        ))}
-        {secondaryVersions.length === 0 ? (
-          <div className="icedr-preview-strip-card icedr-preview-strip-card-muted">
-            <span className="icedr-preview-strip-thumb">
-              <LocalIcon name={openWith === "office" ? "document" : "time"} size={24} />
-            </span>
-            <span className="icedr-preview-strip-copy">
-              <span>{openWith === "office" ? t("preview.pages") : t("files.versions")}</span>
-              <span className="icedr-truncate">{openWith === "office" ? "1 / --" : mediaMetaLine}</span>
-            </span>
-          </div>
-        ) : null}
-      </div>
-      <button aria-label={t("preview.nextFrame")} className="icedr-preview-strip-edge" disabled type="button">
-        <LocalIcon name="arrow_right" size={18} />
-      </button>
-    </div>
-  );
-}
-
-function PreviewVersionRailTile({
-  item,
-  locale,
-  palette,
-  timeZone,
-  version,
-}: {
-  item: DriveItem;
-  locale: Locale;
-  palette: Palette;
-  timeZone?: string;
-  version: FileVersionResponse;
-}) {
-  const t = useTranslations();
-  return (
-    <div className="icedr-preview-strip-card">
-      <span className="icedr-preview-strip-thumb">
-        <ItemIcon item={item} palette={palette} size={28} />
-      </span>
-      <span className="icedr-preview-strip-copy">
-        <span>{t("files.versionNumber", { number: version.versionNumber })}</span>
-        <span className="icedr-truncate">
-          {formatFileSize(version.sizeBytes, locale)} / {formatRailDate(version.createdAt, locale, timeZone)}
-        </span>
-      </span>
-    </div>
-  );
-}
-
-function formatRailDate(value: string, locale: Locale, timeZone?: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--";
-  return new Intl.DateTimeFormat(getIntlLocale(locale), {
-    day: "2-digit",
-    month: "short",
-    ...(timeZone ? { timeZone } : {}),
-  }).format(date);
-}
-
 function isWorkspacePreview(item: DriveItem | null | undefined, openWith: FileOpenWithApp | null) {
   if (!item) return false;
   return (
@@ -671,11 +525,15 @@ function isWorkspacePreview(item: DriveItem | null | undefined, openWith: FileOp
 
 function PreviewZoomStage({
   children,
+  detailsOpen,
   mode,
+  onToggleDetails,
   palette,
 }: {
   children: React.ReactNode;
+  detailsOpen?: boolean;
   mode: "document" | "media" | "status" | "text";
+  onToggleDetails?: () => void;
   palette: Palette;
 }) {
   const t = useTranslations();
@@ -706,6 +564,11 @@ function PreviewZoomStage({
         <ToolButton label={t("preview.zoomReset")} palette={palette} size="sm" onClick={resetZoom} visual="surface">
           <LocalIcon name="expand" size={15} />
         </ToolButton>
+        {onToggleDetails ? (
+          <ToolButton active={detailsOpen} label={t("app.details")} palette={palette} size="sm" onClick={onToggleDetails} visual="surface">
+            <LocalIcon name="info" size={15} />
+          </ToolButton>
+        ) : null}
       </div>
       <div className="icedr-preview-canvas">
         <div className="icedr-preview-zoom-surface" style={{ "--preview-zoom": zoom / 100 } as CSSProperties}>

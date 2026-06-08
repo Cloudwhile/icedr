@@ -1,5 +1,6 @@
 import type { useTranslations } from "@/i18n/react";
 import { formatFileSize, getIntlLocale, type Locale } from "@/features/file/model";
+import type { SystemOverview } from "@/lib/drive-api";
 import type { TransferRow } from "./drive-types";
 
 type DriveTranslator = ReturnType<typeof useTranslations>;
@@ -47,4 +48,18 @@ export function formatAuditAction(action: string, t: DriveTranslator) {
   if (mapped !== translationKey) return mapped;
 
   return t("audit.actions.unknown", { action });
+}
+
+export function formatSystemOperatingSystem(systemOverview: SystemOverview) {
+  return `${systemOverview.operatingSystem} ${systemOverview.osRelease}`.trim();
+}
+
+export function formatSystemDuration(seconds: number, t: DriveTranslator) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const days = Math.floor(safeSeconds / 86400);
+  const hours = Math.floor((safeSeconds % 86400) / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  if (days > 0) return t("settings.durationDaysHours", { days, hours });
+  if (hours > 0) return t("settings.durationHoursMinutes", { hours, minutes });
+  return t("settings.durationMinutes", { minutes });
 }

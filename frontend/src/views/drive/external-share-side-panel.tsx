@@ -21,6 +21,7 @@ export function ExternalShareSidePanel({
   onStartAccess,
   registeredShare,
   selectedEmail,
+  totalItems,
   totalSize,
   verified,
 }: {
@@ -30,6 +31,7 @@ export function ExternalShareSidePanel({
   onStartAccess?: () => void;
   registeredShare: RegisteredShare;
   selectedEmail: string;
+  totalItems: number;
   totalSize: string;
   verified: boolean;
 }) {
@@ -80,7 +82,7 @@ export function ExternalShareSidePanel({
 
       <section className="external-share-side-card">
         <div className="external-share-side-card-heading">
-          <LocalIcon name="lock" size={17} />
+          <LocalIcon name="shield" size={17} />
           <span>{t("share.visitorPolicy")}</span>
         </div>
         <div className="external-share-policy-grid">
@@ -95,11 +97,11 @@ export function ExternalShareSidePanel({
 
       <section className="external-share-side-card">
         <div className="external-share-side-card-heading">
-          <LocalIcon name="info" size={17} />
-          <span>{t("share.quickFacts")}</span>
+          <LocalIcon name="user_group" size={17} />
+          <span>{t("share.shareInformation")}</span>
         </div>
         <div className="external-share-fact-list">
-          <FactRow label={t("share.items")} value={String(collectionItems.length)} />
+          <FactRow label={t("share.items")} value={String(totalItems)} />
           <FactRow label={t("share.totalSize")} value={totalSize === "--" ? rootSize : totalSize} />
           <FactRow label={t("share.expires")} value={expiresLabel} />
           <FactRow label={t("preview.createdAt")} value={createdAt} />

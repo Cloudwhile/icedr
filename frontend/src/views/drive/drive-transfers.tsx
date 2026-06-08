@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { EChart, type EChartOption } from "@/components/ui/e-chart";
 import { MotionList } from "@/components/ui/motion";
 import { ProgressMeter } from "@/components/ui/progress-meter";
 import { useLocale, useTranslations } from "@/i18n/react";
-import { formatFileSize, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
+import { formatFileSize, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
 import type { TransferRow, TransferStatus } from "./drive-types";
 import { formatRemainingTime } from "./drive-formatters";
-import { AnimatedCheckMark, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
+import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 
 export type TransfersModuleProps = {
   controllableTransferIds?: string[];
@@ -41,23 +42,38 @@ export function TransfersModule({
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const [statusFilter, setStatusFilter] = useState<TransferFilter>("all");
+  const [concurrentUploadLimit, setConcurrentUploadLimit] = useState("3");
+  const [uploadSpeedLimit, setUploadSpeedLimit] = useState("unlimited");
+  const [autoClearCompleted, setAutoClearCompleted] = useState(false);
   const controllableTransferIdSet = useMemo(() => new Set(controllableTransferIds), [controllableTransferIds]);
   const uploadingRows = rows.filter((row) => row.status === "queued" || row.status === "running");
   const completedRows = rows.filter((row) => row.status === "completed");
   const failedRows = rows.filter((row) => row.status === "failed" || row.status === "canceled");
   const pausedRows = rows.filter((row) => row.status === "paused");
-  const speedSamples = uploadingRows
-    .filter((row) => row.status === "running" && row.speedBytesPerSecond && row.speedBytesPerSecond > 0)
-    .slice(0, 8)
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      speedBytesPerSecond: row.speedBytesPerSecond ?? 0,
-    }));
-  const maxSpeed = Math.max(...speedSamples.map((row) => row.speedBytesPerSecond), 1);
-  const speedChart = createTransferSpeedChart(speedSamples.map((row) => row.speedBytesPerSecond), maxSpeed);
+  const speedSamples = useMemo(
+    () => rows
+      .filter((row) => row.status === "running" && row.speedBytesPerSecond && row.speedBytesPerSecond > 0)
+      .slice(0, 8)
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        speedBytesPerSecond: row.speedBytesPerSecond ?? 0,
+      })),
+    [rows],
+  );
+  const speedValues = useMemo(() => speedSamples.map((row) => row.speedBytesPerSecond), [speedSamples]);
+  const speedChartOption = useMemo(
+    () => buildTransferSpeedOption(speedValues, palette, locale),
+    [locale, palette, speedValues],
+  );
   const totalBytes = rows.reduce((sum, row) => sum + (row.totalBytes ?? row.loadedBytes ?? 0), 0);
+  const loadedBytes = rows.reduce((sum, row) => sum + (row.loadedBytes ?? 0), 0);
   const totalSpeed = rows.reduce((sum, row) => sum + (row.speedBytesPerSecond ?? 0), 0);
+  const activeProgress =
+    uploadingRows.length > 0
+      ? Math.round(uploadingRows.reduce((sum, row) => sum + row.progress, 0) / uploadingRows.length)
+      : 0;
+  const completionRate = rows.length > 0 ? Math.round((completedRows.length / rows.length) * 100) : 0;
   const sections: TransferSection[] = [
     { icon: "upload", id: "uploading", rows: uploadingRows, title: t("transfers.activeUploads") },
     { icon: "pause", id: "paused", rows: pausedRows, title: t("transfers.paused") },
@@ -97,16 +113,43 @@ export function TransfersModule({
       </div>
 
       <div className="drive-module-stat-grid drive-module-stat-grid-transfers">
-        <MetricCard icon="grid" label={t("transfers.allUploads")} value={String(rows.length)} />
-        <MetricCard icon="upload" label={t("transfers.activeUploads")} value={String(uploadingRows.length)} />
-        <MetricCard icon="tick" label={t("transfers.completed")} tone="success" value={String(completedRows.length)} />
-        <MetricCard icon="exclamation" label={t("transfers.failed")} tone="danger" value={String(failedRows.length)} />
-        <MetricCard icon="grid" label={t("transfers.totalSize")} tone="purple" value={formatFileSize(totalBytes || null, locale)} />
+        <MetricCard
+          caption={t("transfers.queueRecords", { count: rows.length })}
+          icon="grid"
+          label={t("transfers.allUploads")}
+          value={String(rows.length)}
+        />
+        <MetricCard
+          caption={t("transfers.currentSpeed", { speed: formatFileSize(totalSpeed || null, locale) })}
+          icon="upload"
+          label={t("transfers.activeUploads")}
+          value={String(uploadingRows.length)}
+        />
+        <MetricCard
+          caption={t("transfers.completionRate", { rate: completionRate })}
+          icon="tick"
+          label={t("transfers.completed")}
+          tone="success"
+          value={String(completedRows.length)}
+        />
+        <MetricCard
+          caption={t("transfers.failedRecords", { count: failedRows.length })}
+          icon="exclamation"
+          label={t("transfers.failed")}
+          tone="danger"
+          value={String(failedRows.length)}
+        />
+        <MetricCard
+          caption={t("transfers.loadedSize", { size: formatFileSize(loadedBytes || null, locale) })}
+          icon="time"
+          label={t("transfers.totalSize")}
+          tone="purple"
+          value={formatFileSize(totalBytes || null, locale)}
+        />
       </div>
 
       <section className="drive-module-split drive-transfer-board">
         <div className="drive-module-panel drive-transfer-queue-panel">
-          <ModulePanelHeader icon="upload" title={t("transfers.uploadQueue")} trailing={<StatusPill palette={palette}>{visibleRows.length}</StatusPill>} />
           {visibleRows.length === 0 ? <EmptyModuleState icon="upload" title={t("transfers.emptyTitle")} hint={t("transfers.emptyHint")} /> : null}
           {visibleRows.length > 0 ? (
             <div className="drive-transfer-table drive-transfer-section-stack">
@@ -128,35 +171,63 @@ export function TransfersModule({
         </div>
 
         <aside className="drive-module-side-stack">
-          <section className="drive-module-side-card">
-            <ModulePanelHeader icon="upload" title={t("transfers.queueSummary")} compact />
-            <div className="drive-module-side-list">
+          <section className="drive-module-side-card drive-transfer-settings-card">
+            <ModulePanelHeader icon="settings" title={t("transfers.uploadSettings")} compact />
+            <div className="drive-transfer-settings">
+              <UploadSettingSelect
+                label={t("transfers.concurrentUploads")}
+                onChange={setConcurrentUploadLimit}
+                options={[
+                  { label: "1", value: "1" },
+                  { label: "2", value: "2" },
+                  { label: "3", value: "3" },
+                  { label: "4", value: "4" },
+                ]}
+                value={concurrentUploadLimit}
+              />
+              <UploadSettingSelect
+                label={t("transfers.uploadSpeedLimit")}
+                onChange={setUploadSpeedLimit}
+                options={[
+                  { label: t("transfers.speedUnlimited"), value: "unlimited" },
+                  { label: "1 MB/s", value: "1mb" },
+                  { label: "5 MB/s", value: "5mb" },
+                  { label: "10 MB/s", value: "10mb" },
+                ]}
+                value={uploadSpeedLimit}
+              />
+              <UploadSettingSwitch
+                checked={autoClearCompleted}
+                label={t("transfers.autoClearCompleted")}
+                onChange={setAutoClearCompleted}
+              />
+            </div>
+            <div className="drive-transfer-health drive-transfer-settings-health">
+              <div>
+                <span>{t("transfers.activeProgress")}</span>
+                <strong>{activeProgress}%</strong>
+              </div>
+              <ProgressMeter ariaLabel={t("transfers.activeProgress")} color={palette.primary} palette={palette} value={activeProgress} />
+            </div>
+            <div className="drive-module-side-list drive-transfer-settings-summary">
               <InfoRow label={t("transfers.running")} value={String(uploadingRows.filter((row) => row.status === "running").length)} />
               <InfoRow label={t("transfers.queued")} value={String(uploadingRows.filter((row) => row.status === "queued").length)} />
               <InfoRow label={t("transfers.paused")} value={String(pausedRows.length)} />
+              <InfoRow label={t("transfers.loaded")} value={formatFileSize(loadedBytes || null, locale)} />
               <InfoRow label={t("transfers.totalSize")} value={formatFileSize(totalBytes || null, locale)} />
             </div>
           </section>
           <section className="drive-module-side-card">
-            <ModulePanelHeader icon="time" title={t("transfers.speedValue", { speed: formatFileSize(totalSpeed || null, locale) })} compact />
+            <ModulePanelHeader icon="time" title={t("transfers.realtimeSpeed")} compact trailing={<strong className="drive-transfer-side-value">{formatFileSize(totalSpeed || null, locale)}/s</strong>} />
             <div className="drive-speed-card">
               <div className="drive-speed-legend">
-                <MetaIcon icon="upload">{formatFileSize(totalSpeed || null, locale)}/s</MetaIcon>
+                <span className="drive-speed-dot" aria-hidden="true" />
+                <span>{t("transfers.speedValue", { speed: formatFileSize(totalSpeed || null, locale) })}</span>
               </div>
-              <div className="drive-speed-chart" data-empty={!speedChart ? "true" : undefined}>
-                {speedChart ? (
+              <div className="drive-speed-chart" data-empty={speedSamples.length === 0 ? "true" : undefined}>
+                {speedSamples.length > 0 ? (
                   <>
-                    <div className="drive-speed-axis" aria-hidden="true">
-                      <span>{t("transfers.speedValue", { speed: formatFileSize(maxSpeed, locale) })}</span>
-                      <span>0</span>
-                    </div>
-                    <svg className="drive-speed-svg" viewBox="0 0 240 104" preserveAspectRatio="none" role="img" aria-label={t("transfers.speedValue", { speed: formatFileSize(totalSpeed || null, locale) })}>
-                      <path className="drive-speed-area" d={speedChart.areaPath} />
-                      <path className="drive-speed-line" d={speedChart.linePath} />
-                      {speedChart.points.map((point) => (
-                        <circle className="drive-speed-point" cx={point.x} cy={point.y} key={`${point.x}-${point.y}`} r="4" />
-                      ))}
-                    </svg>
+                    <EChart ariaLabel={t("transfers.speedValue", { speed: formatFileSize(totalSpeed || null, locale) })} className="drive-speed-echart" option={speedChartOption} />
                     <div className="drive-speed-samples">
                       {speedSamples.map((sample) => (
                         <span className="icedr-truncate" key={sample.id} title={sample.name}>
@@ -268,15 +339,9 @@ function TransferTableRow({
 
   return (
     <div data-motion-row data-status={row.status} className="drive-module-table-row drive-transfer-row">
-      <span className="drive-module-row-icon" data-status={row.status}>
-        {row.status === "completed" ? <AnimatedCheckMark size={18} /> : <LocalIcon name={getTransferIcon(row)} size={18} />}
-      </span>
+      <TransferFileIcon palette={palette} row={row} />
       <div className="drive-module-row-copy">
         <span className="drive-module-row-title icedr-truncate">{row.name}</span>
-        <div className="drive-module-row-meta">
-          <MetaIcon icon="upload">{t("transfers.upload")}</MetaIcon>
-          <MetaIcon icon="time">{t(`transfers.${row.status}`)}</MetaIcon>
-        </div>
       </div>
 
       <span className="drive-transfer-size-cell icedr-truncate">{totalLabel}</span>
@@ -324,26 +389,42 @@ function TransferTableRow({
 }
 
 function MetricCard({
+  caption,
   icon,
   label,
   tone = "blue",
   value,
 }: {
+  caption?: string;
   icon: LocalIconName;
   label: string;
   tone?: "blue" | "danger" | "purple" | "success" | "warning";
   value: string;
 }) {
   return (
-    <section className="drive-module-stat-card">
+    <section className="drive-module-stat-card" data-tone={tone}>
       <div className="drive-module-stat-copy">
         <span>{value}</span>
         <span>{label}</span>
+        {caption ? <strong>{caption}</strong> : null}
       </div>
       <span className="drive-module-stat-icon" data-tone={tone}>
-        <LocalIcon name={icon} size={22} />
+        <LocalIcon name={icon} size={26} />
       </span>
     </section>
+  );
+}
+
+function TransferFileIcon({ palette, row }: { palette: Palette; row: TransferRow }) {
+  const item = createTransferDriveItem(row);
+
+  return (
+    <span className="drive-transfer-file-icon" data-status={row.status}>
+      <ItemIcon item={item} palette={palette} size={24} />
+      <span className="drive-transfer-status-mark" aria-hidden="true">
+        {row.status === "completed" ? <AnimatedCheckMark size={10} strokeWidth={2.8} /> : <LocalIcon name={getTransferIcon(row)} size={10} />}
+      </span>
+    </span>
   );
 }
 
@@ -369,12 +450,51 @@ function ModulePanelHeader({
   );
 }
 
-function MetaIcon({ children, icon }: { children: ReactNode; icon: LocalIconName }) {
+function UploadSettingSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+}) {
   return (
-    <span className="drive-module-meta-icon">
-      <LocalIcon name={icon} size={13} />
-      <span className="icedr-truncate">{children}</span>
-    </span>
+    <label className="drive-transfer-setting-row">
+      <span className="icedr-truncate">{label}</span>
+      <span className="drive-transfer-setting-select">
+        <select value={value} onChange={(event) => onChange(event.currentTarget.value)}>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <LocalIcon name="arrow_down" size={13} />
+      </span>
+    </label>
+  );
+}
+
+function UploadSettingSwitch({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="drive-transfer-setting-row drive-transfer-setting-switch-row">
+      <span className="icedr-truncate">{label}</span>
+      <span className="drive-transfer-setting-switch" data-checked={checked ? "true" : undefined}>
+        <input checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} type="checkbox" />
+        <span aria-hidden="true" />
+      </span>
+    </label>
   );
 }
 
@@ -385,6 +505,22 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="icedr-truncate">{value || "--"}</span>
     </div>
   );
+}
+
+function createTransferDriveItem(row: TransferRow): DriveItem {
+  return {
+    colorKey: "primary",
+    id: row.nodeId ?? row.id,
+    modifiedAt: row.updatedAt ?? row.createdAt,
+    name: row.name,
+    objectKey: row.objectKey,
+    owner: "",
+    parentId: null,
+    shared: false,
+    sizeBytes: row.totalBytes ?? row.loadedBytes ?? null,
+    starred: false,
+    workspaceId: row.workspaceId,
+  };
 }
 
 function EmptyModuleState({
@@ -415,33 +551,70 @@ function getTransferIcon(row: TransferRow): LocalIconName {
   return "upload";
 }
 
-function createTransferSpeedChart(values: number[], maxValue: number) {
-  if (values.length === 0) return null;
-  const width = 240;
-  const height = 104;
-  const paddingX = 8;
-  const paddingY = 10;
-  const bottom = height - paddingY;
-  const drawableWidth = width - paddingX * 2;
-  const drawableHeight = height - paddingY * 2;
+function buildTransferSpeedOption(values: number[], palette: Palette, locale: Locale): EChartOption {
   const normalizedValues = values.length === 1 ? [values[0], values[0]] : values;
-  const safeMaxValue = Math.max(maxValue, 1);
-  const points = normalizedValues.map((value, index) => {
-    const denominator = Math.max(normalizedValues.length - 1, 1);
-    const x = paddingX + (drawableWidth * index) / denominator;
-    const y = bottom - (Math.max(0, value) / safeMaxValue) * drawableHeight;
-    return {
-      x: Number(x.toFixed(2)),
-      y: Number(y.toFixed(2)),
-    };
-  });
-  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const areaPath = `${linePath} L ${points.at(-1)?.x ?? paddingX} ${bottom} L ${points[0]?.x ?? paddingX} ${bottom} Z`;
-
   return {
-    areaPath,
-    linePath,
-    points,
+    animationDuration: 460,
+    animationEasing: "cubicOut",
+    backgroundColor: "transparent",
+    grid: { bottom: 18, containLabel: false, left: 8, right: 8, top: 12 },
+    series: [
+      {
+        areaStyle: {
+          color: {
+            colorStops: [
+              { color: "rgba(94, 106, 210, 0.18)", offset: 0 },
+              { color: "rgba(94, 106, 210, 0.03)", offset: 1 },
+            ],
+            type: "linear",
+            x: 0,
+            x2: 0,
+            y: 0,
+            y2: 1,
+          },
+        },
+        data: normalizedValues,
+        itemStyle: { color: palette.primary },
+        lineStyle: { color: palette.primary, width: 3 },
+        showSymbol: true,
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 7,
+        type: "line",
+      },
+    ],
+    tooltip: {
+      backgroundColor: palette.surface1,
+      borderColor: palette.hairline,
+      borderWidth: 1,
+      confine: true,
+      formatter: (params: unknown) => {
+        const item = Array.isArray(params) ? params[0] : params;
+        const value = typeof item === "object" && item && "value" in item ? Number((item as { value: unknown }).value) : 0;
+        return `${formatFileSize(value, locale)}/s`;
+      },
+      textStyle: { color: palette.ink, fontSize: 12, fontWeight: 700 },
+      trigger: "axis",
+    },
+    xAxis: {
+      axisLine: { show: false },
+      axisTick: { show: false },
+      data: normalizedValues.map((_, index) => String(index + 1)),
+      splitLine: { show: false },
+      type: "category",
+      axisLabel: { show: false },
+    },
+    yAxis: {
+      axisLabel: {
+        color: palette.subtle,
+        fontSize: 11,
+        fontWeight: 700,
+        formatter: (value: number) => formatFileSize(value, locale),
+      },
+      min: 0,
+      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.18)" } },
+      type: "value",
+    },
   };
 }
 

@@ -17,6 +17,7 @@
     "@simplewebauthn/browser": "^13.3.0",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.7",
+    "echarts": "^6.1.0",
     "framer-motion": "^12.23.24",
     "ldrs": "^1.1.9",
     "lucide-react": "^1.17.0",

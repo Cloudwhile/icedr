@@ -22,6 +22,10 @@ export function isDownloadOnlyFile(item: DriveItem) {
   return Boolean(item.previewCapability?.downloadOnly);
 }
 
+export function canOpenFilePreview(item: DriveItem) {
+  return getFileOpenWithOptions(item).length > 0;
+}
+
 export function isFileOpenWithAvailable(item: DriveItem, openWith: FileOpenWithApp | null | undefined) {
   if (!openWith) return false;
   return getFileOpenWithOptions(item).some((option) => option.value === openWith);

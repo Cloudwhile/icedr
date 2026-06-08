@@ -1,18 +1,21 @@
 "use client";
 
-import { Avatar } from "@heroui/react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useMemo, useRef, useState } from "react";
 import { AppInput } from "@/components/ui/app-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { AvatarCropDialog } from "@/components/ui/avatar-crop-dialog";
-import { showAppToast } from "@/components/ui/app-toast";
+import { AppUserAvatar } from "@/components/ui/app-user-avatar";
+import { showAppToast } from "@/components/ui/app-toast-store";
 import { useTranslations } from "@/i18n/react";
 import { formatFileSize, getIntlLocale, type LanguageOption, type Locale, type Palette, type ThemePreference } from "@/features/file/model";
 import { updateCurrentUserProfile, type AuthUser, type StorageUsage } from "@/lib/drive-api";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 
 type UserSettingsTab = "profile" | "preferences" | "security" | "storage";
+type UserSettingsNavigationItem =
+  | { enabled: true; icon: ReactNode; id: UserSettingsTab; labelKey: string }
+  | { enabled: false; icon: ReactNode; key: string; labelKey: string };
 
 export type DriveSettingsWorkspaceProps = {
   currentUser: AuthUser | null;
@@ -30,11 +33,17 @@ export type DriveSettingsWorkspaceProps = {
   timeZonePreference: string;
 };
 
-const settingsTabs: Array<{ icon: ReactNode; id: UserSettingsTab; labelKey: string }> = [
-  { icon: <LocalIcon name="user_avatar" size={15} />, id: "profile", labelKey: "settings.accountSettings" },
-  { icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.preferences" },
-  { icon: <LocalIcon name="lock" size={15} />, id: "security", labelKey: "settings.loginSecurity" },
-  { icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageSpace" },
+const settingsTabs: UserSettingsNavigationItem[] = [
+  { enabled: true, icon: <LocalIcon name="user_avatar" size={15} />, id: "profile", labelKey: "settings.accountSettings" },
+  { enabled: true, icon: <LocalIcon name="shield" size={15} />, id: "security", labelKey: "settings.securitySettings" },
+  { enabled: false, icon: <LocalIcon name="notification" size={15} />, key: "notifications", labelKey: "settings.notificationSettings" },
+  { enabled: true, icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.appearanceSettings" },
+  { enabled: true, icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageManagement" },
+  { enabled: false, icon: <LocalIcon name="upload" size={15} />, key: "transfers", labelKey: "settings.transferSettings" },
+  { enabled: false, icon: <LocalIcon name="lock" size={15} />, key: "privacy", labelKey: "settings.privacySettings" },
+  { enabled: false, icon: <LocalIcon name="trash" size={15} />, key: "trash", labelKey: "settings.trashSettings" },
+  { enabled: false, icon: <LocalIcon name="abc" size={15} />, key: "shortcuts", labelKey: "settings.shortcutSettings" },
+  { enabled: false, icon: <LocalIcon name="info" size={15} />, key: "about", labelKey: "settings.aboutApp" },
 ];
 
 export function DriveSettingsWorkspace({
@@ -64,14 +73,17 @@ export function DriveSettingsWorkspace({
       <div className="drive-settings-user">
         <div className="drive-settings-tab-list" role="tablist" aria-label={t("settings.userSettings")}>
           {settingsTabs.map((tab) => {
-            const active = selectedUserTab === tab.id;
+            const active = tab.enabled && selectedUserTab === tab.id;
             return (
               <button
                 aria-selected={active}
+                aria-disabled={!tab.enabled}
                 className="drive-settings-tab"
                 data-active={active ? "true" : undefined}
-                key={tab.id}
-                onClick={() => setSelectedUserTab(tab.id)}
+                data-muted={!tab.enabled ? "true" : undefined}
+                disabled={!tab.enabled}
+                key={tab.enabled ? tab.id : tab.key}
+                onClick={tab.enabled ? () => setSelectedUserTab(tab.id) : undefined}
                 role="tab"
                 type="button"
               >
@@ -163,7 +175,6 @@ function UserProfileSettings({
   const roleLabel = currentUser?.role === "admin" ? t("settings.roleAdmin") : t("settings.roleMember");
   const registeredAt = formatUserDate(currentUser?.createdAt, locale, timeZone);
   const emailBoundLabel = currentUser?.email ? t("settings.bound") : t("settings.notConfigured");
-  const passkeyTone = currentUser ? "secure" : undefined;
 
   const chooseAvatar = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -222,12 +233,13 @@ function UserProfileSettings({
               </ToolButton>
             )} />
             <div className="drive-settings-profile-hero">
-              <Avatar className="drive-settings-profile-avatar" size="lg">
-                {currentUser?.avatarUrl ? <Avatar.Image alt={displayName} src={currentUser.avatarUrl} /> : null}
-                <Avatar.Fallback className="drive-settings-avatar-fallback">
-                  <LocalIcon name="user_avatar" size={36} color={palette.primaryHover} />
-                </Avatar.Fallback>
-              </Avatar>
+              <AppUserAvatar
+                className="drive-settings-profile-avatar"
+                fallbackClassName="drive-settings-avatar-fallback"
+                label={displayName}
+                size="lg"
+                src={currentUser?.avatarUrl}
+              />
               <div className="drive-settings-profile-copy">
                 <span className="drive-settings-profile-title icedr-truncate">{displayName}</span>
                 <span className="icedr-truncate">{currentUser?.email ?? "--"}</span>
@@ -295,12 +307,13 @@ function UserProfileSettings({
             <SettingsPanelHeader icon="user_avatar" title={t("settings.avatar")} />
             <div className="drive-settings-avatar-wrap">
               <div className="drive-settings-avatar-preview">
-                <Avatar className="drive-settings-avatar" size="lg">
-                  {currentUser?.avatarUrl ? <Avatar.Image alt={displayName} src={currentUser.avatarUrl} /> : null}
-                  <Avatar.Fallback className="drive-settings-avatar-fallback">
-                    <LocalIcon name="user_avatar" size={48} color={palette.primaryHover} />
-                  </Avatar.Fallback>
-                </Avatar>
+                <AppUserAvatar
+                  className="drive-settings-avatar"
+                  fallbackClassName="drive-settings-avatar-fallback"
+                  label={displayName}
+                  size="lg"
+                  src={currentUser?.avatarUrl}
+                />
                 <ToolButton className="drive-settings-avatar-camera" disabled={!currentUser} isPending={avatarSaving} label={t("settings.avatarChoose")} palette={palette} onClick={() => avatarInputRef.current?.click()} visual="surface">
                   <LocalIcon name="image" size={16} />
                 </ToolButton>
@@ -323,13 +336,6 @@ function UserProfileSettings({
               <SettingsInfoRow label={t("auth.email")} tone={currentUser?.email ? "secure" : undefined} value={currentUser?.email ?? "--"} />
               <SettingsInfoRow label={t("settings.userGroup")} tone={currentUser ? "secure" : undefined} value={roleLabel} />
               <SettingsInfoRow label={t("settings.registeredAt")} value={registeredAt} />
-            </div>
-          </section>
-          <section className="drive-settings-side-panel">
-            <SettingsPanelHeader icon="shield" title={t("settings.loginSecurity")} />
-            <div className="drive-settings-action-list">
-              <SettingsAction icon="lock" label={t("settings.passwordSecurity")} />
-              <SettingsAction icon="key" label={t("settings.passkey")} value={currentUser ? t("settings.configured") : undefined} tone={passkeyTone} />
             </div>
           </section>
           <section className="drive-settings-side-panel drive-settings-account-panel">

@@ -11,10 +11,10 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-header {
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom-color: #e5eaf2;
-  min-height: 88px;
-  padding: 0 28px 0 30px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom-color: #e6edf6;
+  min-height: 72px;
+  padding: 0 28px 0 28px;
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-back {
@@ -32,8 +32,8 @@
 
 .icedr-file-preview-dialog-media .icedr-file-preview-icon {
   background: transparent;
-  height: 48px;
-  width: 48px;
+  height: 46px;
+  width: 46px;
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-title-block {
@@ -42,7 +42,7 @@
 
 .icedr-file-preview-dialog-media .icedr-file-preview-title-block strong {
   color: #111827;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 850;
   line-height: 22px;
 }
@@ -54,7 +54,14 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-actions {
-  gap: 10px;
+  gap: 9px;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button {
+  border-radius: 8px;
+  height: 38px;
+  min-width: 38px;
+  width: 38px;
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:first-child {
@@ -64,36 +71,73 @@
   color: #ffffff !important;
 }
 
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:nth-child(2) {
+  background: #ffffff !important;
+  border-color: #dfe7f2 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 10px 24px rgba(35, 56, 94, 0.04) !important;
+  color: #53627a !important;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:last-child {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #53627a !important;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-heading .icedr-tool-button,
+.icedr-file-preview-dialog-media .icedr-preview-metadata-heading .icedr-tool-button:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #53627a !important;
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:hover {
+  transform: translateY(-1px);
+}
+
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:active {
+  transform: scale(0.96);
+}
+
 .icedr-file-preview-dialog-media .icedr-file-preview-body-media {
   background: #ffffff;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-media-layout {
   background: #ffffff;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) 352px;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-media-stage {
-  background: #ffffff;
-  gap: 20px;
-  padding: 16px 42px 28px;
+  background:
+    linear-gradient(180deg, #f7faff 0, #ffffff 112px, #ffffff 100%);
+  gap: 10px;
+  padding: 10px 34px 20px;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-zoom-stage {
-  gap: 24px;
+  gap: 18px;
+  grid-template-rows: 40px minmax(0, 1fr);
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-canvas {
-  align-items: center;
-  background: #ffffff;
+  align-items: start;
+  background: transparent;
   justify-content: center;
-  padding: 0;
+  padding: 18px 0 10px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-workspace[data-mode="document"] .icedr-preview-canvas {
+  align-items: stretch;
+  padding: 4px 0 0;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-media-toolbar {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: #dfe6f0;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(35, 56, 94, 0.08);
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #dfe7f2;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02), 0 12px 28px rgba(35, 56, 94, 0.052);
   min-height: 38px;
   padding: 3px;
 }
@@ -115,16 +159,17 @@
   border: 0;
   border-radius: 8px;
   box-shadow: none;
-  max-height: calc(100dvh - 260px);
-  width: min(100%, 1120px);
+  max-height: calc(100dvh - 196px);
+  max-width: min(100%, 1072px);
+  width: fit-content;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-media-object {
   background: transparent;
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 22px 54px rgba(35, 56, 94, 0.08);
-  max-height: calc(100dvh - 270px);
-  max-width: 100%;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.018), 0 18px 48px rgba(35, 56, 94, 0.068);
+  max-height: calc(100dvh - 196px);
+  max-width: min(100%, 1072px);
   object-fit: contain;
 }
 
@@ -133,92 +178,36 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-workspace[data-mode="document"] .icedr-preview-zoom-surface {
-  max-width: min(100%, 1060px);
-  width: min(100%, 1060px);
+  max-width: min(100%, 1040px);
+  width: min(100%, 1040px);
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-document-frame,
 .icedr-file-preview-dialog-media .icedr-preview-document-shell {
   background: #ffffff;
   border: 1px solid #dfe6f0;
-  border-radius: 2px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 46px rgba(35, 56, 94, 0.075);
-  min-height: calc(100dvh - 310px);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02), 0 20px 54px rgba(35, 56, 94, 0.07);
+  min-height: calc(100dvh - 198px);
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-document-frame {
-  height: calc(100dvh - 310px);
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  gap: 18px;
-  padding: 0;
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-track {
-  gap: 16px;
-  overflow-x: auto;
-  padding: 4px 0 8px;
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-card {
-  background: #ffffff;
-  border-color: #dfe6f0;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
-  min-width: 132px;
-  padding: 6px;
-  transition: border-color 170ms var(--motion-ease-emphasized), box-shadow 210ms var(--motion-ease-emphasized), transform 210ms var(--motion-ease-emphasized);
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-card:hover {
-  border-color: #cbd7ea;
-  box-shadow: 0 14px 32px rgba(51, 71, 116, 0.08);
-  transform: translateY(-2px);
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-card:active {
-  transform: scale(0.98);
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-card[data-active="true"] {
-  border-color: #4f80ff;
-  box-shadow: 0 0 0 1px rgba(79, 128, 255, 0.32), 0 14px 32px rgba(52, 99, 239, 0.1);
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-thumb {
-  background: #f8fafc;
-  border-color: #e2e8f2;
-  border-radius: 6px;
-  height: 72px;
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-edge {
-  border-radius: 8px;
-  height: 36px;
-  width: 36px;
-}
-
-.icedr-file-preview-dialog-media .icedr-preview-strip-edge:not(:disabled):hover {
-  background: #f6f8fc;
-  transform: translateY(-1px);
+  height: calc(100dvh - 198px);
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-panel {
   background: #ffffff;
-  border-left: 1px solid #e5eaf2;
+  border-left: 1px solid #e6edf6;
   box-shadow: none;
-  padding: 0 24px 28px;
+  gap: 14px;
+  padding: 0 18px 20px;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-tabs {
   background: #ffffff;
-  border-bottom: 1px solid #dfe6f0;
-  gap: 22px;
-  min-height: 56px;
+  border-bottom: 1px solid #dfe7f2;
+  gap: 24px;
+  min-height: 52px;
   padding: 0;
   position: sticky;
   top: 0;
@@ -236,7 +225,7 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-tabs button[data-active="true"]::after {
-  background: #3463ef;
+  background: linear-gradient(90deg, #2f6df6, #6f7bf2);
   height: 2px;
 }
 
@@ -244,9 +233,9 @@
 .icedr-file-preview-dialog-media .icedr-preview-tags-card,
 .icedr-file-preview-dialog-media .icedr-preview-version-card {
   background: #ffffff;
-  border: 1px solid #dfe6f0;
+  border: 1px solid #dfe7f2;
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025), 0 14px 34px rgba(51, 71, 116, 0.045);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.008), 0 7px 20px rgba(51, 71, 116, 0.018);
   transition: border-color 180ms var(--motion-ease-emphasized), box-shadow 220ms var(--motion-ease-emphasized), transform 220ms var(--motion-ease-emphasized);
 }
 
@@ -254,8 +243,16 @@
 .icedr-file-preview-dialog-media .icedr-preview-tags-card:hover,
 .icedr-file-preview-dialog-media .icedr-preview-version-card:hover {
   border-color: #ccd8ea;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035), 0 18px 42px rgba(51, 71, 116, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.012), 0 10px 26px rgba(51, 71, 116, 0.026);
   transform: translateY(-1px);
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-card {
+  padding-inline: 12px;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-metadata-heading {
+  min-height: 74px;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-title span {
@@ -270,8 +267,8 @@
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-row {
   border-color: #edf2f8;
-  grid-template-columns: minmax(96px, 0.72fr) minmax(0, 1fr);
-  min-height: 34px;
+  grid-template-columns: minmax(88px, 0.7fr) minmax(0, 1fr);
+  min-height: 32px;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-row span {
@@ -283,9 +280,9 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-tags-list span {
-  background: #eef2ff;
-  border-color: #dbe4ff;
-  color: #4361dd;
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  border-color: #dfe7f2;
+  color: #435169;
 }
 
 .icedr-file-preview-dialog-media .icedr-preview-version-row:hover {
@@ -319,6 +316,10 @@
 
   .icedr-file-preview-dialog-media .icedr-preview-media-stage {
     padding: 14px;
+  }
+
+  .icedr-file-preview-dialog-media .icedr-preview-canvas {
+    padding-top: 10px;
   }
 
   .icedr-file-preview-dialog-media .icedr-preview-media-viewer,

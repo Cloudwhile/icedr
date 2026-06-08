@@ -57,6 +57,7 @@
   display: flex;
   justify-content: flex-start;
   min-width: 0;
+  padding-left: clamp(48px, 7vw, 112px);
   position: relative;
 }
 

@@ -32,6 +32,10 @@
     width: auto;
   }
 
+  .drive-header-search-wrap {
+    padding-left: 0;
+  }
+
   .drive-main-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -62,10 +66,6 @@
     grid-column: 1 / -1;
   }
 
-  .drive-module-stat-grid-transfers {
-    grid-template-columns: repeat(3, minmax(150px, 1fr));
-  }
-
   .drive-links-board,
   .drive-module-split,
   .drive-audit-split {
@@ -76,10 +76,6 @@
   .drive-module-side-stack {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .drive-audit-details {
-    width: 100%;
   }
 
   .drive-audit-filter-grid {
@@ -101,8 +97,7 @@
 }
 
 @media (max-width: 900px) {
-  .drive-module-stat-grid-links,
-  .drive-module-stat-grid-transfers {
+  .drive-module-stat-grid-links {
     grid-template-columns: repeat(2, minmax(150px, 1fr));
   }
 
@@ -171,6 +166,7 @@
   .drive-header-search-wrap {
     grid-column: 1 / -1;
     order: 3;
+    padding-left: 0;
   }
 
   .drive-header-secondary {
@@ -224,9 +220,10 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
-  .drive-upload-hud-actions {
-    grid-column: 1 / -1;
-    justify-content: flex-end;
+  .workspace-notification-region {
+    bottom: 14px;
+    left: 14px;
+    width: min(420px, calc(100% - 28px));
   }
 
   .drive-module-stack,
@@ -265,15 +262,9 @@
     flex: 1 1 auto;
   }
 
-  .drive-module-row-actions,
-  .drive-transfer-actions {
+  .drive-module-row-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
-    width: 100%;
-  }
-
-  .drive-transfer-progress {
-    flex: 1 1 auto;
     width: 100%;
   }
 
@@ -281,19 +272,7 @@
   .drive-link-table .drive-module-table-row,
   .drive-audit-table .drive-module-table-head,
   .drive-audit-table .drive-module-table-row {
-    min-width: 720px;
-  }
-
-  .drive-transfer-section-table .drive-module-table-head,
-  .drive-transfer-section-table .drive-module-table-row {
-    min-width: 820px;
-  }
-
-  .drive-transfer-tabs {
-    flex-wrap: nowrap;
-    gap: 18px;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    min-width: 980px;
   }
 
   .drive-module-info-row span:last-child {
@@ -330,7 +309,6 @@
 
 @media (max-width: 520px) {
   .drive-module-stat-grid-links,
-  .drive-module-stat-grid-transfers,
   .drive-settings-meta-grid,
   .drive-system-fact-grid,
   .drive-system-usage-grid,
@@ -366,14 +344,9 @@
     min-width: 680px;
   }
 
-  .drive-transfer-section-table .drive-module-table-head,
-  .drive-transfer-section-table .drive-module-table-row {
-    min-width: 820px;
-  }
-
   .drive-audit-table .drive-module-table-head,
   .drive-audit-table .drive-module-table-row {
-    min-width: 720px;
+    min-width: 980px;
   }
 
   .drive-module-meta-icon {

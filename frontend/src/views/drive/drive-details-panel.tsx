@@ -232,15 +232,20 @@ export function DetailsPanel({
                 ) : null}
               </div>
 
-              <div className="drive-details-title-block" data-motion-row>
-                <span className="drive-details-title">
-                  {displayName}
-                </span>
-                <span className="drive-details-subtitle">
-                  {displayType}
-                </span>
-              </div>
+              {multiSelect || showingDirectorySummary ? (
+                <div className="drive-details-title-block" data-motion-row>
+                  <span className="drive-details-title">
+                    {displayName}
+                  </span>
+                  <span className="drive-details-subtitle">
+                    {displayType}
+                  </span>
+                </div>
+              ) : null}
 
+              <div className="drive-details-section-title" data-motion-row>
+                <span>{t("share.quickFacts")}</span>
+              </div>
               <div className="drive-details-list" data-motion-row>
                 {detailRows.map(([label, value]) => (
                   <div key={label}>
@@ -253,37 +258,47 @@ export function DetailsPanel({
           ) : null}
 
           {activeTab === "share" ? (
-            <div className="drive-details-list" data-motion-row>
-              {shareRows.map(([label, value]) => (
-                <div key={label}>
-                  <span>{label}</span>
-                  <span>{value}</span>
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="drive-details-section-title" data-motion-row>
+                <span>{t("share.quickFacts")}</span>
+              </div>
+              <div className="drive-details-list" data-motion-row>
+                {shareRows.map(([label, value]) => (
+                  <div key={label}>
+                    <span>{label}</span>
+                    <span>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : null}
 
           {activeTab !== "versions" ? (
-            <div className="drive-details-quick-actions" data-motion-row>
-              <ToolButton disabled={!canPreview} label={t("preview.title")} palette={palette} visual="surface" onClick={() => quickActionItem && onPreviewItem?.(quickActionItem)}>
-                <LocalIcon name="visible" size={17} />
-              </ToolButton>
-              <ToolButton disabled={!canDownload} label={t("actions.download")} palette={palette} visual="surface" onClick={() => onDownloadItems?.(quickActionItems)}>
-                <LocalIcon name="download" size={17} />
-              </ToolButton>
-              <ToolButton disabled={!canShare} label={t("actions.share")} palette={palette} visual="surface" onClick={() => onShareItems?.(quickActionItems)}>
-                <LocalIcon name="share2" size={17} />
-              </ToolButton>
-              <AppMenu ariaLabel={t("actions.more")} items={quickActionMenuItems} palette={palette}>
-                <button
-                  aria-label={t("actions.more")}
-                  className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-details-more-trigger"
-                  type="button"
-                >
-                  <LocalIcon name="menu7" size={17} />
-                </button>
-              </AppMenu>
-            </div>
+            <>
+              <div className="drive-details-section-title" data-motion-row>
+                <span>{t("settings.quickActions")}</span>
+              </div>
+              <div className="drive-details-quick-actions" data-motion-row>
+                <ToolButton disabled={!canPreview} label={t("preview.title")} palette={palette} visual="surface" onClick={() => quickActionItem && onPreviewItem?.(quickActionItem)}>
+                  <LocalIcon name="visible" size={17} />
+                </ToolButton>
+                <ToolButton disabled={!canDownload} label={t("actions.download")} palette={palette} visual="surface" onClick={() => onDownloadItems?.(quickActionItems)}>
+                  <LocalIcon name="download" size={17} />
+                </ToolButton>
+                <ToolButton disabled={!canShare} label={t("actions.share")} palette={palette} visual="surface" onClick={() => onShareItems?.(quickActionItems)}>
+                  <LocalIcon name="share2" size={17} />
+                </ToolButton>
+                <AppMenu ariaLabel={t("actions.more")} items={quickActionMenuItems} palette={palette}>
+                  <button
+                    aria-label={t("actions.more")}
+                    className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-details-more-trigger"
+                    type="button"
+                  >
+                    <LocalIcon name="menu7" size={17} />
+                  </button>
+                </AppMenu>
+              </div>
+            </>
           ) : null}
 
           {activeTab === "versions" && versionItem ? (

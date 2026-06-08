@@ -15,7 +15,7 @@ import {
 import type { FileOpenWithApp } from "@/features/file/open-with";
 import { useTranslations } from "@/i18n/react";
 import { fetchFileVersions, restoreFileVersion, type FileVersionResponse } from "@/lib/drive-api";
-import { showAppToast } from "./app-toast";
+import { showAppToast } from "./app-toast-store";
 import { ItemIcon, LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
 
