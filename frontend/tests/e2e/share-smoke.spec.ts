@@ -63,9 +63,14 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
   await expect(page).toHaveURL(/\/admin\/audit$/);
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   const auditRow = page.locator(".drive-audit-table .drive-audit-row").filter({
-    hasText: /visitor.*Share downloaded.*share-smoke/,
+    hasText: /Guest Visitor.*Share downloaded.*Share link.*Download/,
   });
   await expect(auditRow).toBeVisible();
+  await expect(auditRow.locator(".drive-audit-actor-avatar")).toBeVisible();
+  await expect(auditRow).toContainText("192.168.1.45");
+  await expect(page.locator(".drive-audit-table")).not.toContainText(shareToken);
+  await expect(page.locator(".drive-audit-table")).not.toContainText(fileName);
+  await expect(page.locator(".drive-audit-table")).not.toContainText(fileId);
 });
 
 async function mockIcedrApi(page: Page) {
@@ -355,7 +360,14 @@ function auditEvent() {
     actor: "visitor",
     createdAt: now,
     id: "audit-download-smoke",
-    metadata: { source: "e2e" },
+    metadata: {
+      actorEmail: "reviewer@example.com",
+      actorName: "Guest Visitor",
+      ip: "192.168.1.45",
+      result: "success",
+      source: "e2e",
+      visitorEmail: "reviewer@example.com",
+    },
     nodeId: fileId,
     shareToken,
     target: shareToken,

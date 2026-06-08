@@ -6,6 +6,7 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const port = process.env.PLAYWRIGHT_PORT ?? "13000";
 const host = "127.0.0.1";
 const baseUrl = `http://${host}:${port}`;
+const playwrightArgs = normalizePlaywrightArgs(process.argv.slice(2));
 
 let previewProcess = null;
 
@@ -25,10 +26,14 @@ try {
     await waitForServer();
   }
 
-  const exitCode = await runCommand(pnpm, ["exec", "playwright", "test"]);
+  const exitCode = await runCommand(pnpm, ["exec", "playwright", "test", ...playwrightArgs]);
   process.exitCode = exitCode;
 } finally {
   await stopPreview();
+}
+
+function normalizePlaywrightArgs(args) {
+  return args[0] === "--" ? args.slice(1) : args;
 }
 
 async function waitForServer() {
