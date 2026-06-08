@@ -44,7 +44,7 @@ describe('SharesController', () => {
 
     expect(requireAdminSession).toHaveBeenCalledWith('Bearer admin');
     expect(requirePermission).not.toHaveBeenCalled();
-    expect(revokeShare).toHaveBeenCalledWith('share-token');
+    expect(revokeShare).toHaveBeenCalledWith('share-token', {});
   });
 
   it('does not revoke shares when admin session fails', async () => {

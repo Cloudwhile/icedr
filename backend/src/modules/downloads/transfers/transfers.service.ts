@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TransferStatus } from './transfers.dto';
-import { TransfersRepository } from './transfers.repository';
+import {
+  TransfersRepository,
+  type TransferAuditMetadata,
+} from './transfers.repository';
 
 @Injectable()
 export class TransfersService {
@@ -20,6 +23,7 @@ export class TransfersService {
     workspaceId: string;
     objectKey: string;
     name: string;
+    auditMetadata?: TransferAuditMetadata;
   }) {
     return this.transfersRepository.create({
       workspaceId: input.workspaceId,
@@ -28,14 +32,20 @@ export class TransfersService {
       type: 'upload',
       progress: 0,
       status: 'running',
+      auditMetadata: input.auditMetadata,
     });
   }
 
-  async completeTransfer(input: { transferId: string; nodeId: string }) {
+  async completeTransfer(input: {
+    transferId: string;
+    nodeId: string;
+    auditMetadata?: TransferAuditMetadata;
+  }) {
     const transfer = await this.transfersRepository.update(input.transferId, {
       status: 'completed',
       progress: 100,
       nodeId: input.nodeId,
+      auditMetadata: input.auditMetadata,
     });
     if (!transfer) throw new NotFoundException('Transfer not found');
     return transfer;
@@ -43,15 +53,19 @@ export class TransfersService {
 
   async updateTransfer(
     id: string,
-    input: { status: TransferStatus; progress?: number },
+    input: {
+      status: TransferStatus;
+      progress?: number;
+      auditMetadata?: TransferAuditMetadata;
+    },
   ) {
     const transfer = await this.transfersRepository.update(id, input);
     if (!transfer) throw new NotFoundException('Transfer not found');
     return transfer;
   }
 
-  async deleteTransfer(id: string) {
-    const deleted = await this.transfersRepository.delete(id);
+  async deleteTransfer(id: string, auditMetadata: TransferAuditMetadata = {}) {
+    const deleted = await this.transfersRepository.delete(id, auditMetadata);
     if (!deleted) throw new NotFoundException('Transfer not found');
     return { ok: true };
   }

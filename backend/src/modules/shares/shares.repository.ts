@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createAuditEvent } from '../logs/audit-events';
+import { createAuditEvent, type AuditActor } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
 import {
   Prisma,
@@ -186,10 +186,15 @@ export class SharesRepository {
     action: ShareAuditAction,
     shareToken: string,
     metadata: Record<string, unknown> = {},
+    options: { actor?: AuditActor } = {},
   ) {
     const event = createAuditEvent({
       action,
-      actor: action === 'share.created' ? 'workspace' : 'visitor',
+      actor:
+        options.actor ??
+        (action === 'share.created' || action === 'share.revoked'
+          ? 'workspace'
+          : 'visitor'),
       target: shareToken,
       workspaceId:
         (await this.findByToken(shareToken))?.workspaceId ??

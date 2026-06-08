@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthService } from '../../auth/core/auth.service';
 import {
   AuthSessionResponse,
@@ -25,7 +26,10 @@ export class SetupService {
     private readonly workspacesService: WorkspacesService,
   ) {}
 
-  async complete(dto: CompleteSetupDto): Promise<CompleteSetupResponse> {
+  async complete(
+    dto: CompleteSetupDto,
+    request?: Request,
+  ): Promise<CompleteSetupResponse> {
     await this.settingsService.assertSetupOpen();
     const databaseProfile = await this.settingsService.getDatabaseProfile();
     if (!databaseProfile.verified) {
@@ -43,7 +47,7 @@ export class SetupService {
     if (dto.mail) await this.settingsService.updateMailSettings(dto.mail);
     await this.mailService.assertReady();
 
-    const session = await this.authService.createSetupAdmin(dto.admin);
+    const session = await this.authService.createSetupAdmin(dto.admin, request);
     await this.settingsService.updateSiteSettings(dto.site ?? {});
     if (dto.oauth) await this.settingsService.updateOAuthSettings(dto.oauth);
     if (dto.passkey) {

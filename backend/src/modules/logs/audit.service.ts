@@ -4,7 +4,10 @@ import { Prisma, type AuditEvent } from '../../generated/prisma/client';
 import {
   AuditEventFilters,
   AuditEventRecord,
+  auditedActivityActions,
+  auditedActivityActionSet,
   clampAuditLimit,
+  isAuthAuditAction,
 } from './audit-events';
 
 @Injectable()
@@ -13,10 +16,18 @@ export class AuditService {
 
   async listEvents(filters: AuditEventFilters = {}) {
     const where: Prisma.AuditEventWhereInput = {};
-    if (filters.workspaceId) where.workspaceId = filters.workspaceId;
+    const actionFilter = this.resolveActionFilter(filters.action);
+    if (!actionFilter) return [];
+
+    where.action = actionFilter;
+    if (filters.workspaceId) {
+      where.OR = [
+        { workspaceId: filters.workspaceId },
+        { action: { in: auditedActivityActions.filter(isAuthAuditAction) } },
+      ];
+    }
     if (filters.shareToken) where.shareToken = filters.shareToken;
     if (filters.nodeId) where.nodeId = filters.nodeId;
-    if (filters.action) where.action = filters.action;
 
     const rows = await this.prisma.auditEvent.findMany({
       where,
@@ -25,6 +36,11 @@ export class AuditService {
     });
 
     return rows.map((row) => this.mapRow(row));
+  }
+
+  private resolveActionFilter(action?: string): Prisma.StringFilter | string {
+    if (!action) return { in: [...auditedActivityActions] };
+    return auditedActivityActionSet.has(action) ? action : '';
   }
 
   private mapRow(row: AuditEvent): AuditEventRecord {

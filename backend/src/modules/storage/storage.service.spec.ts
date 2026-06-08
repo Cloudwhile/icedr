@@ -1,4 +1,7 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { StorageReconcileRepository } from './storage-reconcile.repository';
@@ -21,6 +24,7 @@ describe('StorageService', () => {
     overrides: Partial<StorageSettings> = {},
   ): StorageSettings => ({
     distributedStorageEnabled: true,
+    quotaBytes: null,
     endpoint: '',
     region: 'us-east-1',
     bucket: '',
@@ -39,6 +43,7 @@ describe('StorageService', () => {
       get: jest.fn((key: string) => values[key]),
     } as unknown as ConfigService;
     const deleteMany = jest.fn(() => Promise.resolve({ count: 0 }));
+    const workspaceUpdate = jest.fn(() => Promise.resolve({}));
     const prisma = {
       fileNode: {
         aggregate: jest.fn(() =>
@@ -49,6 +54,31 @@ describe('StorageService', () => {
         ),
         count: jest.fn(() => Promise.resolve(0)),
         deleteMany,
+      },
+      fileVersion: {
+        aggregate: jest.fn(() =>
+          Promise.resolve({
+            _count: { _all: 0 },
+            _sum: { sizeBytes: 0n },
+          }),
+        ),
+      },
+      workspace: {
+        findUnique: jest.fn(() => Promise.resolve(null)),
+        update: workspaceUpdate,
+      },
+      user: {
+        findUnique: jest.fn(() => Promise.resolve(null)),
+        update: jest.fn(() =>
+          Promise.resolve({
+            email: 'admin@example.com',
+            id: 'user-1',
+            storageQuotaBytes: null,
+          }),
+        ),
+      },
+      auditEvent: {
+        create: jest.fn(() => Promise.resolve({})),
       },
     } as unknown as PrismaService;
     const get = jest.fn(() => Promise.resolve(baseSettings()));
@@ -77,6 +107,7 @@ describe('StorageService', () => {
       ),
       settingsRepository,
       update,
+      workspaceUpdate,
       signer,
     };
   }
@@ -239,5 +270,86 @@ describe('StorageService', () => {
       objectStorageConfigured: true,
       secretAccessKeyConfigured: true,
     });
+  });
+
+  it('updates the storage policy quota from storage settings', async () => {
+    const { service, update } = createService();
+
+    const settings = await service.updateSettings({
+      quotaBytes: 1024 * 1024 * 1024,
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quotaBytes: 1024 * 1024 * 1024,
+      }),
+    );
+    expect(settings.quotaBytes).toBe(1024 * 1024 * 1024);
+  });
+
+  it('rejects local storage policy quotas above the current filesystem capacity', async () => {
+    const { service, update } = createService();
+
+    await expect(
+      service.updateSettings({
+        distributedStorageEnabled: false,
+        quotaBytes: Number.MAX_SAFE_INTEGER,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('returns storage policy quota in usage responses', async () => {
+    const { service, settingsRepository } = createService();
+    jest.spyOn(settingsRepository, 'get').mockResolvedValue({
+      ...baseSettings(),
+      quotaBytes: 2048,
+    });
+
+    const usage = await service.getUsage('workspace-default');
+
+    expect(usage.quotaBytes).toBe(2048);
+    expect(usage.quotaSource).toBe('policy');
+    expect(usage.storagePolicyQuotaBytes).toBe(2048);
+  });
+
+  it('uses the lower quota when workspace quota is above the storage policy quota', async () => {
+    const { prisma, service, settingsRepository } = createService();
+    jest.spyOn(settingsRepository, 'get').mockResolvedValue({
+      ...baseSettings(),
+      quotaBytes: 1000,
+    });
+    jest.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
+      createdAt: new Date(),
+      defaultUserQuotaBytes: null,
+      id: 'workspace-default',
+      memberCount: 1,
+      name: 'Default Workspace',
+      quotaBytes: 2000n,
+      rootNodeId: 'root',
+      updatedAt: new Date(),
+    });
+
+    const usage = await service.getUsage('workspace-default');
+
+    expect(usage.quotaBytes).toBe(1000);
+    expect(usage.quotaSource).toBe('policy');
+    expect(usage.storagePolicyQuotaBytes).toBe(1000);
+  });
+
+  it('rejects workspace quotas above the storage policy quota', async () => {
+    const { service, settingsRepository, workspaceUpdate } = createService();
+    jest.spyOn(settingsRepository, 'get').mockResolvedValue({
+      ...baseSettings(),
+      quotaBytes: 1000,
+    });
+
+    await expect(
+      service.updateWorkspaceQuota({
+        quotaBytes: 2000,
+        workspaceId: 'workspace-default',
+      }),
+    ).rejects.toThrow('Workspace quota exceeds the storage policy quota');
+    expect(workspaceUpdate).not.toHaveBeenCalled();
   });
 });

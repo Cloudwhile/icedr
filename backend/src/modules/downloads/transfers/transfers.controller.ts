@@ -7,8 +7,11 @@ import {
   Param,
   Patch,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import { createRequestAuditMetadata } from '../../../common/security/audit-metadata';
 import { AdminGuardService } from '../../../common/security/admin-guard.service';
 import { UpdateTransferDto } from './transfers.dto';
 import { TransfersService } from './transfers.service';
@@ -39,22 +42,34 @@ export class TransfersController {
     @Param('id') id: string,
     @Body() dto: UpdateTransferDto,
     @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'transfer', 'write');
-    return this.transfersService.updateTransfer(id, dto);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'transfer',
+      'write',
+    );
+    return this.transfersService.updateTransfer(id, {
+      ...dto,
+      auditMetadata: createRequestAuditMetadata(session, request),
+    });
   }
 
   @Delete(':id')
   async deleteTransfer(
     @Param('id') id: string,
     @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
   ) {
-    await this.adminGuard.requirePermission(
+    const session = await this.adminGuard.requirePermission(
       authorization,
       'transfer',
       'delete',
     );
-    return this.transfersService.deleteTransfer(id);
+    return this.transfersService.deleteTransfer(
+      id,
+      createRequestAuditMetadata(session, request),
+    );
   }
 }
 

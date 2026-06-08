@@ -130,14 +130,19 @@ function createService(options: { userLocale?: string | null } = {}) {
   const mailService = {
     sendPasswordReset: jest.fn(() => Promise.resolve()),
   };
+  const authAuditService = {
+    recordSuccess: jest.fn(() => Promise.resolve()),
+  };
   const service = new AuthService(
     repository as never,
     settingsService as never,
     config as never,
     mailService as never,
+    authAuditService as never,
   );
 
   return {
+    authAuditService,
     get resetRecord() {
       return resetRecord;
     },
@@ -174,7 +179,7 @@ describe('AuthService', () => {
   });
 
   it('uses one safe credential error for unknown email and wrong password', async () => {
-    const { service } = createService();
+    const { authAuditService, service } = createService();
 
     await expectInvalidCredentials(
       service.login({
@@ -187,6 +192,22 @@ describe('AuthService', () => {
         email: 'user@example.com',
         password: 'wrong-password',
       }),
+    );
+    expect(authAuditService.recordSuccess).not.toHaveBeenCalled();
+  });
+
+  it('records successful local sign-ins', async () => {
+    const { authAuditService, service } = createService();
+
+    const session = await service.login({
+      email: 'user@example.com',
+      password: 'old-password',
+    });
+
+    expect(authAuditService.recordSuccess).toHaveBeenCalledWith(
+      'auth.login',
+      session.user,
+      expect.objectContaining({ method: 'local' }),
     );
   });
 
@@ -248,7 +269,8 @@ describe('AuthService', () => {
   });
 
   it('resets the password with a valid code and signs in with a new session', async () => {
-    const { mailService, repository, service } = createService();
+    const { authAuditService, mailService, repository, service } =
+      createService();
 
     await service.requestPasswordReset({
       email: 'user@example.com',
@@ -283,6 +305,11 @@ describe('AuthService', () => {
       expect.objectContaining({
         userId: 'user_1',
       }),
+    );
+    expect(authAuditService.recordSuccess).toHaveBeenCalledWith(
+      'auth.password_reset_completed',
+      session.user,
+      expect.objectContaining({ method: 'local' }),
     );
     expect(session.token).toMatch(/^sess_/);
   });

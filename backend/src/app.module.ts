@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuditModule } from './modules/logs/audit.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthCoreModule } from './modules/auth/core/auth-core.module';
 import { AuthModule } from './modules/auth/core/auth.module';
 import configuration from './config/configuration';
 import { DatabaseModule } from './database/database.module';
@@ -27,6 +28,7 @@ import { WorkspacesModule } from './modules/admin/workspaces/workspaces.module';
       envFilePath: ['.env.local', '.env', '../.env'],
     }),
     DatabaseModule,
+    AuthCoreModule,
     SettingsModule,
     SetupModule,
     MailModule,

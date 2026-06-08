@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 
 export type StorageSettings = {
   distributedStorageEnabled: boolean;
+  quotaBytes: number | null;
   endpoint: string;
   region: string;
   bucket: string;
@@ -16,6 +17,13 @@ export type StorageSettingsResponse = Omit<
   StorageSettings,
   'secretAccessKey'
 > & {
+  physicalAvailableBytes: number | null;
+  physicalCapacityBytes: number | null;
+  physicalCapacityCheckedAt: string;
+  physicalCapacityKnown: boolean;
+  physicalCapacityReason: string | null;
+  physicalQuotaLimitBytes: number | null;
+  storageProvider: 'local' | 'object';
   objectStorageConfigured: boolean;
   secretAccessKeyConfigured: boolean;
   localRoot: string;
@@ -37,6 +45,8 @@ export type StorageUsageResponse = {
   fileCount: number;
   folderCount: number;
   quotaBytes: number | null;
+  quotaSource: 'policy' | 'unlimited' | 'workspace';
+  storagePolicyQuotaBytes: number | null;
   trashBytes: number;
   trashFileCount: number;
   usagePercent: number | null;
@@ -71,6 +81,12 @@ export class UpdateStorageSettingsDto {
   @IsBoolean()
   @IsOptional()
   distributedStorageEnabled?: boolean;
+
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  @IsOptional()
+  quotaBytes?: number | null;
 
   @IsString()
   @IsOptional()

@@ -32,6 +32,32 @@ export type AuditEventFilters = {
   limit?: number;
 };
 
+export const auditedActivityActions = [
+  'auth.login',
+  'auth.registered',
+  'auth.password_reset_completed',
+  'file.upload_completed',
+  'file.download_started',
+  'file.folder_created',
+  'file.moved',
+  'file.batch_moved',
+  'file.copied',
+  'file.archived',
+  'file.batch_archived',
+  'file.permanently_deleted',
+  'share.created',
+  'share.revoked',
+  'share.download_started',
+  'transfer.completed',
+  'transfer.failed',
+] as const;
+
+export const auditedActivityActionSet = new Set<string>(auditedActivityActions);
+
+export function isAuthAuditAction(action: string) {
+  return action.startsWith('auth.');
+}
+
 export function createAuditEvent(input: AuditEventInput): AuditEventRecord {
   return {
     id: `audit_${randomBytes(12).toString('base64url')}`,

@@ -33,7 +33,8 @@ import {
   type ShareDownloadPolicyDecision,
 } from './share-download-policy';
 
-type VisitorAuditMetadata = {
+type AuditMetadata = Record<string, unknown>;
+type VisitorAuditMetadata = AuditMetadata & {
   ip?: string;
   userAgent?: string;
 };
@@ -48,10 +49,15 @@ export class SharesService {
     private readonly mailService: MailService,
   ) {}
 
-  async createShare(dto: CreateShareDto) {
+  async createShare(dto: CreateShareDto, auditMetadata: AuditMetadata = {}) {
     const normalizedDto = await this.applyWorkspaceSharePolicy(dto);
     const share = await this.sharesRepository.create(normalizedDto);
-    await this.sharesRepository.recordAudit('share.created', share.token);
+    await this.sharesRepository.recordAudit(
+      'share.created',
+      share.token,
+      auditMetadata,
+      { actor: 'workspace' },
+    );
     return share;
   }
 
@@ -78,7 +84,10 @@ export class SharesService {
       visitor,
     });
     await this.sharesRepository.recordAudit('share.access_code_sent', token, {
+      actorEmail: dto.email,
+      actorName: dto.email,
       email: dto.email,
+      visitorEmail: dto.email,
       ...visitor,
     });
 
@@ -114,8 +123,11 @@ export class SharesService {
       'share.access_session_created',
       token,
       {
+        actorEmail: dto.email,
+        actorName: dto.email,
         identityType: 'email',
         email: dto.email,
+        visitorEmail: dto.email,
         policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
         ...visitor,
       },
@@ -123,15 +135,24 @@ export class SharesService {
     return session;
   }
 
-  async createVerifiedOAuthAccessSession(token: string) {
+  async createVerifiedOAuthAccessSession(
+    token: string,
+    visitor: VisitorAuditMetadata = {},
+  ) {
     const share = await this.requireActiveShare(token);
-    const session = await this.createAccessSession(share, 'ica');
+    const session = await this.createAccessSession(
+      share,
+      'ica',
+      undefined,
+      visitor,
+    );
     await this.sharesRepository.recordAudit(
       'share.access_session_created',
       token,
       {
         identityType: 'ica',
         policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
+        ...visitor,
       },
     );
     return session;
@@ -151,11 +172,16 @@ export class SharesService {
     return this.withShareItems(share);
   }
 
-  async revokeShare(token: string) {
+  async revokeShare(token: string, auditMetadata: AuditMetadata = {}) {
     const share = await this.sharesRepository.revoke(token);
     if (!share) throw new NotFoundException('Share link not found');
 
-    await this.sharesRepository.recordAudit('share.revoked', token);
+    await this.sharesRepository.recordAudit(
+      'share.revoked',
+      token,
+      auditMetadata,
+      { actor: 'workspace' },
+    );
     return share;
   }
 
@@ -198,6 +224,7 @@ export class SharesService {
       'share.download_intent_created',
       token,
       {
+        ...this.getShareIdentityAuditMetadata(accessSession?.email),
         nodeId,
         identityType,
         email: accessSession?.email,
@@ -247,6 +274,7 @@ export class SharesService {
         );
         if (policyDecision.remainingDownloads === 0) return null;
         return {
+          ...this.getShareIdentityAuditMetadata(intent.email),
           nodeId,
           identityType: intent.identityType,
           email: intent.email,
@@ -297,10 +325,15 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
   ) {
     const { share } = await this.requireShareNode(token, nodeId, 'preview');
-    await this.requireAccessSessionIfNeeded(share, accessSessionId);
+    const accessSession = await this.requireAccessSessionIfNeeded(
+      share,
+      accessSessionId,
+    );
     const intent = await this.fileNodesService.createPreviewIntent(nodeId);
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
+      ...this.getShareIdentityAuditMetadata(accessSession?.email),
       nodeId,
+      identityType: accessSession?.identityType ?? 'anonymous',
       ...visitor,
     });
 
@@ -500,6 +533,16 @@ export class SharesService {
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     };
     return this.sharesRepository.createAccessSession({ ...session, visitor });
+  }
+
+  private getShareIdentityAuditMetadata(email?: string) {
+    const normalizedEmail = email?.trim();
+    if (!normalizedEmail) return {};
+    return {
+      actorEmail: normalizedEmail,
+      actorName: normalizedEmail,
+      visitorEmail: normalizedEmail,
+    };
   }
 
   private async assertShareViewLimit(share: ShareResponse) {

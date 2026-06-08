@@ -310,6 +310,7 @@ model UploadSessionPart {
 model StorageSetting {
   settingKey                String   @id @map("setting_key")
   distributedStorageEnabled Boolean  @map("distributed_storage_enabled")
+  quotaBytes                BigInt?  @map("quota_bytes")
   endpoint                  String   @default("")
   region                    String   @default("us-east-1")
   bucket                    String   @default("")
