@@ -1,0 +1,317 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-x86_64:
+    name: Build windows-x86_64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test backend
+        run: pnpm --filter backend test
+
+      - name: Package binary
+        run: pnpm package:binary -- --skip-build
+        env:
+          ICEDR_BINARY_PLATFORM: windows-x86_64
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icedr-windows-x86_64
+          path: dist/binaries/icedr_*_windows-x86_64*
+          if-no-files-found: error
+
+  build-windows-arm64:
+    name: Build windows-arm64
+    runs-on: windows-11-arm
+    needs: build-windows-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test backend
+        run: pnpm --filter backend test
+
+      - name: Package binary
+        run: pnpm package:binary -- --skip-build
+        env:
+          ICEDR_BINARY_PLATFORM: windows-arm64
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icedr-windows-arm64
+          path: dist/binaries/icedr_*_windows-arm64*
+          if-no-files-found: error
+
+  build-linux-x86_64:
+    name: Build linux-x86_64
+    runs-on: ubuntu-24.04
+    needs: build-windows-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test backend
+        run: pnpm --filter backend test
+
+      - name: Package binary
+        run: pnpm package:binary -- --skip-build
+        env:
+          ICEDR_BINARY_PLATFORM: linux-x86_64
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icedr-linux-x86_64
+          path: dist/binaries/icedr_*_linux-x86_64*
+          if-no-files-found: error
+
+  build-linux-arm64:
+    name: Build linux-arm64
+    runs-on: ubuntu-24.04-arm
+    needs: build-linux-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test backend
+        run: pnpm --filter backend test
+
+      - name: Package binary
+        run: pnpm package:binary -- --skip-build
+        env:
+          ICEDR_BINARY_PLATFORM: linux-arm64
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icedr-linux-arm64
+          path: dist/binaries/icedr_*_linux-arm64*
+          if-no-files-found: error
+
+  build-macos-x86_64:
+    name: Build macos-x86_64
+    runs-on: macos-15-intel
+    needs: build-linux-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test backend
+        run: pnpm --filter backend test
+
+      - name: Package binary
+        run: pnpm package:binary -- --skip-build
+        env:
+          ICEDR_BINARY_PLATFORM: macos-x86_64
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icedr-macos-x86_64
+          path: dist/binaries/icedr_*_macos-x86_64*
+          if-no-files-found: error
+
+  build-macos-arm64:
+    name: Build macos-arm64
+    runs-on: macos-15
+    needs: build-macos-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test backend
+        run: pnpm --filter backend test
+
+      - name: Package binary
+        run: pnpm package:binary -- --skip-build
+        env:
+          ICEDR_BINARY_PLATFORM: macos-arm64
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icedr-macos-arm64
+          path: dist/binaries/icedr_*_macos-arm64*
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows-x86_64
+      - build-windows-arm64
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos-x86_64
+      - build-macos-arm64
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Generate checksums
+        run: node scripts/create-release-checksums.cjs --input=release-assets --output=dist/release
+
+      - name: Build release notes
+        run: node scripts/create-release-notes.cjs --details=release_details.md --checksums=dist/release --output=dist/release/RELEASE_NOTES.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: dist/release/RELEASE_NOTES.md
+          files: |
+            release-assets/**/icedr_*
+            dist/release/MD5SUMS.txt
+            dist/release/SHA256SUMS.txt
+            dist/release/release-manifest.json
+          prerelease: ${{ contains(github.ref_name, '-') }}
