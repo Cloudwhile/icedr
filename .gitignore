@@ -1,6 +1,7 @@
 node_modules
 .next
 dist
+build
 coverage
 .env
 .env.local
@@ -25,3 +26,4 @@ data/
 designpics/
 test*/
 frontend/visual-artifacts/
+private-docs/
