@@ -2,12 +2,16 @@
   "name": "icedr",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "packageManager": "pnpm@10.18.1",
   "scripts": {
     "dev": "concurrently -n web,api -c blue,green \"pnpm --filter frontend dev\" \"pnpm --filter backend start:dev\"",
     "dev:app": "pnpm --filter frontend dev",
     "dev:api": "pnpm --filter backend start:dev",
     "build": "pnpm --filter frontend build && pnpm --filter backend build",
+    "package:binary": "node scripts/package-binary.cjs",
     "lint": "pnpm --filter frontend lint && pnpm --filter backend lint",
     "test": "pnpm --filter backend test && pnpm --filter frontend test",
     "test:e2e": "pnpm --filter frontend test:e2e",
@@ -15,6 +19,8 @@
     "infra:down": "docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml down"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "esbuild": "0.27.7",
+    "postject": "1.0.0-alpha.6"
   }
 }

@@ -33,6 +33,23 @@ describe('AppController', () => {
   });
 
   describe('system overview', () => {
+    it('preserves explicit prerelease app versions', () => {
+      const previousVersion = process.env.APP_VERSION;
+      process.env.APP_VERSION = '1.2.3-beta.1';
+
+      try {
+        expect(new AppService().getSystemOverview().appVersion).toBe(
+          '1.2.3-beta.1',
+        );
+      } finally {
+        if (previousVersion === undefined) {
+          delete process.env.APP_VERSION;
+        } else {
+          process.env.APP_VERSION = previousVersion;
+        }
+      }
+    });
+
     it('returns protected runtime and host information for admins', async () => {
       const overview = await appController.getSystemOverview('Bearer token');
 

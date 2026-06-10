@@ -91,6 +91,14 @@ export default () => {
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? '',
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
       localRoot: process.env.LOCAL_STORAGE_ROOT ?? 'data/local-files',
+      metricsBearerToken:
+        process.env.MINIO_METRICS_BEARER_TOKEN ??
+        process.env.S3_METRICS_BEARER_TOKEN ??
+        '',
+      metricsEndpoint:
+        process.env.MINIO_METRICS_ENDPOINT ??
+        process.env.S3_METRICS_ENDPOINT ??
+        '',
       quotaBytes: readOptionalNumber(process.env.STORAGE_QUOTA_BYTES),
     },
     share: {

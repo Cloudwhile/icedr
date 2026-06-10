@@ -1178,14 +1178,16 @@ export class StorageService {
   ): Promise<StoragePhysicalCapacity> {
     const checkedAt = new Date().toISOString();
     if (settings.distributedStorageEnabled) {
-      return {
-        availableBytes: null,
-        capacityBytes: null,
-        checkedAt,
-        known: false,
-        quotaLimitBytes: null,
-        reason: 'object-storage-capacity-unavailable',
-      };
+      return (
+        (await this.getObjectStoragePhysicalCapacity(checkedAt)) ?? {
+          availableBytes: null,
+          capacityBytes: null,
+          checkedAt,
+          known: false,
+          quotaLimitBytes: null,
+          reason: 'object-storage-capacity-unavailable',
+        }
+      );
     }
 
     try {
@@ -1217,6 +1219,116 @@ export class StorageService {
         reason: 'local-capacity-unavailable',
       };
     }
+  }
+
+  private async getObjectStoragePhysicalCapacity(
+    checkedAt: string,
+  ): Promise<StoragePhysicalCapacity | null> {
+    const metricsEndpoint = this.getMetricsEndpoint();
+    if (!metricsEndpoint) return null;
+
+    try {
+      const metrics = await this.fetchObjectStorageMetrics(metricsEndpoint);
+      const capacityBytes = this.readFirstPrometheusMetric(metrics, [
+        'minio_cluster_capacity_usable_total_bytes',
+        'minio_cluster_health_capacity_usable_total_bytes',
+        'minio_cluster_capacity_raw_total_bytes',
+        'minio_cluster_health_capacity_raw_total_bytes',
+      ]);
+      const availableBytes = this.readFirstPrometheusMetric(metrics, [
+        'minio_cluster_capacity_usable_free_bytes',
+        'minio_cluster_health_capacity_usable_free_bytes',
+        'minio_cluster_capacity_raw_free_bytes',
+        'minio_cluster_health_capacity_raw_free_bytes',
+      ]);
+      if (
+        capacityBytes === null ||
+        availableBytes === null ||
+        capacityBytes <= 0
+      ) {
+        return null;
+      }
+
+      const boundedAvailableBytes = Math.min(
+        Math.max(0, availableBytes),
+        capacityBytes,
+      );
+      return {
+        availableBytes: boundedAvailableBytes,
+        capacityBytes,
+        checkedAt,
+        known: true,
+        quotaLimitBytes: capacityBytes,
+        reason: null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private getMetricsEndpoint() {
+    const metricsEndpoint = this.config
+      .get<string>('storage.metricsEndpoint')
+      ?.trim();
+    if (!metricsEndpoint) return null;
+
+    try {
+      return new URL(metricsEndpoint).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchObjectStorageMetrics(metricsEndpoint: string) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    const metricsBearerToken = this.config
+      .get<string>('storage.metricsBearerToken')
+      ?.trim();
+
+    try {
+      const response = await fetch(metricsEndpoint, {
+        headers: {
+          Accept: 'text/plain',
+          ...(metricsBearerToken
+            ? { Authorization: `Bearer ${metricsBearerToken}` }
+            : {}),
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) return '';
+      return response.text();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private readFirstPrometheusMetric(metrics: string, names: string[]) {
+    for (const name of names) {
+      const value = this.readPrometheusMetric(metrics, name);
+      if (value !== null) return value;
+    }
+    return null;
+  }
+
+  private readPrometheusMetric(metrics: string, name: string) {
+    let total = 0;
+    let matched = false;
+    for (const line of metrics.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (
+        !trimmed ||
+        trimmed.startsWith('#') ||
+        !(trimmed.startsWith(`${name} `) || trimmed.startsWith(`${name}{`))
+      ) {
+        continue;
+      }
+      const value = Number(trimmed.split(/\s+/).at(-1));
+      if (!Number.isFinite(value) || value < 0) continue;
+      total += value;
+      matched = true;
+    }
+    return matched ? total : null;
   }
 
   private async resolveExistingCapacityPath(path: string): Promise<string> {

@@ -29,7 +29,7 @@ import {
   type SystemOverview,
 } from "@/lib/drive-api";
 import { formatFileSize, getIntlLocale, type Locale, type Palette } from "@/features/file/model";
-import { formatSystemDuration, formatSystemOperatingSystem } from "./drive-formatters";
+import { formatStorageBackendSpace, formatSystemDuration, formatSystemOperatingSystem, getStorageBackendUsagePercent } from "./drive-formatters";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 
 export type DriveSystemSettingsProps = {
@@ -178,14 +178,15 @@ export function DriveSystemSettings({
 
   const storagePolicyRows = useMemo(() => [
     { label: t("settings.storagePolicyQuota"), value: storageSettings.quotaBytes ? formatFileSize(storageSettings.quotaBytes, locale) : t("settings.unlimitedQuota") },
-    { label: t("settings.storagePhysicalLimit"), value: storageSettings.physicalQuotaLimitBytes ? formatFileSize(storageSettings.physicalQuotaLimitBytes, locale) : t("settings.capacityUnknown") },
-    { label: t("settings.storageAvailableSpace"), value: storageSettings.physicalAvailableBytes ? formatFileSize(storageSettings.physicalAvailableBytes, locale) : t("settings.capacityUnknown") },
+    { label: t("settings.storagePhysicalLimit"), value: storageSettings.physicalQuotaLimitBytes !== null ? formatFileSize(storageSettings.physicalQuotaLimitBytes, locale) : t("settings.capacityUnknown") },
+    { label: t("settings.storageAvailableSpace"), value: storageSettings.physicalAvailableBytes !== null ? formatFileSize(storageSettings.physicalAvailableBytes, locale) : t("settings.capacityUnknown") },
     { label: t("settings.storageProvider"), value: storageSettings.storageProvider === "local" ? t("settings.localStorage") : t("settings.objectStorage") },
   ], [locale, storageSettings.physicalAvailableBytes, storageSettings.physicalQuotaLimitBytes, storageSettings.quotaBytes, storageSettings.storageProvider, t]);
   const storageProviderLabel = storageSettings.storageProvider === "local" ? t("settings.localStorage") : t("settings.objectStorage");
-  const storageUsageLimitLabel = storageUsage
-    ? formatStorageUsageLimit(storageUsage, storageSettings, locale, t)
-    : "--";
+  const storageSpaceLabel = formatStorageBackendSpace(storageSettings, locale, t);
+  const storagePhysicalPercent = getStorageBackendUsagePercent(storageSettings);
+  const storagePhysicalPercentLabel = storagePhysicalPercent !== null ? formatPercent(storagePhysicalPercent, locale) : "--";
+  const usedStorageLabel = storageUsage ? formatFileSize(storageUsage.usedBytes, locale) : "--";
 
   const getValidatedQuotaDraft = () => {
     const quotaBytes = parseQuotaBytes(quotaDraft.value, quotaDraft.unit);
@@ -556,10 +557,11 @@ export function DriveSystemSettings({
       <aside className="drive-system-settings-side">
         <SettingsSideCard icon="shield" title={t("settings.systemStatus")}>
           <SettingsSideRow label={t("settings.runningStatus")} value={t("setup.toggleEnabled")} tone="secure" />
-          <SettingsSideRow label={t("settings.storageUsagePercent")} value={storageUsage ? formatPercent(storageUsage.usagePercent, locale) : "--"} />
-          <SettingsSideRow label={t("settings.usedStorage")} value={storageUsageLimitLabel} />
+          <SettingsSideRow label={t("settings.storageUsagePercent")} value={storagePhysicalPercentLabel} />
+          <SettingsSideRow label={t("settings.storageSpace")} value={storageSpaceLabel} />
+          <SettingsSideRow label={t("settings.usedStorage")} value={usedStorageLabel} />
           <SettingsSideRow label={t("settings.storageProvider")} value={storageProviderLabel} />
-          <SettingsSideRow label={t("settings.storageAvailableSpace")} value={storageSettings.physicalAvailableBytes ? formatFileSize(storageSettings.physicalAvailableBytes, locale) : "--"} />
+          <SettingsSideRow label={t("settings.storageAvailableSpace")} value={storageSettings.physicalAvailableBytes !== null ? formatFileSize(storageSettings.physicalAvailableBytes, locale) : "--"} />
           <SettingsSideRow label={t("settings.capacityCheckedAt")} value={formatSystemDate(storageSettings.physicalCapacityCheckedAt, locale)} />
         </SettingsSideCard>
         <SettingsSideCard icon="refresh" title={t("settings.quickActions")}>
@@ -971,18 +973,6 @@ function formatPercent(value: number | null, locale: Locale) {
     maximumFractionDigits: 1,
     style: "percent",
   }).format(value / 100);
-}
-
-function formatStorageUsageLimit(
-  usage: StorageUsage,
-  settings: StorageSettings,
-  locale: Locale,
-  t: ReturnType<typeof useTranslations>,
-) {
-  const limitBytes = settings.quotaBytes ?? usage.quotaBytes ?? null;
-  const used = formatFileSize(usage.usedBytes, locale);
-  const limit = limitBytes === null ? t("settings.unlimitedQuota") : formatFileSize(limitBytes, locale);
-  return `${used} / ${limit}`;
 }
 
 function formatSystemDate(value: string, locale: Locale) {

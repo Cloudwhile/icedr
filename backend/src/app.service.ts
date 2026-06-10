@@ -89,12 +89,43 @@ export class AppService {
 }
 
 function readPackageVersion() {
-  try {
-    const packageJson = JSON.parse(
-      readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
-    ) as { version?: unknown };
-    return typeof packageJson.version === 'string' ? packageJson.version : '';
-  } catch {
-    return '';
+  const explicitVersion = readString(process.env.APP_VERSION);
+  if (explicitVersion) return explicitVersion;
+
+  const candidates = [
+    join(process.cwd(), 'package.json'),
+    join(process.cwd(), '..', 'package.json'),
+    join(__dirname, '..', 'package.json'),
+    join(__dirname, '..', '..', 'package.json'),
+    join(__dirname, '..', '..', '..', 'package.json'),
+  ];
+  let fallbackVersion = readString(process.env.npm_package_version);
+
+  for (const candidate of candidates) {
+    const packageVersion = readPackageVersionFile(candidate);
+    if (!packageVersion.version) continue;
+    if (packageVersion.name === 'icedr') return packageVersion.version;
+    fallbackVersion ||= packageVersion.version;
   }
+
+  return fallbackVersion;
+}
+
+function readPackageVersionFile(path: string) {
+  try {
+    const packageJson = JSON.parse(readFileSync(path, 'utf8')) as {
+      name?: unknown;
+      version?: unknown;
+    };
+    return {
+      name: readString(packageJson.name),
+      version: readString(packageJson.version),
+    };
+  } catch {
+    return { name: '', version: '' };
+  }
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
 }

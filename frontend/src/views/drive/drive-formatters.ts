@@ -1,6 +1,6 @@
 import type { useTranslations } from "@/i18n/react";
 import { formatFileSize, getIntlLocale, type Locale } from "@/features/file/model";
-import type { SystemOverview } from "@/lib/drive-api";
+import type { StorageSettings, SystemOverview } from "@/lib/drive-api";
 import type { TransferRow } from "./drive-types";
 
 type DriveTranslator = ReturnType<typeof useTranslations>;
@@ -52,6 +52,49 @@ export function formatAuditAction(action: string, t: DriveTranslator) {
 
 export function formatSystemOperatingSystem(systemOverview: SystemOverview) {
   return `${systemOverview.operatingSystem} ${systemOverview.osRelease}`.trim();
+}
+
+export function formatStorageBackendSpace(
+  storageSettings: StorageSettings | null,
+  locale: Locale,
+  t: DriveTranslator,
+) {
+  if (!storageSettings) return "--";
+  const capacityBytes = storageSettings.physicalCapacityBytes;
+  const availableBytes = storageSettings.physicalAvailableBytes;
+
+  if (capacityBytes !== null && availableBytes !== null && capacityBytes > 0) {
+    const usedBytes = Math.max(0, capacityBytes - availableBytes);
+    return `${formatFileSize(usedBytes, locale)} / ${formatFileSize(capacityBytes, locale)}`;
+  }
+
+  return t("settings.capacityUnknown");
+}
+
+export function formatStorageBackendMeta(
+  storageSettings: StorageSettings | null,
+  locale: Locale,
+  t: DriveTranslator,
+) {
+  if (!storageSettings) return "--";
+  if (storageSettings.physicalAvailableBytes !== null) {
+    return `${formatFileSize(storageSettings.physicalAvailableBytes, locale)} ${t("settings.storageAvailableSpace")}`;
+  }
+  return storageSettings.storageProvider === "object" ? t("settings.objectStorage") : t("settings.capacityUnknown");
+}
+
+export function getStorageBackendUsagePercent(storageSettings: StorageSettings | null) {
+  if (
+    !storageSettings ||
+    storageSettings.physicalCapacityBytes === null ||
+    storageSettings.physicalAvailableBytes === null ||
+    storageSettings.physicalCapacityBytes <= 0
+  ) {
+    return null;
+  }
+
+  const usedBytes = Math.max(0, storageSettings.physicalCapacityBytes - storageSettings.physicalAvailableBytes);
+  return Math.min(100, Math.round((usedBytes / storageSettings.physicalCapacityBytes) * 1000) / 10);
 }
 
 export function formatSystemDuration(seconds: number, t: DriveTranslator) {

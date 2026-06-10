@@ -31,7 +31,15 @@ import { LocalizedDriveShell } from "./drive-shell";
 import { AuditModule, getAuditActorIdentity, getAuditResult } from "./drive-modules";
 import { DriveSystemSettings } from "./drive-system-settings";
 import { ExternalShareAdminSettingsPage } from "./external-share-admin-settings";
-import { formatAbsoluteDate, formatAuditAction, formatSystemDuration, formatSystemOperatingSystem } from "./drive-formatters";
+import {
+  formatAbsoluteDate,
+  formatAuditAction,
+  formatStorageBackendMeta,
+  formatStorageBackendSpace,
+  formatSystemDuration,
+  formatSystemOperatingSystem,
+  getStorageBackendUsagePercent,
+} from "./drive-formatters";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 import "./styles/modules.css";
 import "./styles/settings.css";
@@ -126,20 +134,11 @@ function AdminOverviewPanel({
     ].some((value) => String(value ?? "").toLocaleLowerCase().includes(normalizedActivityQuery)));
   }, [auditEvents, normalizedActivityQuery, t]);
   const latestEvents = visibleActivityEvents.slice(0, 5);
-  const storageQuotaBytes = storageSettings?.quotaBytes ?? storageUsage?.storagePolicyQuotaBytes ?? storageUsage?.quotaBytes ?? null;
-  const storageLabel = storageUsage && storageQuotaBytes
-    ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${formatFileSize(storageQuotaBytes, locale)}`
-    : storageUsage
-      ? formatFileSize(storageUsage.usedBytes, locale)
-      : "--";
-  const usagePercent = storageUsage && storageQuotaBytes
-    ? Math.min(100, Math.round((storageUsage.usedBytes / storageQuotaBytes) * 1000) / 10)
-    : Math.max(0, Math.min(100, storageUsage?.usagePercent ?? 0));
-  const usagePercentLabel = storageUsage && storageQuotaBytes
-    ? `${usagePercent.toFixed(1)}%`
-    : storageUsage?.usagePercent !== null && storageUsage?.usagePercent !== undefined
-      ? `${storageUsage.usagePercent.toFixed(1)}%`
-      : t("settings.storageUsagePercent");
+  const storageLabel = formatStorageBackendSpace(storageSettings, locale, t);
+  const storageMeta = formatStorageBackendMeta(storageSettings, locale, t);
+  const storageBackendPercent = getStorageBackendUsagePercent(storageSettings);
+  const storagePercent = storageBackendPercent ?? 0;
+  const storagePercentLabel = storageBackendPercent !== null ? `${storageBackendPercent.toFixed(1)}%` : storageMeta;
   const storageBreakdownRows = useMemo(() => buildStorageOverviewRows(storageUsage, locale, t), [locale, storageUsage, t]);
   const systemResourceRows = useMemo(() => buildSystemResourceRows(systemOverview, locale, t), [locale, systemOverview, t]);
   const activityTrend = useMemo(() => buildActivityTrend(auditEvents, locale), [auditEvents, locale]);
@@ -169,7 +168,7 @@ function AdminOverviewPanel({
       <div className="admin-overview-stat-grid">
         <AdminOverviewStatCard icon="user_group" label={t("admin.workspaceCount")} meta={t("app.workspace")} tone="primary" value={formatter.format(workspaces.length)} />
         <AdminOverviewStatCard icon="file" label={t("settings.fileCount")} meta={t("settings.storageSpace")} tone="success" value={storageUsage ? formatter.format(storageUsage.fileCount) : "--"} />
-        <AdminOverviewStatCard icon="folder" label={t("settings.storageSpace")} meta={usagePercentLabel} tone="info" value={storageLabel} />
+        <AdminOverviewStatCard icon="folder" label={t("settings.storageSpace")} meta={storagePercentLabel} tone="info" value={storageLabel} />
         <AdminOverviewStatCard icon="link" label={t("admin.externalLinkPolicy")} meta={t("links.adminScope")} tone="warning" value={formatter.format(shareEvents.length)} />
         <AdminOverviewStatCard icon="shield" label={t("audit.title")} meta={t("audit.subtitle")} tone={failedEvents.length > 0 ? "danger" : "secure"} value={formatter.format(auditEvents.length)} />
         <AdminOverviewStatCard icon={hasFailedEvents ? "exclamation" : "tick"} label={t("settings.systemStatus")} meta={statusMeta} tone={hasFailedEvents ? "danger" : "secure"} value={statusValue} />
@@ -255,10 +254,10 @@ function AdminOverviewPanel({
         <div className="admin-storage-bars">
           <div className="admin-storage-total">
             <strong>{storageLabel}</strong>
-            <span>{usagePercent.toFixed(1)}%</span>
+            <span>{storagePercentLabel}</span>
           </div>
           <div className="admin-storage-track" aria-hidden="true">
-            <span style={{ "--admin-storage-width": `${usagePercent}%` } as CSSProperties} />
+            <span style={{ "--admin-storage-width": `${storagePercent}%` } as CSSProperties} />
           </div>
           <div className="admin-storage-breakdown-list">
             {storageBreakdownRows.map((row) => (
@@ -793,7 +792,7 @@ function AdminPanelGate({
         <div className="admin-sidebar-status">
           <span className="admin-sidebar-status-dot" />
           <div>
-            <span>{t("settings.storageSpace")}</span>
+            <span>{t("settings.usedStorage")}</span>
             <span>{storageUsage ? formatFileSize(storageUsage.usedBytes, locale) : t("app.storageUsage")}</span>
           </div>
         </div>

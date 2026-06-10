@@ -112,6 +112,10 @@ describe('StorageService', () => {
     };
   }
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('creates presigned upload urls with content headers', async () => {
     const { service, signer } = createService();
 
@@ -238,6 +242,44 @@ describe('StorageService', () => {
       secretAccessKeyConfigured: true,
     });
     expect(settings).not.toHaveProperty('secretAccessKey');
+  });
+
+  it('reports object storage capacity from MinIO metrics', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      text: () =>
+        Promise.resolve(`
+# HELP minio_cluster_capacity_usable_total_bytes Total usable capacity
+minio_cluster_capacity_usable_total_bytes 1000
+# HELP minio_cluster_capacity_usable_free_bytes Free usable capacity
+minio_cluster_capacity_usable_free_bytes 250
+`),
+    } as Response);
+    const { service } = createService({
+      ...configuredValues,
+      'storage.metricsBearerToken': 'metrics-token',
+      'storage.metricsEndpoint':
+        'http://localhost:9000/minio/metrics/v3/cluster/health',
+    });
+
+    const settings = await service.getSettings();
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:9000/minio/metrics/v3/cluster/health',
+      expect.any(Object),
+    );
+    expect(init.headers).toMatchObject({
+      Accept: 'text/plain',
+      Authorization: 'Bearer metrics-token',
+    });
+    expect(settings).toMatchObject({
+      physicalAvailableBytes: 250,
+      physicalCapacityBytes: 1000,
+      physicalCapacityKnown: true,
+      physicalQuotaLimitBytes: 1000,
+      physicalCapacityReason: null,
+    });
   });
 
   it('updates object storage connection settings', async () => {
