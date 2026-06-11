@@ -169,11 +169,13 @@ export function SetupToggleRow({
 
 export function SetupSelectCard({
   active,
+  disabled,
   label,
   onClick,
   palette,
 }: {
   active: boolean;
+  disabled?: boolean;
   label: string;
   onClick: () => void;
   palette: Palette;
@@ -183,12 +185,14 @@ export function SetupSelectCard({
       {...buttonTypeAttr}
       className="icedr-setup-select-card"
       data-active={active ? "true" : undefined}
-      onClick={onClick}
+      data-disabled={disabled ? "true" : undefined}
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
       style={
         {
           "--setup-select-bg": active ? palette.selected : palette.surface2,
           "--setup-select-border": active ? palette.primary : palette.hairline,
-          "--setup-select-color": palette.ink,
+          "--setup-select-color": disabled ? palette.tertiary : palette.ink,
           "--setup-select-focus": palette.focusRing,
           "--setup-select-icon": active ? palette.primaryHover : palette.subtle,
         } as CSSProperties

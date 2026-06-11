@@ -121,6 +121,7 @@ const setupSteps = [{
   summaryKey: "setup.finishCard"
 }] as const;
 type SetupStepId = (typeof setupSteps)[number]["id"];
+type DatabaseSetupMode = DatabaseProfile["provider"];
 export function SetupRoute() {
   return <Suspense fallback={null}>
       <LocalizedDriveShell>
@@ -145,6 +146,7 @@ function SetupPage({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthNoticeStatus | null>(null);
   const [database, setDatabase] = useState<DatabaseProfile>(emptyDatabase);
+  const [databaseMode, setDatabaseMode] = useState<DatabaseSetupMode>("sqlite");
   const [remoteDatabase, setRemoteDatabase] = useState(emptyRemoteDatabase);
   const [remoteDatabaseTouched, setRemoteDatabaseTouched] = useState(false);
   const [site, setSite] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
@@ -196,6 +198,7 @@ function SetupPage({
         return;
       }
       setDatabase(setup.databaseProfile);
+      setDatabaseMode(setup.databaseProfile.provider);
       if (setup.databaseProfile.provider === "postgresql") {
         setRemoteDatabase(value => ({
           ...value,
@@ -226,7 +229,6 @@ function SetupPage({
   const authComplete = localEnabled || oauthEnabled || passkeyEnabled;
   const brandComplete = Boolean(site.siteName.trim());
   const mailComplete = Boolean(mail.verifiedAt);
-  const canComplete = database.verified && adminComplete && authComplete && mailComplete && brandComplete;
   const remoteDatabaseDirty = Boolean(
     remoteDatabaseTouched &&
       (remoteDatabase.host.trim() ||
@@ -234,13 +236,31 @@ function SetupPage({
         remoteDatabase.user.trim() ||
         remoteDatabase.password),
   );
+  const remoteDatabaseReady = Boolean(remoteDatabase.host.trim() && remoteDatabase.dbName.trim() && remoteDatabase.user.trim());
+  const remoteDatabaseSelected = databaseMode === "postgresql";
+  const databaseComplete = database.provider === databaseMode && database.verified && !(remoteDatabaseSelected && remoteDatabaseDirty);
+  const canComplete = databaseComplete && adminComplete && authComplete && mailComplete && brandComplete;
+  const canSelectLocalDatabase = database.provider !== "postgresql";
   const databaseSummary = useMemo(() => {
-    if (database.provider === "sqlite") return t("setup.databaseLocal");
+    if (databaseMode === "sqlite") return t("setup.databaseLocal");
+    if (database.provider !== "postgresql") return [remoteDatabase.host, remoteDatabase.port, remoteDatabase.dbName, remoteDatabase.user].filter(Boolean).join(" / ");
     return [database.host, database.port, database.dbName, database.user].filter(Boolean).join(" / ");
-  }, [database, t]);
+  }, [database, databaseMode, remoteDatabase, t]);
+  const databaseActionLabel = remoteDatabaseSelected
+    ? databaseComplete && !remoteDatabaseDirty
+      ? t("setup.verifyAgain")
+      : t("setup.migrateDatabase")
+    : databaseComplete
+      ? t("setup.verifyAgain")
+      : t("setup.verifyDatabase");
+  const databasePasswordSummary = remoteDatabaseSelected
+    ? remoteDatabase.password || database.passwordProvided
+      ? t("setup.passwordProvided")
+      : t("setup.passwordMissing")
+    : t("setup.passwordLocal");
   const currentStep = setupSteps[stepIndex];
   const stepCompletion: Record<SetupStepId, boolean> = {
-    database: database.verified,
+    database: databaseComplete,
     admin: adminComplete,
     auth: authComplete,
     mail: mailComplete,
@@ -267,9 +287,16 @@ function SetupPage({
   };
   const verifyDatabase = () => {
     if (busy) return;
+    if (remoteDatabaseSelected && !remoteDatabaseReady) {
+      setStatus({
+        tone: "error",
+        message: t("setup.databasePostgresMissing")
+      });
+      return;
+    }
     setBusy(true);
     setStatus(null);
-    const input: VerifyDatabaseInput = remoteDatabaseDirty
+    const input: VerifyDatabaseInput = remoteDatabaseSelected
       ? {
           provider: "postgresql",
           host: remoteDatabase.host.trim(),
@@ -281,6 +308,7 @@ function SetupPage({
       : {};
     void verifySetupDatabase(input).then(profile => {
       setDatabase(profile);
+      setDatabaseMode(profile.provider);
       setRemoteDatabase(value => ({
         ...value,
         password: ""
@@ -440,11 +468,22 @@ function SetupPage({
             <div className="icedr-setup-content-grid">
             {currentStep.id === "database" ? <SetupSection icon="folder" palette={palette} title={t("setup.database")}>
                 <div className="icedr-setup-form-grid">
-                  <InfoTile label={t("setup.databaseProvider")} value={database.provider === "sqlite" ? t("setup.databaseLocal") : t("setup.databaseRemote")} palette={palette} tone={database.provider === "sqlite" ? "neutral" : "secure"} />
-                  <InfoTile label={t("setup.databaseProfile")} value={databaseSummary || "--"} palette={palette} />
-                  <InfoTile label={t("setup.databasePassword")} value={database.passwordProvided ? t("setup.passwordProvided") : t("setup.passwordLocal")} palette={palette} />
+                  <SelectButton active={databaseMode === "sqlite"} disabled={!canSelectLocalDatabase || busy} label={t("setup.databaseLocalChoice")} onClick={() => {
+                  setDatabaseMode("sqlite");
+                  setRemoteDatabaseTouched(false);
+                  setStatus(null);
+                }} palette={palette} />
+                  <SelectButton active={databaseMode === "postgresql"} disabled={busy} label={t("setup.databaseRemoteChoice")} onClick={() => {
+                  setDatabaseMode("postgresql");
+                  setStatus(null);
+                }} palette={palette} />
                 </div>
-                <div className="icedr-setup-form-grid" data-columns="3">
+                <div className="icedr-setup-form-grid">
+                  <InfoTile label={t("setup.databaseProvider")} value={databaseMode === "sqlite" ? t("setup.databaseLocal") : t("setup.databaseRemote")} palette={palette} tone={databaseMode === "sqlite" ? "neutral" : "secure"} />
+                  <InfoTile label={t("setup.databaseProfile")} value={databaseSummary || "--"} palette={palette} />
+                  <InfoTile label={t("setup.databasePassword")} value={databasePasswordSummary} palette={palette} />
+                </div>
+                {remoteDatabaseSelected ? <div className="icedr-setup-form-grid" data-columns="3">
                   <AuthField label={t("setup.databaseHost")} palette={palette}>
                     <AuthInput palette={palette} value={remoteDatabase.host} onChange={event => {
                       setRemoteDatabaseTouched(true);
@@ -490,9 +529,9 @@ function SetupPage({
                 }));
                     }} />
                   </AuthField>
-                </div>
-                <AuthPrimaryButton icon="tick" palette={palette} busy={busy} disabled={busy} onClick={verifyDatabase}>
-                  {remoteDatabaseDirty ? t("setup.migrateDatabase") : database.verified ? t("setup.verifyAgain") : t("setup.verifyDatabase")}
+                </div> : null}
+                <AuthPrimaryButton icon="tick" palette={palette} busy={busy} disabled={busy || remoteDatabaseSelected && !remoteDatabaseReady} onClick={verifyDatabase}>
+                  {databaseActionLabel}
                 </AuthPrimaryButton>
               </SetupSection> : null}
 

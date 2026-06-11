@@ -343,8 +343,13 @@
   font-weight: 730;
 }
 
+.icedr-setup-select-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
 .icedr-setup-toggle-row:hover,
-.icedr-setup-select-card:hover {
+.icedr-setup-select-card:not(:disabled):hover {
   transform: translateY(-1px);
 }
 
