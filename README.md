@@ -1,135 +1,140 @@
 # ICEDR
 
-ICEDR is a workspace file drive built as a Node.js monorepo:
+<p align="center">
+  <img src="frontend/public/ICEDR.png" alt="ICEDR" width="760" />
+</p>
 
-- `frontend`: Vite, React, HeroUI web client
-- `backend`: NestJS API organized under `src/modules`
-- `database`: schema and migration entry point
-- `deploy`: Docker Compose, Dockerfiles, and optional Nginx config
-- `docs`: architecture, API, database, and deployment notes
+<p align="center">
+  <a href=".github/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white" /></a>
+  <img alt="Node.js 24" src="https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white" />
+  <img alt="pnpm 10.18.1" src="https://img.shields.io/badge/pnpm-10.18.1-F69220?logo=pnpm&logoColor=white" />
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111827" />
+  <img alt="NestJS" src="https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white" />
+  <img alt="Prisma" src="https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white" />
+</p>
 
-## Local Development
+ICEDR is a self-hostable workspace drive for file management, preview, sharing, and operational audit. It ships as a Node.js monorepo with a React frontend, a NestJS backend, Prisma-backed persistence, object storage support, and container packaging for the application code.
 
-```bash
-copy .env.example .env
-pnpm.cmd install
-pnpm.cmd infra:up
-pnpm.cmd dev:api
-pnpm.cmd dev:app
-```
+## Features
 
-The frontend runs at `http://localhost:13000`. The API runs at `http://localhost:13001/api`.
+- Workspace file management with upload, download, preview, trash, version, and quota workflows.
+- External sharing with link policies, email verification, authenticated account access, preview controls, and download limits.
+- Administrative panels for system status, storage, identity, sharing policy, and audit records.
+- Structured audit events for workspace users, signed-in accounts, visitors, and system activity.
+- SQLite-first local persistence with optional production database and object storage integrations.
+- Local development defaults that can run with demo data while infrastructure is being wired up.
 
-For local development, `.env.example` enables:
+## Repository Layout
 
-- `ALLOW_DEV_MEMORY_STORE=true`
-- `SEED_DEMO_DATA=true`
-- `SHARE_EMAIL_PROVIDER=dev-log`
+| Path | Purpose |
+| --- | --- |
+| `frontend` | Vite, React, HeroUI, Tailwind CSS, and Playwright smoke tests. |
+| `backend` | NestJS API, authentication, sharing, storage, settings, and audit modules. |
+| `database` | Prisma schema, SQLite schema variant, migrations, and seed entry point. |
+| `deploy` | Docker image and Compose packaging configuration. |
+| `docs` | Architecture, storage, identity provider, and deployment notes. |
+| `scripts` | Release, checksum, and binary packaging utilities. |
 
-Those settings allow the app to boot with demo data while the database or email provider is still being wired up. They are not production settings.
+## Requirements
 
-`pnpm.cmd infra:up` starts only PostgreSQL, Redis, and MinIO for local development, with ports bound to `127.0.0.1`.
+- Node.js 24
+- pnpm 10.18.1
+- Docker, when building container images
 
-## Docker Compose Deployment
-
-```bash
-copy .env.production.example .env.production
-# Edit .env.production before starting the stack.
-docker compose --env-file .env.production -f deploy/docker-compose.yml up --build
-```
-
-Compose starts:
-
-- `edge` on `localhost:13000`
-- `web`, `api`, `postgres`, `redis`, and `minio` inside the Docker network
-
-The `minio-init` service creates the configured bucket automatically. The API health endpoint is available through the edge proxy at `http://localhost:13000/api/health`.
-
-For production, publish only the edge proxy or your own gateway. PostgreSQL, Redis, the Nest API, MinIO S3 API, and the MinIO console should stay on the internal network. The default Nginx sample proxies `/` to the web client, `/api/` to the Nest API, and `/objects/` to MinIO for signed object URLs.
-
-## Production Environment
-
-When `NODE_ENV=production` or `APP_ENV=production`, ICEDR refuses to boot without the production dependencies it needs. Start from `.env.production.example`, replace every placeholder, and provide at least:
+## Quick Start
 
 ```bash
-NODE_ENV=production
-APP_ENV=production
-VITE_API_BASE_URL=https://api.example.com/api
-API_PUBLIC_BASE_URL=https://api.example.com/api
-API_HOST=0.0.0.0
-API_PORT=13001
-API_CORS_ORIGIN=https://drive.example.com
-DATABASE_HOST=postgres
-DATABASE_PORT=5432
-DATABASE_DBNAME=icedr
-DATABASE_USER=user
-DATABASE_PASSWORD=password
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_DBNAME=0
-REDIS_USER=
-REDIS_PASSWORD=
-S3_ENDPOINT=http://minio:9000
-S3_PUBLIC_ENDPOINT=https://drive.example.com/objects
-S3_REGION=us-east-1
-S3_BUCKET=icedr-drive
-S3_ACCESS_KEY_ID=...
-S3_SECRET_ACCESS_KEY=...
-S3_FORCE_PATH_STYLE=true
-PUBLIC_SHARE_BASE_URL=https://drive.example.com/share/s
-SHARE_EMAIL_PROVIDER=smtp
-SMTP_ENABLED=true
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=true
-SMTP_USERNAME=...
-SMTP_PASSWORD=...
-SMTP_FROM_EMAIL=noreply@example.com
+cp .env.example .env
+pnpm install
+pnpm dev:api
+pnpm dev:app
 ```
 
-Do not set `ALLOW_DEV_MEMORY_STORE=true`, `SEED_DEMO_DATA=true`, or `SHARE_EMAIL_PROVIDER=dev-log` in production. Production file nodes and share links must come from PostgreSQL, uploaded objects must exist in S3 or MinIO, and mail delivery must use SMTP.
+The frontend is served at `http://localhost:13000`. The API is served at `http://localhost:13001/api`.
 
-The backend validates production environment variables during startup. Missing required values, disabled SMTP delivery, malformed URLs or ports, `dev-log`, and obvious placeholder values such as `...`, `replace-me`, `your-provider`, or `example.com` cause startup to fail with the specific variable names in the error message.
+The local environment file enables development-only defaults such as demo data, an in-memory fallback, and the development mail logger. These settings are intended for local work only.
 
-External login should prefer the standard `oidc` provider profile. The
-`icetowne-blog` profile is kept as a compatibility mode for the legacy Blog
-OAuth shape. See `docs/identity-providers.md` for the adapter boundary and user
-field mapping rules.
+## Common Commands
+
+```bash
+pnpm install
+pnpm lint
+pnpm build
+pnpm test
+pnpm test:e2e
+pnpm package:binary
+pnpm docker:build
+```
+
+Useful package-scoped commands:
+
+```bash
+pnpm --filter frontend build
+pnpm --filter frontend test
+pnpm --filter frontend test:e2e
+pnpm --filter backend build
+pnpm --filter backend test
+pnpm --filter backend prisma:migrate:deploy
+```
+
+Install the Playwright browser once before running the end-to-end smoke suite locally:
+
+```bash
+pnpm --filter frontend exec playwright install --with-deps chromium
+```
+
+## Configuration
+
+Start from `.env.example` for local development and `.env.production.example` for production. Production deployments should provide the public API, share URL, persistence, storage, cache, and SMTP values required by the selected runtime environment.
+
+The backend validates production configuration during startup. Missing values, malformed URLs or ports, disabled SMTP delivery, development mail delivery, and common placeholder values cause startup to fail with clear variable names.
+
+External login should use the standard `oidc` provider profile for normal OIDC providers. The `icetowne-blog` profile remains available only for the legacy Blog OAuth shape. See `docs/identity-providers.md` for provider mapping details.
+
+## Docker Packaging
+
+```bash
+cp .env.production.example .env.production
+docker build -f deploy/Dockerfile -t icedr-po .
+```
+
+The Docker image packages the ICEDR web client and API together. Runtime services such as persistence, cache, object storage, and mail delivery should be supplied by the target environment rather than described as part of the project image build.
+
+The included Compose file follows the same boundary and only runs the ICEDR application services:
+
+```bash
+pnpm docker:build
+pnpm docker:up
+pnpm docker:down
+```
+
+## Binary Packaging
+
+ICEDR can build standalone Node.js SEA binaries for supported platforms:
+
+```bash
+pnpm package:binary
+```
+
+Release artifacts follow the `icedr_VERSION_PLATFORM` naming convention. Release automation generates checksums and combines release notes with artifact integrity information.
 
 ## Verification Flow
 
 1. Open `http://localhost:13000`.
-2. Confirm the drive loads from the API. In an empty production database, the file list should be empty rather than showing demo files.
+2. Confirm that the drive loads from the API.
 3. Upload a small file.
-4. Select it and create an external share.
+4. Create an external share for the file.
 5. Open the generated `/share/s/:token` link.
-6. Authenticate with email verification. In `dev-log` mode, the code is recorded in audit events for tests and local debugging.
-7. Download the file and check the Audit view for share, download, and matched policy events.
+6. Verify access through email or an authenticated account.
+7. Download or preview the shared file.
+8. Review the audit log for the share, verification, preview, and download activity.
 
-External shares resolve one download policy for anonymous visitors, email-verified visitors, and authenticated account visitors. That policy controls wait time, speed hints, domain or allowlist requirements, and per-link download limits; each access session and download intent carries the policy decision that was applied.
+## Documentation
 
-Short-lived email codes, access sessions, preview intents, and download intents are persisted with TTLs in PostgreSQL. API restarts and multiple API instances can continue validating unexpired share access state from the shared database.
+- `docs/storage.md`
+- `docs/identity-providers.md`
+- `scripts/README.md`
 
-## Quality Gates
+## License
 
-```bash
-pnpm.cmd lint
-pnpm.cmd build
-pnpm.cmd test
-pnpm.cmd test:e2e
-```
-
-Use `pnpm.cmd` on Windows PowerShell if script execution policy blocks `pnpm.ps1`.
-
-`pnpm.cmd test` runs the backend Jest suite and the frontend Vitest suite. The frontend also has an independent test command:
-
-```bash
-pnpm.cmd --filter frontend test
-```
-
-The end-to-end smoke suite uses Playwright against the built frontend and mocks API responses for the core share flow: drive load, external link creation, email-code verification, file download, and audit viewing. Install the browser once before running it locally:
-
-```bash
-pnpm.cmd --filter frontend exec playwright install chromium
-pnpm.cmd test:e2e
-```
+ICEDR is licensed under the Apache License 2.0. See `LICENSE` for details.
