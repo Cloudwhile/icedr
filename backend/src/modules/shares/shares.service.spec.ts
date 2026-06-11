@@ -717,20 +717,16 @@ describe('SharesService', () => {
       bypassWait: true,
       bypassSpeedLimit: true,
     });
-    expect(
-      (repository as unknown as SharesRepositorySpecDouble).auditEvents,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action: 'share.access_session_created',
-          metadata: expect.objectContaining({
-            actorEmail: 'ica@example.test',
-            actorUserId: 'user_ica',
-            identityType: 'ica',
-          }),
-        }),
-      ]),
+    const accessAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find(
+      (event) => event.action === 'share.access_session_created',
     );
+    expect(accessAudit?.metadata).toMatchObject({
+      actorEmail: 'ica@example.test',
+      actorUserId: 'user_ica',
+      identityType: 'ica',
+    });
   });
 
   it('returns backend manifest downloads for folders without object keys', async () => {
