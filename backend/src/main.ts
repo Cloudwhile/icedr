@@ -1,11 +1,11 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NextFunction, Request, Response } from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -54,7 +54,66 @@ function configureFrontendStaticAssets(app: NestExpressApplication) {
   });
 
   const server = app.getHttpAdapter().getInstance();
-  server.get(/^(?!\/api(?:\/|$)).*/, (_request: Request, response: Response) =>
-    response.sendFile(indexPath),
+  server.get(
+    /.*/,
+    (request: Request, response: Response, next: NextFunction) => {
+      const path = getRequestPath(request);
+      if (isApiRequestPath(path)) {
+        next();
+        return;
+      }
+      if (isUnprefixedApiRequestPath(path)) {
+        response.status(404).json({
+          statusCode: 404,
+          message: 'Not Found',
+          error: 'Not Found',
+          code: 'API_ROUTE_NOT_FOUND',
+        });
+        return;
+      }
+      if (!requestAcceptsHtml(request)) {
+        next();
+        return;
+      }
+      response.sendFile(indexPath);
+    },
   );
+}
+
+function getRequestPath(request: Request) {
+  return request.path || request.url.split('?', 1)[0] || '/';
+}
+
+function isApiRequestPath(path: string) {
+  return path === '/api' || path.startsWith('/api/');
+}
+
+const unprefixedApiRouteRoots = [
+  '/audit',
+  '/auth',
+  '/file-nodes',
+  '/health',
+  '/identity',
+  '/mail',
+  '/setup',
+  '/shares',
+  '/site',
+  '/storage',
+  '/system',
+  '/transfers',
+  '/workspaces',
+];
+
+function isUnprefixedApiRequestPath(path: string) {
+  const normalized = path.replace(/\/+$/, '') || '/';
+  if (normalized === '/setup') return false;
+  return unprefixedApiRouteRoots.some(
+    (root) => normalized === root || normalized.startsWith(`${root}/`),
+  );
+}
+
+function requestAcceptsHtml(request: Request) {
+  const accept = request.headers.accept;
+  if (!accept?.trim()) return true;
+  return request.accepts('html') === 'html';
 }

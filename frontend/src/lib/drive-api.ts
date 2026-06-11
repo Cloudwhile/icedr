@@ -579,7 +579,35 @@ export class DriveApiError extends Error {
 }
 
 export function getApiBaseUrl() {
-  return (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+  const configuredBaseUrl = readConfiguredApiBaseUrl();
+  const baseUrl =
+    import.meta.env.PROD && isLoopbackApiBaseUrl(configuredBaseUrl)
+      ? "/api"
+      : configuredBaseUrl;
+  return normalizeApiBaseUrl(baseUrl);
+}
+
+function readConfiguredApiBaseUrl() {
+  return (
+    import.meta.env.VITE_API_BASE_URL?.trim() ||
+    import.meta.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
+    "/api"
+  );
+}
+
+function normalizeApiBaseUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "/") return "/api";
+  return trimmed.replace(/\/$/, "");
+}
+
+function isLoopbackApiBaseUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
+  } catch {
+    return false;
+  }
 }
 
 export function buildApiUrl(path: string) {
@@ -612,6 +640,7 @@ export function getAuthHeaders(): Record<string, string> {
 
 export async function requestDriveApi<T>(path: string, init?: RequestInit) {
   const headers = new Headers(init?.headers);
+  headers.set("Accept", "application/json");
   headers.set("Content-Type", "application/json");
   const token = getStoredAuthToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -632,12 +661,26 @@ export async function requestDriveApi<T>(path: string, init?: RequestInit) {
   }
 
   if (response.status === 204) return undefined as T;
+  if (isHtmlResponse(response)) {
+    throw new DriveApiError(
+      "Drive API returned an HTML response",
+      response.status,
+      "DRIVE_API_HTML_RESPONSE",
+    );
+  }
   return (await response.json()) as T;
 }
 
 async function readDriveApiError(response: Response) {
   const fallback = "Drive API request failed";
-  if (!response.headers.get("content-type")?.includes("application/json")) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/html")) {
+    return {
+      message: "Drive API returned an HTML response",
+      code: "DRIVE_API_HTML_RESPONSE",
+    };
+  }
+  if (!contentType.includes("application/json")) {
     return { message: fallback, code: undefined };
   }
 
@@ -660,6 +703,10 @@ async function readDriveApiError(response: Response) {
   } catch {
     return { message: fallback, code: undefined };
   }
+}
+
+function isHtmlResponse(response: Response) {
+  return (response.headers.get("content-type") ?? "").includes("text/html");
 }
 
 export async function fetchAuditEvents(filters: {

@@ -27,25 +27,30 @@ export function AuthGate({
   const [user, setUser] = useState<AuthUser | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void fetchSetupStatus().then(async setup => {
-      if (setup.needsSetup) {
-        if (!cancelled) router.replace(`/setup?next=${encodeURIComponent(pathname || "/")}`);
-        return "setup" as const;
-      }
-      const currentUser = await fetchCurrentUser();
-      if (!cancelled) setUser(currentUser);
-      return currentUser;
-    }).then(authenticated => {
-      if (cancelled) return;
-      if (authenticated === "setup") return;
-      if (!authenticated) {
-        router.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
+    const nextPath = pathname || "/";
+    void (async () => {
+      try {
+        const setup = await fetchSetupStatus();
+        if (cancelled) return;
+        if (setup.needsSetup) {
+          router.replace(`/setup?next=${encodeURIComponent(nextPath)}`);
+          return;
+        }
+      } catch {
+        if (!cancelled) router.replace(`/setup?next=${encodeURIComponent(nextPath)}`);
         return;
       }
-      setReady(true);
-    }).catch(() => {
-      if (!cancelled) router.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
-    });
+
+      try {
+        const currentUser = await fetchCurrentUser();
+        if (cancelled) return;
+        setUser(currentUser);
+        setReady(true);
+      } catch {
+        if (!cancelled) router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+        return;
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -121,7 +126,9 @@ function AuthPage({
     let cancelled = false;
     void fetchSetupStatus().then(setup => {
       if (!cancelled && setup.needsSetup) router.replace(`/setup?next=${encodeURIComponent(next || pathname || "/")}`);
-    }).catch(() => undefined);
+    }).catch(() => {
+      if (!cancelled) router.replace(`/setup?next=${encodeURIComponent(next || pathname || "/")}`);
+    });
     return () => {
       cancelled = true;
     };

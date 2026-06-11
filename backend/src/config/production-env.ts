@@ -27,6 +27,11 @@ const publicApiBaseUrlEnv = [
   'NEXT_PUBLIC_API_BASE_URL',
 ] as const;
 
+const browserApiBaseUrlEnv = [
+  'VITE_API_BASE_URL',
+  'NEXT_PUBLIC_API_BASE_URL',
+] as const;
+
 const forbiddenProductionBooleans = [
   'ALLOW_DEV_MEMORY_STORE',
   'SEED_DEMO_DATA',
@@ -35,8 +40,6 @@ const forbiddenProductionBooleans = [
 const urlEnv = [
   'API_CORS_ORIGIN',
   'API_PUBLIC_BASE_URL',
-  'VITE_API_BASE_URL',
-  'NEXT_PUBLIC_API_BASE_URL',
   'MINIO_METRICS_ENDPOINT',
   'S3_ENDPOINT',
   'PUBLIC_SHARE_BASE_URL',
@@ -125,6 +128,13 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     const value = env[name];
     if (hasValue(value) && !isHttpUrl(value)) {
       errors.push(`${name} must be a valid HTTP(S) URL`);
+    }
+  }
+
+  for (const name of browserApiBaseUrlEnv) {
+    const value = env[name];
+    if (hasValue(value) && !isHttpUrl(value) && !isSameOriginApiBase(value)) {
+      errors.push(`${name} must be /api or a valid HTTP(S) URL`);
     }
   }
 
@@ -217,6 +227,10 @@ function isHttpUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function isSameOriginApiBase(value: string) {
+  return value.trim().replace(/\/+$/, '') === '/api';
 }
 
 function isLocalhostUrl(value: string) {

@@ -100,17 +100,33 @@ describe('production environment validation', () => {
     ).toThrow(/API_CORS_ORIGIN.*REDIS_PORT.*SMTP_FROM_EMAIL/s);
   });
 
+  it('allows same-origin browser API base URLs in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        NEXT_PUBLIC_API_BASE_URL: '/api',
+        VITE_API_BASE_URL: '/api/',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects malformed browser API base URLs in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        NEXT_PUBLIC_API_BASE_URL: 'api',
+      }),
+    ).toThrow(/NEXT_PUBLIC_API_BASE_URL/s);
+  });
+
   it('rejects localhost or loopback IPs in public-facing URLs in production', () => {
     expect(() =>
       validateProductionEnv({
         ...validProductionEnv,
         API_PUBLIC_BASE_URL: 'http://localhost:13001/api',
-        NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:13001/api',
         PUBLIC_SHARE_BASE_URL: 'http://[::1]:13000/share/s',
       }),
-    ).toThrow(
-      /API_PUBLIC_BASE_URL.*NEXT_PUBLIC_API_BASE_URL.*PUBLIC_SHARE_BASE_URL/s,
-    );
+    ).toThrow(/API_PUBLIC_BASE_URL.*PUBLIC_SHARE_BASE_URL/s);
   });
 
   it('accepts complete production settings through the app configuration', () => {
