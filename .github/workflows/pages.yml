@@ -46,15 +46,7 @@ jobs:
       - name: Resolve Pages base
         shell: bash
         run: |
-          repo_name="${GITHUB_REPOSITORY#*/}"
-
-          if [[ "$DOCS_CUSTOM_DOMAIN" == "true" ]]; then
-            echo "VITEPRESS_BASE=/" >> "$GITHUB_ENV"
-          elif [[ "$repo_name" == *.github.io ]]; then
-            echo "VITEPRESS_BASE=/" >> "$GITHUB_ENV"
-          else
-            echo "VITEPRESS_BASE=/${repo_name}/" >> "$GITHUB_ENV"
-          fi
+          echo "VITEPRESS_BASE=/" >> "$GITHUB_ENV"
 
       - name: Build docs
         run: pnpm docs:build
