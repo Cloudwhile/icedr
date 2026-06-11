@@ -3,9 +3,7 @@ name: Pages
 on:
   push:
     branches:
-      - dev
       - master
-      - main
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
@@ -49,7 +47,10 @@ jobs:
         shell: bash
         run: |
           repo_name="${GITHUB_REPOSITORY#*/}"
-          if [[ "$repo_name" == *.github.io ]]; then
+
+          if [[ "$DOCS_CUSTOM_DOMAIN" == "true" ]]; then
+            echo "VITEPRESS_BASE=/" >> "$GITHUB_ENV"
+          elif [[ "$repo_name" == *.github.io ]]; then
             echo "VITEPRESS_BASE=/" >> "$GITHUB_ENV"
           else
             echo "VITEPRESS_BASE=/${repo_name}/" >> "$GITHUB_ENV"
