@@ -1,10 +1,14 @@
-# 发布产物
+# 发布动态
 
-ICEDR 的发布流程会生成 GitHub Release、校验文件、Docker 镜像和平台二进制文件。
+ICEDR 的发布页提供 GitHub Release、校验文件、Docker 镜像和平台二进制文件。Docker Hub 镜像位置为 `corecherry/icedr-po`。
 
-## GitHub Release
+## 最新发布
 
-Release notes 来自仓库根目录的 `release_details.md`，并拼接发布文件校验信息。
+<ClientOnly>
+  <LatestRelease />
+</ClientOnly>
+
+## 发布文件
 
 每次发布会附带：
 
@@ -18,11 +22,11 @@ Release notes 来自仓库根目录的 `release_details.md`，并拼接发布文
 带有预发布标记的版本会作为 prerelease 处理，例如：
 
 ```text
-v1.2.0-alpha.1
+v0.0.1-alpha.1
 v1.2.0-beta.1
 ```
 
-稳定版本会更新 Docker 镜像的 `latest` 标签；预发布版本不会更新 `latest`。
+稳定版本会更新 `corecherry/icedr-po:latest`；预发布版本不会更新 `latest`。
 
 ## 文件完整性校验
 

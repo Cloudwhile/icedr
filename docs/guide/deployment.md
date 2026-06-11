@@ -19,16 +19,16 @@ Compose 文件会将容器内 `/workspace/backend/data` 挂载为持久化卷，
 
 ## Docker Hub 镜像
 
-镜像仓库名为 `icedr-po`。实际拉取地址需要包含 Docker Hub 命名空间：
+Docker Hub 镜像位置为 `corecherry/icedr-po`：
 
 ```bash
-docker pull <namespace>/icedr-po:<tag>
+docker pull corecherry/icedr-po:<tag>
 ```
 
 如果使用 `deploy/docker-compose.yml`，可以通过环境变量指定镜像：
 
 ```bash
-ICEDR_IMAGE=<namespace>/icedr-po ICEDR_TAG=<tag> docker compose -f deploy/docker-compose.yml up -d
+ICEDR_IMAGE=corecherry/icedr-po ICEDR_TAG=<tag> docker compose -f deploy/docker-compose.yml up -d
 ```
 
 ## 二进制文件

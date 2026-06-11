@@ -52,6 +52,8 @@ pnpm dev:app
 
 The frontend is served at `http://localhost:13000`. The API is served at `http://localhost:13001/api`.
 
+The browser client uses same-origin `/api` by default. During local development, Vite proxies `/api` to the backend configured by `API_HOST` and `API_PORT`, so frontend code does not need to embed a development backend origin.
+
 The local environment file enables development-only defaults such as demo data, an in-memory fallback, and the development mail logger. These settings are intended for local work only.
 
 ## Common Commands
@@ -86,7 +88,9 @@ pnpm --filter frontend exec playwright install --with-deps chromium
 
 ## Configuration
 
-Start from `.env.example` for local development and `.env.production.example` for production. Production deployments should provide the public API, share URL, persistence, storage, cache, and SMTP values required by the selected runtime environment.
+Start from `.env.example` for local development and `.env.production.example` for production. Production deployments should provide the public share URL, persistence, storage, cache, and SMTP values required by the selected runtime environment.
+
+Fresh data directories open the first-run setup page. Setup starts with local SQLite and local file storage, and the database step lets administrators keep SQLite or switch to PostgreSQL before completing bootstrap.
 
 The backend validates production configuration during startup. Missing values, malformed URLs or ports, disabled SMTP delivery, development mail delivery, and common placeholder values cause startup to fail with clear variable names.
 
@@ -98,10 +102,12 @@ Configuration reference lives in the VitePress documentation under `docs/referen
 
 ```bash
 cp .env.production.example .env.production
-docker build -f deploy/Dockerfile -t icedr-po .
+docker build -f deploy/Dockerfile -t corecherry/icedr-po:local .
 ```
 
 The Docker image packages the ICEDR web client and API together. Runtime services such as persistence, cache, object storage, and mail delivery should be supplied by the target environment rather than described as part of the project image build.
+
+The image always builds the browser client for production with same-origin `/api`. Local development values such as `VITE_API_BASE_URL=http://localhost:13001/api` are ignored by the Docker build so the image is not polluted by workstation configuration.
 
 The included Compose file follows the same boundary and only runs the ICEDR application services:
 
@@ -111,9 +117,13 @@ pnpm docker:up
 pnpm docker:down
 ```
 
-Docker Hub images are published as `<namespace>/icedr-po:<tag>`.
+Compose environment variables are namespaced with `ICEDR_DOCKER_*` to avoid accidentally reading local development values from `.env`. For example, use `ICEDR_DOCKER_HTTP_PORT`, `ICEDR_DOCKER_DATABASE_HOST`, and `ICEDR_DOCKER_API_PUBLIC_BASE_URL` when customizing the packaged service.
 
-Stable version tags such as `v1.2.0` publish version tags and update `latest`. Pre-release version tags such as `v1.2.0-alpha.1` or `v1.2.0-beta.1` publish pre-release tags but do not update `latest`.
+Compose persists runtime data in the `icedr-data` volume. Rebuilding or replacing the image keeps the existing bootstrap state; to test a truly fresh setup flow, use a new volume or intentionally remove the Compose volume after backing up any data you need.
+
+Docker Hub images are published as `corecherry/icedr-po:<tag>`.
+
+Stable versions such as `v1.2.0` update `corecherry/icedr-po:latest`. Pre-release versions such as `v0.0.1-alpha.1`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
 
 ## Binary Packaging
 
@@ -123,11 +133,9 @@ ICEDR can build standalone Node.js SEA binaries for supported platforms:
 pnpm package:binary
 ```
 
-Release artifacts follow the `icedr_VERSION_PLATFORM` naming convention. Release automation generates checksums and combines release notes with artifact integrity information.
+Release artifacts follow the `icedr_VERSION_PLATFORM` naming convention. GitHub Release notes include concrete download links, file sizes, checksums, and release notes generated from the actual uploaded files.
 
 ## Release Versioning
-
-Release automation uses tags that start with `v`.
 
 Examples:
 
@@ -142,7 +150,7 @@ Tags that contain a pre-release marker after the version, such as `-alpha.1` or 
 
 The ICEDR runtime normalizes `v`-prefixed tags for version comparison while keeping the standard tag form in system information. Pre-release builds can detect newer pre-release and stable releases; stable builds only treat stable releases as updates by default.
 
-Each GitHub Release includes `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json` so downloaded files can be checked for integrity and source.
+Each GitHub Release includes generated asset links, `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json` so downloaded files can be checked for integrity and source.
 
 ## Verification Flow
 

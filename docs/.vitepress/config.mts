@@ -39,7 +39,7 @@ export default defineConfig({
         text: "参考",
         items: [
           { text: "配置项", link: "/reference/configuration" },
-          { text: "发布产物", link: "/reference/releases" },
+          { text: "发布动态", link: "/reference/releases" },
         ],
       },
     ],

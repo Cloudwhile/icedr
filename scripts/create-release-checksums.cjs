@@ -50,6 +50,7 @@ writeFileSync(
       generatedAt: new Date().toISOString(),
       metadata: resolveBinaryMetadata(),
       releaseTag: process.env.GITHUB_REF_NAME || '',
+      repository: process.env.GITHUB_REPOSITORY || '',
       runId: process.env.GITHUB_RUN_ID || '',
       files: entries,
     },

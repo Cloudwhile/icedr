@@ -33,4 +33,4 @@ features:
 - [快速开始](/guide/getting-started)
 - [部署方式](/guide/deployment)
 - [配置项参考](/reference/configuration)
-- [发布产物与校验](/reference/releases)
+- [发布动态与校验](/reference/releases)
