@@ -20,24 +20,23 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DOCKERHUB_IMAGE_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKER_HUB_USERNAME }}
-      DOCKERHUB_REPOSITORY: icedr-po
+      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      DOCKER_HUB_IMAGE_NAMESPACE: ${{ vars.DOCKER_HUB_NAMESPACE || vars.DOCKERHUB_NAMESPACE || secrets.DOCKER_HUB_USERNAME }}
+      DOCKER_HUB_REPOSITORY: icedr-po
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Check Docker Hub credentials
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-          DOCKERHUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
         run: |
-          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKER_HUB_ACCESS_TOKEN" ]; then
+          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_ACCESS_TOKEN" ]; then
             echo "::error::Set DOCKER_HUB_USERNAME and DOCKER_HUB_ACCESS_TOKEN secrets before publishing Docker images."
             exit 1
           fi
-          if [ -z "$DOCKERHUB_IMAGE_NAMESPACE" ]; then
-            echo "::error::Set DOCKERHUB_NAMESPACE variable or DOCKER_HUB_USERNAME secret for the Docker image namespace."
+          if [ -z "$DOCKER_HUB_IMAGE_NAMESPACE" ]; then
+            echo "::error::Set DOCKER_HUB_NAMESPACE variable or DOCKER_HUB_USERNAME secret for the Docker image namespace."
             exit 1
           fi
 
@@ -50,14 +49,14 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          username: ${{ env.DOCKER_HUB_USERNAME }}
+          password: ${{ env.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/${{ env.DOCKERHUB_REPOSITORY }}
+          images: ${{ env.DOCKER_HUB_IMAGE_NAMESPACE }}/${{ env.DOCKER_HUB_REPOSITORY }}
           tags: |
             type=ref,event=tag
             type=semver,pattern={{version}}
