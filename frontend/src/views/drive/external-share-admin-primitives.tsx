@@ -13,16 +13,20 @@ const buttonTypeAttr: {
 };
 export function AdminSection({
   children,
+  className,
+  description,
   icon,
   palette,
   title
 }: {
   children: React.ReactNode;
+  className?: string;
+  description?: string;
   icon: React.ReactNode;
   palette: Palette;
   title: string;
 }) {
-  return <Surface palette={palette} style={{
+  return <Surface className={className} palette={palette} style={{
     padding: "16px"
   }}>
       <div style={{
@@ -31,14 +35,32 @@ export function AdminSection({
       gap: "16px"
     }}>
         <div style={{
-        alignItems: "center",
+        alignItems: "flex-start",
         display: "flex",
         gap: "8px",
         color: palette.muted,
         fontWeight: "700"
       }}>
-          {icon}
-          <span>{title}</span>
+          <span style={{
+          display: "inline-flex",
+          paddingTop: "2px"
+        }}>
+            {icon}
+          </span>
+          <span style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "3px",
+          minWidth: "0px"
+        }}>
+            <span>{title}</span>
+            {description ? <small style={{
+            color: palette.subtle,
+            fontSize: "12px",
+            fontWeight: "560",
+            lineHeight: "1.5"
+          }}>{description}</small> : null}
+          </span>
         </div>
         <div style={{
         display: "flex",
@@ -328,5 +350,4 @@ export function PolicyInput({
     "--focus-box-shadow": `0 0 0 1px ${palette.focusRing}`
   } as React.CSSProperties} />;
 }
-
 

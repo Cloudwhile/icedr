@@ -1,7 +1,7 @@
 .admin-shell .drive-system-settings {
   align-items: start;
   gap: 16px;
-  grid-template-columns: 190px minmax(0, 1fr) 270px;
+  grid-template-columns: minmax(0, 1fr) 270px;
   position: relative;
 }
 
@@ -374,7 +374,7 @@
 
 @media (max-width: 1320px) {
   .admin-shell .drive-system-settings {
-    grid-template-columns: 184px minmax(0, 1fr) 250px;
+    grid-template-columns: minmax(0, 1fr) 250px;
   }
 
   .admin-shell .drive-system-policy-strip {

@@ -6,13 +6,20 @@ import type {
 export type AuditEventResponse = {
   id: string;
   action: string;
-  actor: "workspace" | "visitor" | "system";
+  actor: "workspace" | "account" | "visitor" | "system";
   target: string;
   workspaceId: string | null;
   shareToken: string | null;
   nodeId: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
+};
+
+export type AuditEventsPageResponse = {
+  items: AuditEventResponse[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 export type ShareAccessIdentityType = "anonymous" | "email" | "ica" | "workspace";
@@ -217,14 +224,24 @@ export type UpdateCurrentUserInput = Partial<{
 }>;
 
 export type DatabaseProfile = {
+  provider: "sqlite" | "postgresql";
   host: string;
   port: number;
   dbName: string;
   user: string;
   passwordProvided: boolean;
-  passwordSource: "env";
+  passwordSource: "env" | "setup" | "local";
   verified: boolean;
   verifiedAt: string | null;
+};
+
+export type VerifyDatabaseInput = {
+  provider?: "postgresql";
+  host?: string;
+  port?: number;
+  dbName?: string;
+  user?: string;
+  password?: string;
 };
 
 export type PublicSiteSettings = {
@@ -545,7 +562,7 @@ export class DriveApiError extends Error {
 }
 
 export function getApiBaseUrl() {
-  return (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:13001/api").replace(/\/$/, "");
+  return (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 }
 
 export function buildApiUrl(path: string) {
@@ -634,13 +651,14 @@ export async function fetchAuditEvents(filters: {
   nodeId?: string;
   action?: string;
   limit?: number;
+  offset?: number;
 } = {}) {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
   });
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return requestDriveApi<AuditEventResponse[]>(`/audit/events${suffix}`);
+  return requestDriveApi<AuditEventsPageResponse>(`/audit/events${suffix}`);
 }
 
 export async function fetchFileNodes(filters: { workspaceId?: string; parentNodeId?: string | null } = {}) {
@@ -824,6 +842,12 @@ export function verifyShareEmailCode(token: string, email: string, code: string)
   });
 }
 
+export function createShareAccountAccessSession(token: string) {
+  return requestDriveApi<ShareAccessSession>(`/shares/${encodeURIComponent(token)}/access-sessions/account`, {
+    method: "POST",
+  });
+}
+
 export function createShareOAuthSession(token: string) {
   return startShareOAuth(token);
 }
@@ -836,10 +860,10 @@ export function fetchSetupStatus() {
   return requestDriveApi<SetupStatus>("/setup/status");
 }
 
-export function verifySetupDatabase() {
+export function verifySetupDatabase(input: VerifyDatabaseInput = {}) {
   return requestDriveApi<DatabaseProfile>("/setup/verify-database", {
     method: "POST",
-    body: JSON.stringify({ confirm: true }),
+    body: JSON.stringify({ confirm: true, ...input }),
   });
 }
 

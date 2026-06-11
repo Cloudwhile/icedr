@@ -294,20 +294,7 @@ export class StorageService {
         _count: { _all: true },
         _sum: { sizeBytes: true },
       }),
-      this.prisma.$queryRaw<
-        Array<{ bytes: bigint | null; count: bigint; date: string }>
-      >`
-        select
-          to_char(created_at, 'YYYY-MM-DD') as date,
-          coalesce(sum(size_bytes), 0)::bigint as bytes,
-          count(*)::bigint as count
-        from file_nodes
-        where workspace_id = ${workspaceId}
-          and archived_at is null
-          and size_bytes is not null
-          and created_at >= ${since}
-        group by to_char(created_at, 'YYYY-MM-DD')
-      `,
+      this.getUsageTrendRows(workspaceId, since),
     ]);
     const folderPathById = await this.fetchFolderPathMap(
       directoryRows
@@ -1555,6 +1542,44 @@ export class StorageService {
     current.bytes += bytes;
     current.count += count;
     buckets.set(id, current);
+  }
+
+  private getUsageTrendRows(workspaceId: string, since: Date) {
+    if (this.prisma.isSqlite()) {
+      return this.prisma.$queryRaw<
+        Array<{
+          bytes: bigint | number | null;
+          count: bigint | number;
+          date: string;
+        }>
+      >`
+        select
+          substr(created_at, 1, 10) as date,
+          coalesce(sum(size_bytes), 0) as bytes,
+          count(*) as count
+        from file_nodes
+        where workspace_id = ${workspaceId}
+          and archived_at is null
+          and size_bytes is not null
+          and created_at >= ${since}
+        group by substr(created_at, 1, 10)
+      `;
+    }
+
+    return this.prisma.$queryRaw<
+      Array<{ bytes: bigint | null; count: bigint; date: string }>
+    >`
+      select
+        to_char(created_at, 'YYYY-MM-DD') as date,
+        coalesce(sum(size_bytes), 0)::bigint as bytes,
+        count(*)::bigint as count
+      from file_nodes
+      where workspace_id = ${workspaceId}
+        and archived_at is null
+        and size_bytes is not null
+        and created_at >= ${since}
+      group by to_char(created_at, 'YYYY-MM-DD')
+    `;
   }
 
   private toStorageBuckets(

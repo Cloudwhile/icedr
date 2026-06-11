@@ -88,6 +88,12 @@
   min-width: 0;
 }
 
+.admin-panel-nav-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .admin-panel-nav button {
   align-items: center;
   background: transparent;
@@ -129,6 +135,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-panel-subnav {
+  border-left: 1px solid #e1e8f2;
+  display: grid;
+  gap: 3px;
+  margin: -1px 0 4px 21px;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.admin-panel-subnav button {
+  border-radius: 7px;
+  color: #718096;
+  font-size: 12px;
+  font-weight: 720;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+.admin-panel-subnav button:hover {
+  background: #f8faff;
+  border-color: #edf2fb;
+  transform: translateX(1px);
+}
+
+.admin-panel-subnav button[data-active="true"] {
+  background: #f7faff;
+  border-color: #dfe8ff;
+  box-shadow: inset 2px 0 0 var(--drive-ui-blue-600);
+  color: var(--drive-ui-blue-600);
 }
 
 .admin-sidebar-status {
@@ -636,6 +674,12 @@
   color: var(--drive-ui-info);
 }
 
+.admin-recent-activity-avatar[data-actor="account"] {
+  background: linear-gradient(180deg, #f1fff8 0%, #e2f8ef 100%);
+  border-color: #bcebd4;
+  color: var(--drive-ui-success);
+}
+
 .admin-recent-activity-avatar[data-actor="system"] {
   background: linear-gradient(180deg, #ffffff 0%, #f2f5f9 100%);
   border-color: #dfe7f2;
@@ -797,26 +841,37 @@
   align-items: start;
   display: grid !important;
   gap: 16px !important;
-  grid-auto-flow: dense;
-  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
   max-width: none !important;
 }
 
-.admin-shell .external-share-admin-settings-panel > div:first-child,
-.admin-shell .external-share-admin-settings-panel > div:nth-child(8) {
+.admin-shell .external-share-admin-kicker,
+.admin-shell .external-share-admin-summary,
+.admin-shell .external-share-section-audit {
   grid-column: 1 / -1;
+}
+
+.admin-shell .external-share-admin-kicker {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-shell .external-share-section-anonymous,
+.admin-shell .external-share-section-email {
+  grid-column: 1;
+}
+
+.admin-shell .external-share-section-identity,
+.admin-shell .external-share-section-lifecycle {
+  grid-column: 2;
 }
 
 .admin-shell .external-share-admin-settings-panel > section {
   min-width: 0;
   width: 100%;
-}
-
-.admin-shell .external-share-admin-settings-panel > section:nth-of-type(1),
-.admin-shell .external-share-admin-settings-panel > section:nth-of-type(4),
-.admin-shell .external-share-admin-settings-panel > section:nth-of-type(5),
-.admin-shell .external-share-admin-settings-panel > section:nth-of-type(6) {
-  grid-column: 1 / -1;
 }
 
 .admin-shell .drive-module-table,
@@ -862,7 +917,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .admin-shell .external-share-admin-settings-panel > section {
+  .admin-shell .external-share-section-anonymous,
+  .admin-shell .external-share-section-email,
+  .admin-shell .external-share-section-identity,
+  .admin-shell .external-share-section-lifecycle,
+  .admin-shell .external-share-section-audit {
     grid-column: 1 / -1;
   }
 }

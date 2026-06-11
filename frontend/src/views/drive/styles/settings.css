@@ -907,6 +907,62 @@
   min-width: 0;
 }
 
+.drive-system-brand-grid {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 136px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.drive-system-logo-preview {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--drive-ui-line);
+  border-radius: var(--drive-ui-radius);
+  display: flex;
+  height: 112px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.drive-system-copy-field {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.drive-system-translation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.drive-system-translation-row {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--drive-ui-line);
+  border-radius: var(--drive-ui-radius);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(80px, 120px) minmax(0, 1fr);
+  min-height: 36px;
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+.drive-system-translation-row span:first-child {
+  color: var(--drive-ui-ink);
+  font-weight: 760;
+}
+
+.drive-system-translation-row span:last-child {
+  color: var(--drive-ui-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .drive-system-usage-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -919,4 +975,10 @@
   gap: 14px;
   position: sticky;
   top: 104px;
+}
+
+@media (max-width: 860px) {
+  .drive-system-brand-grid {
+    grid-template-columns: 1fr;
+  }
 }

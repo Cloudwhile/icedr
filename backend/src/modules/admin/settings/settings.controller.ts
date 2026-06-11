@@ -71,8 +71,7 @@ export class SetupController {
 
   @Post('verify-database')
   verifyDatabase(@Body() dto: VerifyDatabaseDto) {
-    void dto;
-    return this.settingsService.verifyDatabase();
+    return this.settingsService.verifyDatabase(dto);
   }
 }
 

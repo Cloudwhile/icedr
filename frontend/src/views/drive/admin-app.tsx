@@ -29,7 +29,7 @@ import {
 import { AuthGate } from "./auth-client";
 import { LocalizedDriveShell } from "./drive-shell";
 import { AuditModule, getAuditActorIdentity, getAuditResult } from "./drive-modules";
-import { DriveSystemSettings } from "./drive-system-settings";
+import { DriveSystemSettings, type DriveSystemSettingsSection } from "./drive-system-settings";
 import { ExternalShareAdminSettingsPage } from "./external-share-admin-settings";
 import {
   formatAbsoluteDate,
@@ -49,18 +49,27 @@ import "./styles/admin-overview.css";
 import "./styles/admin-audit.css";
 import "./styles/admin-system.css";
 
-type AdminPanel = "overview" | "audit" | "system" | "external-share";
+type AdminPanel = "overview" | "audit" | "system";
+type SystemSettingsSection = DriveSystemSettingsSection | "external-share";
 
 const adminPanels: Array<{ icon: LocalIconName; id: AdminPanel; labelKey: string }> = [
   { icon: "house", id: "overview", labelKey: "admin.overview" },
   { icon: "shield", id: "audit", labelKey: "audit.title" },
   { icon: "settings", id: "system", labelKey: "settings.systemSettings" },
-  { icon: "link", id: "external-share", labelKey: "admin.externalLinkPolicy" },
 ];
+
+const systemSettingSections: Array<{ icon: LocalIconName; id: SystemSettingsSection; labelKey: string; subtitleKey: string }> = [
+  { icon: "settings", id: "platform", labelKey: "settings.systemPlatform", subtitleKey: "settings.systemPlatformSubtitle" },
+  { icon: "file", id: "storage", labelKey: "settings.storagePolicy", subtitleKey: "settings.storagePolicySubtitle" },
+  { icon: "trash", id: "lifecycle", labelKey: "settings.lifecyclePolicy", subtitleKey: "settings.lifecyclePolicySubtitle" },
+  { icon: "link", id: "external-share", labelKey: "admin.externalLinkPolicy", subtitleKey: "admin.externalLinkPolicySubtitle" },
+];
+
+const auditPageSizeOptions = [25, 50, 100, 200];
+const defaultAuditPageSize = 50;
 
 const adminPanelPathSegments: Record<AdminPanel, string> = {
   audit: "audit",
-  "external-share": "external-share",
   overview: "overview",
   system: "system",
 };
@@ -69,15 +78,39 @@ const adminPanelByPathSegment = new Map(
   Object.entries(adminPanelPathSegments).map(([panel, segment]) => [segment, panel as AdminPanel]),
 );
 
+const systemSectionPathSegments: Record<SystemSettingsSection, string> = {
+  "external-share": "external-share",
+  lifecycle: "lifecycle",
+  platform: "platform",
+  storage: "storage",
+};
+
+const systemSectionByPathSegment = new Map(
+  Object.entries(systemSectionPathSegments).map(([section, segment]) => [segment, section as SystemSettingsSection]),
+);
+
 function resolveAdminPanelFromPath(pathname: string): AdminPanel {
   const normalized = pathname.replace(/\/+$/, "") || "/admin";
   if (normalized === "/admin") return "overview";
+  if (normalized === "/admin/external-share") return "system";
   const segment = normalized.match(/^\/admin\/([^/]+)$/)?.[1];
+  if (segment === "system" || normalized.startsWith("/admin/system/")) return "system";
   return segment ? adminPanelByPathSegment.get(segment) ?? "overview" : "overview";
 }
 
 function getAdminPanelPath(panel: AdminPanel) {
   return panel === "overview" ? "/admin" : `/admin/${adminPanelPathSegments[panel]}`;
+}
+
+function resolveSystemSectionFromPath(pathname: string): SystemSettingsSection {
+  const normalized = pathname.replace(/\/+$/, "") || "/admin/system";
+  if (normalized === "/admin/external-share") return "external-share";
+  const segment = normalized.match(/^\/admin\/system\/([^/]+)$/)?.[1];
+  return segment ? systemSectionByPathSegment.get(segment) ?? "platform" : "platform";
+}
+
+function getSystemSectionPath(section: SystemSettingsSection) {
+  return section === "platform" ? "/admin/system" : `/admin/system/${systemSectionPathSegments[section]}`;
 }
 
 export function AdminApp() {
@@ -95,6 +128,7 @@ export function AdminApp() {
 function AdminOverviewPanel({
   activityQuery,
   auditEvents,
+  auditTotal,
   locale,
   onOpenPanel,
   palette,
@@ -106,6 +140,7 @@ function AdminOverviewPanel({
 }: {
   activityQuery: string;
   auditEvents: AuditEventResponse[];
+  auditTotal: number;
   locale: Locale;
   onOpenPanel: (panel: AdminPanel) => void;
   palette: Palette;
@@ -146,8 +181,8 @@ function AdminOverviewPanel({
   const activityTrendOption = useMemo(() => buildActivityTrendOption(activityTrend, palette), [activityTrend, palette]);
   const distributionCenterLabel = storageUsage ? t("settings.fileCount") : t("audit.title");
   const distributionOption = useMemo(
-    () => buildAdminDistributionOption(fileTypeRows, formatter.format(storageUsage?.fileCount ?? auditEvents.length), distributionCenterLabel, palette),
-    [auditEvents.length, distributionCenterLabel, fileTypeRows, formatter, palette, storageUsage?.fileCount],
+    () => buildAdminDistributionOption(fileTypeRows, formatter.format(storageUsage?.fileCount ?? auditTotal), distributionCenterLabel, palette),
+    [auditTotal, distributionCenterLabel, fileTypeRows, formatter, palette, storageUsage?.fileCount],
   );
   const hasFailedEvents = failedEvents.length > 0;
   const statusValue = hasFailedEvents ? t("admin.needsReview") : t("admin.running");
@@ -170,7 +205,7 @@ function AdminOverviewPanel({
         <AdminOverviewStatCard icon="file" label={t("settings.fileCount")} meta={t("settings.storageSpace")} tone="success" value={storageUsage ? formatter.format(storageUsage.fileCount) : "--"} />
         <AdminOverviewStatCard icon="folder" label={t("settings.storageSpace")} meta={storagePercentLabel} tone="info" value={storageLabel} />
         <AdminOverviewStatCard icon="link" label={t("admin.externalLinkPolicy")} meta={t("links.adminScope")} tone="warning" value={formatter.format(shareEvents.length)} />
-        <AdminOverviewStatCard icon="shield" label={t("audit.title")} meta={t("audit.subtitle")} tone={failedEvents.length > 0 ? "danger" : "secure"} value={formatter.format(auditEvents.length)} />
+        <AdminOverviewStatCard icon="shield" label={t("audit.title")} meta={t("audit.subtitle")} tone={failedEvents.length > 0 ? "danger" : "secure"} value={formatter.format(auditTotal)} />
         <AdminOverviewStatCard icon={hasFailedEvents ? "exclamation" : "tick"} label={t("settings.systemStatus")} meta={statusMeta} tone={hasFailedEvents ? "danger" : "secure"} value={statusValue} />
       </div>
 
@@ -645,12 +680,16 @@ function AdminPanelGate({
   const pathname = usePathname();
   const t = useTranslations();
   const activePanel = resolveAdminPanelFromPath(pathname);
+  const activeSystemSection = resolveSystemSectionFromPath(pathname);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([]);
   const [storageSettings, setStorageSettings] = useState<StorageSettings | null>(null);
   const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(null);
   const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(defaultAuditPageSize);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -659,6 +698,11 @@ function AdminPanelGate({
 
   const openPanel = useCallback((panel: AdminPanel) => {
     const nextPath = getAdminPanelPath(panel);
+    if (pathname === nextPath) return;
+    router.push(nextPath);
+  }, [pathname, router]);
+  const openSystemSection = useCallback((section: SystemSettingsSection) => {
+    const nextPath = getSystemSectionPath(section);
     if (pathname === nextPath) return;
     router.push(nextPath);
   }, [pathname, router]);
@@ -682,13 +726,35 @@ function AdminPanelGate({
     return nextWorkspaces[0]?.id ?? null;
   }, [canUseAdminPanel]);
 
-  const refreshAudit = useCallback(async (targetWorkspaceId = workspaceId) => {
-    if (!canUseAdminPanel || !targetWorkspaceId) return;
+  const refreshAudit = useCallback(async (targetWorkspaceId = workspaceId, targetPage = 1, targetPageSize = defaultAuditPageSize) => {
+    if (!canUseAdminPanel || !targetWorkspaceId) {
+      setAuditEvents([]);
+      setAuditTotal(0);
+      return;
+    }
+    const normalizedPage = Math.max(1, Math.trunc(targetPage) || 1);
+    const normalizedPageSize = Math.max(1, Math.trunc(targetPageSize) || defaultAuditPageSize);
+    const loadPage = (pageNumber: number) => fetchAuditEvents({
+      limit: normalizedPageSize,
+      offset: (pageNumber - 1) * normalizedPageSize,
+      workspaceId: targetWorkspaceId,
+    });
     try {
-      setAuditEvents(await fetchAuditEvents({ limit: 100, workspaceId: targetWorkspaceId }));
+      let nextPage = normalizedPage;
+      let response = await loadPage(nextPage);
+      const totalPages = Math.max(1, Math.ceil(response.total / normalizedPageSize));
+      if (response.total > 0 && response.items.length === 0 && nextPage > totalPages) {
+        nextPage = totalPages;
+        response = await loadPage(nextPage);
+      }
+      setAuditEvents(response.items);
+      setAuditTotal(response.total);
+      setAuditPage(nextPage);
+      setAuditPageSize(response.limit);
       setAuditError(null);
     } catch {
       setAuditEvents([]);
+      setAuditTotal(0);
       setAuditError(t("audit.loadFailed"));
     }
   }, [canUseAdminPanel, t, workspaceId]);
@@ -755,16 +821,26 @@ function AdminPanelGate({
     event.preventDefault();
     if (activePanel !== "audit") openPanel("audit");
   };
+  const changeAuditPage = useCallback((nextPage: number) => {
+    void refreshAudit(workspaceId, nextPage, auditPageSize);
+  }, [auditPageSize, refreshAudit, workspaceId]);
+  const changeAuditPageSize = useCallback((nextPageSize: number) => {
+    void refreshAudit(workspaceId, 1, nextPageSize);
+  }, [refreshAudit, workspaceId]);
 
   const activePanelMeta = useMemo(() => adminPanels.find((panel) => panel.id === activePanel) ?? adminPanels[0], [activePanel]);
+  const activeSystemSectionMeta = useMemo(
+    () => systemSettingSections.find((section) => section.id === activeSystemSection) ?? systemSettingSections[0],
+    [activeSystemSection],
+  );
   const activePanelSubtitle =
     activePanel === "overview"
       ? t("admin.overviewSubtitle")
       : activePanel === "audit"
       ? t("audit.subtitle")
       : activePanel === "system"
-        ? t("settings.systemSettingsSubtitle")
-        : t("admin.externalLinkPolicySubtitle");
+        ? t(activeSystemSectionMeta.subtitleKey)
+        : "";
   if (!canUseAdminPanel) return null;
 
   return (
@@ -776,18 +852,38 @@ function AdminPanelGate({
         </button>
         <div className="admin-sidebar-label">{t("app.adminFunctions")}</div>
         <nav className="admin-panel-nav" aria-label={t("app.adminFunctions")}>
-          {adminPanels.map((panel) => (
-            <button
-              aria-current={activePanel === panel.id ? "page" : undefined}
-              data-active={activePanel === panel.id ? "true" : undefined}
-              key={panel.id}
-              onClick={() => openPanel(panel.id)}
-              type="button"
-            >
-              <LocalIcon name={panel.icon} size={16} />
-              <span>{t(panel.labelKey)}</span>
-            </button>
-          ))}
+          {adminPanels.map((panel) => {
+            const active = activePanel === panel.id;
+            return (
+              <div className="admin-panel-nav-group" key={panel.id}>
+                <button
+                  aria-current={active && panel.id !== "system" ? "page" : undefined}
+                  data-active={active ? "true" : undefined}
+                  onClick={() => openPanel(panel.id)}
+                  type="button"
+                >
+                  <LocalIcon name={panel.icon} size={16} />
+                  <span>{t(panel.labelKey)}</span>
+                </button>
+                {panel.id === "system" ? (
+                  <div className="admin-panel-subnav" aria-label={t("settings.systemSettings")}>
+                    {systemSettingSections.map((section) => (
+                      <button
+                        aria-current={active && activeSystemSection === section.id ? "page" : undefined}
+                        data-active={active && activeSystemSection === section.id ? "true" : undefined}
+                        key={section.id}
+                        onClick={() => openSystemSection(section.id)}
+                        type="button"
+                      >
+                        <LocalIcon name={section.icon} size={13} />
+                        <span>{t(section.labelKey)}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </nav>
         <div className="admin-sidebar-status">
           <span className="admin-sidebar-status-dot" />
@@ -851,6 +947,7 @@ function AdminPanelGate({
               <AdminOverviewPanel
                 activityQuery={adminSearchQuery}
                 auditEvents={auditEvents}
+                auditTotal={auditTotal}
                 locale={locale}
                 onOpenPanel={openPanel}
                 palette={palette}
@@ -865,15 +962,24 @@ function AdminPanelGate({
               <AuditModule
                 error={auditError}
                 events={auditEvents}
+                onPageChange={changeAuditPage}
+                onPageSizeChange={changeAuditPageSize}
                 onQueryChange={setAdminSearchQuery}
-                onRefresh={() => void refreshAudit()}
+                onRefresh={() => void refreshAudit(workspaceId, auditPage, auditPageSize)}
+                page={auditPage}
+                pageSize={auditPageSize}
+                pageSizeOptions={auditPageSizeOptions}
                 palette={palette}
                 query={adminSearchQuery}
+                totalEvents={auditTotal}
               />
             ) : null}
             {activePanel === "system" ? (
-              workspaceId ? (
+              activeSystemSection === "external-share" ? (
+                <ExternalShareAdminSettingsPage embedded setThemeMode={setThemeMode} themeMode={themeMode} />
+              ) : workspaceId ? (
                 <DriveSystemSettings
+                  section={activeSystemSection}
                   locale={locale}
                   onStorageUsageUpdated={(usage) => {
                     setStorageUsage(usage);
@@ -887,9 +993,6 @@ function AdminPanelGate({
               ) : (
                 <LdrsLoadingState compact label={t("app.loading")} palette={palette} size={28} />
               )
-            ) : null}
-            {activePanel === "external-share" ? (
-              <ExternalShareAdminSettingsPage embedded setThemeMode={setThemeMode} themeMode={themeMode} />
             ) : null}
           </div>
         )}
