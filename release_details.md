@@ -1,97 +1,116 @@
 # ICEDR vX.Y.Z
 
-> [!WARNING]
+> [!IMPORTANT]
 >
-> alpha版本存在较多不稳定的功能和缺陷请勿将该版本的服务用于生产环境!
+> 带有 `alpha`、`beta`、`rc` 等预发布标记的版本会作为 GitHub prerelease 发布，不建议用于生产环境。
 
-本次版本发布聚焦于 ICEDR 的核心网盘能力建设，包括文件管理、对象存储、外链分享、权限控制、认证流程与部署体验等方面的改进。本版本仍属于早期迭代版本，主要目标是形成可运行、可验证、可继续扩展的系统基础。
+本次发布聚焦 ICEDR 的自托管部署、工作区文件管理、外链策略、审计记录、默认 SQLite 数据源、Docker 镜像和二进制发布体验。发布包会附带校验文件，便于确认下载文件完整性和来源。
+
+## Versioning
+
+ICEDR 使用以 `v` 开头的 Git tag 触发发布流程。
+
+稳定版本示例：
+
+```text
+v1.2.0
+```
+
+预发布版本示例：
+
+```text
+v1.2.0-alpha.1
+v1.2.0-beta.1
+v1.2.0-rc.1
+```
+
+发布规则：
+
+- tag 包含 `-` 时，GitHub Release 会标记为 prerelease。
+- 稳定版本会更新 Docker 镜像的 `latest` 标签。
+- 预发布版本不会更新 Docker 镜像的 `latest` 标签。
+- 手动触发 Docker workflow 时默认发布 `edge` 标签，不会更新 `latest`。
 
 ## Highlights
 
-* 完成文件上传、下载与文件节点管理的基础闭环
-* 支持 S3 / MinIO 兼容对象存储接入
-* 实现外链分享与邮箱验证访问流程
-* 增加基础审计日志，用于记录分享、验证和下载行为
-* 完善前后端分离结构与 Docker Compose 本地部署环境
-* 优化认证、权限、主面板或存储相关逻辑
+- 统一 ICEDR 品牌命名，发布文件不再使用 `ICEDR-API`。
+- 新增 VitePress 文档站，并通过 GitHub Pages workflow 部署。
+- 新增统一 Docker 镜像，镜像仓库名为 `icedr-po`。
+- 新增独立 Docker workflow，Docker Hub 发布不再堆叠在 GitHub Release workflow 中。
+- 新增跨平台二进制打包流程，产物命名为 `icedr_VERSION_PLATFORM`。
+- 新增 MD5、SHA256 和 manifest 文件，用于发布产物完整性检查。
+- 默认优先使用本地 SQLite 保存持久化数据，配置 PostgreSQL 后再迁移数据源。
 
 ## Added
 
-* 新增文件节点管理能力，包括文件列表、上传确认、状态更新等
-* 新增外链分享功能，支持通过分享链接访问指定文件
-* 新增邮箱验证码验证流程，用于控制匿名访客访问权限
-* 新增下载意图机制，下载前由后端进行权限校验
-* 新增基础审计事件记录，便于追踪关键操作
-* 新增对象存储配置，支持 MinIO / S3-compatible storage
-* 新增 Docker Compose 开发环境，包含 PostgreSQL、Redis、MinIO、API 与 Web 服务
+- VitePress 文档站，源码位于 `docs`。
+- GitHub Pages 部署 workflow，构建产物来自 `docs/.vitepress/dist`。
+- Docker Hub 发布 workflow，支持 `linux/amd64` 和 `linux/arm64`。
+- 二进制元数据配置，支持自定义图标、描述、产品名和版权信息。
+- 发布说明生成流程，会读取根目录 `release_details.md` 并拼接 checksum 信息。
+- 审计分页、更多审计事件分类和外链访问身份记录。
 
 ## Changed
 
-* 调整项目目录结构，使 frontend、backend、database、deploy、docs 职责更加清晰
-* 优化文件上传 / 下载流程，减少前端直接接触底层存储细节
-* 优化分享访问流程，将匿名访问纳入后端授权控制
-* 调整部分环境变量与部署配置，提升本地开发和生产部署的一致性
-* 优化前端主面板结构，使文件、分享、传输、管理入口更加清晰
+- Docker 部署改为单个 ICEDR 服务镜像，前端静态文件由后端托管。
+- Docker Compose 仅打包本项目服务，不额外编排 PostgreSQL、Redis、MinIO 或 nginx。
+- Docker 持久化卷挂载到 `/workspace/backend/data`，覆盖 SQLite、本地文件和运行时数据。
+- 系统设置拆分为更清晰的子项，外链策略页仅保留外链访问相关配置。
+- README 补充发布版本规则、Docker tag 规则、文档站入口和校验文件说明。
 
 ## Fixed
 
-* 修复部分接口返回字段不统一的问题
-* 修复分享访问流程中权限边界不清晰的问题
-* 修复对象存储链接可能被直接暴露的问题
-* 修复开发环境下部分配置缺失导致服务启动异常的问题
-* 修复部分页面状态刷新后数据不同步的问题
+- 修复手动触发 Docker workflow 时可能误更新 `latest` 的风险。
+- 修复登录状态下仍可访问登录、注册、找回密码和重置密码页面的问题。
+- 修复 Drive 主页面和内部导航缺少稳定路径，刷新后可能回到旧页面的问题。
+- 修复预览文件误触发下载审计记录的问题。
+- 修复外链页已登录身份认证逻辑和展示主体不一致的问题。
 
 ## Security
 
-* 避免向前端暴露长期有效的 S3 / MinIO 固定文件地址
-* 下载请求统一经过后端权限校验后再生成短期访问凭证
-* 分享访问增加邮箱验证与访问审计
-* 对生产环境关键配置进行校验，避免缺少必要依赖时错误启动
-* 对后续权限系统、下载策略和分享策略留出扩展空间
+- GitHub Actions 仅通过 Secrets 读取 Docker Hub 凭据，不在日志中输出密钥值。
+- `.dockerignore` 排除环境文件、私有目录、数据目录和构建产物。
+- `.env`、`data`、`private-docs` 等本地敏感路径不应进入发布产物或提交。
+- 下载文件前统一由后端创建短期访问意图并记录必要审计信息。
+- 发布包包含 `MD5SUMS.txt`、`SHA256SUMS.txt` 和 `release-manifest.json`。
 
-## Known Issues
+## Artifacts
 
-* 当前权限模型仍处于早期阶段，后续需要进一步拆分站点角色、工作区角色和分享访问权限
-* OAuth / OIDC 接入流程仍需进一步标准化，尤其是外部身份与本地用户的绑定关系
-* 数据库迁移体系仍需完善，后续计划引入 Prisma Migration 或其他 migration 管理方案
-* Office 在线预览 / 编辑能力暂未完整接入
-* WebDAV、WOPI、多节点存储、对象对账和完整后台任务系统仍在规划中
-* 当前部分临时状态仍需迁移到 Redis，以支持多实例部署和服务重启后的状态恢复
+GitHub Release 会包含：
+
+- `icedr_VERSION_windows-x86_64`
+- `icedr_VERSION_windows-arm64`
+- `icedr_VERSION_linux-x86_64`
+- `icedr_VERSION_linux-arm64`
+- `icedr_VERSION_macos-x86_64`
+- `icedr_VERSION_macos-arm64`
+- `MD5SUMS.txt`
+- `SHA256SUMS.txt`
+- `release-manifest.json`
+
+不支持的平台不会生成发布文件。
 
 ## Upgrade Notes
 
-1. 请检查 `.env` 中的数据库、Redis、对象存储和前端 API 地址配置。
-2. 如果使用 MinIO，请确认 bucket 已创建且未设置为公开读。
-3. 生产环境请勿使用示例账号、默认密码或开发模式配置。
-4. 如果本版本涉及数据库结构变化，请先备份数据库后再执行迁移。
-5. 如果使用反向代理，请确保 `/api`、前端 history fallback 和对象存储访问策略配置正确。
+1. 升级前备份数据库和 `data` 目录。
+2. Docker 部署请确认持久化卷挂载到 `/workspace/backend/data`。
+3. 如果从旧的拆分 Docker 服务迁移，请改用统一 ICEDR 镜像。
+4. 如果使用 Docker Hub 镜像，请使用 `<namespace>/icedr-po:<tag>`。
+5. 如果使用对象存储，请确认 S3 / MinIO endpoint、bucket、access key 和 secret key 配置正确。
+6. 如果使用预发布版本，请避免直接用于生产环境。
 
-## Deployment
+## Verification
 
-```bash
-pnpm install
-pnpm build
-docker compose up -d
-```
-
-或根据实际部署方式启动：
+推荐发布后执行：
 
 ```bash
-pnpm --filter backend start:prod
+pnpm --filter backend build
 pnpm --filter frontend build
+pnpm docs:build
+docker compose -f deploy/docker-compose.yml config
 ```
 
-## Compatibility
-
-* Node.js: 20+
-* Package Manager: pnpm
-* Database: PostgreSQL
-* Cache / Queue: Redis
-* Object Storage: MinIO / S3-compatible storage
-
-## Contributors
-
-* @your-name
+下载二进制文件后，可以使用发布页附带的 checksum 文件验证完整性。
 
 ## Full Changelog
 

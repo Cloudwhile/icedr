@@ -32,7 +32,7 @@ ICEDR is a self-hostable workspace drive for file management, preview, sharing, 
 | `backend` | NestJS API, authentication, sharing, storage, settings, and audit modules. |
 | `database` | Prisma schema, SQLite schema variant, migrations, and seed entry point. |
 | `deploy` | Docker image and Compose packaging configuration. |
-| `docs` | Architecture, storage, identity provider, and deployment notes. |
+| `docs` | VitePress documentation source, deployment guide, and release reference. |
 | `scripts` | Release, checksum, and binary packaging utilities. |
 
 ## Requirements
@@ -60,6 +60,7 @@ The local environment file enables development-only defaults such as demo data, 
 pnpm install
 pnpm lint
 pnpm build
+pnpm docs:build
 pnpm test
 pnpm test:e2e
 pnpm package:binary
@@ -89,7 +90,9 @@ Start from `.env.example` for local development and `.env.production.example` fo
 
 The backend validates production configuration during startup. Missing values, malformed URLs or ports, disabled SMTP delivery, development mail delivery, and common placeholder values cause startup to fail with clear variable names.
 
-External login should use the standard `oidc` provider profile for normal OIDC providers. The `icetowne-blog` profile remains available only for the legacy Blog OAuth shape. See `docs/identity-providers.md` for provider mapping details.
+External login should use the standard `oidc` provider profile for normal OIDC providers. The `icetowne-blog` profile remains available only for the legacy Blog OAuth shape.
+
+Configuration reference lives in the VitePress documentation under `docs/reference/configuration.md`.
 
 ## Docker Packaging
 
@@ -108,6 +111,10 @@ pnpm docker:up
 pnpm docker:down
 ```
 
+Docker Hub images are published as `<namespace>/icedr-po:<tag>`.
+
+Stable version tags such as `v1.2.0` publish version tags and update `latest`. Pre-release version tags such as `v1.2.0-alpha.1` or `v1.2.0-beta.1` publish pre-release tags but do not update `latest`.
+
 ## Binary Packaging
 
 ICEDR can build standalone Node.js SEA binaries for supported platforms:
@@ -117,6 +124,22 @@ pnpm package:binary
 ```
 
 Release artifacts follow the `icedr_VERSION_PLATFORM` naming convention. Release automation generates checksums and combines release notes with artifact integrity information.
+
+## Release Versioning
+
+Release automation uses tags that start with `v`.
+
+Examples:
+
+```text
+v1.2.0
+v1.2.0-alpha.1
+v1.2.0-beta.1
+```
+
+Tags that contain a pre-release marker after the version, such as `-alpha.1` or `-beta.1`, are published as GitHub prereleases. Stable tags update the Docker `latest` image tag; pre-release tags do not.
+
+Each GitHub Release includes `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json` so downloaded files can be checked for integrity and source.
 
 ## Verification Flow
 
@@ -131,8 +154,10 @@ Release artifacts follow the `icedr_VERSION_PLATFORM` naming convention. Release
 
 ## Documentation
 
-- `docs/storage.md`
-- `docs/identity-providers.md`
+- `pnpm docs:dev` starts the VitePress documentation locally.
+- `pnpm docs:build` builds the documentation to `docs/.vitepress/dist`.
+- `.github/workflows/pages.yml` deploys the documentation to GitHub Pages.
+- Documentation source is under `docs`.
 - `scripts/README.md`
 
 ## License
