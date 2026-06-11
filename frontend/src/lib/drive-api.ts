@@ -150,7 +150,10 @@ export type StorageUsage = {
 
 export type SystemOverview = {
   apiName: string;
+  appPrereleaseLabel: string | null;
+  appReleaseChannel: "stable" | "prerelease";
   appVersion: string;
+  appVersionTag: string;
   architecture: string;
   loadAverage: number[];
   memoryFreeBytes: number;
@@ -165,6 +168,20 @@ export type SystemOverview = {
   runtime: string;
   serviceStartedAt: string;
   updatedAt: string;
+};
+
+export type SystemUpdateStatus = {
+  checkedAt: string;
+  currentReleaseChannel: "stable" | "prerelease";
+  currentTag: string;
+  currentVersion: string;
+  error: string | null;
+  latestReleaseChannel: "stable" | "prerelease" | null;
+  latestTag: string | null;
+  latestVersion: string | null;
+  releaseUrl: string | null;
+  source: string | null;
+  updateAvailable: boolean;
 };
 
 export type StorageUsageBreakdownBucket = {
@@ -1109,6 +1126,10 @@ export function fetchStorageSettings() {
 
 export function fetchSystemOverview() {
   return requestDriveApi<SystemOverview>("/system/overview");
+}
+
+export function fetchSystemUpdateStatus() {
+  return requestDriveApi<SystemUpdateStatus>("/system/updates");
 }
 
 export function fetchStorageUsage(workspaceId: string) {

@@ -36,6 +36,7 @@ import {
   formatAuditAction,
   formatStorageBackendMeta,
   formatStorageBackendSpace,
+  formatSystemAppVersion,
   formatSystemDuration,
   formatSystemOperatingSystem,
   getStorageBackendUsagePercent,
@@ -194,7 +195,7 @@ function AdminOverviewPanel({
     { label: t("settings.storageSpace"), value: storageLabel },
     { label: t("settings.fileCount"), value: storageUsage ? formatter.format(storageUsage.fileCount) : "--" },
     { label: t("settings.operatingSystem"), value: systemOverview ? formatSystemOperatingSystem(systemOverview) : "--" },
-    { label: t("settings.appVersion"), value: systemOverview?.appVersion || "--" },
+    { label: t("settings.appVersion"), value: systemOverview ? formatSystemAppVersion(systemOverview) : "--" },
     { label: t("settings.driveUptime"), value: systemOverview ? formatSystemDuration(systemOverview.processUptimeSeconds, t) : "--" },
   ];
 

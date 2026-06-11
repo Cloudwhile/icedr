@@ -133,11 +133,14 @@ Examples:
 
 ```text
 v1.2.0
+v0.0.1-alpha.1
 v1.2.0-alpha.1
 v1.2.0-beta.1
 ```
 
 Tags that contain a pre-release marker after the version, such as `-alpha.1` or `-beta.1`, are published as GitHub prereleases. Stable tags update the Docker `latest` image tag; pre-release tags do not.
+
+The ICEDR runtime normalizes `v`-prefixed tags for version comparison while keeping the standard tag form in system information. Pre-release builds can detect newer pre-release and stable releases; stable builds only treat stable releases as updates by default.
 
 Each GitHub Release includes `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json` so downloaded files can be checked for integrity and source.
 

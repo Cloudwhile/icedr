@@ -21,4 +21,12 @@ export class AppController {
     await this.adminGuard.requirePermission(authorization, 'settings', 'read');
     return this.appService.getSystemOverview();
   }
+
+  @Get('system/updates')
+  async getSystemUpdateStatus(
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requirePermission(authorization, 'settings', 'read');
+    return this.appService.getSystemUpdateStatus();
+  }
 }

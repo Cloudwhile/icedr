@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdminGuardService } from './common/security/admin-guard.service';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import {
+  AppService,
+  compareAppVersions,
+  isAppVersionPrerelease,
+} from './app.service';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -33,14 +37,16 @@ describe('AppController', () => {
   });
 
   describe('system overview', () => {
-    it('preserves explicit prerelease app versions', () => {
+    it('normalizes explicit prerelease app versions', () => {
       const previousVersion = process.env.APP_VERSION;
-      process.env.APP_VERSION = '1.2.3-beta.1';
+      process.env.APP_VERSION = 'v0.0.1-alpha.1';
 
       try {
-        expect(new AppService().getSystemOverview().appVersion).toBe(
-          '1.2.3-beta.1',
-        );
+        const overview = new AppService().getSystemOverview();
+        expect(overview.appVersion).toBe('0.0.1-alpha.1');
+        expect(overview.appVersionTag).toBe('v0.0.1-alpha.1');
+        expect(overview.appReleaseChannel).toBe('prerelease');
+        expect(overview.appPrereleaseLabel).toBe('alpha');
       } finally {
         if (previousVersion === undefined) {
           delete process.env.APP_VERSION;
@@ -63,6 +69,8 @@ describe('AppController', () => {
         runtime: 'NestJS',
       });
       expect(overview.appVersion).toEqual(expect.any(String));
+      expect(overview.appVersionTag).toEqual(expect.any(String));
+      expect(overview.appReleaseChannel).toMatch(/^(stable|prerelease)$/);
       expect(overview.architecture).toEqual(expect.any(String));
       expect(overview.loadAverage).toEqual(expect.any(Array));
       expect(overview.memoryFreeBytes).toEqual(expect.any(Number));
@@ -73,6 +81,37 @@ describe('AppController', () => {
       expect(overview.osRelease).toEqual(expect.any(String));
       expect(overview.processUptimeSeconds).toEqual(expect.any(Number));
       expect(overview.serviceStartedAt).toEqual(expect.any(String));
+    });
+
+    it('protects update status and compares prerelease versions', async () => {
+      const previousVersion = process.env.APP_VERSION;
+      const previousUpdateCheckUrl = process.env.ICEDR_UPDATE_CHECK_URL;
+      process.env.APP_VERSION = 'v0.0.1-alpha.1';
+      process.env.ICEDR_UPDATE_CHECK_URL =
+        'data:application/json,[{"tag_name":"v0.0.1-beta.1","html_url":"https://example.test/releases/v0.0.1-beta.1"}]';
+
+      try {
+        const updateStatus = await new AppService().getSystemUpdateStatus();
+        expect(updateStatus.currentVersion).toBe('0.0.1-alpha.1');
+        expect(updateStatus.currentTag).toBe('v0.0.1-alpha.1');
+        expect(updateStatus.currentReleaseChannel).toBe('prerelease');
+        expect(updateStatus.latestVersion).toBe('0.0.1-beta.1');
+        expect(updateStatus.updateAvailable).toBe(true);
+        expect(isAppVersionPrerelease('v0.0.1-alpha.1')).toBe(true);
+        expect(compareAppVersions('0.0.1-beta.1', '0.0.1-alpha.1')).toBe(1);
+        expect(compareAppVersions('0.0.1', '0.0.1-alpha.1')).toBe(1);
+      } finally {
+        if (previousVersion === undefined) {
+          delete process.env.APP_VERSION;
+        } else {
+          process.env.APP_VERSION = previousVersion;
+        }
+        if (previousUpdateCheckUrl === undefined) {
+          delete process.env.ICEDR_UPDATE_CHECK_URL;
+        } else {
+          process.env.ICEDR_UPDATE_CHECK_URL = previousUpdateCheckUrl;
+        }
+      }
     });
   });
 });

@@ -22,7 +22,7 @@ import {
   type SystemOverview,
 } from "@/lib/drive-api";
 import { formatFileSize, getIntlLocale, type Locale, type Palette } from "@/features/file/model";
-import { formatStorageBackendSpace, formatSystemDuration, formatSystemOperatingSystem, getStorageBackendUsagePercent } from "./drive-formatters";
+import { formatStorageBackendSpace, formatSystemAppVersion, formatSystemDuration, formatSystemOperatingSystem, getStorageBackendUsagePercent } from "./drive-formatters";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 import { DriveSystemPlatformSettings } from "./drive-system-platform-settings";
 
@@ -307,7 +307,7 @@ export function DriveSystemSettings({
           <SettingsSideRow label={t("settings.capacityCheckedAt")} value={formatSystemDate(storageSettings.physicalCapacityCheckedAt, locale)} />
         </SettingsSideCard>
         <SettingsSideCard icon="info" title={t("settings.systemInformation")}>
-          <SettingsSideRow label={t("settings.appVersion")} value={systemOverview?.appVersion || "--"} />
+          <SettingsSideRow label={t("settings.appVersion")} value={systemOverview ? formatSystemAppVersion(systemOverview) : "--"} />
           <SettingsSideRow label={t("settings.runtime")} value={systemOverview?.runtime || "--"} />
           <SettingsSideRow label={t("settings.nodeVersion")} value={systemOverview?.nodeVersion || "--"} />
           <SettingsSideRow label={t("settings.systemArchitecture")} value={systemOverview?.architecture ?? "--"} />

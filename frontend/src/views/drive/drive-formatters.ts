@@ -54,6 +54,10 @@ export function formatSystemOperatingSystem(systemOverview: SystemOverview) {
   return `${systemOverview.operatingSystem} ${systemOverview.osRelease}`.trim();
 }
 
+export function formatSystemAppVersion(systemOverview: SystemOverview) {
+  return systemOverview.appVersionTag || systemOverview.appVersion || "--";
+}
+
 export function formatStorageBackendSpace(
   storageSettings: StorageSettings | null,
   locale: Locale,
