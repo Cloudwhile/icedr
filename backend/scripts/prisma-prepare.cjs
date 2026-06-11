@@ -33,9 +33,9 @@ async function main() {
   writeSqliteSchema();
 
   loadWorkspaceEnv();
-  if (!hasPostgresSource()) {
+  if (shouldUseSqliteSource()) {
     fs.mkdirSync(path.dirname(resolveSqliteFilePath()), { recursive: true });
-    runPrismaOrExit('db', 'push', '--skip-generate', {
+    runPrismaOrExit('db', 'push', {
       schema: '../database/schema.sqlite.prisma',
       env: {
         ...process.env,
@@ -59,6 +59,14 @@ async function main() {
   );
   runPrismaOrExit('migrate', 'resolve', '--applied', baselineMigration);
   runPrismaOrExit('migrate', 'deploy');
+}
+
+function shouldUseSqliteSource() {
+  return readDatabaseProvider() === 'sqlite' || !hasPostgresSource();
+}
+
+function readDatabaseProvider() {
+  return process.env.PRISMA_DATABASE_PROVIDER?.trim().toLowerCase() || '';
 }
 
 function runPrismaOrExit(...args) {

@@ -12,9 +12,14 @@ const dataDirectory = process.env.ICEDR_DATA_DIR
   ? resolve(process.env.ICEDR_DATA_DIR)
   : join(configDirectory, 'data');
 const persistedSourceFile = join(dataDirectory, 'database-source.json');
+const databaseProvider = process.env.PRISMA_DATABASE_PROVIDER?.trim().toLowerCase();
+const schemaFile =
+  databaseProvider === 'sqlite'
+    ? 'database/schema.sqlite.prisma'
+    : 'database/schema.prisma';
 
 function getDatabaseUrl() {
-  if (process.env.PRISMA_DATABASE_PROVIDER === 'sqlite') {
+  if (databaseProvider === 'sqlite') {
     return process.env.SQLITE_DATABASE_URL || getSqliteDatabaseUrl();
   }
 
@@ -86,7 +91,7 @@ function stripEnvQuotes(value: string) {
 }
 
 export default {
-  schema: 'database/schema.prisma',
+  schema: schemaFile,
   migrations: {
     path: 'database/migrations',
   },

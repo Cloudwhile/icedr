@@ -14,7 +14,11 @@ function createSqliteSchema(source) {
     )
     .replace(/provider = "postgresql"/, 'provider = "sqlite"')
     .replace(/ @db\.Timestamptz/g, '')
-    .replace(/ @db\.Decimal\(5, 1\)/g, '');
+    .replace(/ @db\.Decimal\(5, 1\)/g, '')
+    .replace(
+      /Json(\s+)@default\("(\{\}|\[\])"\)/g,
+      (_match, spacing, value) => `Json${spacing}@default(dbgenerated("'${value}'"))`,
+    );
 }
 
 function writeSqliteSchema() {
