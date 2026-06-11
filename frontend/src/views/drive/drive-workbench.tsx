@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useRouter } from "@/compat/navigation";
+import { usePathname, useRouter } from "@/compat/navigation";
 import { isAdminUser } from "@/features/auth/permissions";
 import { useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -176,7 +176,23 @@ function isTimeZonePreferenceValue(value: string | null | undefined): value is s
 
 type DriveWorkspaceModule = "drive" | "links" | "transfers" | "settings";
 
+const driveNavPaths: Record<DriveUserNav, string> = {
+  drive: "/",
+  links: "/links",
+  recent: "/recent",
+  settings: "/settings",
+  shared: "/shared",
+  starred: "/starred",
+  transfers: "/transfers",
+  trash: "/trash",
+};
+
 const searchPageSize = 100;
+
+function normalizeDrivePathname(pathname: string) {
+  if (!pathname || pathname === "/") return "/";
+  return pathname.replace(/\/+$/, "") || "/";
+}
 
 export function DriveWorkbench({
   currentUser,
@@ -209,7 +225,8 @@ export function DriveWorkbench({
 }) {
   const t = useTranslations();
   const router = useRouter();
-  const [activeNav, setActiveNav] = useState<DriveUserNav>(initialActiveNav ?? "drive");
+  const pathname = usePathname();
+  const activeNav = initialActiveNav ?? "drive";
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([]);
   const [driveItems, setDriveItems] = useState<DriveItem[]>([]);
@@ -258,6 +275,16 @@ export function DriveWorkbench({
   const registeredSharesRef = useRef<RegisteredShare[]>([]);
   const activeUser = profileUserOverride?.id === currentUser?.id ? profileUserOverride : currentUser;
   const activeUserId = activeUser?.id;
+  const activateNav = useCallback((nextNav: DriveUserNav, navigation: "push" | "replace" = "push") => {
+    const nextPath = driveNavPaths[nextNav] ?? "/";
+    if (nextNav !== "drive") setCurrentFolderId(null);
+    if (normalizeDrivePathname(pathname) === nextPath) return;
+    if (navigation === "replace") {
+      router.replace(nextPath);
+      return;
+    }
+    router.push(nextPath);
+  }, [pathname, router]);
   const activeUserLocale = activeUser?.locale;
   const activeUserTheme = activeUser?.theme;
   const activeUserTimeZone = activeUser?.timezone;
@@ -452,7 +479,6 @@ export function DriveWorkbench({
         return;
       }
 
-      setActiveNav("drive");
       setDetailsOpen(false);
       setFocusedItemId(null);
       setSelected([targetItem.id]);
@@ -774,7 +800,7 @@ export function DriveWorkbench({
   const openTransfers = () => {
     if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
     setWorkspaceLoading(false);
-    setActiveNav("transfers");
+    activateNav("transfers");
     setCurrentFolderId(null);
     setSelected([]);
     setRenamingItemId(null);
@@ -819,7 +845,7 @@ export function DriveWorkbench({
       return;
     }
     const name = createUniqueDriveName(t("actions.newFolder"), currentDirectoryItems);
-    setActiveNav("drive");
+    activateNav("drive");
     queueWorkspaceLoading();
     void createFolderNode({
       name,
@@ -979,7 +1005,7 @@ export function DriveWorkbench({
     const draftId = createLocalUploadTransferId(++uploadDraftCounterRef.current);
     const targetWorkspaceId = workspaceId;
     queueUploadTelemetry(draftId, file, targetWorkspaceId);
-    setActiveNav(targetNav);
+    activateNav(targetNav);
     if (targetNav === "transfers") {
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
       setWorkspaceLoading(false);
@@ -1167,7 +1193,7 @@ export function DriveWorkbench({
     const item = findDriveItem(id, allKnownItems);
     if (!item || getItemKind(item) !== "folder") return;
     queueWorkspaceLoading();
-    setActiveNav("drive");
+    activateNav("drive");
     setCurrentFolderId(id);
     setSelected([]);
     setRenamingItemId(null);
@@ -1176,7 +1202,7 @@ export function DriveWorkbench({
   };
   const openRoot = () => {
     queueWorkspaceLoading();
-    setActiveNav("drive");
+    activateNav("drive");
     setCurrentFolderId(null);
     setSelected([]);
     setRenamingItemId(null);
@@ -1188,7 +1214,7 @@ export function DriveWorkbench({
     const item = findDriveItem(id, allKnownItems);
     if (!item || getItemKind(item) !== "folder") return;
     queueWorkspaceLoading();
-    setActiveNav("drive");
+    activateNav("drive");
     setCurrentFolderId(id);
     setSelected([]);
     setRenamingItemId(null);
@@ -1198,7 +1224,7 @@ export function DriveWorkbench({
   const goUp = () => {
     const parentId = findDriveItem(currentFolderId ?? "", allKnownItems)?.parentId ?? null;
     queueWorkspaceLoading();
-    setActiveNav("drive");
+    activateNav("drive");
     setCurrentFolderId(parentId);
     setSelected([]);
     setRenamingItemId(null);
@@ -1334,7 +1360,7 @@ export function DriveWorkbench({
     { icon: <LocalIcon name="calendar" size={15} />, label: t("filters.sortCreatedDesc"), onClick: () => applyDriveSort("createdAt", "desc"), value: "createdAt:desc" },
   ];
   const openSettings = () => {
-    setActiveNav("settings");
+    activateNav("settings");
     setCurrentFolderId(null);
     setSelected([]);
     setRenamingItemId(null);
@@ -1382,7 +1408,7 @@ export function DriveWorkbench({
           if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
           setWorkspaceLoading(false);
         }
-        setActiveNav(id);
+        activateNav(id);
         if (id !== "drive") setCurrentFolderId(null);
         setSelected([]);
         setRenamingItemId(null);

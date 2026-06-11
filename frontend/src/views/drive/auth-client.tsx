@@ -96,6 +96,7 @@ function AuthPage({
   const oauthCode = searchParams.get("oauthCode") || "";
   const queryEmail = searchParams.get("email") || "";
   const queryResetCode = normalizeAuthCodeValue(searchParams.get("code") || searchParams.get("token") || "", passwordResetCodeLength);
+  const authRedirectKey = `${mode}:${next}`;
   const pageRef = useMotionReveal<HTMLDivElement>("fade", []);
   const formRef = useMotionReveal<HTMLDivElement>("surface", [mode, themeMode, locale]);
   const [email, setEmail] = useState(queryEmail);
@@ -110,6 +111,7 @@ function AuthPage({
   const [status, setStatus] = useState<AuthStatus>(null);
   const [statusMode, setStatusMode] = useState<AuthPageMode>(mode);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [authRedirectReadyKey, setAuthRedirectReadyKey] = useState<string | null>(null);
   const [authSettings, setAuthSettings] = useState<AuthSettings | null>(null);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
@@ -139,14 +141,23 @@ function AuthPage({
   useEffect(() => {
     let cancelled = false;
     void fetchCurrentUser().then(user => {
-      if (!cancelled) setCurrentUser(user);
+      if (cancelled) return;
+      if (user) {
+        router.replace(resolveAuthNextTarget(next));
+        return;
+      }
+      setCurrentUser(null);
+      setAuthRedirectReadyKey(authRedirectKey);
     }).catch(() => {
-      if (!cancelled) setCurrentUser(null);
+      if (!cancelled) {
+        setCurrentUser(null);
+        setAuthRedirectReadyKey(authRedirectKey);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authRedirectKey, next, router]);
   const authCopy = useMemo(() => getAuthCopy(mode, t), [mode, t]);
   const visibleStatus = statusMode === mode ? status : null;
   const brandLogo = siteSettings.authLogoDataUrl || "/logo.png";
@@ -424,6 +435,7 @@ function AuthPage({
       });
     });
   };
+  if (authRedirectReadyKey !== authRedirectKey) return null;
   return <div ref={pageRef} className="icedr-auth-page" data-auth-mode={mode} style={{
     "--auth-canvas": palette.canvas,
     "--auth-surface": palette.surface1,
@@ -795,7 +807,12 @@ function getFormString(formData: FormData, name: string) {
 }
 function resolveAuthNextTarget(next: string) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
-  return next.startsWith("/login") ? "/" : next;
+  const [pathname] = next.split(/[?#]/, 1);
+  return isAuthRoutePath(pathname) ? "/" : next;
+}
+function isAuthRoutePath(pathname: string) {
+  const normalized = (pathname || "/").replace(/\/+$/, "") || "/";
+  return normalized === "/login" || normalized === "/register" || normalized === "/forgot-password" || normalized === "/reset-password";
 }
 function getAuthEmailLocale(locale: Locale): "en" | "zh" {
   return locale === "zh" || locale.toLowerCase().startsWith("zh") ? "zh" : "en";

@@ -352,6 +352,70 @@ button.icedr-surface-panel[data-hovered="true"] {
   transform: translateX(-10px);
 }
 
+.icedr-app-pagination {
+  align-items: center;
+  border-top: 1px solid var(--app-pagination-border, transparent);
+  color: var(--app-pagination-color, currentColor);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 52px;
+  min-width: 0;
+}
+
+.icedr-app-pagination-range {
+  color: var(--app-pagination-muted, currentColor);
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 17px;
+  min-width: 0;
+}
+
+.icedr-app-pagination-controls,
+.icedr-app-pagination-page,
+.icedr-app-pagination-size {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+.icedr-app-pagination-controls {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.icedr-app-pagination-page,
+.icedr-app-pagination-size {
+  gap: 7px;
+}
+
+.icedr-app-pagination-page > span,
+.icedr-app-pagination-size > span {
+  color: var(--app-pagination-muted, currentColor);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 17px;
+}
+
+.icedr-app-pagination-page .icedr-app-select-shell {
+  width: 76px;
+}
+
+.icedr-app-pagination-size .icedr-app-select-shell {
+  width: 82px;
+}
+
+.icedr-app-pagination-separator {
+  background: var(--app-pagination-separator, currentColor);
+  display: inline-flex;
+  height: 24px;
+  opacity: 0.7;
+  width: 1px;
+}
+
 .icedr-progress-meter {
   display: block;
   width: 100%;

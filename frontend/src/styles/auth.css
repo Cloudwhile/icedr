@@ -17,30 +17,30 @@
   justify-content: center;
   min-height: 0;
   overflow: hidden;
-  padding: 12px;
+  padding: 0;
 }
 
 .icedr-auth-shell {
   animation: icedr-auth-shell-in 520ms var(--motion-ease-emphasized) both;
   background: #fff;
-  border: 1px solid color-mix(in srgb, var(--auth-accent) 18%, var(--auth-border));
-  border-radius: 8px;
-  box-shadow: 0 22px 70px rgba(55, 88, 148, 0.078);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(468px, 0.98fr);
   height: 100%;
   max-height: 100%;
-  max-width: 1510px;
+  max-width: none;
   min-height: 0;
   overflow: hidden;
-  width: min(100%, 1510px);
+  width: 100%;
 }
 
 .icedr-auth-visual-panel {
   background:
     linear-gradient(135deg, rgba(238, 246, 255, 0.98), rgba(250, 253, 255, 0.96) 48%, rgba(230, 241, 255, 0.92)),
     var(--auth-surface-2);
-  border-right: 1px solid color-mix(in srgb, var(--auth-accent) 18%, var(--auth-border));
+  border-right: 0;
   display: grid;
   grid-template-rows: auto minmax(142px, 0.44fr) minmax(364px, 1fr) auto;
   min-width: 0;
@@ -63,7 +63,7 @@
 
 .icedr-auth-visual-panel::after {
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 36%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 36%, rgba(255, 255, 255, 0.48)),
     linear-gradient(180deg, transparent, rgba(87, 147, 255, 0.08));
   content: "";
   inset: 0;
@@ -675,6 +675,8 @@
     border: 0;
     border-radius: 0;
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    max-height: none;
     min-height: 100dvh;
     width: 100%;
   }

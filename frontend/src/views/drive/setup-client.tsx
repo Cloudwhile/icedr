@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
-import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type VerifyDatabaseInput, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
@@ -19,14 +19,23 @@ import {
   SetupToggleRow as ToggleRow,
 } from "@/components/ui/setup-flow-primitives";
 const emptyDatabase: DatabaseProfile = {
+  provider: "sqlite",
+  host: "",
+  port: 5432,
+  dbName: "icedr.sqlite",
+  user: "",
+  passwordProvided: false,
+  passwordSource: "local",
+  verified: false,
+  verifiedAt: null
+};
+const emptyRemoteDatabase: Required<VerifyDatabaseInput> = {
+  provider: "postgresql",
   host: "",
   port: 5432,
   dbName: "",
   user: "",
-  passwordProvided: false,
-  passwordSource: "env",
-  verified: false,
-  verifiedAt: null
+  password: ""
 };
 const defaultSharePolicy: Omit<WorkspaceShareSettings, "workspaceId" | "updatedAt"> = {
   anonymousAccess: "email-required",
@@ -59,10 +68,9 @@ const defaultMailSettings: MailSettings = {
 const icetowneBlogOAuthPreset = {
   providerProfile: "icetowne-blog",
   issuerUrl: "https://blog.icetowne.com",
-  clientId: "client_uNl7QJ689LDXlBWXhCS4",
   audience: "",
   scopes: "basic vip_info"
-} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
+} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "audience" | "scopes">;
 function getCurrentSystemBaseUrl() {
   if (typeof window === "undefined") return "";
   return window.location.origin;
@@ -137,6 +145,8 @@ function SetupPage({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthNoticeStatus | null>(null);
   const [database, setDatabase] = useState<DatabaseProfile>(emptyDatabase);
+  const [remoteDatabase, setRemoteDatabase] = useState(emptyRemoteDatabase);
+  const [remoteDatabaseTouched, setRemoteDatabaseTouched] = useState(false);
   const [site, setSite] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [oauth, setOAuth] = useState<OAuthSettings>({
     enabled: false,
@@ -186,6 +196,17 @@ function SetupPage({
         return;
       }
       setDatabase(setup.databaseProfile);
+      if (setup.databaseProfile.provider === "postgresql") {
+        setRemoteDatabase(value => ({
+          ...value,
+          host: setup.databaseProfile.host,
+          port: setup.databaseProfile.port,
+          dbName: setup.databaseProfile.dbName,
+          user: setup.databaseProfile.user,
+          password: ""
+        }));
+        setRemoteDatabaseTouched(false);
+      }
       setSite(setup.site);
       setOAuth(setup.oauth);
       setPasskey(setup.passkey);
@@ -206,7 +227,17 @@ function SetupPage({
   const brandComplete = Boolean(site.siteName.trim());
   const mailComplete = Boolean(mail.verifiedAt);
   const canComplete = database.verified && adminComplete && authComplete && mailComplete && brandComplete;
-  const databaseSummary = useMemo(() => [database.host, database.port, database.dbName, database.user].filter(Boolean).join(" / "), [database]);
+  const remoteDatabaseDirty = Boolean(
+    remoteDatabaseTouched &&
+      (remoteDatabase.host.trim() ||
+        remoteDatabase.dbName.trim() ||
+        remoteDatabase.user.trim() ||
+        remoteDatabase.password),
+  );
+  const databaseSummary = useMemo(() => {
+    if (database.provider === "sqlite") return t("setup.databaseLocal");
+    return [database.host, database.port, database.dbName, database.user].filter(Boolean).join(" / ");
+  }, [database, t]);
   const currentStep = setupSteps[stepIndex];
   const stepCompletion: Record<SetupStepId, boolean> = {
     database: database.verified,
@@ -238,8 +269,23 @@ function SetupPage({
     if (busy) return;
     setBusy(true);
     setStatus(null);
-    void verifySetupDatabase().then(profile => {
+    const input: VerifyDatabaseInput = remoteDatabaseDirty
+      ? {
+          provider: "postgresql",
+          host: remoteDatabase.host.trim(),
+          port: remoteDatabase.port,
+          dbName: remoteDatabase.dbName.trim(),
+          user: remoteDatabase.user.trim(),
+          ...(remoteDatabase.password ? { password: remoteDatabase.password } : {}),
+        }
+      : {};
+    void verifySetupDatabase(input).then(profile => {
       setDatabase(profile);
+      setRemoteDatabase(value => ({
+        ...value,
+        password: ""
+      }));
+      setRemoteDatabaseTouched(false);
       setStatus({
         tone: "success",
         message: t("setup.databaseVerified")
@@ -362,23 +408,6 @@ function SetupPage({
     reader.readAsDataURL(file);
   };
   const authSummary = [localEnabled ? t("admin.localAuth") : "", oauthEnabled ? t("admin.oauthAuth") : "", passkeyEnabled ? t("admin.passkeyAuth") : ""].filter(Boolean).join(" / ") || "--";
-  const setupFlowCards = setupSteps.map((step, index) => ({
-    active: index === stepIndex,
-    completed: stepCompletion[step.id],
-    disabled: !canReachStep(index),
-    index,
-    step,
-  }));
-  const setupPrinciples = [
-    { icon: "shield" as const, title: t("setup.principleSecurity"), detail: t("setup.principleSecurityDetail") },
-    { icon: "grid" as const, title: t("setup.principleSimplicity"), detail: t("setup.principleSimplicityDetail") },
-    { icon: "settings" as const, title: t("setup.principleControl"), detail: t("setup.principleControlDetail") },
-  ];
-  const setupFeatures = [
-    { icon: "key" as const, title: t("setup.featureAuth"), detail: t("setup.featureAuthDetail") },
-    { icon: "link" as const, title: t("setup.featureShare"), detail: t("setup.featureShareDetail") },
-    { icon: "folder" as const, title: t("setup.featureStorage"), detail: t("setup.featureStorageDetail") },
-  ];
 
   return <div className="icedr-setup-page">
       <div className="icedr-setup-topbar">
@@ -409,57 +438,61 @@ function SetupPage({
             </div>
 
             <div className="icedr-setup-content-grid">
-              <section className="icedr-setup-flow-board" aria-label={t("setup.flowBoard")}>
-                {setupFlowCards.map(({ active, completed, disabled, index, step }) => (
-                  <button
-                    aria-current={active ? "step" : undefined}
-                    className="icedr-setup-flow-card"
-                    data-active={active ? "true" : undefined}
-                    data-completed={completed ? "true" : undefined}
-                    disabled={disabled}
-                    key={step.id}
-                    onClick={() => {
-                      if (!disabled && !busy) setStepIndex(index);
-                    }}
-                    type="button"
-                  >
-                    <span className="icedr-setup-flow-card-index">{String(index + 1).padStart(2, "0")}</span>
-                    <span className="icedr-setup-flow-card-icon">
-                      <LocalIcon name={step.icon} size={17} />
-                    </span>
-                    <span className="icedr-setup-flow-card-copy">
-                      <strong className="icedr-truncate">{t(step.key)}</strong>
-                      <small>{t(step.summaryKey)}</small>
-                    </span>
-                    <StatusPill palette={palette} tone={completed ? "secure" : active ? "accent" : "neutral"}>
-                      {completed ? t("setup.cardReady") : active ? t("setup.cardActive") : t("setup.cardPending")}
-                    </StatusPill>
-                  </button>
-                ))}
-                <div className="icedr-setup-flow-card icedr-setup-flow-card-preview" aria-hidden="true">
-                  <span className="icedr-setup-flow-card-index">08</span>
-                  <span className="icedr-setup-flow-card-icon">
-                    <LocalIcon name="import" size={17} />
-                  </span>
-                  <span className="icedr-setup-flow-card-copy">
-                    <strong className="icedr-truncate">{t("setup.enterSystem")}</strong>
-                    <small>{t("setup.enterSystemCard")}</small>
-                  </span>
-                  <div className="icedr-setup-flow-preview-window">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                </div>
-              </section>
-
             {currentStep.id === "database" ? <SetupSection icon="folder" palette={palette} title={t("setup.database")}>
                 <div className="icedr-setup-form-grid">
+                  <InfoTile label={t("setup.databaseProvider")} value={database.provider === "sqlite" ? t("setup.databaseLocal") : t("setup.databaseRemote")} palette={palette} tone={database.provider === "sqlite" ? "neutral" : "secure"} />
                   <InfoTile label={t("setup.databaseProfile")} value={databaseSummary || "--"} palette={palette} />
-                  <InfoTile label={t("setup.databasePassword")} value={database.passwordProvided ? t("setup.passwordProvided") : t("setup.passwordMissing")} palette={palette} />
+                  <InfoTile label={t("setup.databasePassword")} value={database.passwordProvided ? t("setup.passwordProvided") : t("setup.passwordLocal")} palette={palette} />
+                </div>
+                <div className="icedr-setup-form-grid" data-columns="3">
+                  <AuthField label={t("setup.databaseHost")} palette={palette}>
+                    <AuthInput palette={palette} value={remoteDatabase.host} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  host: event.target.value
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databasePort")} palette={palette}>
+                    <AuthInput palette={palette} inputMode="numeric" value={String(remoteDatabase.port)} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  port: Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 5432)
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databaseName")} palette={palette}>
+                    <AuthInput palette={palette} value={remoteDatabase.dbName} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  dbName: event.target.value
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databaseUser")} palette={palette}>
+                    <AuthInput palette={palette} value={remoteDatabase.user} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  user: event.target.value
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databaseRemotePassword")} palette={palette}>
+                    <AuthInput palette={palette} type="password" value={remoteDatabase.password} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  password: event.target.value
+                }));
+                    }} />
+                  </AuthField>
                 </div>
                 <AuthPrimaryButton icon="tick" palette={palette} busy={busy} disabled={busy} onClick={verifyDatabase}>
-                  {database.verified ? t("setup.verifyAgain") : t("setup.verifyDatabase")}
+                  {remoteDatabaseDirty ? t("setup.migrateDatabase") : database.verified ? t("setup.verifyAgain") : t("setup.verifyDatabase")}
                 </AuthPrimaryButton>
               </SetupSection> : null}
 
@@ -728,93 +761,6 @@ function SetupPage({
               </SetupSection> : null}
 
             </div>
-
-            <section className="icedr-setup-reference-grid">
-              <div className="icedr-setup-reference-panel">
-                <div className="icedr-setup-reference-header">
-                  <LocalIcon name="info" size={16} />
-                  <span>{t("setup.flowNotes")}</span>
-                </div>
-                <div className="icedr-setup-reference-list">
-                  {setupSteps.map((step, index) => (
-                    <button
-                      className="icedr-setup-reference-row"
-                      data-active={index === stepIndex ? "true" : undefined}
-                      disabled={!canReachStep(index)}
-                      key={step.id}
-                      onClick={() => {
-                        if (canReachStep(index) && !busy) setStepIndex(index);
-                      }}
-                      type="button"
-                    >
-                      <span>{String(index + 1).padStart(2, "0")}</span>
-                      <strong>{t(step.key)}</strong>
-                      <small>{t(step.summaryKey)}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="icedr-setup-reference-panel">
-                <div className="icedr-setup-reference-header">
-                  <LocalIcon name="shield" size={16} />
-                  <span>{t("setup.designPrinciples")}</span>
-                </div>
-                <div className="icedr-setup-reference-list">
-                  {setupPrinciples.map((item) => (
-                    <div className="icedr-setup-reference-item" key={item.title}>
-                      <LocalIcon name={item.icon} size={17} />
-                      <span>
-                        <strong>{item.title}</strong>
-                        <small>{item.detail}</small>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="icedr-setup-reference-panel">
-                <div className="icedr-setup-reference-header">
-                  <LocalIcon name="grid" size={16} />
-                  <span>{t("setup.featureNotes")}</span>
-                </div>
-                <div className="icedr-setup-reference-list">
-                  {setupFeatures.map((item) => (
-                    <div className="icedr-setup-reference-item" key={item.title}>
-                      <LocalIcon name={item.icon} size={17} />
-                      <span>
-                        <strong>{item.title}</strong>
-                        <small>{item.detail}</small>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="icedr-setup-dashboard-preview" aria-hidden="true">
-                <div className="icedr-setup-dashboard-sidebar">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div className="icedr-setup-dashboard-main">
-                  <div className="icedr-setup-dashboard-topline">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <div className="icedr-setup-dashboard-metrics">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <div className="icedr-setup-dashboard-panels">
-                    <span />
-                    <span />
-                  </div>
-                </div>
-              </div>
-            </section>
 
             <div className="icedr-setup-sticky-actions">
               <ToolButton label={t("app.up")} palette={palette} disabled={stepIndex === 0 || busy} onClick={goBack}>
