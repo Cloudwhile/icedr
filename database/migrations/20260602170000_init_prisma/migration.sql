@@ -183,6 +183,7 @@ create table if not exists file_download_intents (
   node_id text not null,
   filename text not null,
   method text not null,
+  audit_metadata jsonb not null default '{}'::jsonb,
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );

@@ -2,6 +2,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client } = require('pg');
+const { writeSqliteSchema } = require('./create-sqlite-schema.cjs');
 
 const backendRoot = path.resolve(__dirname, '..');
 const workspaceRoot = path.resolve(backendRoot, '..');
@@ -29,6 +30,20 @@ main().catch((error) => {
 
 async function main() {
   runPrismaOrExit('generate');
+  writeSqliteSchema();
+
+  loadWorkspaceEnv();
+  if (!hasPostgresSource()) {
+    fs.mkdirSync(path.dirname(resolveSqliteFilePath()), { recursive: true });
+    runPrismaOrExit('db', 'push', '--skip-generate', {
+      schema: '../database/schema.sqlite.prisma',
+      env: {
+        ...process.env,
+        PRISMA_DATABASE_PROVIDER: 'sqlite',
+      },
+    });
+    return;
+  }
 
   const deployResult = runPrisma('migrate', 'deploy');
   if (deployResult.status === 0) return;
@@ -47,32 +62,80 @@ async function main() {
 }
 
 function runPrismaOrExit(...args) {
-  const result = runPrisma(...args);
+  const options =
+    typeof args[args.length - 1] === 'object' && !Array.isArray(args[args.length - 1])
+      ? args.pop()
+      : {};
+  const result = runPrisma(...args, options);
   if ((result.status ?? 1) !== 0) {
     process.exit(result.status ?? 1);
   }
 }
 
 function runPrisma(...args) {
+  const options =
+    typeof args[args.length - 1] === 'object' && !Array.isArray(args[args.length - 1])
+      ? args.pop()
+      : {};
   const result = spawnSync(
     process.execPath,
     [
       prismaCli,
       ...args,
       '--schema',
-      '../database/schema.prisma',
+      options.schema || '../database/schema.prisma',
       '--config',
       '../prisma.config.ts',
     ],
     {
       cwd: backendRoot,
       encoding: 'utf8',
+      env: options.env || process.env,
     },
   );
 
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result;
+}
+
+function hasPostgresSource() {
+  if (process.env.DATABASE_URL) return true;
+  if (
+    process.env.DATABASE_HOST &&
+    process.env.DATABASE_PORT &&
+    process.env.DATABASE_DBNAME &&
+    process.env.DATABASE_USER &&
+    process.env.DATABASE_PASSWORD
+  ) {
+    return true;
+  }
+  return Boolean(readPersistedDatabaseSource());
+}
+
+function readPersistedDatabaseSource() {
+  const filePath = path.join(resolveDataRoot(), 'database-source.json');
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return parsed?.provider === 'postgresql' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveDataRoot() {
+  return process.env.ICEDR_DATA_DIR
+    ? path.resolve(process.env.ICEDR_DATA_DIR)
+    : path.join(workspaceRoot, 'data');
+}
+
+function resolveSqliteFilePath() {
+  const configured = process.env.SQLITE_DATABASE_PATH?.trim();
+  if (!configured) return path.join(resolveDataRoot(), 'icedr.sqlite');
+  return path.isAbsolute(configured)
+    ? configured
+    : path.resolve(workspaceRoot, configured);
 }
 
 async function assertExistingIcedrBaseline() {

@@ -56,14 +56,13 @@ describe('production environment validation', () => {
     ).toThrow(/ALLOW_DEV_MEMORY_STORE.*SEED_DEMO_DATA.*SHARE_EMAIL_PROVIDER/s);
   });
 
-  it('rejects missing production dependencies with specific names', () => {
-    const { DATABASE_PASSWORD, SMTP_HOST, ...env } = validProductionEnv;
-    void DATABASE_PASSWORD;
-    void SMTP_HOST;
-
-    expect(() => validateProductionEnv(env)).toThrow(
-      /DATABASE_PASSWORD.*SMTP_HOST/s,
-    );
+  it('allows production startup before setup-owned services are configured', () => {
+    expect(() =>
+      validateProductionEnv({
+        NODE_ENV: 'production',
+        APP_ENV: 'production',
+      }),
+    ).not.toThrow();
   });
 
   it('rejects placeholder values in production', () => {

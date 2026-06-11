@@ -260,12 +260,13 @@ model PreviewArtifact {
 }
 
 model FileDownloadIntent {
-  id        String   @id
-  nodeId    String   @map("node_id")
-  filename  String
-  method    String
-  expiresAt DateTime @map("expires_at") @db.Timestamptz
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id            String   @id
+  nodeId        String   @map("node_id")
+  filename      String
+  method        String
+  auditMetadata Json     @default("{}") @map("audit_metadata")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("file_download_intents")
 }
