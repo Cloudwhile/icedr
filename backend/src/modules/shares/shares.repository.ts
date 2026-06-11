@@ -190,11 +190,7 @@ export class SharesRepository {
   ) {
     const event = createAuditEvent({
       action,
-      actor:
-        options.actor ??
-        (action === 'share.created' || action === 'share.revoked'
-          ? 'workspace'
-          : 'visitor'),
+      actor: this.resolveShareAuditActor(action, metadata, options.actor),
       target: shareToken,
       workspaceId:
         (await this.findByToken(shareToken))?.workspaceId ??
@@ -224,24 +220,15 @@ export class SharesRepository {
     metadataForDownloadCount: DownloadStartedMetadataFactory,
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const lockedRows = await tx.$queryRaw<
-        Array<{
-          createdAt: Date | string;
-          expiresDays: number;
-          revokedAt: Date | string | null;
-          workspaceId: string;
-        }>
-      >`
-        select
-          workspace_id as "workspaceId",
-          revoked_at as "revokedAt",
-          created_at as "createdAt",
-          expires_days as "expiresDays"
-        from share_links
-        where token = ${shareToken}
-        for update
-      `;
-      const lockedShare = lockedRows[0];
+      const lockedShare = await tx.shareLink.findUnique({
+        where: { token: shareToken },
+        select: {
+          createdAt: true,
+          expiresDays: true,
+          revokedAt: true,
+          workspaceId: true,
+        },
+      });
       if (!lockedShare) {
         return {
           downloadCount: 0,
@@ -283,7 +270,7 @@ export class SharesRepository {
 
       const event = createAuditEvent({
         action: 'share.download_started',
-        actor: 'visitor',
+        actor: this.resolveShareAuditActor('share.download_started', metadata),
         target: shareToken,
         workspaceId: lockedShare.workspaceId,
         shareToken,
@@ -329,6 +316,24 @@ export class SharesRepository {
         shareToken,
       },
     });
+  }
+
+  private resolveShareAuditActor(
+    action: ShareAuditAction,
+    metadata: Record<string, unknown>,
+    explicitActor?: AuditActor,
+  ): AuditActor {
+    if (explicitActor) return explicitActor;
+    if (action === 'share.created' || action === 'share.revoked') {
+      return 'workspace';
+    }
+    if (
+      metadata.identityType === 'ica' ||
+      typeof metadata.actorUserId === 'string'
+    ) {
+      return 'account';
+    }
+    return 'visitor';
   }
 
   async createEmailAccessCode(input: CreateEmailCodeInput) {

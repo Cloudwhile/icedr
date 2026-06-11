@@ -63,7 +63,7 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
   await expect(page).toHaveURL(/\/admin\/audit$/);
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   const auditRow = page.locator(".drive-audit-table .drive-audit-row").filter({
-    hasText: /Guest Visitor.*Share downloaded.*Share link.*Download/,
+    hasText: /Guest Visitor.*Download.*Share link.*reviewer@example.com downloaded File/,
   });
   await expect(auditRow).toBeVisible();
   await expect(auditRow.locator(".drive-audit-actor-avatar")).toBeVisible();
@@ -234,7 +234,13 @@ async function mockIcedrApi(page: Page) {
     }
 
     if (method === "GET" && path === "/audit/events") {
-      await fulfillJson(route, state.downloaded ? [auditEvent()] : []);
+      const items = state.downloaded ? [auditEvent()] : [];
+      await fulfillJson(route, {
+        items,
+        limit: Number(url.searchParams.get("limit") ?? items.length),
+        offset: Number(url.searchParams.get("offset") ?? 0),
+        total: items.length,
+      });
       return;
     }
 

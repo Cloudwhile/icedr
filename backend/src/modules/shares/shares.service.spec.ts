@@ -690,6 +690,12 @@ describe('SharesService', () => {
     const created = await service.createShare(createDto());
     const session = await service.createVerifiedOAuthAccessSession(
       created.token,
+      {
+        id: 'user_ica',
+        avatarUrl: null,
+        displayName: 'Ica User',
+        email: 'ica@example.test',
+      },
     );
     const intent = await service.createDownloadIntent(
       created.token,
@@ -711,6 +717,20 @@ describe('SharesService', () => {
       bypassWait: true,
       bypassSpeedLimit: true,
     });
+    expect(
+      (repository as unknown as SharesRepositorySpecDouble).auditEvents,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'share.access_session_created',
+          metadata: expect.objectContaining({
+            actorEmail: 'ica@example.test',
+            actorUserId: 'user_ica',
+            identityType: 'ica',
+          }),
+        }),
+      ]),
+    );
   });
 
   it('returns backend manifest downloads for folders without object keys', async () => {

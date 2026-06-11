@@ -11,6 +11,8 @@ import { MailService } from '../admin/mail/mail.service';
 import { FileNodeResponse } from '../files/file-nodes.dto';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
+import type { AuditActor } from '../logs/audit-events';
+import type { AuthUserResponse } from '../auth/core/auth.dto';
 import {
   SendShareEmailCodeDto,
   ShareAccessIdentityType,
@@ -38,6 +40,10 @@ type VisitorAuditMetadata = AuditMetadata & {
   ip?: string;
   userAgent?: string;
 };
+type AccountAuditUser = Pick<
+  AuthUserResponse,
+  'avatarUrl' | 'displayName' | 'email' | 'id'
+>;
 
 @Injectable()
 export class SharesService {
@@ -137,23 +143,52 @@ export class SharesService {
 
   async createVerifiedOAuthAccessSession(
     token: string,
+    user: AccountAuditUser,
     visitor: VisitorAuditMetadata = {},
   ) {
     const share = await this.requireActiveShare(token);
     const session = await this.createAccessSession(
       share,
       'ica',
-      undefined,
+      user.email,
       visitor,
     );
     await this.sharesRepository.recordAudit(
       'share.access_session_created',
       token,
       {
+        ...this.getAccountAuditMetadata(user),
         identityType: 'ica',
         policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
         ...visitor,
       },
+      { actor: 'account' },
+    );
+    return session;
+  }
+
+  async createVerifiedAccountAccessSession(
+    token: string,
+    user: AccountAuditUser,
+    visitor: VisitorAuditMetadata = {},
+  ) {
+    const share = await this.requireActiveShare(token);
+    const session = await this.createAccessSession(
+      share,
+      'ica',
+      user.email,
+      visitor,
+    );
+    await this.sharesRepository.recordAudit(
+      'share.access_session_created',
+      token,
+      {
+        ...this.getAccountAuditMetadata(user),
+        identityType: 'ica',
+        policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
+        ...visitor,
+      },
+      { actor: 'account' },
     );
     return session;
   }
@@ -165,10 +200,13 @@ export class SharesService {
   async getShare(
     token: string,
     visitor: VisitorAuditMetadata = {},
+    options: { actor?: AuditActor } = {},
   ): Promise<ShareDetailResponse> {
     const share = await this.requireActiveShare(token);
     await this.assertShareViewLimit(share);
-    await this.sharesRepository.recordAudit('share.viewed', token, visitor);
+    await this.sharesRepository.recordAudit('share.viewed', token, visitor, {
+      actor: options.actor,
+    });
     return this.withShareItems(share);
   }
 
@@ -224,7 +262,7 @@ export class SharesService {
       'share.download_intent_created',
       token,
       {
-        ...this.getShareIdentityAuditMetadata(accessSession?.email),
+        ...this.getShareIdentityAuditMetadata(accessSession),
         nodeId,
         identityType,
         email: accessSession?.email,
@@ -249,6 +287,7 @@ export class SharesService {
     nodeId: string,
     downloadId: string,
     visitor: VisitorAuditMetadata = {},
+    options: { auditPurpose?: 'download' | 'preview' } = {},
   ) {
     const intent = await this.sharesRepository.consumeShareDownloadIntent({
       downloadId,
@@ -264,38 +303,40 @@ export class SharesService {
       nodeId,
       'download',
     );
-    const downloadRecord = await this.sharesRepository.recordDownloadStarted(
-      token,
-      (downloadCount) => {
-        const policyDecision = this.getDownloadDecisionForCount(
-          share,
-          intent.identityType,
-          downloadCount,
-        );
-        if (policyDecision.remainingDownloads === 0) return null;
-        return {
-          ...this.getShareIdentityAuditMetadata(intent.email),
-          nodeId,
-          identityType: intent.identityType,
-          email: intent.email,
-          policyDecision: toSharePolicyAuditMetadata(
-            this.toStartedPolicyDecision(policyDecision),
-          ),
-          ...visitor,
-        };
-      },
-    );
-    if (downloadRecord.missingShare) {
-      throw new NotFoundException('Share link not found');
-    }
-    if (downloadRecord.revoked) {
-      throw new GoneException('Share link is revoked');
-    }
-    if (downloadRecord.expired) {
-      throw new GoneException('Share link is expired');
-    }
-    if (!downloadRecord.recorded) {
-      throw new GoneException('Share download limit has been reached');
+    if (options.auditPurpose !== 'preview') {
+      const downloadRecord = await this.sharesRepository.recordDownloadStarted(
+        token,
+        (downloadCount) => {
+          const policyDecision = this.getDownloadDecisionForCount(
+            share,
+            intent.identityType,
+            downloadCount,
+          );
+          if (policyDecision.remainingDownloads === 0) return null;
+          return {
+            ...this.getShareIdentityAuditMetadata(intent),
+            nodeId,
+            identityType: intent.identityType,
+            email: intent.email,
+            policyDecision: toSharePolicyAuditMetadata(
+              this.toStartedPolicyDecision(policyDecision),
+            ),
+            ...visitor,
+          };
+        },
+      );
+      if (downloadRecord.missingShare) {
+        throw new NotFoundException('Share link not found');
+      }
+      if (downloadRecord.revoked) {
+        throw new GoneException('Share link is revoked');
+      }
+      if (downloadRecord.expired) {
+        throw new GoneException('Share link is expired');
+      }
+      if (!downloadRecord.recorded) {
+        throw new GoneException('Share download limit has been reached');
+      }
     }
 
     if (intent.method === 'presigned-url' && node.objectKey) {
@@ -331,7 +372,7 @@ export class SharesService {
     );
     const intent = await this.fileNodesService.createPreviewIntent(nodeId);
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
-      ...this.getShareIdentityAuditMetadata(accessSession?.email),
+      ...this.getShareIdentityAuditMetadata(accessSession),
       nodeId,
       identityType: accessSession?.identityType ?? 'anonymous',
       ...visitor,
@@ -535,8 +576,29 @@ export class SharesService {
     return this.sharesRepository.createAccessSession({ ...session, visitor });
   }
 
-  private getShareIdentityAuditMetadata(email?: string) {
-    const normalizedEmail = email?.trim();
+  private getAccountAuditMetadata(user: AccountAuditUser) {
+    return {
+      actorAvatarUrl: user.avatarUrl,
+      actorDisplayName: user.displayName,
+      actorEmail: user.email,
+      actorName: user.displayName || user.email || user.id,
+      actorUserId: user.id,
+    };
+  }
+
+  private getShareIdentityAuditMetadata(
+    identity?: {
+      email?: string;
+      identityType?: ShareAccessIdentityType;
+    } | null,
+  ) {
+    const normalizedEmail = identity?.email?.trim();
+    if (identity?.identityType === 'ica' && !normalizedEmail) {
+      return {
+        actorName: 'ICEDR account',
+        identityType: identity.identityType,
+      };
+    }
     if (!normalizedEmail) return {};
     return {
       actorEmail: normalizedEmail,

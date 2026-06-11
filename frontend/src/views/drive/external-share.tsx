@@ -11,7 +11,7 @@ import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
 import { canOpenFilePreview } from "@/features/file/open-with";
-import { fetchIdentityConfig, resolvePublicSiteName, sendShareEmailCode, startShareOAuth, verifyShareEmailCode, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
+import { createShareAccountAccessSession, fetchCurrentUser, fetchIdentityConfig, resolvePublicSiteName, sendShareEmailCode, startShareOAuth, verifyShareEmailCode, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice } from "./auth-form-primitives";
 import { ThemeActions } from "./drive-shell";
 import { ItemIcon, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
@@ -254,6 +254,7 @@ function ExternalSharePreview({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [accessSessionId, setAccessSessionId] = useState<string | null>(null);
   const [accessSession, setAccessSession] = useState<ShareAccessSession | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [icaConfigured, setIcaConfigured] = useState(false);
   const [preview, setPreview] = useState<{
@@ -292,6 +293,17 @@ function ExternalSharePreview({
     void fetchIdentityConfig().then(config => setIcaConfigured(config.configured)).catch(() => setIcaConfigured(false));
   }, []);
   useEffect(() => {
+    let cancelled = false;
+    void fetchCurrentUser().then(user => {
+      if (!cancelled) setCurrentUser(user);
+    }).catch(() => {
+      if (!cancelled) setCurrentUser(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
     const sessionId = searchParams.get("shareAccessSession");
     if (!sessionId) return;
     let cancelled = false;
@@ -318,6 +330,24 @@ function ExternalSharePreview({
       cancelled = true;
     };
   }, [registeredShare, registeredShare.token, searchParams]);
+  useEffect(() => {
+    if (!currentUser || accessSessionId || accessSession?.identityType === "ica") return;
+    let cancelled = false;
+    void createShareAccountAccessSession(registeredShare.token).then(session => {
+      if (cancelled) return;
+      setAccessSessionId(session.sessionId);
+      setAccessSession(session);
+      setVisitorLevel("ica");
+      setEmail(currentUser.email);
+      setRemaining(session.waitSeconds);
+      setStage(session.waitSeconds > 0 ? "verified" : "download");
+    }).catch(() => {
+      if (!cancelled) setCurrentUser(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessSession?.identityType, accessSessionId, currentUser, registeredShare.token]);
   const sendCode = () => {
     if (!accessItem || !emailPattern.test(email)) return;
     setAuthBusy(true);
@@ -372,11 +402,23 @@ function ExternalSharePreview({
     }
     if (!accessSessionId) setAccessSession(null);
     setRemaining(experience.waitSeconds);
-    setAuthMethod("email");
-    setStage("email");
+    setAuthMethod(currentUser ? "account" : "email");
+    setStage(currentUser ? "choose" : "email");
   };
   const authenticateAccount = (level: VisitorLevel = "ica") => {
     if (!accessItem) return;
+    if (currentUser && level === "ica") {
+      setAuthBusy(true);
+      void createShareAccountAccessSession(registeredShare.token).then(session => {
+        setAccessSessionId(session.sessionId);
+        setAccessSession(session);
+        setVisitorLevel("ica");
+        setEmail(currentUser.email);
+        setRemaining(session.waitSeconds);
+        setStage(session.waitSeconds > 0 ? "verified" : "download");
+      }).catch(() => setFeedback(t("share.icaUnavailable"))).finally(() => setAuthBusy(false));
+      return;
+    }
     if (!icaConfigured || level !== "ica") {
       setFeedback(t("share.icaUnavailable"));
       return;
@@ -495,7 +537,7 @@ function ExternalSharePreview({
         />
       </div>
 
-      <ShareAuthDialog action={accessAction} accessExperience={experience} authMethod={authMethod} code={code} accessItem={accessItem} email={email} locale={locale} accountConfigured={icaConfigured} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onEmailChange={setEmail} onMethodChange={selectAuthMethod} onSendCode={sendCode} onVerifyCode={verifyCode} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} setCode={setCode} sourceItems={sourceItems} stage={stage} />
+      <ShareAuthDialog action={accessAction} accessExperience={experience} authMethod={authMethod} code={code} accessItem={accessItem} email={email} locale={locale} accountConfigured={Boolean(currentUser) || icaConfigured} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onEmailChange={setEmail} onMethodChange={selectAuthMethod} onSendCode={sendCode} onVerifyCode={verifyCode} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} setCode={setCode} sourceItems={sourceItems} stage={stage} />
       <SharePreviewDialog accessSessionId={accessSessionId} onClose={() => setPreview(null)} open={Boolean(preview)} palette={palette} preview={preview} locale={locale} shareToken={registeredShare.token} />
       {feedback ? <div className="icedr-r-right external-share-feedback" style={{
       display: "flex",

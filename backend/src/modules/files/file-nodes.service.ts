@@ -58,6 +58,8 @@ type FileAuditOptions = {
   auditMetadata?: AuditMetadata;
 };
 
+type FileDownloadAuditPurpose = 'download' | 'preview';
+
 @Injectable()
 export class FileNodesService {
   private lastTrashCleanupAt = 0;
@@ -733,6 +735,7 @@ export class FileNodesService {
     const intent = await this.fileNodesRepository.createDownloadIntent(
       node,
       method,
+      options.auditMetadata,
     );
     await this.fileNodesRepository.recordAudit(
       'file.download_intent_created',
@@ -834,7 +837,9 @@ export class FileNodesService {
   async downloadFileNode(
     nodeId: string,
     downloadId: string,
-    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+    options: Pick<FileAuditOptions, 'auditMetadata'> & {
+      auditPurpose?: FileDownloadAuditPurpose;
+    } = {},
   ) {
     const intent =
       await this.fileNodesRepository.findDownloadIntent(downloadId);
@@ -847,11 +852,18 @@ export class FileNodesService {
     }
 
     const node = await this.requireActiveNode(nodeId);
-    await this.fileNodesRepository.recordAudit(
-      'file.download_started',
-      node.id,
-      { metadata: options.auditMetadata },
-    );
+    if (options.auditPurpose !== 'preview') {
+      await this.fileNodesRepository.recordAudit(
+        'file.download_started',
+        node.id,
+        {
+          metadata: {
+            ...intent.auditMetadata,
+            ...options.auditMetadata,
+          },
+        },
+      );
+    }
 
     if (intent.method === 'presigned-url' && node.objectKey) {
       const signed = await this.storageService.createPresignedDownload(

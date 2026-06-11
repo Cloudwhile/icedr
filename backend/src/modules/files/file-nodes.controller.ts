@@ -453,13 +453,17 @@ export class FileNodesController {
   async downloadFileNode(
     @Param('id') id: string,
     @Query('downloadId') downloadId: string,
+    @Query('purpose') purpose: string | undefined,
     @Res({ passthrough: true }) response: Response,
     @Req() request?: Request,
   ) {
     const download = await this.fileNodesService.downloadFileNode(
       id,
       downloadId,
-      { auditMetadata: createVisitorAuditMetadata(request) },
+      {
+        auditMetadata: createVisitorAuditMetadata(request),
+        auditPurpose: purpose === 'preview' ? 'preview' : 'download',
+      },
     );
     if (download.method === 'presigned-url') {
       response.redirect(302, download.redirectUrl);

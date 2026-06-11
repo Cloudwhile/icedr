@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
+import { Prisma } from '../../../generated/prisma/client';
 import { AuthSettings, AuthUserResponse } from './auth.dto';
 import type {
   OAuthEmailSource,
@@ -194,6 +195,10 @@ type OAuthExchangeCodeRow = {
   created_at: Date | string;
 };
 
+type PrismaUserWithMeta = Prisma.UserGetPayload<{
+  include: { meta: true };
+}>;
+
 @Injectable()
 export class AuthRepository implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
@@ -252,33 +257,23 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findUserByEmail(email: string): Promise<StoredAuthUser | null> {
-    const result = await this.query<UserWithPasswordRow>(
-      `
-        select
-          u.*,
-          m.avatar_url,
-          m.locale,
-          m.theme,
-          m.timezone,
-          i.password_hash
-        from users u
-        left join user_meta m on m.user_id = u.id
-        left join lateral (
-          select password_hash
-          from user_identities
-          where user_id = u.id
-            and provider = $2
-            and password_hash is not null
-          order by updated_at desc, created_at desc
-          limit 1
-        ) i on true
-        where u.email = $1
-        limit 1
-      `,
-      [email, localIdentityProvider],
-    );
-    return result.rows[0]?.password_hash
-      ? this.mapUserWithPasswordRow(result.rows[0])
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        identities: {
+          orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+          take: 1,
+          where: {
+            passwordHash: { not: null },
+            provider: localIdentityProvider,
+          },
+        },
+        meta: true,
+      },
+    });
+    const passwordHash = user?.identities[0]?.passwordHash;
+    return user && passwordHash
+      ? this.mapPrismaUserWithPassword(user, passwordHash)
       : null;
   }
 
@@ -289,67 +284,43 @@ export class AuthRepository implements OnModuleInit {
     role?: 'admin' | 'member';
   }): Promise<StoredAuthUser> {
     const id = `user_${randomBytes(12).toString('base64url')}`;
-    const result = await this.query<UserWithPasswordRow>(
-      `
-        with created_user as (
-          insert into users (
-            id,
-            email,
-            display_name,
-            role,
-            created_at,
-            updated_at
-          )
-          values ($1, $2, $3, $7, now(), now())
-          returning *
-        ),
-        created_meta as (
-          insert into user_meta (
-            user_id,
-            created_at,
-            updated_at
-          )
-          select id, now(), now()
-          from created_user
-          on conflict (user_id) do nothing
-          returning user_id
-        ),
-        created_identity as (
-          insert into user_identities (
-            id,
-            user_id,
-            provider,
-            provider_subject,
-            password_hash,
-            created_at,
-            updated_at
-          )
-          select $4, id, $5, email, $6, now(), now()
-          from created_user
-          returning password_hash
-        )
-        select
-          u.*,
-          null::text as avatar_url,
-          null::text as locale,
-          null::text as theme,
-          null::text as timezone,
-          i.password_hash
-        from created_user u
-        join created_identity i on true
-      `,
-      [
-        id,
-        input.email,
-        input.displayName,
-        `identity_${randomBytes(12).toString('base64url')}`,
-        localIdentityProvider,
-        input.passwordHash,
-        input.role ?? 'member',
-      ],
-    );
-
-    return this.mapUserWithPasswordRow(result.rows[0]);
+    const now = new Date();
+    const user = await this.prisma.$transaction(async (tx) => {
+      await tx.user.create({
+        data: {
+          id,
+          email: input.email,
+          displayName: input.displayName,
+          role: input.role ?? 'member',
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      await tx.userMeta.create({
+        data: {
+          userId: id,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      await tx.userIdentity.create({
+        data: {
+          id: `identity_${randomBytes(12).toString('base64url')}`,
+          userId: id,
+          provider: localIdentityProvider,
+          providerSubject: input.email,
+          passwordHash: input.passwordHash,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      return tx.user.findUnique({
+        where: { id },
+        include: { meta: true },
+      });
+    });
+    if (!user) throw new Error('Created user is unavailable');
+    return this.mapPrismaUserWithPassword(user, input.passwordHash);
   }
 
   async createOrPromoteLocalUser(input: {
@@ -361,14 +332,14 @@ export class AuthRepository implements OnModuleInit {
     const existing = await this.findUserByEmail(input.email);
     if (!existing) return this.createUser(input);
 
-    await this.query(
-      `
-        update users
-        set role = $2, display_name = $3, updated_at = now()
-        where id = $1
-      `,
-      [existing.id, input.role, input.displayName],
-    );
+    await this.prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        displayName: input.displayName,
+        role: input.role,
+        updatedAt: new Date(),
+      },
+    });
     await this.updateUserPassword(existing.id, input.passwordHash);
     const updated = await this.findUserByEmail(input.email);
     if (!updated) return this.createUser(input);
@@ -381,14 +352,14 @@ export class AuthRepository implements OnModuleInit {
     displayName: string;
     role: 'admin' | 'member';
   }): Promise<StoredAuthUser> {
-    await this.query(
-      `
-        update users
-        set role = $2, display_name = $3, updated_at = now()
-        where id = $1
-      `,
-      [input.userId, input.role, input.displayName],
-    );
+    await this.prisma.user.update({
+      where: { id: input.userId },
+      data: {
+        displayName: input.displayName,
+        role: input.role,
+        updatedAt: new Date(),
+      },
+    });
     const updated = await this.findUserByEmail(input.email);
     if (!updated) {
       throw new Error('Promoted local user is unavailable');
@@ -502,72 +473,61 @@ export class AuthRepository implements OnModuleInit {
     displayName: string;
   }): Promise<StoredOAuthUser> {
     const id = `user_${randomBytes(12).toString('base64url')}`;
-    const result = await this.query<OAuthUserRow>(
-      `
-        with created_user as (
-          insert into users (
-            id,
-            email,
-            display_name,
-            role,
-            created_at,
-            updated_at
-          )
-          values ($1, $2, $3, 'member', now(), now())
-          on conflict (email) do update set
-            updated_at = now()
-          returning *
-        ),
-        created_meta as (
-          insert into user_meta (
-            user_id,
-            created_at,
-            updated_at
-          )
-          select id, now(), now()
-          from created_user
-          on conflict (user_id) do nothing
-          returning user_id
-        ),
-        created_identity as (
-          insert into user_identities (
-            id,
-            user_id,
-            provider,
-            provider_subject,
-            email_source,
-            created_at,
-            updated_at
-          )
-          select $4, id, $5, $6, $7, now(), now()
-          from created_user
-          on conflict (provider, provider_subject) do update set
-            user_id = excluded.user_id,
-            email_source = excluded.email_source,
-            updated_at = excluded.updated_at
-          returning user_id
-        )
-        select
-          u.*,
-          m.avatar_url,
-          m.locale,
-          m.theme,
-          m.timezone,
-          $7::text as email_source
-        from created_user u
-        left join user_meta m on m.user_id = u.id
-      `,
-      [
-        id,
-        input.email,
-        input.displayName,
-        `identity_${randomBytes(12).toString('base64url')}`,
-        input.provider,
-        input.subject,
-        input.emailSource,
-      ],
-    );
-    return this.mapOAuthUserRow(result.rows[0]);
+    const now = new Date();
+    const user = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.upsert({
+        where: { email: input.email },
+        update: { updatedAt: now },
+        create: {
+          id,
+          email: input.email,
+          displayName: input.displayName,
+          role: 'member',
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      await tx.userMeta.upsert({
+        where: { userId: createdUser.id },
+        update: {},
+        create: {
+          userId: createdUser.id,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      await tx.userIdentity.upsert({
+        where: {
+          provider_providerSubject: {
+            provider: input.provider,
+            providerSubject: input.subject,
+          },
+        },
+        update: {
+          emailSource: input.emailSource,
+          updatedAt: now,
+          userId: createdUser.id,
+        },
+        create: {
+          id: `identity_${randomBytes(12).toString('base64url')}`,
+          userId: createdUser.id,
+          provider: input.provider,
+          providerSubject: input.subject,
+          emailSource: input.emailSource,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      return tx.user.findUnique({
+        where: { id: createdUser.id },
+        include: { meta: true },
+      });
+    });
+    if (!user) throw new Error('OAuth user is unavailable');
+    return {
+      ...this.mapPrismaUser(user),
+      emailSource: input.emailSource,
+    };
   }
 
   async createSession(input: {
@@ -747,69 +707,54 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async updateUserPassword(userId: string, passwordHash: string) {
-    const result = await this.query<UserWithPasswordRow>(
-      `
-        with target_user as (
-          select *
-          from users
-          where id = $1
-        ),
-        updated_identity as (
-          update user_identities
-          set password_hash = $2, updated_at = now()
-          where user_id = $1 and provider = $3
-          returning password_hash
-        ),
-        created_identity as (
-          insert into user_identities (
-            id,
-            user_id,
-            provider,
-            provider_subject,
-            password_hash,
-            created_at,
-            updated_at
-          )
-          select $4, id, $3, email, $2, now(), now()
-          from target_user
-          where not exists (select 1 from updated_identity)
-          on conflict (provider, provider_subject) do update set
-            user_id = excluded.user_id,
-            password_hash = excluded.password_hash,
-            updated_at = excluded.updated_at
-          returning password_hash
-        ),
-        resolved_identity as (
-          select password_hash from updated_identity
-          union all
-          select password_hash from created_identity
-          limit 1
-        ),
-        touched_user as (
-          update users
-          set updated_at = now()
-          where id = $1
-          returning *
-        )
-        select
-          u.*,
-          m.avatar_url,
-          m.locale,
-          m.theme,
-          m.timezone,
-          i.password_hash
-        from touched_user u
-        left join user_meta m on m.user_id = u.id
-        join resolved_identity i on true
-      `,
-      [
-        userId,
-        passwordHash,
-        localIdentityProvider,
-        `identity_${randomBytes(12).toString('base64url')}`,
-      ],
-    );
-    return this.mapUserWithPasswordRow(result.rows[0]);
+    const now = new Date();
+    const user = await this.prisma.$transaction(async (tx) => {
+      const targetUser = await tx.user.findUnique({ where: { id: userId } });
+      if (!targetUser) return null;
+      const identity = await tx.userIdentity.findFirst({
+        where: { provider: localIdentityProvider, userId },
+        orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      });
+      if (identity) {
+        await tx.userIdentity.update({
+          where: { id: identity.id },
+          data: { passwordHash, updatedAt: now },
+        });
+      } else {
+        await tx.userIdentity.upsert({
+          where: {
+            provider_providerSubject: {
+              provider: localIdentityProvider,
+              providerSubject: targetUser.email,
+            },
+          },
+          update: {
+            passwordHash,
+            updatedAt: now,
+            userId,
+          },
+          create: {
+            id: `identity_${randomBytes(12).toString('base64url')}`,
+            userId,
+            provider: localIdentityProvider,
+            providerSubject: targetUser.email,
+            passwordHash,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      }
+      await tx.user.update({
+        where: { id: userId },
+        data: { updatedAt: now },
+      });
+      return tx.user.findUnique({
+        where: { id: userId },
+        include: { meta: true },
+      });
+    });
+    if (!user) throw new Error('Updated password user is unavailable');
+    return this.mapPrismaUserWithPassword(user, passwordHash);
   }
 
   async createPasskey(input: {
@@ -823,36 +768,20 @@ export class AuthRepository implements OnModuleInit {
     name: string;
   }) {
     const id = `passkey_${randomBytes(12).toString('base64url')}`;
-    const result = await this.query<PasskeyRow>(
-      `
-        insert into auth_passkeys (
-          id,
-          user_id,
-          credential_id,
-          public_key,
-          counter,
-          transports,
-          device_type,
-          backed_up,
-          name,
-          created_at
-        )
-        values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, now())
-        returning *
-      `,
-      [
+    const row = await this.prisma.authPasskey.create({
+      data: {
         id,
-        input.userId,
-        input.credentialId,
-        input.publicKey,
-        input.counter,
-        JSON.stringify(input.transports),
-        input.deviceType,
-        input.backedUp,
-        input.name,
-      ],
-    );
-    return this.mapPasskeyRow(result.rows[0]);
+        userId: input.userId,
+        credentialId: input.credentialId,
+        publicKey: input.publicKey,
+        counter: BigInt(input.counter),
+        transports: input.transports,
+        deviceType: input.deviceType,
+        backedUp: input.backedUp,
+        name: input.name,
+      },
+    });
+    return this.mapPrismaPasskey(row);
   }
 
   async listPasskeysForUser(userId: string) {
@@ -872,16 +801,13 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async updatePasskeyCounter(id: string, counter: number) {
-    const result = await this.query<PasskeyRow>(
-      `
-        update auth_passkeys
-        set counter = $2, last_used_at = now()
-        where id = $1
-        returning *
-      `,
-      [id, counter],
-    );
-    return result.rows[0] ? this.mapPasskeyRow(result.rows[0]) : null;
+    const row = await this.prisma.authPasskey
+      .update({
+        where: { id },
+        data: { counter: BigInt(counter), lastUsedAt: new Date() },
+      })
+      .catch(() => null);
+    return row ? this.mapPrismaPasskey(row) : null;
   }
 
   async deletePasskey(userId: string, id: string) {
@@ -900,32 +826,18 @@ export class AuthRepository implements OnModuleInit {
     metadata?: Record<string, unknown>;
   }) {
     const id = `challenge_${randomBytes(12).toString('base64url')}`;
-    const result = await this.query<AuthChallengeRow>(
-      `
-        insert into auth_challenges (
-          id,
-          flow,
-          challenge,
-          user_id,
-          email,
-          expires_at,
-          metadata,
-          created_at
-        )
-        values ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
-        returning *
-      `,
-      [
+    const row = await this.prisma.authChallenge.create({
+      data: {
         id,
-        input.flow,
-        input.challenge,
-        input.userId ?? null,
-        input.email ?? null,
-        input.expiresAt,
-        JSON.stringify(input.metadata ?? {}),
-      ],
-    );
-    return this.mapChallengeRow(result.rows[0]);
+        flow: input.flow,
+        challenge: input.challenge,
+        userId: input.userId ?? null,
+        email: input.email ?? null,
+        expiresAt: new Date(input.expiresAt),
+        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+    return this.mapPrismaChallenge(row);
   }
 
   async findActiveChallenge(input: {
@@ -933,28 +845,28 @@ export class AuthRepository implements OnModuleInit {
     userId?: string | null;
     email?: string | null;
   }) {
-    const result = await this.query<AuthChallengeRow>(
-      `
-        select *
-        from auth_challenges
-        where flow = $1
-          and ($2::text is null or user_id = $2)
-          and ($3::text is null or email = $3)
-          and used_at is null
-          and expires_at > now()
-        order by created_at desc
-        limit 1
-      `,
-      [input.flow, input.userId ?? null, input.email ?? null],
-    );
-    return result.rows[0] ? this.mapChallengeRow(result.rows[0]) : null;
+    const row = await this.prisma.authChallenge.findFirst({
+      where: {
+        email: input.email ?? undefined,
+        expiresAt: { gt: new Date() },
+        flow: input.flow,
+        usedAt: null,
+        userId: input.userId ?? undefined,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return row ? this.mapPrismaChallenge(row) : null;
   }
 
   async markChallengeUsed(id: string) {
-    await this.query(
-      'update auth_challenges set used_at = coalesce(used_at, now()) where id = $1',
-      [id],
-    );
+    const existing = await this.prisma.authChallenge.findUnique({
+      where: { id },
+    });
+    if (!existing || existing.usedAt) return;
+    await this.prisma.authChallenge.update({
+      where: { id },
+      data: { usedAt: new Date() },
+    });
   }
 
   async createOAuthState(input: {
@@ -966,47 +878,36 @@ export class AuthRepository implements OnModuleInit {
     providerSnapshot: OAuthProviderSnapshot;
     expiresAt: string;
   }) {
-    const result = await this.query<OAuthStateRow>(
-      `
-        insert into auth_oauth_states (
-          state,
-          flow,
-          share_token,
-          code_verifier,
-          redirect_uri,
-          provider_snapshot,
-          expires_at,
-          created_at
-        )
-        values ($1, $2, $3, $4, $5, $6::jsonb, $7, now())
-        returning *
-      `,
-      [
-        input.state,
-        input.flow,
-        input.shareToken ?? null,
-        input.codeVerifier,
-        input.redirectUri,
-        JSON.stringify(input.providerSnapshot),
-        input.expiresAt,
-      ],
-    );
-    return this.mapOAuthStateRow(result.rows[0]);
+    const row = await this.prisma.authOAuthState.create({
+      data: {
+        state: input.state,
+        flow: input.flow,
+        shareToken: input.shareToken ?? null,
+        codeVerifier: input.codeVerifier,
+        redirectUri: input.redirectUri,
+        providerSnapshot: input.providerSnapshot,
+        expiresAt: new Date(input.expiresAt),
+      },
+    });
+    return this.mapPrismaOAuthState(row);
   }
 
   async findOAuthState(state: string) {
-    const result = await this.query<OAuthStateRow>(
-      'select * from auth_oauth_states where state = $1 limit 1',
-      [state],
-    );
-    return result.rows[0] ? this.mapOAuthStateRow(result.rows[0]) : null;
+    const row = await this.prisma.authOAuthState.findUnique({
+      where: { state },
+    });
+    return row ? this.mapPrismaOAuthState(row) : null;
   }
 
   async markOAuthStateUsed(state: string) {
-    await this.query(
-      'update auth_oauth_states set used_at = coalesce(used_at, now()) where state = $1',
-      [state],
-    );
+    const existing = await this.prisma.authOAuthState.findUnique({
+      where: { state },
+    });
+    if (!existing || existing.usedAt) return;
+    await this.prisma.authOAuthState.update({
+      where: { state },
+      data: { usedAt: new Date() },
+    });
   }
 
   async createOAuthExchangeCode(input: {
@@ -1014,38 +915,36 @@ export class AuthRepository implements OnModuleInit {
     userId: string;
     expiresAt: string;
   }) {
-    const result = await this.query<OAuthExchangeCodeRow>(
-      `
-        insert into auth_oauth_exchange_codes (
-          code_hash,
-          user_id,
-          expires_at,
-          created_at
-        )
-        values ($1, $2, $3, now())
-        returning *
-      `,
-      [input.codeHash, input.userId, input.expiresAt],
-    );
-    return this.mapOAuthExchangeCodeRow(result.rows[0]);
+    const row = await this.prisma.authOAuthExchangeCode.create({
+      data: {
+        codeHash: input.codeHash,
+        userId: input.userId,
+        expiresAt: new Date(input.expiresAt),
+      },
+    });
+    return this.mapPrismaOAuthExchangeCode(row);
   }
 
   async findOAuthExchangeCode(codeHash: string) {
-    const result = await this.query<OAuthExchangeCodeRow>(
-      'select * from auth_oauth_exchange_codes where code_hash = $1 limit 1',
-      [codeHash],
-    );
-    return result.rows[0] ? this.mapOAuthExchangeCodeRow(result.rows[0]) : null;
+    const row = await this.prisma.authOAuthExchangeCode.findUnique({
+      where: { codeHash },
+    });
+    return row ? this.mapPrismaOAuthExchangeCode(row) : null;
   }
 
   async markOAuthExchangeCodeUsed(codeHash: string) {
-    await this.query(
-      'update auth_oauth_exchange_codes set used_at = coalesce(used_at, now()) where code_hash = $1',
-      [codeHash],
-    );
+    const existing = await this.prisma.authOAuthExchangeCode.findUnique({
+      where: { codeHash },
+    });
+    if (!existing || existing.usedAt) return;
+    await this.prisma.authOAuthExchangeCode.update({
+      where: { codeHash },
+      data: { usedAt: new Date() },
+    });
   }
 
   private async migrateLegacyAuthUsers() {
+    if (this.isSqlite()) return;
     await this.query(`
       do $$
       begin
@@ -1134,6 +1033,30 @@ export class AuthRepository implements OnModuleInit {
     };
   }
 
+  private mapPrismaUser(row: PrismaUserWithMeta): AuthUserResponse {
+    return {
+      id: row.id,
+      email: row.email,
+      displayName: row.displayName,
+      role: (row.role as 'admin' | 'member') ?? 'member',
+      avatarUrl: row.meta?.avatarUrl ?? null,
+      locale: row.meta?.locale ?? null,
+      theme: row.meta?.theme ?? null,
+      timezone: row.meta?.timezone ?? null,
+      createdAt: this.toIsoString(row.createdAt),
+    };
+  }
+
+  private mapPrismaUserWithPassword(
+    row: PrismaUserWithMeta,
+    passwordHash: string,
+  ): StoredAuthUser {
+    return {
+      ...this.mapPrismaUser(row),
+      passwordHash,
+    };
+  }
+
   private mapOAuthUserRow(row: OAuthUserRow): StoredOAuthUser {
     return {
       ...this.mapUserRow(row),
@@ -1201,6 +1124,24 @@ export class AuthRepository implements OnModuleInit {
     };
   }
 
+  private mapPrismaPasskey(
+    row: Prisma.AuthPasskeyGetPayload<Record<string, never>>,
+  ): StoredPasskey {
+    return {
+      id: row.id,
+      userId: row.userId,
+      credentialId: row.credentialId,
+      publicKey: row.publicKey,
+      counter: Number(row.counter),
+      transports: this.parseStringArray(row.transports),
+      deviceType: row.deviceType as 'singleDevice' | 'multiDevice',
+      backedUp: row.backedUp,
+      name: row.name,
+      createdAt: this.toIsoString(row.createdAt),
+      lastUsedAt: row.lastUsedAt ? this.toIsoString(row.lastUsedAt) : null,
+    };
+  }
+
   private mapChallengeRow(row: AuthChallengeRow): StoredAuthChallenge {
     return {
       id: row.id,
@@ -1218,6 +1159,22 @@ export class AuthRepository implements OnModuleInit {
     };
   }
 
+  private mapPrismaChallenge(
+    row: Prisma.AuthChallengeGetPayload<Record<string, never>>,
+  ): StoredAuthChallenge {
+    return {
+      id: row.id,
+      flow: row.flow as StoredAuthChallenge['flow'],
+      challenge: row.challenge,
+      userId: row.userId,
+      email: row.email,
+      expiresAt: this.toIsoString(row.expiresAt),
+      usedAt: row.usedAt ? this.toIsoString(row.usedAt) : null,
+      metadata: this.parseJsonRecord(row.metadata),
+      createdAt: this.toIsoString(row.createdAt),
+    };
+  }
+
   private mapOAuthStateRow(row: OAuthStateRow): StoredOAuthState {
     return {
       state: row.state,
@@ -1232,6 +1189,22 @@ export class AuthRepository implements OnModuleInit {
     };
   }
 
+  private mapPrismaOAuthState(
+    row: Prisma.AuthOAuthStateGetPayload<Record<string, never>>,
+  ): StoredOAuthState {
+    return {
+      state: row.state,
+      flow: row.flow as StoredOAuthState['flow'],
+      shareToken: row.shareToken,
+      codeVerifier: row.codeVerifier,
+      redirectUri: row.redirectUri,
+      providerSnapshot: this.parseOAuthProviderSnapshot(row.providerSnapshot),
+      expiresAt: this.toIsoString(row.expiresAt),
+      usedAt: row.usedAt ? this.toIsoString(row.usedAt) : null,
+      createdAt: this.toIsoString(row.createdAt),
+    };
+  }
+
   private mapOAuthExchangeCodeRow(
     row: OAuthExchangeCodeRow,
   ): StoredOAuthExchangeCode {
@@ -1241,6 +1214,18 @@ export class AuthRepository implements OnModuleInit {
       expiresAt: this.toIsoString(row.expires_at),
       usedAt: row.used_at ? this.toIsoString(row.used_at) : null,
       createdAt: this.toIsoString(row.created_at),
+    };
+  }
+
+  private mapPrismaOAuthExchangeCode(
+    row: Prisma.AuthOAuthExchangeCodeGetPayload<Record<string, never>>,
+  ): StoredOAuthExchangeCode {
+    return {
+      codeHash: row.codeHash,
+      userId: row.userId,
+      expiresAt: this.toIsoString(row.expiresAt),
+      usedAt: row.usedAt ? this.toIsoString(row.usedAt) : null,
+      createdAt: this.toIsoString(row.createdAt),
     };
   }
 
@@ -1265,22 +1250,62 @@ export class AuthRepository implements OnModuleInit {
   }
 
   private toPrismaSql(sql: string, values: unknown[]) {
+    if (!this.isSqlite()) {
+      return {
+        sql,
+        values,
+      };
+    }
+
+    const sqliteValues: unknown[] = [];
+    const sqliteSql = sql
+      .replace(/::jsonb/g, '')
+      .replace(/::text/g, '')
+      .replace(/\bnow\(\)/gi, "strftime('%Y-%m-%dT%H:%M:%fZ','now')")
+      .replace(/\$(\d+)/g, (_match, index: string) => {
+        sqliteValues.push(values[Number(index) - 1]);
+        return '?';
+      });
+
     return {
-      sql,
-      values,
+      sql: sqliteSql,
+      values: sqliteValues,
     };
   }
 
-  private parseStringArray(value: string[] | string) {
-    if (Array.isArray(value)) return value;
+  private isSqlite() {
+    return typeof this.prisma.isSqlite === 'function' && this.prisma.isSqlite();
+  }
+
+  private parseStringArray(value: unknown) {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string');
+    }
+    if (typeof value !== 'string') return [];
     const parsed: unknown = JSON.parse(value);
     return Array.isArray(parsed)
       ? parsed.filter((item): item is string => typeof item === 'string')
       : [];
   }
 
+  private parseJsonRecord(value: unknown) {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value) as unknown;
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : {};
+      } catch {
+        return {};
+      }
+    }
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  }
+
   private parseOAuthProviderSnapshot(
-    value: Record<string, unknown> | string | null,
+    value: unknown,
   ): OAuthProviderSnapshot | null {
     let parsed: Record<string, unknown> | null;
     if (typeof value === 'string') {
@@ -1289,8 +1314,10 @@ export class AuthRepository implements OnModuleInit {
       } catch {
         return null;
       }
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parsed = value as Record<string, unknown>;
     } else {
-      parsed = value;
+      parsed = null;
     }
     if (!parsed || typeof parsed !== 'object') return null;
     const providerProfile = parsed.providerProfile;

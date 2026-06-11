@@ -27,7 +27,7 @@ export class AuthAuditService {
   ) {
     const event = createAuditEvent({
       action,
-      actor: 'workspace',
+      actor: 'account',
       target: 'account',
       metadata: {
         ...createRequestAuditMetadata({ user }, options.request),

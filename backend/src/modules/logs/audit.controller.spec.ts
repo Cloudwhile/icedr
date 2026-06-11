@@ -5,7 +5,14 @@ import { AuditService } from './audit.service';
 
 describe('AuditController', () => {
   function createController() {
-    const listEvents = jest.fn(() => Promise.resolve([]));
+    const listEvents = jest.fn(() =>
+      Promise.resolve({
+        items: [],
+        limit: 100,
+        offset: 0,
+        total: 0,
+      }),
+    );
     const requirePermission = jest.fn(() =>
       Promise.resolve({ user: { role: 'admin' } }),
     );
@@ -39,6 +46,7 @@ describe('AuditController', () => {
       action: undefined,
       limit: undefined,
       nodeId: undefined,
+      offset: undefined,
       shareToken: undefined,
       workspaceId: 'workspace-default',
     });

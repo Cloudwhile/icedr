@@ -150,6 +150,12 @@ function openDownloadUrl(url: string) {
   anchor.remove();
 }
 
+function buildPreviewDownloadUrl(downloadUrl: string) {
+  const url = new URL(buildApiUrl(downloadUrl), getOrigin());
+  url.searchParams.set("purpose", "preview");
+  return url.toString();
+}
+
 export function createPreviewUrl(itemId: DriveItem["id"]) {
   return `${getOrigin()}/preview/${encodeURIComponent(itemId)}`;
 }
@@ -178,7 +184,7 @@ export async function copyTextToClipboard(text: string) {
 }
 
 export async function downloadSharedDriveItem(token: string, item: DriveItem, accessSessionId?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...getAuthHeaders() };
   if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
   const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
     method: "POST",
@@ -191,7 +197,7 @@ export async function downloadSharedDriveItem(token: string, item: DriveItem, ac
 }
 
 export async function createSharedDriveItemBlobUrl(token: string, item: DriveItem, accessSessionId?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...getAuthHeaders() };
   if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
   const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
     method: "POST",
@@ -200,7 +206,7 @@ export async function createSharedDriveItemBlobUrl(token: string, item: DriveIte
   if (!intentResponse.ok) throw new Error("Download intent failed");
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
-  const response = await fetch(buildApiUrl(intent.downloadUrl), {
+  const response = await fetch(buildPreviewDownloadUrl(intent.downloadUrl), {
     redirect: "follow",
   });
   if (!response.ok) throw new Error("Download failed");
@@ -226,7 +232,7 @@ export async function downloadWorkspaceFileVersion(item: DriveItem, versionId: s
 
 export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspaceId?: string) {
   const intent = await createFileDownloadIntent(item.id, workspaceId);
-  const downloadUrl = buildApiUrl(intent.downloadUrl);
+  const downloadUrl = buildPreviewDownloadUrl(intent.downloadUrl);
   const response = await fetch(downloadUrl, {
     redirect: "follow",
   });
@@ -237,7 +243,7 @@ export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspace
 
 export async function createWorkspaceDriveItemSourceUrl(item: DriveItem, workspaceId?: string) {
   const intent = await createFileDownloadIntent(item.id, workspaceId);
-  return buildApiUrl(intent.downloadUrl);
+  return buildPreviewDownloadUrl(intent.downloadUrl);
 }
 
 export function createUploadDriveFileTask({
@@ -824,7 +830,7 @@ export async function createFilePreviewIntent(itemId: DriveItem["id"]) {
 }
 
 export async function createSharedPreviewIntent(token: string, itemId: DriveItem["id"], accessSessionId?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...getAuthHeaders() };
   if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
 
   const response = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}/preview-intents`, {

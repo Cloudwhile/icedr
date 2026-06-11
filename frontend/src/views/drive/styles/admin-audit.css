@@ -183,6 +183,28 @@
   background: #fff;
 }
 
+.admin-shell .drive-audit-pagination {
+  background: #fbfdff;
+  padding: 10px 20px 12px;
+}
+
+.admin-shell .drive-audit-pagination .icedr-app-select-shell {
+  background: #fff;
+  border-color: #dfe7f2;
+  min-height: 34px;
+}
+
+.admin-shell .drive-audit-pagination .icedr-app-select {
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.admin-shell .drive-audit-pagination .icedr-tool-button {
+  height: 34px;
+  min-width: 34px;
+  width: 34px;
+}
+
 .admin-shell .drive-audit-table .drive-module-table-head,
 .admin-shell .drive-audit-table .drive-module-table-row {
   gap: 14px;
@@ -296,6 +318,12 @@
   background: linear-gradient(180deg, #f4fbff 0%, #e7f6ff 100%);
   border-color: #cdefff;
   color: var(--drive-ui-info);
+}
+
+.admin-shell .drive-audit-actor-avatar[data-actor="account"] {
+  background: linear-gradient(180deg, #f1fff8 0%, #e2f8ef 100%);
+  border-color: #bcebd4;
+  color: var(--drive-ui-success);
 }
 
 .admin-shell .drive-audit-actor-avatar[data-actor="system"] {
@@ -512,6 +540,17 @@
     flex-direction: column;
     gap: 8px;
     padding-block: 10px;
+  }
+
+  .admin-shell .drive-audit-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .admin-shell .drive-audit-pagination .icedr-app-pagination-controls {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .admin-shell .drive-audit-filter-grid {

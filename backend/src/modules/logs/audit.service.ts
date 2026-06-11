@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma, type AuditEvent } from '../../generated/prisma/client';
 import {
+  AuditEventPage,
   AuditEventFilters,
   AuditEventRecord,
   auditedActivityActions,
   auditedActivityActionSet,
   clampAuditLimit,
+  clampAuditOffset,
   isAuthAuditAction,
 } from './audit-events';
 
@@ -14,10 +16,12 @@ import {
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listEvents(filters: AuditEventFilters = {}) {
+  async listEvents(filters: AuditEventFilters = {}): Promise<AuditEventPage> {
     const where: Prisma.AuditEventWhereInput = {};
     const actionFilter = this.resolveActionFilter(filters.action);
-    if (!actionFilter) return [];
+    const limit = clampAuditLimit(filters.limit);
+    const offset = clampAuditOffset(filters.offset);
+    if (!actionFilter) return { items: [], total: 0, limit, offset };
 
     where.action = actionFilter;
     if (filters.workspaceId) {
@@ -29,13 +33,22 @@ export class AuditService {
     if (filters.shareToken) where.shareToken = filters.shareToken;
     if (filters.nodeId) where.nodeId = filters.nodeId;
 
-    const rows = await this.prisma.auditEvent.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: clampAuditLimit(filters.limit),
-    });
+    const [total, rows] = await Promise.all([
+      this.prisma.auditEvent.count({ where }),
+      this.prisma.auditEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+    ]);
 
-    return rows.map((row) => this.mapRow(row));
+    return {
+      items: rows.map((row) => this.mapRow(row)),
+      total,
+      limit,
+      offset,
+    };
   }
 
   private resolveActionFilter(action?: string): Prisma.StringFilter | string {

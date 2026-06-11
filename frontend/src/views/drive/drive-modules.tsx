@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { AppInput } from "@/components/ui/app-input";
+import { AppPagination } from "@/components/ui/app-pagination";
 import { AppSelect } from "@/components/ui/app-select";
 import { MotionList } from "@/components/ui/motion";
 import { findDriveItem, getIntlLocale, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
@@ -184,16 +185,28 @@ export function AuditModule({
   error,
   events,
   query: controlledQuery,
+  onPageChange,
+  onPageSizeChange,
   onRefresh,
   onQueryChange,
+  page,
+  pageSize,
+  pageSizeOptions,
   palette,
+  totalEvents,
 }: {
   error: string | null;
   events: AuditEventResponse[];
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   query?: string;
   onRefresh: () => void;
   onQueryChange?: (query: string) => void;
+  page: number;
+  pageSize: number;
+  pageSizeOptions: number[];
   palette: Palette;
+  totalEvents: number;
 }) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
@@ -288,6 +301,16 @@ export function AuditModule({
     Boolean(ipQuery.trim()),
   ].filter(Boolean).length;
   const failedEventCount = filteredEvents.filter((event) => getAuditResult(event) === "failed").length;
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(getIntlLocale(locale)), [locale]);
+  const totalPages = Math.max(1, Math.ceil(Math.max(totalEvents, 0) / Math.max(1, pageSize)));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const pageStart = totalEvents === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = totalEvents === 0 ? 0 : Math.min(totalEvents, safePage * pageSize);
+  const formattedTotal = numberFormatter.format(totalEvents);
+  const pageRecordsLabel = t("audit.pageRecordsValue", {
+    count: numberFormatter.format(filteredEvents.length),
+    total: formattedTotal,
+  });
 
   return (
     <div className="drive-module-stack drive-audit-module">
@@ -299,7 +322,7 @@ export function AuditModule({
             <small>{t("audit.activeFiltersValue", { count: String(activeFilterCount) })}</small>
           </div>
           <div className="drive-audit-filter-actions">
-            <StatusPill palette={palette}>{t("audit.recordsValue", { count: String(filteredEvents.length) })}</StatusPill>
+            <StatusPill palette={palette}>{pageRecordsLabel}</StatusPill>
             <ToolButton label={t("audit.resetFilters")} palette={palette} onClick={resetFilters} tooltipPlacement="bottom">
               <LocalIcon name="cross" size={16} />
             </ToolButton>
@@ -350,7 +373,7 @@ export function AuditModule({
           />
           <div className="drive-audit-table-toolbar">
             <div className="drive-audit-table-summary">
-              <span>{t("audit.recordsValue", { count: String(filteredEvents.length) })}</span>
+              <span>{pageRecordsLabel}</span>
               <span>{t("audit.failedRecordsValue", { count: String(failedEventCount) })}</span>
             </div>
             <div className="drive-audit-table-tools">
@@ -424,6 +447,32 @@ export function AuditModule({
               );
             })}
           </MotionList>
+          <AppPagination
+            className="drive-audit-pagination"
+            disabled={Boolean(error)}
+            labels={{
+              next: t("pagination.next"),
+              page: t("pagination.page"),
+              pageSize: t("pagination.pageSize"),
+              pageStatus: t("pagination.pageStatus", {
+                page: numberFormatter.format(safePage),
+                total: numberFormatter.format(totalPages),
+              }),
+              previous: t("pagination.previous"),
+              range: t("pagination.range", {
+                end: numberFormatter.format(pageEnd),
+                start: numberFormatter.format(pageStart),
+                total: formattedTotal,
+              }),
+            }}
+            page={safePage}
+            pageSize={pageSize}
+            pageSizeOptions={pageSizeOptions}
+            palette={palette}
+            totalItems={totalEvents}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+          />
         </div>
       </section>
     </div>
@@ -535,6 +584,13 @@ function getAuditActivity(row: AuditEventResponse, t: ReturnType<typeof useTrans
 }
 
 function getAuditActivityContent(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  const identityLabel = getAuditIdentityLabel(row, t);
+  const nodeLabel = getAuditNodeLabel(row, t);
+  if (row.action === "share.viewed") return t("audit.content.shareViewed", { identity: identityLabel });
+  if (row.action === "share.access_code_sent") return t("audit.content.shareAccessCodeSent", { identity: identityLabel });
+  if (row.action === "share.access_session_created") return t("audit.content.shareAccessSessionCreated", { identity: identityLabel });
+  if (row.action === "share.preview_requested") return t("audit.content.sharePreviewRequested", { target: nodeLabel });
+  if (row.action === "share.download_started") return t("audit.content.shareDownloadStarted", { target: nodeLabel, identity: identityLabel });
   return formatAuditAction(row.action, t);
 }
 
@@ -556,6 +612,10 @@ function getAuditActivityName(row: AuditEventResponse, t: ReturnType<typeof useT
   if (row.action === "file.upload_completed" || row.action === "transfer.completed") return t("audit.names.upload");
   if (row.action === "transfer.failed") return t("audit.names.upload");
   if (row.action === "file.download_started" || row.action === "share.download_started") return t("audit.names.download");
+  if (row.action === "share.viewed") return t("audit.names.viewShare");
+  if (row.action === "share.access_code_sent") return t("audit.names.accessCode");
+  if (row.action === "share.access_session_created") return t("audit.names.accessSession");
+  if (row.action === "share.preview_requested") return t("audit.names.preview");
   if (row.action === "share.created") return t("audit.names.share");
   if (row.action === "share.revoked") return t("audit.names.revokeShare");
   if (row.action === "file.copied") return t("audit.names.copy");
@@ -572,6 +632,22 @@ function getAuditLoginMethodLabel(row: AuditEventResponse, t: ReturnType<typeof 
   if (method === "passkey") return t("audit.names.passkeyLogin");
   if (method === "setup") return t("audit.names.setupLogin");
   return t("audit.names.localLogin");
+}
+
+function getAuditIdentityLabel(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  const identityType = readAuditString(row.metadata, "identityType");
+  const email = getAuditMetadataValue(row, ["actorEmail", "email", "visitorEmail", "accessSession.email", "identity.email"]);
+  if (email !== "--") return email;
+  if (identityType === "ica") return t("audit.identity.account");
+  if (identityType === "email") return t("audit.identity.email");
+  return getAuditActorLabel(row.actor, t);
+}
+
+function getAuditNodeLabel(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
+  const filename = getAuditMetadataValue(row, ["filename", "fileName", "nodeName", "itemName", "resource.name"]);
+  if (filename !== "--") return filename;
+  if (row.nodeId) return t("audit.objects.file");
+  return t("audit.objects.share");
 }
 
 function getAuditResourceType(row: AuditEventResponse): AuditResourceFilter {
@@ -716,6 +792,7 @@ function getAuditActorLabel(actor: AuditEventResponse["actor"], t: ReturnType<ty
 }
 
 function getAuditActorIcon(actor: AuditEventResponse["actor"]): LocalIconName {
+  if (actor === "account") return "user_check";
   if (actor === "visitor") return "user_avatar";
   if (actor === "system") return "settings";
   return "user_group";

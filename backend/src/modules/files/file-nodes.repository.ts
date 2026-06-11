@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
-import { createAuditEvent } from '../logs/audit-events';
+import { createAuditEvent, type AuditActor } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
 import {
   Prisma,
@@ -424,6 +424,7 @@ export class FileNodesRepository {
   async createDownloadIntent(
     node: FileNodeResponse,
     method: DownloadIntentResponse['method'],
+    auditMetadata: Record<string, unknown> = {},
   ) {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const id = `fdl_${randomBytes(12).toString('base64url')}`;
@@ -433,6 +434,7 @@ export class FileNodesRepository {
         nodeId: node.id,
         filename: node.name,
         method,
+        auditMetadata: auditMetadata as Prisma.InputJsonValue,
         expiresAt: new Date(expiresAt),
       },
     });
@@ -723,7 +725,7 @@ export class FileNodesRepository {
     action: FileAuditAction,
     target: string,
     options: {
-      actor?: 'workspace' | 'visitor' | 'system';
+      actor?: AuditActor;
       metadata?: Record<string, unknown>;
       nodeId?: string | null;
       workspaceId?: string | null;
@@ -734,7 +736,7 @@ export class FileNodesRepository {
       : null;
     const event = createAuditEvent({
       action,
-      actor: options.actor ?? 'workspace',
+      actor: options.actor ?? this.resolveAuditActor(options.metadata),
       target,
       workspaceId:
         options.workspaceId ?? node?.workspaceId ?? 'workspace-default',
@@ -764,6 +766,15 @@ export class FileNodesRepository {
     return this.prisma.auditEvent.count({
       where: action ? { action } : undefined,
     });
+  }
+
+  private resolveAuditActor(
+    metadata: Record<string, unknown> = {},
+  ): AuditActor {
+    if (typeof metadata.actorUserId === 'string' && metadata.actorUserId) {
+      return 'account';
+    }
+    return 'workspace';
   }
 
   async search(
@@ -1201,9 +1212,23 @@ export class FileNodesRepository {
       nodeId: row.nodeId,
       filename: row.filename,
       method: row.method as DownloadIntentResponse['method'],
+      auditMetadata: this.parseJsonRecord(row.auditMetadata),
       expiresAt: row.expiresAt.toISOString(),
       createdAt: row.createdAt.toISOString(),
     };
+  }
+
+  private parseJsonRecord(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    if (typeof value === 'string') {
+      const parsed: unknown = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    }
+    return {};
   }
 
   private mapVersionRow(row: FileVersion): FileVersionResponse {
