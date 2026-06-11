@@ -11,6 +11,7 @@ docs/.vitepress/cache/
 Dockerfile.local
 backend/src/generated/
 database/schema.sqlite.prisma
+*temp*/
 
 .pnpm-store/
 
