@@ -3,6 +3,8 @@ node_modules
 dist
 build
 coverage
+docs/.vitepress/.temp/
+docs/.vitepress/cache/
 .env
 .env.local
 *.log

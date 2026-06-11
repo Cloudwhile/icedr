@@ -11,6 +11,9 @@
     "dev:app": "pnpm --filter frontend dev",
     "dev:api": "pnpm --filter backend start:dev",
     "build": "pnpm --filter frontend build && pnpm --filter backend build",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "package:binary": "node scripts/package-binary.cjs",
     "lint": "pnpm --filter frontend lint && pnpm --filter backend lint",
     "test": "pnpm --filter backend test && pnpm --filter frontend test",
@@ -24,6 +27,7 @@
     "esbuild": "0.27.7",
     "png-to-ico": "3.0.1",
     "postject": "1.0.0-alpha.6",
-    "rcedit": "5.0.2"
+    "rcedit": "5.0.2",
+    "vitepress": "1.6.4"
   }
 }
