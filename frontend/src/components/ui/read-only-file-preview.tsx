@@ -5,7 +5,7 @@ import { marked } from "marked";
 import { useEffect, useMemo, useState } from "react";
 import { getPreviewRenderMode } from "@/features/file/open-with";
 import { formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, type DriveItem, type Locale, type Palette } from "@/features/file/model";
-import { ItemIcon, LocalIcon } from "@/components/ui/local-icon";
+import { ItemIcon, LocalIcon } from "@/components/ui/app-icon";
 import { useTimeZone } from "@/i18n/react";
 
 export type ReadOnlyFilePreviewProps = {

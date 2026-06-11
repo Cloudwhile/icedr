@@ -1,12 +1,68 @@
 import { AuthRepository } from './auth.repository';
 
+type UserUpsertArgs = {
+  create: {
+    email: string;
+  };
+};
+
+type UserIdentityUpsertArgs = {
+  create: {
+    emailSource: string;
+    provider: string;
+    providerSubject: string;
+  };
+  update: {
+    emailSource: string;
+  };
+};
+
 function createPrismaMock(queryRows: unknown[] = []) {
+  const prismaUser = {
+    id: 'user_1',
+    email: 'oauth@example.com',
+    displayName: 'OAuth User',
+    role: 'member',
+    meta: {
+      avatarUrl: null,
+      locale: null,
+      theme: null,
+      timezone: null,
+    },
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+  const userUpsert = jest.fn((args: UserUpsertArgs) => {
+    void args;
+    return Promise.resolve(prismaUser);
+  });
+  const userIdentityUpsert = jest.fn((args: UserIdentityUpsertArgs) => {
+    void args;
+    return Promise.resolve({});
+  });
+  const tx = {
+    user: {
+      findUnique: jest.fn(() => Promise.resolve(prismaUser)),
+      upsert: userUpsert,
+    },
+    userIdentity: {
+      upsert: userIdentityUpsert,
+    },
+    userMeta: {
+      upsert: jest.fn(() => Promise.resolve({})),
+    },
+  };
   return {
+    $transaction: jest.fn((callback: (tx: typeof tx) => Promise<unknown>) =>
+      callback(tx),
+    ),
     $executeRawUnsafe: jest.fn(() => Promise.resolve(0)),
     $queryRawUnsafe: jest.fn(() => Promise.resolve(queryRows)),
+    isSqlite: jest.fn(() => false),
     authSetting: {
       upsert: jest.fn(() => Promise.resolve({})),
     },
+    tx,
   };
 }
 
@@ -50,12 +106,7 @@ describe('AuthRepository', () => {
   });
 
   it('persists the OAuth email source with provider identities', async () => {
-    const prisma = createPrismaMock([
-      createOAuthUserRow({
-        email: 'icetowne-blog-abcd1234+fallback123@identity.local',
-        email_source: 'derived',
-      }),
-    ]);
+    const prisma = createPrismaMock();
     const repository = new AuthRepository(prisma as never);
 
     const user = await repository.createOAuthUser({
@@ -66,15 +117,20 @@ describe('AuthRepository', () => {
       displayName: 'OAuth User',
     });
 
-    const queryCall = prisma.$queryRawUnsafe.mock.calls[0];
-    if (!queryCall) throw new Error('OAuth user query was not executed');
-    const [sql, ...values] = queryCall;
-    expect(sql).toMatch(/\bemail_source\b/);
-    expect(sql).toMatch(/email_source = excluded\.email_source/);
-    expect(values[1]).toBe('icetowne-blog-abcd1234+fallback123@identity.local');
-    expect(values[4]).toBe('icetowne-blog:https://issuer.example');
-    expect(values[5]).toBe('subject-1');
-    expect(values[6]).toBe('derived');
+    const userUpsertArg = prisma.tx.user.upsert.mock.calls[0]?.[0];
+    const identityUpsertArg = prisma.tx.userIdentity.upsert.mock.calls[0]?.[0];
+
+    expect(userUpsertArg?.create.email).toBe(
+      'icetowne-blog-abcd1234+fallback123@identity.local',
+    );
+    expect(identityUpsertArg?.create).toEqual(
+      expect.objectContaining({
+        emailSource: 'derived',
+        provider: 'icetowne-blog:https://issuer.example',
+        providerSubject: 'subject-1',
+      }),
+    );
+    expect(identityUpsertArg?.update.emailSource).toBe('derived');
     expect(user.emailSource).toBe('derived');
   });
 

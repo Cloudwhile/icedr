@@ -1,0 +1,383 @@
+.drive-search-shell {
+  max-width: 440px;
+  min-width: 0;
+  position: relative;
+  width: min(440px, 100%);
+  z-index: 70;
+}
+
+.drive-search-popover {
+  animation: drive-popover-enter 180ms var(--drive-ui-ease) both;
+  background: #ffffff;
+  border: 1px solid rgba(205, 216, 231, 0.96);
+  border-radius: 8px;
+  box-shadow: 0 22px 60px rgba(35, 56, 94, 0.16), 0 1px 0 rgba(255, 255, 255, 0.92) inset;
+  display: grid;
+  gap: 8px;
+  left: 0;
+  margin-top: 8px;
+  padding: 8px;
+  position: absolute;
+  top: 100%;
+  transform-origin: 24px top;
+  width: min(520px, calc(100vw - 32px));
+  z-index: 90;
+}
+
+.drive-search-popover-head {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 4px 6px 2px;
+}
+
+.drive-search-popover-icon {
+  align-items: center;
+  background: #f2f6ff;
+  border: 1px solid #dde7ff;
+  border-radius: 8px;
+  color: var(--drive-ui-blue-600);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.drive-search-popover-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-search-popover-head > div span:first-child {
+  color: var(--drive-ui-ink);
+  font-size: 13px;
+  font-weight: 820;
+  line-height: 18px;
+}
+
+.drive-search-popover-head > div span:last-child {
+  color: var(--drive-ui-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 16px;
+}
+
+.drive-search-count {
+  background: rgba(246, 248, 252, 0.86);
+  border: 1px solid #edf2f8;
+  border-radius: 999px;
+  color: var(--drive-ui-muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 18px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.drive-search-count[data-loading="true"] {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-search-popover-query {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #eef3f9;
+  color: #52617a;
+  display: flex;
+  font-size: 13px;
+  font-weight: 650;
+  min-height: 30px;
+  min-width: 0;
+  padding: 6px 8px 0;
+}
+
+.drive-search-popover-query span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-search-result-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+}
+
+.drive-search-section-title {
+  align-items: center;
+  color: var(--drive-ui-muted);
+  display: flex;
+  font-size: 11px;
+  font-weight: 780;
+  justify-content: space-between;
+  line-height: 15px;
+  min-width: 0;
+  padding: 4px 8px 2px;
+}
+
+.drive-search-section-title span:last-child {
+  color: var(--drive-ui-subtle);
+  flex: 0 0 auto;
+}
+
+.drive-search-result-list {
+  display: grid;
+  gap: 3px;
+  max-height: 326px;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.drive-search-result-row {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--drive-ui-ink);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  min-height: 52px;
+  min-width: 0;
+  padding: 7px 10px;
+  text-align: left;
+  transition: background-color 150ms var(--drive-ui-ease), border-color 150ms var(--drive-ui-ease), box-shadow 170ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
+}
+
+.drive-search-result-row:hover {
+  background: #f4f7ff;
+  border-color: #dfe7ff;
+  box-shadow: 0 9px 22px rgba(35, 56, 94, 0.065);
+  transform: translateY(-1px);
+}
+
+.drive-search-result-row:active {
+  transform: scale(0.988);
+}
+
+.drive-search-result-preview {
+  align-items: center;
+  background: transparent;
+  border-radius: 8px;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  overflow: hidden;
+  width: 36px;
+}
+
+.drive-search-result-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-search-result-copy span:first-child {
+  color: var(--drive-ui-ink);
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 18px;
+}
+
+.drive-search-result-copy span:last-child {
+  color: var(--drive-ui-muted);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 16px;
+}
+
+.drive-search-result-row > svg {
+  color: var(--drive-ui-subtle);
+  opacity: 0;
+  transform: translateX(-2px);
+  transition: opacity 150ms var(--drive-ui-ease), transform 150ms var(--drive-ui-ease), color 150ms var(--drive-ui-ease);
+}
+
+.drive-search-result-row:hover > svg {
+  color: var(--drive-ui-blue-600);
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.drive-search-empty-row {
+  align-items: center;
+  color: var(--drive-ui-muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px;
+}
+
+.drive-search-scope-chip {
+  align-items: center;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid #dfe7f2;
+  border-radius: 999px;
+  color: #435169;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 730;
+  gap: 6px;
+  min-height: 30px;
+  min-width: 0;
+  padding: 0 11px;
+  transition: background-color 160ms var(--drive-ui-ease), border-color 160ms var(--drive-ui-ease), color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease);
+}
+
+.drive-search-scope-chip[data-active="true"] {
+  background: color-mix(in srgb, var(--drive-ui-blue-600) 8%, #ffffff);
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 24%, #dfe7f2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-filter-panel-wrap {
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  position: absolute;
+  right: 24px;
+  top: calc(var(--drive-ui-content-pad-y) + 150px);
+  width: min(360px, calc(100% - 48px));
+  z-index: 32;
+}
+
+.drive-filter-panel {
+  animation: drive-filter-enter 230ms var(--drive-ui-ease) both;
+  background: #ffffff;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  box-shadow: 0 24px 58px rgba(36, 55, 90, 0.14), 0 1px 0 rgba(255, 255, 255, 0.94) inset;
+  display: grid;
+  gap: 8px;
+  max-width: min(360px, 100%);
+  padding: 10px;
+  pointer-events: auto;
+  transform-origin: right top;
+  width: 360px;
+}
+
+.drive-filter-panel-head {
+  align-items: center;
+  border-bottom: 1px solid #edf3f9;
+  display: flex;
+  justify-content: space-between;
+  min-height: 36px;
+  min-width: 0;
+  padding: 0 2px 8px;
+}
+
+.drive-filter-panel-head > span {
+  align-items: center;
+  color: var(--drive-ui-ink);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 820;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-filter-panel-head > span svg {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-filter-grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.drive-filter-field {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #edf3f9;
+  border-radius: 0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-width: 0;
+  padding: 10px 2px;
+  transition: background-color 150ms var(--drive-ui-ease), border-color 150ms var(--drive-ui-ease), box-shadow 150ms var(--drive-ui-ease);
+}
+
+.drive-filter-field:last-child {
+  border-bottom: 0;
+}
+
+.drive-filter-field:focus-within {
+  background: #f8fbff;
+  border-bottom-color: #dbe6f2;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.drive-filter-field > span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 14px;
+}
+
+.drive-filter-field .icedr-app-select-shell {
+  min-height: 38px;
+}
+
+@media (max-width: 760px) {
+  .drive-search-popover {
+    width: min(520px, calc(100vw - 24px));
+  }
+
+  .drive-filter-panel-wrap {
+    left: 16px;
+    right: 16px;
+    top: calc(var(--drive-ui-content-pad-y) + 156px);
+    width: auto;
+  }
+
+  .drive-filter-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .drive-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@keyframes drive-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.982);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes drive-filter-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.986);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -9,6 +9,7 @@ import {
   createFileObjectKey,
   isUploadObjectKeyForPayload,
 } from '../storage/storage-object-keys';
+import type { TransferStatus } from '../downloads/transfers/transfers.dto';
 import { TransfersService } from '../downloads/transfers/transfers.service';
 import {
   BatchDownloadIntentResponse,
@@ -50,6 +51,14 @@ import {
 import type { Readable } from 'stream';
 
 const trashCleanupThrottleMs = 5 * 60 * 1000;
+const insufficientStorageMessage = 'Storage space is insufficient';
+type AuditMetadata = Record<string, unknown>;
+type FileAuditOptions = {
+  actor?: string;
+  auditMetadata?: AuditMetadata;
+};
+
+type FileDownloadAuditPurpose = 'download' | 'preview';
 
 @Injectable()
 export class FileNodesService {
@@ -74,13 +83,17 @@ export class FileNodesService {
     return this.fileNodesRepository.list(workspaceId, parentNodeId, state);
   }
 
-  async searchFileNodes(query: SearchFileNodesQueryDto) {
+  async searchFileNodes(
+    query: SearchFileNodesQueryDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const result = await this.fileNodesRepository.search(query);
     await this.fileNodesRepository.recordAudit(
       'file.search_performed',
       query.workspaceId ?? 'workspace-default',
       {
         metadata: {
+          ...options.auditMetadata,
           query: query.query ?? '',
           state: query.state ?? 'active',
           type: query.type ?? 'all',
@@ -106,7 +119,7 @@ export class FileNodesService {
 
   async createUploadIntent(
     dto: CreateUploadIntentDto,
-    options: { ownerUserId?: string } = {},
+    options: { auditMetadata?: AuditMetadata; ownerUserId?: string } = {},
   ): Promise<UploadIntentResponse> {
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
@@ -115,6 +128,7 @@ export class FileNodesService {
       dto.workspaceId,
       sizeBytes,
       options.ownerUserId,
+      options.auditMetadata,
     );
     const chunkSizeBytes = this.normalizeChunkSize(dto.chunkSizeBytes, {
       distributedStorage,
@@ -130,7 +144,9 @@ export class FileNodesService {
       });
       if (reusable) {
         if (!this.canReuseSession(reusable, distributedStorage)) {
-          await this.cancelUploadSession(reusable.id);
+          await this.cancelUploadSession(reusable.id, {
+            auditMetadata: options.auditMetadata,
+          });
         } else {
           const parts = await this.uploadSessionsRepository.listParts(
             reusable.id,
@@ -140,7 +156,7 @@ export class FileNodesService {
             reusable.id,
             'running',
           );
-          await this.transfersService.updateTransfer(reusable.transferId, {
+          await this.syncUploadTransfer(reusable.transferId, {
             status: 'running',
             progress: uploaded.progress,
           });
@@ -151,6 +167,7 @@ export class FileNodesService {
 
     const objectKey = this.createUploadObjectKey(dto, distributedStorage);
     const transfer = await this.transfersService.createUploadTransfer({
+      auditMetadata: options.auditMetadata,
       workspaceId: dto.workspaceId,
       objectKey,
       name: dto.fileName,
@@ -177,6 +194,7 @@ export class FileNodesService {
       await this.fileNodesRepository.recordAudit(
         'file.upload_intent_created',
         objectKey,
+        { metadata: options.auditMetadata },
       );
 
       return this.toUploadIntent(session, []);
@@ -265,7 +283,7 @@ export class FileNodesService {
     await this.uploadSessionsRepository.updateStatus(session.id, 'running');
     const parts = await this.uploadSessionsRepository.listParts(session.id);
     const uploaded = this.getUploadedSessionState(session, parts);
-    await this.transfersService.updateTransfer(session.transferId, {
+    await this.syncUploadTransfer(session.transferId, {
       status: 'running',
       progress: uploaded.progress,
     });
@@ -313,7 +331,7 @@ export class FileNodesService {
     await this.uploadSessionsRepository.updateStatus(session.id, 'running');
     const parts = await this.uploadSessionsRepository.listParts(session.id);
     const uploaded = this.getUploadedSessionState(session, parts);
-    await this.transfersService.updateTransfer(session.transferId, {
+    await this.syncUploadTransfer(session.transferId, {
       status: 'running',
       progress: uploaded.progress,
     });
@@ -327,7 +345,10 @@ export class FileNodesService {
     };
   }
 
-  async cancelUploadSession(sessionId: string) {
+  async cancelUploadSession(
+    sessionId: string,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const session = await this.requireUploadSession(sessionId);
     if (session.status === 'completed') {
       throw new BadRequestException('Completed upload sessions cannot cancel');
@@ -341,15 +362,16 @@ export class FileNodesService {
     } else {
       await this.storageService.deleteUploadSessionParts(session.id);
     }
-    await this.transfersService.updateTransfer(session.transferId, {
+    await this.syncUploadTransfer(session.transferId, {
       status: 'canceled',
+      auditMetadata: options.auditMetadata,
     });
     return { ok: true };
   }
 
   async completeUpload(
     dto: CompleteUploadDto,
-    options: { ownerUserId?: string } = {},
+    options: { auditMetadata?: AuditMetadata; ownerUserId?: string } = {},
   ) {
     this.assertUploadObjectKey(dto);
     const existingUploadTarget = (
@@ -401,16 +423,19 @@ export class FileNodesService {
     await this.fileNodesRepository.recordAudit(
       'file.upload_completed',
       node.id,
+      { metadata: options.auditMetadata },
     );
     if (existingUploadTarget) {
       await this.fileNodesRepository.recordAudit(
         'file.version_created',
         node.id,
+        { metadata: options.auditMetadata },
       );
     }
     const transferId = dto.transferId ?? uploadSession?.transferId;
     if (transferId) {
-      await this.transfersService.completeTransfer({
+      await this.completeUploadTransfer({
+        auditMetadata: options.auditMetadata,
         transferId,
         nodeId: node.id,
       });
@@ -418,7 +443,12 @@ export class FileNodesService {
     return node;
   }
 
-  async createFolder(dto: CreateFolderDto & { ownerUserId?: string }) {
+  async createFolder(
+    dto: CreateFolderDto & {
+      auditMetadata?: AuditMetadata;
+      ownerUserId?: string;
+    },
+  ) {
     const name = this.normalizeNodeName(dto.name);
     await this.assertValidParent(dto.workspaceId, dto.parentNodeId ?? null);
     const node = await this.fileNodesRepository.createFolder({
@@ -427,31 +457,49 @@ export class FileNodesService {
       owner: dto.owner?.trim() || undefined,
       parentNodeId: dto.parentNodeId ?? undefined,
     });
-    await this.fileNodesRepository.recordAudit('file.folder_created', node.id);
+    await this.fileNodesRepository.recordAudit('file.folder_created', node.id, {
+      metadata: dto.auditMetadata,
+    });
     return node;
   }
 
-  async renameFileNode(id: string, dto: RenameFileNodeDto) {
+  async renameFileNode(
+    id: string,
+    dto: RenameFileNodeDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const source = await this.requireActiveNode(id);
     const name = this.normalizeNodeName(dto.name);
     if (source.name === name) return source;
     const node = await this.fileNodesRepository.rename(id, name);
     if (!node) throw new NotFoundException('File node not found');
-    await this.fileNodesRepository.recordAudit('file.renamed', id);
+    await this.fileNodesRepository.recordAudit('file.renamed', id, {
+      metadata: options.auditMetadata,
+    });
     return node;
   }
 
-  async moveFileNode(id: string, dto: MoveFileNodeDto) {
+  async moveFileNode(
+    id: string,
+    dto: MoveFileNodeDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const source = await this.requireActiveNode(id);
     const parentNodeId = dto.parentNodeId ?? null;
     await this.assertValidParent(source.workspaceId, parentNodeId, source.id);
     const node = await this.fileNodesRepository.move(id, parentNodeId);
     if (!node) throw new NotFoundException('File node not found');
-    await this.fileNodesRepository.recordAudit('file.moved', id);
+    await this.fileNodesRepository.recordAudit('file.moved', id, {
+      metadata: options.auditMetadata,
+    });
     return node;
   }
 
-  async copyFileNode(id: string, dto: CopyFileNodeDto) {
+  async copyFileNode(
+    id: string,
+    dto: CopyFileNodeDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const source = await this.requireActiveNode(id);
     const parentNodeId = dto.parentNodeId ?? source.parentNodeId;
     await this.assertValidParent(source.workspaceId, parentNodeId, source.id);
@@ -462,7 +510,9 @@ export class FileNodesService {
       parentNodeId,
     });
     if (!node) throw new NotFoundException('File node not found');
-    await this.fileNodesRepository.recordAudit('file.copied', node.id);
+    await this.fileNodesRepository.recordAudit('file.copied', node.id, {
+      metadata: options.auditMetadata,
+    });
     return node;
   }
 
@@ -489,7 +539,11 @@ export class FileNodesService {
     };
   }
 
-  async updateFileNodeContent(id: string, dto: UpdateFileNodeContentDto) {
+  async updateFileNodeContent(
+    id: string,
+    dto: UpdateFileNodeContentDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const node = await this.requireActiveNode(id);
     this.assertTextEditableNode(node);
     if (!node.objectKey) {
@@ -519,8 +573,12 @@ export class FileNodesService {
     await this.deleteStoredObjects(
       await this.fileNodesRepository.pruneVersions(updated.id),
     );
-    await this.fileNodesRepository.recordAudit('file.content_updated', id);
-    await this.fileNodesRepository.recordAudit('file.version_created', id);
+    await this.fileNodesRepository.recordAudit('file.content_updated', id, {
+      metadata: options.auditMetadata,
+    });
+    await this.fileNodesRepository.recordAudit('file.version_created', id, {
+      metadata: options.auditMetadata,
+    });
     return {
       content: dto.content,
       id: updated.id,
@@ -533,7 +591,7 @@ export class FileNodesService {
   async updateFileNodeState(
     id: string,
     dto: UpdateFileNodeStateDto,
-    options: { actor?: string } = {},
+    options: FileAuditOptions = {},
   ) {
     if (dto.starred === undefined && dto.archived === undefined) {
       throw new BadRequestException('No file node state change provided');
@@ -546,17 +604,27 @@ export class FileNodesService {
           : await this.fileNodesRepository.updateState(id, dto);
     if (!node) throw new NotFoundException('File node not found');
     if (dto.starred !== undefined) {
-      await this.fileNodesRepository.recordAudit('file.starred_updated', id);
+      await this.fileNodesRepository.recordAudit('file.starred_updated', id, {
+        metadata: options.auditMetadata,
+      });
     }
     if (dto.archived === true) {
-      await this.fileNodesRepository.recordAudit('file.archived', id);
+      await this.fileNodesRepository.recordAudit('file.archived', id, {
+        metadata: options.auditMetadata,
+      });
     } else if (dto.archived === false) {
-      await this.fileNodesRepository.recordAudit('file.restored', id);
+      await this.fileNodesRepository.recordAudit('file.restored', id, {
+        metadata: options.auditMetadata,
+      });
     }
     return node;
   }
 
-  async restoreFileNode(id: string, dto: RestoreFileNodeDto) {
+  async restoreFileNode(
+    id: string,
+    dto: RestoreFileNodeDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const source = await this.fileNodesRepository.findById(id);
     if (!source) throw new NotFoundException('File node not found');
     const parentNodeId =
@@ -569,11 +637,16 @@ export class FileNodesService {
       parentNodeId,
     });
     if (!node) throw new NotFoundException('File node not found');
-    await this.fileNodesRepository.recordAudit('file.restored', id);
+    await this.fileNodesRepository.recordAudit('file.restored', id, {
+      metadata: options.auditMetadata,
+    });
     return node;
   }
 
-  async permanentlyDeleteFileNode(id: string) {
+  async permanentlyDeleteFileNode(
+    id: string,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const deletion = await this.fileNodesRepository.deleteTree(id);
     if (deletion.nodes.length === 0) {
       throw new NotFoundException('File node not found');
@@ -585,6 +658,7 @@ export class FileNodesService {
     const root = deletion.nodes[0];
     await this.fileNodesRepository.recordAudit('file.permanently_deleted', id, {
       metadata: {
+        ...options.auditMetadata,
         deletedNodeCount: deletion.nodes.length,
         deletedVersionCount: deletion.versions.length,
       },
@@ -650,17 +724,23 @@ export class FileNodesService {
     }
   }
 
-  async createDownloadIntent(nodeId: string, dto: CreateDownloadIntentDto) {
+  async createDownloadIntent(
+    nodeId: string,
+    dto: CreateDownloadIntentDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     void dto;
     const node = await this.requireActiveNode(nodeId);
     const method = node.objectKey ? 'presigned-url' : 'backend-manifest';
     const intent = await this.fileNodesRepository.createDownloadIntent(
       node,
       method,
+      options.auditMetadata,
     );
     await this.fileNodesRepository.recordAudit(
       'file.download_intent_created',
       node.id,
+      { metadata: options.auditMetadata },
     );
 
     return {
@@ -676,15 +756,16 @@ export class FileNodesService {
 
   async createBatchDownloadIntents(
     dto: BatchFileNodeIdsDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
   ): Promise<BatchDownloadIntentResponse> {
     const result = await this.runBatch(dto.ids, (id) =>
-      this.createDownloadIntent(id, {}),
+      this.createDownloadIntent(id, {}, options),
     );
     await this.fileNodesRepository.recordAudit(
       'file.batch_download_intents_created',
       'batch-download',
       {
-        metadata: result.summary,
+        metadata: { ...options.auditMetadata, ...result.summary },
         nodeId: null,
       },
     );
@@ -693,7 +774,7 @@ export class FileNodesService {
 
   async batchArchive(
     dto: BatchFileNodeIdsDto,
-    options: { actor?: string } = {},
+    options: FileAuditOptions = {},
   ): Promise<BatchFileNodeOperationResponse> {
     const result = await this.runBatch(dto.ids, (id) =>
       this.updateFileNodeState(id, { archived: true }, options),
@@ -701,36 +782,49 @@ export class FileNodesService {
     await this.fileNodesRepository.recordAudit(
       'file.batch_archived',
       'batch-archive',
-      { metadata: result.summary, nodeId: null },
+      {
+        metadata: { ...options.auditMetadata, ...result.summary },
+        nodeId: null,
+      },
     );
     return result;
   }
 
   async batchRestore(
     dto: BatchFileNodeIdsDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
   ): Promise<BatchFileNodeOperationResponse> {
     const result = await this.runBatch(dto.ids, (id) =>
-      this.restoreFileNode(id, {}),
+      this.restoreFileNode(id, {}, options),
     );
     await this.fileNodesRepository.recordAudit(
       'file.batch_restored',
       'batch-restore',
-      { metadata: result.summary, nodeId: null },
+      {
+        metadata: { ...options.auditMetadata, ...result.summary },
+        nodeId: null,
+      },
     );
     return result;
   }
 
   async batchMove(
     dto: BatchMoveFileNodesDto,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
   ): Promise<BatchFileNodeOperationResponse> {
     const result = await this.runBatch(dto.ids, (id) =>
-      this.moveFileNode(id, { parentNodeId: dto.parentNodeId ?? null }),
+      this.moveFileNode(
+        id,
+        { parentNodeId: dto.parentNodeId ?? null },
+        options,
+      ),
     );
     await this.fileNodesRepository.recordAudit(
       'file.batch_moved',
       'batch-move',
       {
         metadata: {
+          ...options.auditMetadata,
           ...result.summary,
           parentNodeId: dto.parentNodeId ?? null,
         },
@@ -740,7 +834,13 @@ export class FileNodesService {
     return result;
   }
 
-  async downloadFileNode(nodeId: string, downloadId: string) {
+  async downloadFileNode(
+    nodeId: string,
+    downloadId: string,
+    options: Pick<FileAuditOptions, 'auditMetadata'> & {
+      auditPurpose?: FileDownloadAuditPurpose;
+    } = {},
+  ) {
     const intent =
       await this.fileNodesRepository.findDownloadIntent(downloadId);
     if (
@@ -752,10 +852,18 @@ export class FileNodesService {
     }
 
     const node = await this.requireActiveNode(nodeId);
-    await this.fileNodesRepository.recordAudit(
-      'file.download_started',
-      node.id,
-    );
+    if (options.auditPurpose !== 'preview') {
+      await this.fileNodesRepository.recordAudit(
+        'file.download_started',
+        node.id,
+        {
+          metadata: {
+            ...intent.auditMetadata,
+            ...options.auditMetadata,
+          },
+        },
+      );
+    }
 
     if (intent.method === 'presigned-url' && node.objectKey) {
       const signed = await this.storageService.createPresignedDownload(
@@ -782,7 +890,11 @@ export class FileNodesService {
     return this.fileNodesRepository.listVersions(nodeId);
   }
 
-  async createVersionDownloadIntent(nodeId: string, versionId: string) {
+  async createVersionDownloadIntent(
+    nodeId: string,
+    versionId: string,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     await this.requireActiveNode(nodeId);
     const version = await this.fileNodesRepository.findVersion(
       nodeId,
@@ -797,7 +909,11 @@ export class FileNodesService {
       'file.version_downloaded',
       nodeId,
       {
-        metadata: { versionId, versionNumber: version.versionNumber },
+        metadata: {
+          ...options.auditMetadata,
+          versionId,
+          versionNumber: version.versionNumber,
+        },
       },
     );
     return {
@@ -811,11 +927,16 @@ export class FileNodesService {
     };
   }
 
-  async restoreFileVersion(nodeId: string, versionId: string) {
+  async restoreFileVersion(
+    nodeId: string,
+    versionId: string,
+    options: FileAuditOptions = {},
+  ) {
     await this.requireActiveNode(nodeId);
     const node = await this.fileNodesRepository.restoreVersion(
       nodeId,
       versionId,
+      options.actor,
     );
     if (!node) throw new NotFoundException('File version not found');
     await this.deleteStoredObjects(
@@ -825,13 +946,16 @@ export class FileNodesService {
       'file.version_restored',
       nodeId,
       {
-        metadata: { versionId },
+        metadata: { ...options.auditMetadata, versionId },
       },
     );
     return node;
   }
 
-  async createPreviewIntent(nodeId: string) {
+  async createPreviewIntent(
+    nodeId: string,
+    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+  ) {
     const node = await this.requireActiveNode(nodeId);
     const capability = resolveFilePreviewCapability(node);
     const status: PreviewIntentResponse['status'] = capability.supported
@@ -847,6 +971,7 @@ export class FileNodesService {
     await this.fileNodesRepository.recordAudit(
       'file.preview_requested',
       node.id,
+      { metadata: options.auditMetadata },
     );
     return this.withPreviewCapability(intent, capability);
   }
@@ -887,9 +1012,22 @@ export class FileNodesService {
     workspaceId: string,
     incomingBytes: number,
     ownerUserId?: string,
+    auditMetadata: AuditMetadata = {},
   ) {
     const usage = await this.fileNodesRepository.getStorageUsage(workspaceId);
-    const quotaBytes = usage.quotaBytes;
+    const workspaceQuotaBytes = usage.quotaBytes;
+    const storagePolicyQuotaBytes =
+      await this.storageService.getConfiguredQuotaBytes();
+    const quotaBytes = resolveEffectiveQuotaBytes(
+      workspaceQuotaBytes,
+      storagePolicyQuotaBytes,
+    );
+    const quotaScope =
+      workspaceQuotaBytes !== null &&
+      workspaceQuotaBytes !== undefined &&
+      quotaBytes === workspaceQuotaBytes
+        ? 'workspace'
+        : 'storage';
     if (
       quotaBytes &&
       quotaBytes > 0 &&
@@ -900,16 +1038,17 @@ export class FileNodesService {
         workspaceId,
         {
           metadata: {
+            ...auditMetadata,
             incomingBytes,
             quotaBytes,
-            scope: 'workspace',
+            scope: quotaScope,
             usedBytes: usage.usedBytes,
           },
           nodeId: null,
           workspaceId,
         },
       );
-      throw new BadRequestException('Workspace storage quota exceeded');
+      throw new BadRequestException(insufficientStorageMessage);
     }
     if (!ownerUserId) return;
     const userUsage = await this.fileNodesRepository.getUserStorageUsage(
@@ -929,6 +1068,7 @@ export class FileNodesService {
       workspaceId,
       {
         metadata: {
+          ...auditMetadata,
           incomingBytes,
           quotaBytes: userQuotaBytes,
           scope: 'user',
@@ -939,7 +1079,7 @@ export class FileNodesService {
         workspaceId,
       },
     );
-    throw new BadRequestException('User storage quota exceeded');
+    throw new BadRequestException(insufficientStorageMessage);
   }
 
   private async deleteStoredObjects(objectKeys: Array<string | null>) {
@@ -951,6 +1091,35 @@ export class FileNodesService {
         this.storageService.deleteObject(objectKey).catch(() => undefined),
       ),
     );
+  }
+
+  private async syncUploadTransfer(
+    transferId: string,
+    input: {
+      status: TransferStatus;
+      progress?: number;
+      auditMetadata?: AuditMetadata;
+    },
+  ) {
+    try {
+      await this.transfersService.updateTransfer(transferId, input);
+    } catch (error) {
+      if (error instanceof NotFoundException) return;
+      throw error;
+    }
+  }
+
+  private async completeUploadTransfer(input: {
+    transferId: string;
+    nodeId: string;
+    auditMetadata?: AuditMetadata;
+  }) {
+    try {
+      await this.transfersService.completeTransfer(input);
+    } catch (error) {
+      if (error instanceof NotFoundException) return;
+      throw error;
+    }
   }
 
   private async runBatch<T>(
@@ -1295,4 +1464,16 @@ export class FileNodesService {
         return 'Preview is not supported for this file type';
     }
   }
+}
+
+function resolveEffectiveQuotaBytes(
+  workspaceQuotaBytes: number | null | undefined,
+  storagePolicyQuotaBytes: number | null,
+) {
+  const candidates = [workspaceQuotaBytes, storagePolicyQuotaBytes].filter(
+    (quotaBytes): quotaBytes is number =>
+      quotaBytes !== null && quotaBytes !== undefined && quotaBytes > 0,
+  );
+  if (candidates.length === 0) return null;
+  return Math.min(...candidates);
 }

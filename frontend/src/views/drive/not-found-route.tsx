@@ -16,6 +16,7 @@ function NotFoundContent({
   locale,
   palette,
   setThemeMode,
+  siteSettings,
   themeMode
 }: DriveShellState) {
   const t = useTranslations();
@@ -31,10 +32,10 @@ function NotFoundContent({
     display: "flex",
     minHeight: "100dvh",
     flexDirection: "column",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink
   }}>
-      <PublicPageNav palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <PublicPageNav palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} themeMode={themeMode} />
 
       <div className="icedr-r-padding-inline icedr-r-padding-block" style={{
       display: "flex",
@@ -89,7 +90,7 @@ function NotFoundContent({
         </div>
       </div>
 
-      <LegalFooter locale={locale} palette={palette} />
+      <LegalFooter locale={locale} palette={palette} siteName={siteSettings.siteName} />
     </div>;
 }
 function ActionButton({

@@ -20,11 +20,13 @@ export class MailService {
 
   async sendTestMessage(recipientEmail: string) {
     const settings = await this.settingsService.getMailSettings();
+    const siteName = await this.resolveSiteName();
+    const safeSiteName = this.escapeHtml(siteName);
     await this.sendWithSettings(settings, {
       to: recipientEmail,
-      subject: 'ICEDR SMTP test',
-      text: 'ICEDR mail delivery is configured and ready.',
-      html: '<p>ICEDR mail delivery is configured and ready.</p>',
+      subject: `${siteName} SMTP test`,
+      text: `${siteName} mail delivery is configured and ready.`,
+      html: `<p>${safeSiteName} mail delivery is configured and ready.</p>`,
     });
     return this.settingsService.markMailVerified();
   }
@@ -47,15 +49,17 @@ export class MailService {
     expiresAt: string;
     shareTitle: string;
   }) {
+    const siteName = await this.resolveSiteName();
+    const safeSiteName = this.escapeHtml(siteName);
     await this.sendMail({
       to: input.email,
-      subject: `Your ICEDR access code for ${input.shareTitle}`,
+      subject: `Your ${siteName} access code for ${input.shareTitle}`,
       text: [
-        `Your ICEDR access code is ${input.code}.`,
+        `Your ${siteName} access code is ${input.code}.`,
         `It expires at ${input.expiresAt}.`,
       ].join('\n'),
       html: [
-        '<p>Your ICEDR access code is:</p>',
+        `<p>Your ${safeSiteName} access code is:</p>`,
         `<p style="font-size:24px;font-weight:700;letter-spacing:4px">${this.escapeHtml(input.code)}</p>`,
         `<p>It expires at ${this.escapeHtml(input.expiresAt)}.</p>`,
       ].join(''),
@@ -69,8 +73,7 @@ export class MailService {
     expiresInMinutes: number;
     locale: 'en' | 'zh';
   }) {
-    const site = await this.settingsService.getPublicSiteSettings();
-    const siteName = site.siteName || 'ICEDR';
+    const siteName = await this.resolveSiteName();
     const content = this.buildPasswordResetMessage({
       ...input,
       siteName,
@@ -137,6 +140,11 @@ export class MailService {
         'Mail delivery failed. Check SMTP settings and try again.',
       );
     }
+  }
+
+  private async resolveSiteName() {
+    const site = await this.settingsService.getPublicSiteSettings();
+    return site.siteName.trim() || 'ICEDR';
   }
 
   private escapeHtml(value: string) {

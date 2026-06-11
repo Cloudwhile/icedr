@@ -1,0 +1,548 @@
+.drive-settings-workspace {
+  gap: 15px;
+  max-width: 1206px;
+  width: 100%;
+}
+
+.drive-settings-header {
+  min-height: 34px;
+}
+
+.drive-settings-header h1 {
+  color: #111827;
+  font-size: 24px;
+  font-weight: 850;
+  line-height: 30px;
+}
+
+.drive-settings-user {
+  align-items: start;
+  gap: 26px;
+  grid-template-columns: 190px minmax(0, 1fr);
+}
+
+.drive-settings-tab-list {
+  align-self: start;
+  background: rgba(255, 255, 255, 0.66);
+  border-color: #e2e8f2;
+  border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.01), 0 10px 26px rgba(37, 55, 91, 0.016);
+  gap: 7px;
+  min-height: min(656px, calc(100dvh - 180px));
+  padding: 11px;
+}
+
+.drive-settings-tab {
+  border-radius: 8px;
+  color: #596880;
+  gap: 10px;
+  min-height: 39px;
+  padding-inline: 10px;
+}
+
+.drive-settings-tab svg {
+  color: #677895;
+  transition: color 160ms var(--drive-ui-ease), transform 180ms var(--drive-ui-ease);
+}
+
+.drive-settings-tab:hover:not(:disabled) {
+  background: rgba(247, 249, 255, 0.82);
+  border-color: #dfe7f6;
+  box-shadow: 0 6px 16px rgba(39, 58, 97, 0.02);
+  color: #172033;
+  transform: translateX(2px);
+}
+
+.drive-settings-tab:active:not(:disabled) {
+  transform: translateX(2px) scale(0.986);
+}
+
+.drive-settings-tab:hover:not(:disabled) svg {
+  color: var(--drive-ui-blue-600);
+  transform: scale(1.04);
+}
+
+.drive-settings-tab[data-active="true"] {
+  background: linear-gradient(90deg, rgba(235, 241, 255, 0.94) 0%, rgba(249, 251, 255, 0.74) 100%);
+  border-color: #dce6ff;
+  box-shadow: inset 3px 0 0 var(--drive-ui-blue-600), 0 6px 16px rgba(67, 97, 238, 0.028);
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-settings-tab[data-active="true"] svg {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-settings-tab[data-muted="true"] {
+  color: #7b8799;
+  cursor: default;
+  opacity: 0.82;
+}
+
+.drive-settings-tab[data-muted="true"] svg {
+  color: #8190a7;
+}
+
+.drive-settings-tab-panel {
+  min-width: 0;
+}
+
+.drive-settings-panel-heading {
+  gap: 6px;
+  margin-bottom: 17px;
+}
+
+.drive-settings-panel-heading h2 {
+  color: #172033;
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 23px;
+}
+
+.drive-settings-panel-heading span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.drive-settings-profile-grid {
+  align-items: start;
+  gap: 22px;
+  grid-template-columns: minmax(612px, 1fr) 272px;
+}
+
+.drive-settings-main-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-width: 0;
+}
+
+.drive-settings-main-column,
+.drive-settings-section,
+.drive-settings-side-panel,
+.drive-settings-avatar-panel,
+.drive-settings-placeholder {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid #e4ebf5;
+  border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.01), 0 10px 28px rgba(37, 55, 91, 0.018);
+  box-sizing: border-box;
+  transition: border-color 180ms var(--drive-ui-ease), box-shadow 220ms var(--drive-ui-ease), transform 220ms var(--drive-ui-ease);
+}
+
+.drive-settings-main-column:hover,
+.drive-settings-section:hover,
+.drive-settings-side-panel:hover,
+.drive-settings-avatar-panel:hover {
+  border-color: #d2deec;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.012), 0 14px 32px rgba(37, 55, 91, 0.026);
+  transform: translateY(-1px);
+}
+
+.drive-settings-main-column,
+.drive-settings-section {
+  padding: 16px 18px;
+}
+
+.drive-settings-profile-card {
+  gap: 14px;
+  min-height: 252px;
+}
+
+.drive-settings-section-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 30px;
+  min-width: 0;
+}
+
+.drive-settings-section-header > div:first-child,
+.drive-settings-side-header {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  min-width: 0;
+}
+
+.drive-settings-section-header > div:first-child svg,
+.drive-settings-side-header svg {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-settings-section-header > div:first-child span,
+.drive-settings-side-header span {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 830;
+}
+
+.drive-settings-section-trailing {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.drive-settings-profile-hero {
+  align-items: start;
+  border-bottom: 0;
+  display: grid;
+  gap: 14px 20px;
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  padding: 5px 0 2px;
+}
+
+.drive-settings-profile-avatar {
+  background: #eef3f9;
+  border-color: #d8e4f2;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  height: 72px;
+  width: 72px;
+}
+
+.drive-settings-profile-copy {
+  gap: 6px;
+  padding-top: 3px;
+}
+
+.drive-settings-profile-title {
+  color: #172033;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 24px;
+}
+
+.drive-settings-profile-copy > span:nth-child(2) {
+  color: #34445d;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.drive-settings-profile-note {
+  color: #7b879d !important;
+  font-size: 12px !important;
+  font-weight: 620 !important;
+  line-height: 17px;
+}
+
+.drive-settings-profile-status {
+  justify-self: end;
+  padding-top: 2px;
+}
+
+.drive-settings-profile-fields {
+  gap: 12px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drive-settings-profile-fields .icedr-app-input,
+.drive-settings-preference-grid .icedr-app-select-shell {
+  background: #fbfcff;
+  border-color: #dfe8f3;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.drive-settings-profile-fields .icedr-app-input:hover,
+.drive-settings-preference-grid .icedr-app-select-shell:hover {
+  background: #ffffff;
+  border-color: #d3dfed;
+}
+
+.drive-settings-field,
+.drive-settings-option-row {
+  gap: 8px;
+}
+
+.drive-settings-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.drive-settings-helper {
+  color: #8793a8;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.drive-settings-email-field {
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.drive-settings-profile-card .drive-settings-meta-grid {
+  border-top: 1px solid #edf2f8;
+  gap: 0;
+  margin-top: 0;
+  padding-top: 4px;
+}
+
+.drive-settings-profile-card .drive-settings-fact {
+  border: 0;
+  border-right: 1px solid #edf2f8;
+  border-radius: 0;
+  padding: 8px 12px 6px 0;
+}
+
+.drive-settings-profile-card .drive-settings-fact:last-child {
+  border-right: 0;
+}
+
+.drive-settings-value {
+  color: #172033;
+}
+
+.drive-settings-preference-grid {
+  display: grid;
+  gap: 12px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.drive-settings-preference-grid .drive-settings-option-row:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.drive-settings-security-list {
+  padding: 0;
+}
+
+.drive-settings-action-row {
+  border-color: #edf2f8;
+  color: #64748b;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 38px;
+}
+
+.drive-settings-action-row svg {
+  color: #70809a;
+}
+
+.drive-settings-action-row span:nth-child(2) {
+  color: #34445d;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.drive-settings-action-row span:last-child {
+  color: #172033;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.drive-settings-action-row span[data-tone="secure"] {
+  color: var(--drive-ui-success);
+}
+
+.drive-settings-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-width: 0;
+}
+
+.drive-settings-avatar-panel {
+  align-items: stretch;
+  gap: 0;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: 0;
+}
+
+.drive-settings-side-panel {
+  overflow: hidden;
+}
+
+.drive-settings-side-header {
+  border-bottom: 1px solid #edf2f8;
+  min-height: 44px;
+  padding: 0 15px;
+}
+
+.drive-settings-avatar-wrap {
+  gap: 0;
+  padding: 18px 16px 15px;
+}
+
+.drive-settings-avatar-preview {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.drive-settings-avatar {
+  background: #eef3f9;
+  border-color: #d8e4f2;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74), 0 10px 24px rgba(51, 71, 116, 0.075);
+  height: 96px;
+  width: 96px;
+}
+
+.drive-settings-avatar-camera.icedr-tool-button {
+  bottom: 4px;
+  position: absolute;
+  right: 0;
+}
+
+.drive-settings-avatar-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.drive-settings-avatar-hint {
+  color: #8793a8;
+  display: block;
+  font-size: 12px;
+  font-weight: 640;
+  line-height: 17px;
+  margin-top: 9px;
+  text-align: center;
+}
+
+.drive-settings-side-list,
+.drive-settings-action-list {
+  padding: 7px 15px 12px;
+}
+
+.drive-settings-info-row {
+  align-items: start;
+  border-color: #edf2f8;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  padding: 8px 0;
+}
+
+.drive-settings-info-row span:first-child {
+  color: #64748b;
+}
+
+.drive-settings-info-row span:last-child {
+  color: #1f2a44;
+}
+
+.drive-settings-info-row span[data-tone="secure"] {
+  color: var(--drive-ui-success);
+}
+
+.drive-settings-account-actions {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 15px 15px 16px;
+}
+
+.drive-settings-account-actions .icedr-tool-button {
+  align-self: stretch;
+  width: 100%;
+}
+
+.drive-settings-account-actions > span {
+  color: #8793a8;
+  font-size: 12px;
+  font-weight: 640;
+  line-height: 17px;
+  text-align: center;
+}
+
+.drive-settings-storage-row {
+  background: transparent;
+  border-color: #e4ebf5;
+  gap: 18px;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  padding: 16px;
+}
+
+.drive-settings-storage-track {
+  background: #f1f5fb;
+  border-color: #e1e8f2;
+}
+
+@media (max-width: 1180px) {
+  .drive-settings-user {
+    gap: 22px;
+    grid-template-columns: 188px minmax(0, 1fr);
+  }
+
+  .drive-settings-profile-grid {
+    grid-template-columns: minmax(0, 1fr) 236px;
+  }
+}
+
+@media (max-width: 900px) {
+  .drive-settings-workspace {
+    max-width: none;
+  }
+
+  .drive-settings-user,
+  .drive-settings-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-settings-tab-list {
+    min-height: 0;
+    position: static;
+  }
+
+  .drive-settings-profile-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .drive-settings-profile-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .drive-settings-user {
+    gap: 16px;
+  }
+
+  .drive-settings-tab-list {
+    padding: 8px;
+  }
+
+  .drive-settings-main-column,
+  .drive-settings-section {
+    padding: 15px;
+  }
+
+  .drive-settings-profile-fields,
+  .drive-settings-preference-grid,
+  .drive-settings-storage-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .drive-settings-profile-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-settings-profile-status {
+    grid-column: auto;
+  }
+
+  .drive-settings-profile-card .drive-settings-meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-settings-profile-card .drive-settings-fact {
+    border-bottom: 1px solid #edf2f8;
+    border-right: 0;
+    padding-right: 0;
+  }
+
+  .drive-settings-profile-card .drive-settings-fact:last-child {
+    border-bottom: 0;
+  }
+}

@@ -161,7 +161,7 @@ export function MotionSurface({
 
 export function MotionList({
   children,
-  preset = "list",
+  style,
   ...rest
 }: {
   children: ReactNode;
@@ -169,7 +169,6 @@ export function MotionList({
 } & Omit<ComponentProps<typeof motion.div>, "animate" | "children" | "exit" | "initial" | "variants">) {
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const reduce = useReducedMotion();
-  const spec = motionSpecs[preset];
 
   useEffect(() => {
     const node = scope.current;
@@ -181,29 +180,27 @@ export function MotionList({
       return;
     }
 
-    void (async () => {
-      await animate(targets, { filter: "blur(7px)", opacity: 0, scale: 0.985, y: 16 }, { duration: 0 });
-      await animate(
-        targets,
-        { filter: "blur(0px)", opacity: 1, scale: 1, y: 0 },
-        {
-          delay: stagger(Math.min(0.045, 0.3 / targets.length)),
-          duration: 0.46,
-          ease: [0.16, 1, 0.3, 1],
-        },
-      );
-    })();
+    void animate(
+      targets,
+      { filter: ["blur(7px)", "blur(0px)"], opacity: [0, 1], scale: [0.985, 1], y: [16, 0] },
+      {
+        delay: stagger(Math.min(0.045, 0.3 / targets.length)),
+        duration: 0.46,
+        ease: [0.16, 1, 0.3, 1],
+      },
+    ).then(() => {
+      targets.forEach((target) => {
+        target.style.filter = "none";
+        target.style.opacity = "1";
+        target.style.transform = "none";
+      });
+    });
   }, [animate, reduce, scope]);
 
   return (
     <motion.div
-      animate="enter"
-      exit="exit"
-      initial="initial"
-      layout
       ref={scope}
-      transition={reduce ? { duration: 0 } : spec.transition}
-      variants={variantsFor(preset, Boolean(reduce))}
+      style={{ opacity: 1, ...style }}
       {...rest}
     >
       {children}

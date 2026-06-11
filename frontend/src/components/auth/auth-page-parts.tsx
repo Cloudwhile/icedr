@@ -4,10 +4,9 @@ import { InputOTP } from "@heroui/react";
 import type { CSSProperties } from "react";
 import { useTranslations } from "@/i18n/react";
 import type { AuthUser } from "@/lib/drive-api";
-import type { LocalIconName, Palette } from "@/features/file/model";
+import type { Palette } from "@/features/file/model";
 import { MotionPresence } from "@/components/ui/motion";
-import { LocalIcon } from "@/components/ui/local-icon";
-import { ToolButton } from "@/components/ui/tool-button";
+import { AppUserAvatar } from "@/components/ui/app-user-avatar";
 import { normalizeAuthCodeValue } from "./auth-code-utils";
 
 export type AuthVisualMode = "login" | "register" | "forgot" | "reset";
@@ -29,7 +28,6 @@ export function AuthFormTitleBlock({
   mode: AuthVisualMode;
   palette: Palette;
 }) {
-  const icon = getAuthModeIcon(mode);
   const showDescription = mode === "forgot" || mode === "reset";
 
   return (
@@ -43,9 +41,6 @@ export function AuthFormTitleBlock({
         "--auth-heading-muted": palette.muted,
       } as CSSProperties}
     >
-      <span className="icedr-auth-form-icon" aria-hidden="true">
-        <LocalIcon name={icon} size={18} />
-      </span>
       <div>
         <h1>{authCopy.title}</h1>
         {showDescription ? <p>{authCopy.description}</p> : null}
@@ -97,13 +92,10 @@ export function AuthCodePanel({
     >
       <div className="icedr-auth-code-recipient">
         {onBack ? (
-          <ToolButton label={t("auth.changeResetEmail")} palette={palette} disabled={busy} onClick={onBack} visual="surface">
-            <LocalIcon name="arrow_left" size={17} />
-          </ToolButton>
+          <button className="icedr-auth-code-change" type="button" disabled={busy} onClick={onBack}>
+            {t("auth.changeResetEmail")}
+          </button>
         ) : null}
-        <span className="icedr-auth-code-recipient-icon" aria-hidden="true">
-          <LocalIcon name="mail" size={15} />
-        </span>
         <span className="icedr-truncate">{maskEmail(email) || t("auth.email")}</span>
       </div>
 
@@ -127,7 +119,6 @@ export function AuthCodePanel({
           "--auth-resend-focus": palette.focusRing,
         } as CSSProperties}
       >
-        <LocalIcon name="refresh" size={14} />
         <span>
           {resetCooldown > 0
             ? t("auth.resendRemaining", {
@@ -269,6 +260,9 @@ export function AuthCurrentUserRow({
   palette: Palette;
 }) {
   const t = useTranslations();
+  const displayName = currentUser.displayName?.trim();
+  const primary = displayName || currentUser.email;
+  const showEmail = Boolean(displayName && displayName !== currentUser.email);
 
   return (
     <div
@@ -282,26 +276,23 @@ export function AuthCurrentUserRow({
       } as CSSProperties}
     >
       <div className="icedr-auth-current-main">
-        <span className="icedr-auth-current-avatar">
-          <LocalIcon name="user_avatar" size={21} />
-        </span>
+        <AppUserAvatar
+          className="icedr-auth-current-avatar"
+          fallbackClassName="icedr-auth-current-avatar-fallback"
+          label={primary}
+          size="sm"
+          src={currentUser.avatarUrl}
+        />
         <span className="icedr-auth-current-copy">
-          <span className="icedr-truncate">{currentUser.displayName}</span>
-          <span className="icedr-truncate">{currentUser.email}</span>
+          <span className="icedr-truncate">{primary}</span>
+          {showEmail ? <span className="icedr-truncate">{currentUser.email}</span> : null}
         </span>
       </div>
-      <ToolButton label={t("auth.logout")} palette={palette} disabled={busy} onClick={onLogout}>
-        <LocalIcon name="cross" size={17} />
-      </ToolButton>
+      <button className="icedr-auth-current-action" type="button" disabled={busy} onClick={onLogout}>
+        {t("auth.logout")}
+      </button>
     </div>
   );
-}
-
-function getAuthModeIcon(mode: AuthVisualMode): LocalIconName {
-  if (mode === "register") return "user_check";
-  if (mode === "forgot") return "mail";
-  if (mode === "reset") return "lock";
-  return "key";
 }
 
 function maskEmail(email: string) {

@@ -2,29 +2,58 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma, type AuditEvent } from '../../generated/prisma/client';
 import {
+  AuditEventPage,
   AuditEventFilters,
   AuditEventRecord,
+  auditedActivityActions,
+  auditedActivityActionSet,
   clampAuditLimit,
+  clampAuditOffset,
+  isAuthAuditAction,
 } from './audit-events';
 
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listEvents(filters: AuditEventFilters = {}) {
+  async listEvents(filters: AuditEventFilters = {}): Promise<AuditEventPage> {
     const where: Prisma.AuditEventWhereInput = {};
-    if (filters.workspaceId) where.workspaceId = filters.workspaceId;
+    const actionFilter = this.resolveActionFilter(filters.action);
+    const limit = clampAuditLimit(filters.limit);
+    const offset = clampAuditOffset(filters.offset);
+    if (!actionFilter) return { items: [], total: 0, limit, offset };
+
+    where.action = actionFilter;
+    if (filters.workspaceId) {
+      where.OR = [
+        { workspaceId: filters.workspaceId },
+        { action: { in: auditedActivityActions.filter(isAuthAuditAction) } },
+      ];
+    }
     if (filters.shareToken) where.shareToken = filters.shareToken;
     if (filters.nodeId) where.nodeId = filters.nodeId;
-    if (filters.action) where.action = filters.action;
 
-    const rows = await this.prisma.auditEvent.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: clampAuditLimit(filters.limit),
-    });
+    const [total, rows] = await Promise.all([
+      this.prisma.auditEvent.count({ where }),
+      this.prisma.auditEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+    ]);
 
-    return rows.map((row) => this.mapRow(row));
+    return {
+      items: rows.map((row) => this.mapRow(row)),
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  private resolveActionFilter(action?: string): Prisma.StringFilter | string {
+    if (!action) return { in: [...auditedActivityActions] };
+    return auditedActivityActionSet.has(action) ? action : '';
   }
 
   private mapRow(row: AuditEvent): AuditEventRecord {

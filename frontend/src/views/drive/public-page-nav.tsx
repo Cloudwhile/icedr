@@ -3,14 +3,18 @@
 import Link from "@/compat/link";
 import { ThemeActions, type DriveShellState } from "./drive-shell";
 import { AppImage } from "@/components/ui/app-image";
+import { resolvePublicSiteName } from "@/lib/drive-api";
 
-type PublicPageNavProps = Pick<DriveShellState, "palette" | "setThemeMode" | "themeMode">;
+type PublicPageNavProps = Pick<DriveShellState, "palette" | "setThemeMode" | "siteSettings" | "themeMode">;
 
 export function PublicPageNav({
   palette,
   setThemeMode,
+  siteSettings,
   themeMode
 }: PublicPageNavProps) {
+  const siteName = resolvePublicSiteName(siteSettings.siteName);
+  const logoSrc = siteSettings.authLogoDataUrl || "/logo.png";
   return <header style={{
     display: "flex",
     alignItems: "center",
@@ -18,7 +22,7 @@ export function PublicPageNav({
     flexShrink: "0",
     borderBottomWidth: "1px",
     borderColor: palette.hairline,
-    background: palette.surface1
+    background: "transparent"
   } as React.CSSProperties}>
       <div className="icedr-r-padding-inline" style={{
       alignItems: "center",
@@ -31,7 +35,7 @@ export function PublicPageNav({
       "--r-padding-inline-md": "20px",
       "--r-padding-inline-xl": "24px"
     } as React.CSSProperties}>
-        <Link href="/" aria-label="ICEDR">
+        <Link href="/" aria-label={siteName}>
           <div className="icedr-has-hover icedr-has-active" style={{
         alignItems: "center",
         display: "flex",
@@ -43,7 +47,7 @@ export function PublicPageNav({
         "--hover-transform": "translateY(-1px)",
         "--active-transform": "translateY(0) scale(0.98)"
       } as React.CSSProperties}>
-            <AppImage src="/logo.png" alt="" priority style={{
+            <AppImage src={logoSrc} alt="" priority style={{
           width: "34px",
           height: "34px",
           objectFit: "contain",
@@ -55,7 +59,7 @@ export function PublicPageNav({
           fontWeight: "750",
           lineHeight: "1.2"
         }}>
-              ICEDR
+              {siteName}
             </span>
           </div>
         </Link>

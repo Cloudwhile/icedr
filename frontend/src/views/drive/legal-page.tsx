@@ -1,7 +1,20 @@
 ﻿"use client";
 
 import type { Palette } from "@/features/file/model";
-import { getLegalDocument, getLegalTextLocale, type LegalDocumentKey, type LegalTextLocale } from "@/features/legal/content";
+import {
+  getLegalDocument,
+  getLegalDocumentEffectiveDateKey,
+  getLegalDocumentIntroKey,
+  getLegalDocumentSectionBodyKey,
+  getLegalDocumentSectionTitleKey,
+  getLegalDocumentSubtitleKey,
+  getLegalDocumentTitleKey,
+  getLegalTextLocale,
+  type LegalDocumentKey,
+  type LegalTextLocale,
+} from "@/features/legal/content";
+import { translateLocaleMessage } from "@/i18n/messages";
+import { useTranslations } from "@/i18n/react";
 import { LocalizedDriveShell, type DriveShellState } from "./drive-shell";
 import { LegalFooter } from "./legal-footer";
 import { LocalIcon } from "./drive-primitives";
@@ -21,23 +34,24 @@ function LegalPage({
   locale,
   palette,
   setThemeMode,
+  siteSettings,
   themeMode
 }: {
   documentKey: LegalDocumentKey;
 } & DriveShellState) {
-  const document = getLegalDocument(documentKey);
-  const primaryText = document.text[getLegalTextLocale(locale)];
+  const t = useTranslations();
+  const primaryLanguage = getLegalTextLocale(locale);
   return <div style={{
     display: "flex",
     height: "100dvh",
     flexDirection: "column",
     overflow: "hidden",
-    background: palette.canvas,
+    background: "transparent",
     color: palette.ink,
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      <PublicPageNav palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+      <PublicPageNav palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} themeMode={themeMode} />
 
       <main style={{
       flex: "1 1 auto",
@@ -79,7 +93,7 @@ function LegalPage({
                 fontWeight: "760",
                 textTransform: "uppercase"
               }}>
-                  ICEDR Legal
+                  {t("legal.sectionLabel")}
                 </span>
               </div>
               <h1 style={{
@@ -89,7 +103,7 @@ function LegalPage({
               letterSpacing: "0px",
               maxWidth: "820px"
             }}>
-                {primaryText.title}
+                {t(getLegalDocumentTitleKey(documentKey, primaryLanguage))}
               </h1>
               <span style={{
               marginTop: "12px",
@@ -97,7 +111,7 @@ function LegalPage({
               maxWidth: "820px",
               lineHeight: "1.7"
             }}>
-                {primaryText.subtitle}
+                {t(getLegalDocumentSubtitleKey(documentKey, primaryLanguage))}
               </span>
             </div>
 
@@ -105,7 +119,7 @@ function LegalPage({
           </div>
         </div>
 
-        <LegalFooter locale={locale} palette={palette} />
+        <LegalFooter locale={locale} palette={palette} siteName={siteSettings.siteName} />
       </main>
     </div>;
 }
@@ -117,6 +131,8 @@ export function LegalDocumentColumns({
   palette: Palette;
 }) {
   const document = getLegalDocument(documentKey);
+  const t = useTranslations();
+  const readLegalMessage = (language: LegalTextLocale, key: string) => translateLocaleMessage(language, key);
   return <div className="icedr-r-grid-template-columns icedr-r-gap" style={{
     display: "grid",
     "--r-grid-template-columns-base": "1fr",
@@ -126,7 +142,6 @@ export function LegalDocumentColumns({
     alignItems: "start"
   } as React.CSSProperties}>
       {orderedLegalLocales.map(language => {
-      const text = document.text[language];
       return <div key={language} lang={language === "zh" ? "zh-CN" : "en"} style={{
         display: "flex",
         flexDirection: "column",
@@ -140,7 +155,7 @@ export function LegalDocumentColumns({
             fontWeight: "760",
             textTransform: "uppercase"
           }}>
-                {language === "zh" ? "中文" : "English"}
+                {t(`legal.language.${language}`)}
               </span>
               <h2 style={{
             marginTop: "4px",
@@ -148,14 +163,14 @@ export function LegalDocumentColumns({
             fontWeight: "780",
             lineHeight: "1.22"
           }}>
-                {text.title}
+                {readLegalMessage(language, getLegalDocumentTitleKey(documentKey, language))}
               </h2>
               <span style={{
             marginTop: "8px",
             color: palette.subtle,
             fontSize: "13px"
           }}>
-                {language === "zh" ? "生效日期" : "Effective date"}: {text.effectiveDate}
+                {t(`legal.effectiveDate.${language}`)}: {readLegalMessage(language, getLegalDocumentEffectiveDateKey(documentKey, language))}
               </span>
             </div>
 
@@ -166,10 +181,13 @@ export function LegalDocumentColumns({
           color: palette.ink,
           lineHeight: "1.78"
         }}>
-              {text.intro.map(paragraph => <span key={paragraph}>{paragraph}</span>)}
+              {Array.from({ length: document.introCount }).map((_, index) => {
+            const key = getLegalDocumentIntroKey(documentKey, language, index);
+            return <span key={key}>{readLegalMessage(language, key)}</span>;
+          })}
             </div>
 
-            {text.sections.map(section => <div key={section.title} style={{
+            {document.sections.map(section => <div key={section.index} style={{
           borderTopWidth: "1px",
           borderColor: palette.hairline,
           paddingTop: "16px"
@@ -179,7 +197,7 @@ export function LegalDocumentColumns({
             fontWeight: "760",
             lineHeight: "1.35"
           }}>
-                  {section.title}
+                  {readLegalMessage(language, getLegalDocumentSectionTitleKey(documentKey, language, section.index))}
                 </h3>
                 <div style={{
             display: "flex",
@@ -189,7 +207,10 @@ export function LegalDocumentColumns({
             color: palette.subtle,
             lineHeight: "1.78"
           }}>
-                  {section.body.map(paragraph => <span key={paragraph}>{paragraph}</span>)}
+                  {Array.from({ length: section.bodyCount }).map((_, bodyIndex) => {
+              const key = getLegalDocumentSectionBodyKey(documentKey, language, section.index, bodyIndex);
+              return <span key={key}>{readLegalMessage(language, key)}</span>;
+            })}
                 </div>
               </div>)}
           </div>;

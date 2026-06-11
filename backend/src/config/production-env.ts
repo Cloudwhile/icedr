@@ -1,7 +1,6 @@
 export type EnvironmentVariables = Record<string, string | undefined>;
 
-const requiredProductionEnv = [
-  'API_CORS_ORIGIN',
+const setupOwnedProductionEnv = [
   'DATABASE_HOST',
   'DATABASE_PORT',
   'DATABASE_DBNAME',
@@ -38,6 +37,7 @@ const urlEnv = [
   'API_PUBLIC_BASE_URL',
   'VITE_API_BASE_URL',
   'NEXT_PUBLIC_API_BASE_URL',
+  'MINIO_METRICS_ENDPOINT',
   'S3_ENDPOINT',
   'PUBLIC_SHARE_BASE_URL',
 ] as const;
@@ -59,7 +59,7 @@ const portEnv = [
 ] as const;
 
 const placeholderEnv = [
-  ...requiredProductionEnv,
+  ...setupOwnedProductionEnv,
   ...publicApiBaseUrlEnv,
   'SHARE_EMAIL_PROVIDER',
 ] as const;
@@ -99,18 +99,6 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
   if (!isProductionEnv(env)) return;
 
   const errors: string[] = [];
-
-  for (const name of requiredProductionEnv) {
-    if (!hasEnvValue(env, name)) {
-      errors.push(`${name} is required in production`);
-    }
-  }
-
-  if (!publicApiBaseUrlEnv.some((name) => hasEnvValue(env, name))) {
-    errors.push(
-      `${publicApiBaseUrlEnv.join(' or ')} is required in production`,
-    );
-  }
 
   for (const name of forbiddenProductionBooleans) {
     if (readBooleanFlag(env[name])) {
@@ -161,10 +149,6 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
   if (errors.length > 0) {
     throw new Error(`Invalid production environment: ${errors.join('; ')}`);
   }
-}
-
-function hasEnvValue(env: EnvironmentVariables, name: string) {
-  return hasValue(env[name]);
 }
 
 function hasValue(value: string | undefined): value is string {

@@ -3,7 +3,7 @@
 import { tailChase } from "ldrs";
 import type { LocalIconName, Palette } from "@/features/file/model";
 import { AnimatedCheckMark, LocalIcon } from "./drive-primitives";
-import { Button, Input } from "@heroui/react";
+import { Input } from "@heroui/react";
 import { AppField } from "@/components/ui/app-field";
 import { AppInput } from "@/components/ui/app-input";
 if (typeof window !== "undefined") {
@@ -60,44 +60,49 @@ export function AuthPrimaryButton({
   onClick,
   onPress,
   palette,
-  type = "button"
+  type = "button",
+  variant = "primary"
 }: {
   busy?: boolean;
   children: React.ReactNode;
   disabled?: boolean;
-  isDisabled?: boolean;
   icon?: LocalIconName | null;
+  isDisabled?: boolean;
   onClick?: () => void;
   onPress?: () => void;
   palette: Palette;
   type?: "button" | "submit" | "reset";
+  variant?: "primary" | "secondary";
 }) {
-  return <Button type={type} fullWidth isDisabled={disabled || isDisabled || busy} aria-busy={busy} data-busy={busy ? "true" : undefined} className="icedr-auth-primary-button" onPress={onClick ?? onPress} style={{
-    "--auth-primary-bg": palette.primary,
-    "--auth-primary-border": palette.primary,
+  const buttonDisabled = disabled || isDisabled || busy;
+  const secondary = variant === "secondary";
+  return <button type={type} disabled={buttonDisabled} aria-busy={busy} data-busy={busy ? "true" : undefined} data-disabled={buttonDisabled ? "true" : undefined} data-variant={variant} className="icedr-auth-primary-button" onClick={onClick ?? onPress} style={{
+    "--auth-primary-bg": secondary ? (palette.canvas === "#010102" ? palette.surface1 : "#ffffff") : "linear-gradient(180deg, #376cff 0%, #2355ee 100%)",
+    "--auth-primary-border": secondary ? palette.hairlineStrong : "#2f65ff",
     "--auth-primary-focus": palette.focusRing,
-    "--auth-primary-hover": palette.primaryHover,
-    "--auth-primary-text": "#ffffff"
+    "--auth-primary-hover": secondary ? palette.surface2 : "linear-gradient(180deg, #4778ff 0%, #2b5df3 100%)",
+    "--auth-primary-text": secondary ? palette.ink : "#ffffff"
   } as React.CSSProperties}>
       <div className="icedr-auth-button-content">
         {busy ? <AuthButtonLoader /> : null}
         <span className="icedr-auth-button-label">{children}</span>
         {!busy && icon ? <LocalIcon name={icon} size={16} /> : null}
       </div>
-    </Button>;
+    </button>;
 }
 export function AuthStatusNotice({
   palette,
+  showIcon = true,
   status
 }: {
   palette: Palette;
+  showIcon?: boolean;
   status: AuthNoticeStatus;
 }) {
   const tone = getAuthStatusTone(status.tone, palette);
   return <div role={status.tone === "error" ? "alert" : "status"} aria-live={status.tone === "error" ? "assertive" : "polite"} style={{
     display: "flex",
     alignItems: "flex-start",
-    gap: "10px",
     padding: "12px",
     borderRadius: "8px",
     background: tone.bg,
@@ -108,14 +113,14 @@ export function AuthStatusNotice({
     lineHeight: "1.5",
     boxShadow: tone.shadow
   }}>
-      {status.tone === "success" ? <div aria-hidden="true" style={{
+      {showIcon ? status.tone === "success" ? <div aria-hidden="true" style={{
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       color: tone.iconColor
     }}>
           <AnimatedCheckMark size={16} />
-        </div> : <LocalIcon name={tone.icon} size={16} color={tone.iconColor} />}
+        </div> : <LocalIcon name={tone.icon} size={16} color={tone.iconColor} /> : null}
       <span>{status.message}</span>
     </div>;
 }

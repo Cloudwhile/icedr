@@ -15,6 +15,7 @@ import {
   scrypt,
   timingSafeEqual,
 } from 'crypto';
+import type { Request } from 'express';
 import { promisify } from 'util';
 import {
   generateAuthenticationOptions,
@@ -56,6 +57,7 @@ import {
   createOAuthRequestState,
   type OAuthProviderSnapshot,
 } from './oauth-provider-adapters';
+import { AuthAuditService, type AuthAuditMethod } from './auth-audit.service';
 
 const scryptAsync = promisify(scrypt);
 const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -80,6 +82,7 @@ export class AuthService {
     private readonly settingsService: SettingsService,
     private readonly config: ConfigService,
     private readonly mailService: MailService,
+    private readonly authAuditService: AuthAuditService,
   ) {}
 
   async getSettings(): Promise<AuthSettingsResponse> {
@@ -119,7 +122,10 @@ export class AuthService {
     return this.withConfigState(await this.authRepository.updateSettings(next));
   }
 
-  async register(dto: RegisterDto): Promise<AuthSessionResponse> {
+  async register(
+    dto: RegisterDto,
+    request?: Request,
+  ): Promise<AuthSessionResponse> {
     await this.assertLocalAuthEnabled();
     const email = this.normalizeEmail(dto.email);
     const displayName = dto.displayName.trim();
@@ -134,10 +140,18 @@ export class AuthService {
       passwordHash: await this.hashPassword(dto.password),
       role: 'member',
     });
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    await this.recordAuthAudit('auth.registered', session.user, {
+      method: 'local',
+      request,
+    });
+    return session;
   }
 
-  async createSetupAdmin(dto: RegisterDto): Promise<AuthSessionResponse> {
+  async createSetupAdmin(
+    dto: RegisterDto,
+    request?: Request,
+  ): Promise<AuthSessionResponse> {
     const email = this.normalizeEmail(dto.email);
     const displayName = dto.displayName.trim();
     if (!displayName) throw new BadRequestException('Display name is required');
@@ -154,10 +168,15 @@ export class AuthService {
           passwordHash: await this.hashPassword(dto.password),
           role: 'admin',
         });
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    await this.recordAuthAudit('auth.registered', session.user, {
+      method: 'setup',
+      request,
+    });
+    return session;
   }
 
-  async login(dto: LoginDto): Promise<AuthSessionResponse> {
+  async login(dto: LoginDto, request?: Request): Promise<AuthSessionResponse> {
     await this.assertLocalAuthEnabled();
     const user = await this.authRepository.findUserByEmail(
       this.normalizeEmail(dto.email),
@@ -172,7 +191,12 @@ export class AuthService {
       throw this.invalidCredentialsException();
     }
 
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    await this.recordAuthAudit('auth.login', session.user, {
+      method: 'local',
+      request,
+    });
+    return session;
   }
 
   async logout(authorization?: string) {
@@ -258,6 +282,7 @@ export class AuthService {
 
   async confirmPasswordReset(
     dto: PasswordResetConfirmDto,
+    request?: Request,
   ): Promise<PasswordResetConfirmResponse> {
     await this.assertLocalAuthEnabled();
     const reset = await this.validatePasswordResetCode(dto);
@@ -268,7 +293,12 @@ export class AuthService {
     );
     await this.authRepository.markPasswordResetUsed(reset.tokenHash);
     await this.authRepository.deleteSessionsForUser(updatedUser.id);
-    return this.createSession(updatedUser);
+    const session = await this.createSession(updatedUser);
+    await this.recordAuthAudit('auth.password_reset_completed', session.user, {
+      method: 'local',
+      request,
+    });
+    return session;
   }
 
   async verifyPasswordReset(
@@ -359,6 +389,7 @@ export class AuthService {
 
   async completeFrontendOAuthCallback(
     callbackUrl: string,
+    request?: Request,
   ): Promise<AuthSessionResponse> {
     const result = await this.handleOAuthCallback(callbackUrl);
     if (result.flow !== 'login') {
@@ -366,11 +397,12 @@ export class AuthService {
         'OAuth share callbacks must use the share callback endpoint',
       );
     }
-    return this.exchangeOAuthCode({ code: result.code });
+    return this.exchangeOAuthCode({ code: result.code }, request);
   }
 
   async exchangeOAuthCode(
     dto: OAuthExchangeDto,
+    request?: Request,
   ): Promise<OAuthExchangeResponse> {
     const codeHash = this.hashToken(dto.code);
     const code = await this.authRepository.findOAuthExchangeCode(codeHash);
@@ -384,7 +416,12 @@ export class AuthService {
     const user = await this.authRepository.findUserById(code.userId);
     if (!user) throw new UnauthorizedException('OAuth user is unavailable');
     await this.authRepository.markOAuthExchangeCodeUsed(codeHash);
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    await this.recordAuthAudit('auth.login', session.user, {
+      method: 'oauth',
+      request,
+    });
+    return session;
   }
 
   async createPasskeyRegistrationOptions(authorization?: string) {
@@ -489,7 +526,10 @@ export class AuthService {
     return options;
   }
 
-  async verifyPasskeyAuthentication(dto: PasskeyAuthenticationVerificationDto) {
+  async verifyPasskeyAuthentication(
+    dto: PasskeyAuthenticationVerificationDto,
+    request?: Request,
+  ) {
     const settings = await this.authRepository.getSettings();
     if (!settings.passkeyEnabled) {
       throw new ForbiddenException('Passkey login is disabled');
@@ -535,7 +575,12 @@ export class AuthService {
     await this.authRepository.markChallengeUsed(challenge.id);
     const user = await this.authRepository.findUserById(credential.userId);
     if (!user) throw new UnauthorizedException('Passkey user is unavailable');
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    await this.recordAuthAudit('auth.login', session.user, {
+      method: 'passkey',
+      request,
+    });
+    return session;
   }
 
   async listPasskeys(authorization?: string) {
@@ -815,6 +860,14 @@ export class AuthService {
       expiresAt,
       user: this.toUserResponse(user),
     };
+  }
+
+  private async recordAuthAudit(
+    action: 'auth.login' | 'auth.registered' | 'auth.password_reset_completed',
+    user: AuthUserResponse,
+    options: { method: AuthAuditMethod; request?: Request },
+  ) {
+    await this.authAuditService.recordSuccess(action, user, options);
   }
 
   private async withConfigState(

@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Provider } from "@/components/common/ui/provider";
 import { App } from "@/App";
-import "@/app/globals.css";
+import "@/styles/index.css";
 
 const root = document.getElementById("root");
 

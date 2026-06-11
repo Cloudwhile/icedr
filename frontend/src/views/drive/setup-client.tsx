@@ -4,27 +4,38 @@ import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
-import { completeSetup, fetchSetupStatus, getApiBaseUrl, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type VerifyDatabaseInput, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
-import { AnimatedCheckMark, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
+import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 import { TextArea } from "@heroui/react";
 import { AppImage } from "@/components/ui/app-image";
+import {
+  SetupInfoTile as InfoTile,
+  SetupSection,
+  SetupSelectCard as SelectButton,
+  SetupStepNavItem,
+  SetupToggleRow as ToggleRow,
+} from "@/components/ui/setup-flow-primitives";
 const emptyDatabase: DatabaseProfile = {
+  provider: "sqlite",
+  host: "",
+  port: 5432,
+  dbName: "icedr.sqlite",
+  user: "",
+  passwordProvided: false,
+  passwordSource: "local",
+  verified: false,
+  verifiedAt: null
+};
+const emptyRemoteDatabase: Required<VerifyDatabaseInput> = {
+  provider: "postgresql",
   host: "",
   port: 5432,
   dbName: "",
   user: "",
-  passwordProvided: false,
-  passwordSource: "env",
-  verified: false,
-  verifiedAt: null
-};
-const buttonTypeAttr: {
-  type?: "button";
-} = {
-  type: "button"
+  password: ""
 };
 const defaultSharePolicy: Omit<WorkspaceShareSettings, "workspaceId" | "updatedAt"> = {
   anonymousAccess: "email-required",
@@ -47,7 +58,7 @@ const defaultMailSettings: MailSettings = {
   port: 587,
   secure: false,
   username: "",
-  fromName: "ICEDR",
+  fromName: defaultPublicSiteSettings.siteName,
   fromEmail: "",
   replyTo: "",
   configured: false,
@@ -57,10 +68,9 @@ const defaultMailSettings: MailSettings = {
 const icetowneBlogOAuthPreset = {
   providerProfile: "icetowne-blog",
   issuerUrl: "https://blog.icetowne.com",
-  clientId: "client_uNl7QJ689LDXlBWXhCS4",
   audience: "",
   scopes: "basic vip_info"
-} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "clientId" | "audience" | "scopes">;
+} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "audience" | "scopes">;
 function getCurrentSystemBaseUrl() {
   if (typeof window === "undefined") return "";
   return window.location.origin;
@@ -77,31 +87,38 @@ function getCallbackBaseUrl(redirectUri: string, fallbackBaseUrl: string) {
 const setupSteps = [{
   id: "database",
   key: "setup.database",
-  icon: "folder"
+  icon: "folder",
+  summaryKey: "setup.databaseCard"
 }, {
   id: "admin",
   key: "setup.admin",
-  icon: "user_avatar"
+  icon: "user_avatar",
+  summaryKey: "setup.adminCard"
 }, {
   id: "auth",
   key: "setup.auth",
-  icon: "key"
+  icon: "key",
+  summaryKey: "setup.authCard"
 }, {
   id: "mail",
   key: "setup.mail",
-  icon: "mail"
+  icon: "mail",
+  summaryKey: "setup.mailCard"
 }, {
   id: "policy",
   key: "setup.policy",
-  icon: "shield"
+  icon: "shield",
+  summaryKey: "setup.policyCard"
 }, {
   id: "brand",
   key: "setup.brand",
-  icon: "image"
+  icon: "image",
+  summaryKey: "setup.brandCard"
 }, {
   id: "finish",
   key: "setup.finish",
-  icon: "tick"
+  icon: "tick",
+  summaryKey: "setup.finishCard"
 }] as const;
 type SetupStepId = (typeof setupSteps)[number]["id"];
 export function SetupRoute() {
@@ -128,10 +145,9 @@ function SetupPage({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthNoticeStatus | null>(null);
   const [database, setDatabase] = useState<DatabaseProfile>(emptyDatabase);
-  const [site, setSite] = useState<PublicSiteSettings>({
-    siteName: "ICEDR",
-    authLogoDataUrl: null
-  });
+  const [remoteDatabase, setRemoteDatabase] = useState(emptyRemoteDatabase);
+  const [remoteDatabaseTouched, setRemoteDatabaseTouched] = useState(false);
+  const [site, setSite] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [oauth, setOAuth] = useState<OAuthSettings>({
     enabled: false,
     providerProfile: "oidc",
@@ -150,7 +166,7 @@ function SetupPage({
   const [mailTestEmailTouched, setMailTestEmailTouched] = useState(false);
   const [passkey, setPasskey] = useState<PasskeySettings>({
     enabled: false,
-    rpName: "ICEDR",
+    rpName: defaultPublicSiteSettings.siteName,
     rpId: "localhost",
     origin: "http://localhost:13000"
   });
@@ -180,6 +196,17 @@ function SetupPage({
         return;
       }
       setDatabase(setup.databaseProfile);
+      if (setup.databaseProfile.provider === "postgresql") {
+        setRemoteDatabase(value => ({
+          ...value,
+          host: setup.databaseProfile.host,
+          port: setup.databaseProfile.port,
+          dbName: setup.databaseProfile.dbName,
+          user: setup.databaseProfile.user,
+          password: ""
+        }));
+        setRemoteDatabaseTouched(false);
+      }
       setSite(setup.site);
       setOAuth(setup.oauth);
       setPasskey(setup.passkey);
@@ -200,7 +227,17 @@ function SetupPage({
   const brandComplete = Boolean(site.siteName.trim());
   const mailComplete = Boolean(mail.verifiedAt);
   const canComplete = database.verified && adminComplete && authComplete && mailComplete && brandComplete;
-  const databaseSummary = useMemo(() => [database.host, database.port, database.dbName, database.user].filter(Boolean).join(" / "), [database]);
+  const remoteDatabaseDirty = Boolean(
+    remoteDatabaseTouched &&
+      (remoteDatabase.host.trim() ||
+        remoteDatabase.dbName.trim() ||
+        remoteDatabase.user.trim() ||
+        remoteDatabase.password),
+  );
+  const databaseSummary = useMemo(() => {
+    if (database.provider === "sqlite") return t("setup.databaseLocal");
+    return [database.host, database.port, database.dbName, database.user].filter(Boolean).join(" / ");
+  }, [database, t]);
   const currentStep = setupSteps[stepIndex];
   const stepCompletion: Record<SetupStepId, boolean> = {
     database: database.verified,
@@ -232,8 +269,23 @@ function SetupPage({
     if (busy) return;
     setBusy(true);
     setStatus(null);
-    void verifySetupDatabase().then(profile => {
+    const input: VerifyDatabaseInput = remoteDatabaseDirty
+      ? {
+          provider: "postgresql",
+          host: remoteDatabase.host.trim(),
+          port: remoteDatabase.port,
+          dbName: remoteDatabase.dbName.trim(),
+          user: remoteDatabase.user.trim(),
+          ...(remoteDatabase.password ? { password: remoteDatabase.password } : {}),
+        }
+      : {};
+    void verifySetupDatabase(input).then(profile => {
       setDatabase(profile);
+      setRemoteDatabase(value => ({
+        ...value,
+        password: ""
+      }));
+      setRemoteDatabaseTouched(false);
       setStatus({
         tone: "success",
         message: t("setup.databaseVerified")
@@ -355,129 +407,97 @@ function SetupPage({
     };
     reader.readAsDataURL(file);
   };
-  return <div style={{
-    height: "100dvh",
-    minHeight: "100dvh",
-    overflow: "hidden",
-    background: palette.canvas,
-    color: palette.ink,
-    fontSize: "14px",
-    letterSpacing: "0px"
-  }}>
-      <div className="icedr-r-padding-inline" style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      height: "56px",
-      "--r-padding-inline-base": "12px",
-      "--r-padding-inline-md": "24px",
-      borderBottomWidth: "1px",
-      borderColor: palette.hairline,
-      background: palette.canvas
-    } as React.CSSProperties}>
-        <div style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "12px",
-        minWidth: "0px"
-      }}>
-          <AppImage src={logoPreview} alt="" style={{
-          width: "30px",
-          height: "30px",
-          objectFit: "contain",
-          flexShrink: "0"
-        }} />
-          <div style={{
-          minWidth: "0px"
-        }}>
-            <span className="icedr-truncate" style={{
-            fontWeight: "760"
-          }}>{t("setup.title")}</span>
-            <span className="icedr-truncate" style={{
-            color: palette.subtle,
-            fontSize: "12px"
-          }}>{site.siteName}</span>
+  const authSummary = [localEnabled ? t("admin.localAuth") : "", oauthEnabled ? t("admin.oauthAuth") : "", passkeyEnabled ? t("admin.passkeyAuth") : ""].filter(Boolean).join(" / ") || "--";
+
+  return <div className="icedr-setup-page">
+      <div className="icedr-setup-topbar">
+        <div className="icedr-setup-brand">
+          <AppImage src={logoPreview} alt="" className="icedr-setup-logo" />
+          <div className="icedr-setup-brand-text">
+            <strong className="icedr-truncate">{resolvePublicSiteName(site.siteName)}</strong>
+            <span className="icedr-truncate">{t("setup.title")}</span>
           </div>
         </div>
-        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
-      </div>
-
-      <div className="icedr-r-grid-template-columns" style={{
-      display: "grid",
-      height: "calc(100dvh - 56px)",
-      minHeight: "0px",
-      "--r-grid-template-columns-base": "1fr",
-      "--r-grid-template-columns-lg": "280px minmax(0, 1fr)"
-    } as React.CSSProperties}>
-        <div className="icedr-r-display" style={{
-        display: "flex",
-        flexDirection: "column",
-        "--r-display-base": "none",
-        "--r-display-lg": "flex",
-        gap: "8px",
-        padding: "16px",
-        borderRightWidth: "1px",
-        borderColor: palette.hairline,
-        background: palette.surface1
-      } as React.CSSProperties}>
+        <div className="icedr-setup-progress" style={{ "--setup-step-count": setupSteps.length } as React.CSSProperties}>
           {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} completed={index < stepIndex && stepCompletion[step.id]} disabled={!canReachStep(index)} index={index} label={t(step.key)} onClick={() => {
           if (canReachStep(index) && !busy) setStepIndex(index);
         }} palette={palette} step={step} />)}
         </div>
+        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+      </div>
 
-        <div style={{
-        WebkitOverflowScrolling: "touch",
-        minHeight: "0px",
-        overflowY: "auto",
-        overscrollBehaviorY: "contain",
-        "--r-padding-inline-base": "12px",
-        "--r-padding-inline-md": "24px",
-        paddingBlock: "20px"
-      } as React.CSSProperties} className="icedr-r-padding-inline">
-          <div style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-          maxWidth: "940px"
-        }}>
+      <div className="icedr-setup-body">
+        <main className="icedr-setup-main-scroll">
+          <div className="icedr-setup-main">
             {status ? <AuthStatusNotice palette={palette} status={status} /> : null}
 
-            <div className="icedr-r-display icedr-hide-scrollbar" style={{
-            alignItems: "center",
-            display: "flex",
-            "--r-display-base": "flex",
-            "--r-display-lg": "none",
-            gap: "8px",
-            overflowX: "auto",
-            paddingBottom: "4px"
-          } as React.CSSProperties}>
+            <div className="icedr-setup-mobile-steps icedr-hide-scrollbar">
               {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} compact completed={index < stepIndex && stepCompletion[step.id]} disabled={!canReachStep(index)} index={index} label={t(step.key)} onClick={() => {
               if (canReachStep(index) && !busy) setStepIndex(index);
             }} palette={palette} step={step} />)}
             </div>
 
+            <div className="icedr-setup-content-grid">
             {currentStep.id === "database" ? <SetupSection icon="folder" palette={palette} title={t("setup.database")}>
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
+                  <InfoTile label={t("setup.databaseProvider")} value={database.provider === "sqlite" ? t("setup.databaseLocal") : t("setup.databaseRemote")} palette={palette} tone={database.provider === "sqlite" ? "neutral" : "secure"} />
                   <InfoTile label={t("setup.databaseProfile")} value={databaseSummary || "--"} palette={palette} />
-                  <InfoTile label={t("setup.databasePassword")} value={database.passwordProvided ? t("setup.passwordProvided") : t("setup.passwordMissing")} palette={palette} />
+                  <InfoTile label={t("setup.databasePassword")} value={database.passwordProvided ? t("setup.passwordProvided") : t("setup.passwordLocal")} palette={palette} />
+                </div>
+                <div className="icedr-setup-form-grid" data-columns="3">
+                  <AuthField label={t("setup.databaseHost")} palette={palette}>
+                    <AuthInput palette={palette} value={remoteDatabase.host} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  host: event.target.value
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databasePort")} palette={palette}>
+                    <AuthInput palette={palette} inputMode="numeric" value={String(remoteDatabase.port)} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  port: Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 5432)
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databaseName")} palette={palette}>
+                    <AuthInput palette={palette} value={remoteDatabase.dbName} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  dbName: event.target.value
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databaseUser")} palette={palette}>
+                    <AuthInput palette={palette} value={remoteDatabase.user} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  user: event.target.value
+                }));
+                    }} />
+                  </AuthField>
+                  <AuthField label={t("setup.databaseRemotePassword")} palette={palette}>
+                    <AuthInput palette={palette} type="password" value={remoteDatabase.password} onChange={event => {
+                      setRemoteDatabaseTouched(true);
+                      setRemoteDatabase(value => ({
+                  ...value,
+                  password: event.target.value
+                }));
+                    }} />
+                  </AuthField>
                 </div>
                 <AuthPrimaryButton icon="tick" palette={palette} busy={busy} disabled={busy} onClick={verifyDatabase}>
-                  {database.verified ? t("setup.verifyAgain") : t("setup.verifyDatabase")}
+                  {remoteDatabaseDirty ? t("setup.migrateDatabase") : database.verified ? t("setup.verifyAgain") : t("setup.verifyDatabase")}
                 </AuthPrimaryButton>
               </SetupSection> : null}
 
             {currentStep.id === "admin" ? <SetupSection icon="user_avatar" palette={palette} title={t("setup.admin")}>
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
                   <AuthField label={t("auth.displayName")} palette={palette} required>
                     <AuthInput palette={palette} value={admin.displayName} onChange={event => setAdmin(value => ({
                   ...value,
@@ -505,12 +525,7 @@ function SetupPage({
                 <AuthPrimaryButton icon="import" palette={palette} onClick={applyIcetowneBlogOAuthPreset}>
                   {t("setup.applyIcetowneBlogPreset")}
                 </AuthPrimaryButton>
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
                   <SelectButton active={oauth.providerProfile === "oidc"} label={t("setup.providerOidc")} onClick={() => setOAuth(value => ({
                 ...value,
                 providerProfile: "oidc",
@@ -520,15 +535,10 @@ function SetupPage({
                 </div>
                 <StatusPill palette={palette} tone={oauth.providerMode === "compatibility" ? "risk" : "secure"} style={{
               alignSelf: "flex-start"
-            }}>
+                }}>
                   {oauth.providerMode === "compatibility" ? t("setup.oauthCompatibilityMode") : t("setup.oauthStandardMode")}
                 </StatusPill>
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
                   <AuthField label={t("setup.oauthIssuer")} palette={palette}>
                     <AuthInput palette={palette} value={oauth.issuerUrl} onChange={event => setOAuth(value => ({
                   ...value,
@@ -560,12 +570,7 @@ function SetupPage({
                 }))} />
                   </AuthField>
                   <AuthField label={t("setup.oauthRedirectUri")} palette={palette}>
-                    <div style={{
-                  alignItems: "center",
-                  display: "flex",
-                  gap: "8px",
-                  width: "100%"
-                }}>
+                    <div className="icedr-setup-inline-field">
                       <AuthInput palette={palette} readOnly value={effectiveOAuthRedirectUri} style={{
                     flex: "1 1 auto",
                     minWidth: "0px"
@@ -576,12 +581,7 @@ function SetupPage({
                     </div>
                   </AuthField>
                   <AuthField label={t("setup.oauthShareRedirectUri")} palette={palette}>
-                    <div style={{
-                  alignItems: "center",
-                  display: "flex",
-                  gap: "8px",
-                  width: "100%"
-                }}>
+                    <div className="icedr-setup-inline-field">
                       <AuthInput palette={palette} readOnly value={oauthShareRedirectUri} style={{
                     flex: "1 1 auto",
                     minWidth: "0px"
@@ -596,12 +596,7 @@ function SetupPage({
                   </AuthField>
                 </div>
                 <ToggleRow checked={passkeyEnabled} label={t("admin.passkeyAuth")} onToggle={() => setPasskeyEnabled(value => !value)} palette={palette} />
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(3, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid" data-columns="3">
                   <AuthField label={t("setup.rpName")} palette={palette}>
                     <AuthInput palette={palette} value={passkey.rpName} onChange={event => setPasskey(value => ({
                   ...value,
@@ -629,12 +624,7 @@ function SetupPage({
               enabled: !value.enabled,
               verifiedAt: null
             }))} palette={palette} />
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
                   <AuthField label={t("setup.smtpHost")} palette={palette} required>
                     <AuthInput palette={palette} value={mail.host} onChange={event => setMail(value => ({
                   ...value,
@@ -705,12 +695,7 @@ function SetupPage({
 
             {currentStep.id === "policy" ? <SetupSection icon="shield" palette={palette} title={t("setup.policy")}>
                 <ToggleRow checked={distributedStorageEnabled} label={t("admin.useDistributedStorage")} onToggle={() => setDistributedStorageEnabled(value => !value)} palette={palette} />
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
                   <SelectButton active={sharePolicy.anonymousAccess === "blocked"} label={t("admin.blockAnonymous")} onClick={() => setSharePolicy(value => ({
                 ...value,
                 anonymousAccess: "blocked"
@@ -732,28 +717,9 @@ function SetupPage({
               </SetupSection> : null}
 
             {currentStep.id === "brand" ? <SetupSection icon="image" palette={palette} title={t("setup.brand")}>
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "160px minmax(0, 1fr)",
-              gap: "16px",
-              alignItems: "center"
-            } as React.CSSProperties}>
-                  <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "112px",
-                background: palette.surface2,
-                borderRadius: "8px",
-                borderWidth: "1px",
-                borderColor: palette.hairline
-              }}>
-                    <AppImage src={logoPreview} alt="" style={{
-                  maxWidth: "96px",
-                  maxHeight: "96px",
-                  objectFit: "contain"
-                }} />
+                <div className="icedr-setup-form-grid" data-columns="brand">
+                  <div className="icedr-setup-brand-preview">
+                    <AppImage src={logoPreview} alt="" />
                   </div>
                   <div style={{
                 display: "flex",
@@ -763,14 +729,10 @@ function SetupPage({
                     <AuthField label={t("setup.siteName")} palette={palette} required>
                       <AuthInput palette={palette} value={site.siteName} onChange={event => setSite(value => ({
                     ...value,
-                    siteName: event.target.value
+                      siteName: event.target.value
                   }))} />
                     </AuthField>
-                    <div style={{
-                  alignItems: "center",
-                  display: "flex",
-                  gap: "8px"
-                }}>
+                    <div className="icedr-setup-brand-actions">
                       <ToolButton label={t("setup.chooseLogo")} palette={palette} onClick={pickLogo}>
                         <LocalIcon name="upload" size={17} />
                       </ToolButton>
@@ -789,237 +751,29 @@ function SetupPage({
               </SetupSection> : null}
 
             {currentStep.id === "finish" ? <SetupSection icon="tick" palette={palette} title={t("setup.finish")}>
-                <div className="icedr-r-grid-template-columns" style={{
-              display: "grid",
-              "--r-grid-template-columns-base": "1fr",
-              "--r-grid-template-columns-md": "repeat(2, minmax(0, 1fr))",
-              gap: "12px"
-            } as React.CSSProperties}>
+                <div className="icedr-setup-form-grid">
                   <InfoTile label={t("setup.database")} value={database.verified ? t("share.ready") : t("setup.verifyDatabase")} palette={palette} />
                   <InfoTile label={t("setup.admin")} value={admin.email || "--"} palette={palette} />
-                  <InfoTile label={t("setup.auth")} value={[localEnabled ? t("admin.localAuth") : "", oauthEnabled ? t("admin.oauthAuth") : "", passkeyEnabled ? t("admin.passkeyAuth") : ""].filter(Boolean).join(" / ") || "--"} palette={palette} />
+                  <InfoTile label={t("setup.auth")} value={authSummary} palette={palette} />
                   <InfoTile label={t("setup.mail")} value={mail.verifiedAt ? t("setup.mailVerified") : t("setup.testMail")} palette={palette} />
                   <InfoTile label={t("setup.brand")} value={site.siteName || "--"} palette={palette} />
                 </div>
               </SetupSection> : null}
 
-            <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-            position: "sticky",
-            bottom: "0px",
-            zIndex: "1",
-            paddingBlock: "12px",
-            background: palette.canvas,
-            borderTopWidth: "1px",
-            borderColor: palette.hairline
-          }}>
+            </div>
+
+            <div className="icedr-setup-sticky-actions">
               <ToolButton label={t("app.up")} palette={palette} disabled={stepIndex === 0 || busy} onClick={goBack}>
                 <LocalIcon name="arrow_left" size={17} />
               </ToolButton>
-              <div className="icedr-r-width" style={{
-              "--r-width-base": "min(240px, calc(100vw - 96px))",
-              "--r-width-sm": "260px"
-            } as React.CSSProperties}>
+              <div className="icedr-setup-primary-action">
                 <AuthPrimaryButton icon={stepIndex === setupSteps.length - 1 ? "tick" : "arrow_right"} palette={palette} busy={busy} disabled={!canContinue || busy} onClick={goNext}>
                   {stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")}
                 </AuthPrimaryButton>
               </div>
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </div>;
 }
-function SetupStepNavItem({
-  active,
-  compact,
-  completed,
-  disabled,
-  index,
-  label,
-  onClick,
-  palette,
-  step
-}: {
-  active: boolean;
-  compact?: boolean;
-  completed: boolean;
-  disabled: boolean;
-  index: number;
-  label: string;
-  onClick: () => void;
-  palette: Palette;
-  step: (typeof setupSteps)[number];
-}) {
-  return <button {...buttonTypeAttr} aria-current={active ? "step" : undefined} onClick={disabled ? undefined : onClick} className="icedr-has-focus-visible" style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: compact ? "center" : "flex-start",
-    gap: "12px",
-    minWidth: compact ? "104px" : "0",
-    minHeight: "42px",
-    paddingInline: "12px",
-    paddingBlock: "8px",
-    borderRadius: "8px",
-    textAlign: "left",
-    color: disabled ? palette.tertiary : active ? palette.ink : palette.muted,
-    background: active ? palette.surface2 : "transparent",
-    borderWidth: "1px",
-    borderColor: active ? palette.hairlineStrong : "transparent",
-    opacity: disabled ? 0.48 : 1,
-    cursor: disabled ? "not-allowed" : "pointer",
-    transition: "background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease)",
-    "--focus-visible-outline": "2px solid",
-    "--focus-visible-outline-color": palette.focusRing,
-    "--focus-visible-outline-offset": "2px"
-  } as React.CSSProperties}>
-      <StatusPill palette={palette} tone={completed ? "secure" : active ? "accent" : "neutral"} style={{
-      minWidth: "28px"
-    }}>
-        {completed ? <AnimatedCheckMark /> : index + 1}
-      </StatusPill>
-      {compact ? null : <LocalIcon name={step.icon} size={16} color={active ? palette.primaryHover : "currentColor"} />}
-      <span className="icedr-truncate" style={{
-      fontWeight: "650"
-    }}>
-        {label}
-      </span>
-    </button>;
-}
-function SetupSection({
-  children,
-  icon,
-  palette,
-  title
-}: {
-  children: React.ReactNode;
-  icon: React.ComponentProps<typeof LocalIcon>["name"];
-  palette: Palette;
-  title: string;
-}) {
-  return <Surface palette={palette} className="icedr-r-padding" style={{
-    "--r-padding-base": "16px",
-    "--r-padding-md": "20px"
-  } as React.CSSProperties}>
-      <div style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "16px"
-    }}>
-        <div style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "8px",
-        color: palette.muted,
-        fontWeight: "760"
-      }}>
-          <LocalIcon name={icon} size={17} color={palette.primaryHover} />
-          <span>{title}</span>
-        </div>
-        <div style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "12px"
-      }}>{children}</div>
-      </div>
-    </Surface>;
-}
-function InfoTile({
-  label,
-  palette,
-  value
-}: {
-  label: string;
-  palette: Palette;
-  value: string;
-}) {
-  return <div style={{
-    padding: "12px",
-    background: palette.surface2,
-    borderRadius: "8px",
-    borderWidth: "1px",
-    borderColor: palette.hairline,
-    minWidth: "0px"
-  }}>
-      <span style={{
-      color: palette.subtle,
-      fontSize: "12px"
-    }}>{label}</span>
-      <span className="icedr-truncate" style={{
-      color: palette.ink,
-      fontWeight: "650",
-      marginTop: "4px"
-    }}>{value}</span>
-    </div>;
-}
-function ToggleRow({
-  checked,
-  label,
-  onToggle,
-  palette
-}: {
-  checked: boolean;
-  label: string;
-  onToggle: () => void;
-  palette: Palette;
-}) {
-  const t = useTranslations();
-  return <button {...buttonTypeAttr} onClick={onToggle} style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-    textAlign: "left",
-    padding: "12px",
-    borderRadius: "8px",
-    background: checked ? palette.selected : palette.surface2,
-    borderWidth: "1px",
-    borderColor: checked ? palette.primary : palette.hairline
-  }}>
-      <span style={{
-      color: palette.ink,
-      fontWeight: "650"
-    }}>{label}</span>
-      <StatusPill palette={palette} tone={checked ? "secure" : "neutral"}>{checked ? t("setup.toggleEnabled") : t("setup.toggleDisabled")}</StatusPill>
-    </button>;
-}
-function SelectButton({
-  active,
-  label,
-  onClick,
-  palette
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-  palette: Palette;
-}) {
-  return <button {...buttonTypeAttr} onClick={onClick} style={{
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    textAlign: "left",
-    padding: "12px",
-    borderRadius: "8px",
-    background: active ? palette.selected : palette.surface2,
-    borderWidth: "1px",
-    borderColor: active ? palette.primary : palette.hairline
-  }}>
-      {active ? <div aria-hidden="true" style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      color: palette.primaryHover
-    }}>
-          <AnimatedCheckMark size={16} />
-        </div> : <LocalIcon name="info" size={16} color={palette.subtle} />}
-      <span style={{
-      color: palette.ink,
-      fontWeight: "650"
-    }}>{label}</span>
-    </button>;
-}
-

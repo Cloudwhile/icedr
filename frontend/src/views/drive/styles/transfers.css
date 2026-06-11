@@ -1,0 +1,853 @@
+.drive-transfers-module {
+  gap: 18px;
+  margin-inline: 0;
+  min-height: 100%;
+}
+
+.drive-transfers-module .drive-transfer-toolbar {
+  align-items: center;
+  display: flex;
+  min-height: 42px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-tabs {
+  align-items: center;
+  border-bottom: 1px solid #e3ebf5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  min-width: 0;
+  padding-left: 2px;
+  width: 100%;
+}
+
+.drive-transfers-module .drive-transfer-tabs button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px 7px 0 0;
+  color: #596982;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 780;
+  gap: 8px;
+  line-height: 34px;
+  min-height: 42px;
+  padding: 0 2px 9px;
+  position: relative;
+  transition: color 150ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease), opacity 150ms var(--drive-ui-ease);
+}
+
+.drive-transfers-module .drive-transfer-tabs button:hover {
+  color: #111827;
+  transform: translateY(-1px);
+}
+
+.drive-transfers-module .drive-transfer-tabs button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.drive-transfers-module .drive-transfer-tabs button[data-active="true"] {
+  color: #2563eb;
+}
+
+.drive-transfers-module .drive-transfer-tabs button[data-active="true"]::after {
+  background: #2f6df6;
+  border-radius: 999px;
+  bottom: -1px;
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+}
+
+.drive-transfers-module .drive-transfer-tabs strong {
+  align-items: center;
+  background: #edf4ff;
+  border-radius: 999px;
+  color: #315fe8;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 20px;
+  justify-content: center;
+  min-width: 23px;
+  padding-inline: 7px;
+}
+
+.drive-transfers-module .drive-transfer-tabs button:not([data-active="true"]) strong {
+  background: transparent;
+}
+
+.drive-transfers-module .drive-module-stat-grid-transfers {
+  gap: 15px;
+  grid-template-columns: repeat(5, minmax(166px, 1fr));
+}
+
+.drive-transfers-module .drive-module-stat-card {
+  --transfer-stat-accent: var(--drive-ui-blue-600);
+  background: rgba(255, 255, 255, 0.76);
+  border-color: #e3ebf4;
+  border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.01), 0 12px 28px rgba(35, 56, 94, 0.016);
+  min-height: 96px;
+  min-width: 0;
+  padding: 17px 18px 15px;
+}
+
+.drive-transfers-module .drive-module-stat-card[data-tone="success"] {
+  --transfer-stat-accent: var(--drive-ui-success);
+}
+
+.drive-transfers-module .drive-module-stat-card[data-tone="danger"] {
+  --transfer-stat-accent: var(--drive-ui-danger);
+}
+
+.drive-transfers-module .drive-module-stat-card[data-tone="purple"] {
+  --transfer-stat-accent: var(--drive-ui-purple);
+}
+
+.drive-transfers-module .drive-module-stat-card::after {
+  display: none;
+}
+
+.drive-transfers-module .drive-module-stat-card:hover {
+  border-color: color-mix(in srgb, var(--transfer-stat-accent) 24%, #cbd7e8);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.014), 0 18px 36px rgba(35, 56, 94, 0.032);
+  transform: translateY(-1px);
+}
+
+.drive-transfers-module .drive-module-stat-copy span:first-child {
+  color: var(--transfer-stat-accent);
+  font-size: 24px;
+  line-height: 29px;
+}
+
+.drive-transfers-module .drive-module-stat-copy span:nth-child(2) {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.drive-transfers-module .drive-module-stat-copy {
+  gap: 6px;
+}
+
+.drive-transfers-module .drive-module-stat-copy strong {
+  color: #5f6d83;
+  display: -webkit-box;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  max-width: 156px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.drive-transfers-module .drive-module-stat-icon {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--transfer-stat-accent);
+  height: 44px;
+  opacity: 0.82;
+  width: 44px;
+}
+
+.drive-transfers-module .drive-module-stat-icon svg {
+  stroke-width: 1.65;
+}
+
+.drive-transfers-module .drive-module-stat-icon[data-tone="success"] {
+  background: transparent;
+  color: var(--drive-ui-success);
+}
+
+.drive-transfers-module .drive-module-stat-icon[data-tone="danger"] {
+  background: transparent;
+  color: var(--drive-ui-danger);
+}
+
+.drive-transfers-module .drive-module-stat-icon[data-tone="purple"] {
+  background: transparent;
+  color: var(--drive-ui-purple);
+}
+
+.drive-transfers-module .drive-transfer-board {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 324px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-queue-panel,
+.drive-transfers-module .drive-module-side-card {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: #e3ebf4;
+  border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.01), 0 12px 28px rgba(35, 56, 94, 0.016);
+}
+
+.drive-transfers-module .drive-transfer-queue-panel {
+  border-color: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.drive-transfers-module .drive-module-panel-header {
+  background: rgba(255, 255, 255, 0.68);
+  border-bottom-color: #eef3f8;
+  min-height: 50px;
+  padding-inline: 18px;
+}
+
+.drive-transfers-module .drive-module-panel-header > div:first-child > span:last-child {
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.drive-transfers-module .drive-transfer-section {
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid #e3ebf4;
+  border-bottom: 0;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.drive-transfers-module .drive-transfer-section:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.drive-transfers-module .drive-transfer-section:last-child {
+  border-bottom: 1px solid #e3ebf4;
+  border-radius: 0 0 8px 8px;
+}
+
+.drive-transfers-module .drive-transfer-section-header {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.74);
+  border-bottom: 1px solid #eef3f8;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: space-between;
+  min-height: 46px;
+  min-width: 880px;
+  padding-inline: 18px 20px;
+}
+
+.drive-transfers-module .drive-transfer-section-header > div:first-child {
+  align-items: center;
+  color: #111827;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 820;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-section-header .icedr-status-pill {
+  background: transparent !important;
+  border-color: #dde6f2 !important;
+  box-shadow: none !important;
+  color: #172033 !important;
+  height: 24px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0;
+}
+
+.drive-transfers-module .drive-transfer-section-header svg {
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-transfers-module .drive-transfer-section[data-section="completed"] .drive-transfer-section-header svg {
+  color: var(--drive-ui-success);
+}
+
+.drive-transfers-module .drive-transfer-section[data-section="failed"] .drive-transfer-section-header svg,
+.drive-transfers-module .drive-transfer-section[data-section="canceled"] .drive-transfer-section-header svg {
+  color: var(--drive-ui-danger);
+}
+
+.drive-transfers-module .drive-transfer-section[data-section="paused"] .drive-transfer-section-header svg {
+  color: var(--drive-ui-warning);
+}
+
+.drive-transfers-module .drive-transfer-section .drive-transfer-section-table .drive-module-table-head {
+  background: rgba(248, 251, 255, 0.7);
+  color: #65738b;
+  font-size: 11px;
+  letter-spacing: 0;
+  min-height: 38px;
+  padding-inline: 18px;
+}
+
+.drive-transfers-module .drive-transfer-section:not(:first-child) .drive-transfer-section-table .drive-module-table-head {
+  display: none;
+}
+
+.drive-transfers-module .drive-transfer-section .drive-module-table-row {
+  min-height: 58px;
+  padding: 8px 18px;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head,
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-row {
+  gap: 9px;
+  grid-template-columns: 30px minmax(176px, 1.06fr) 68px minmax(142px, 0.86fr) 80px 82px 114px 50px;
+  min-width: 880px;
+  width: 100%;
+}
+
+.drive-transfers-module .drive-transfer-section .drive-transfer-section-table,
+.drive-transfers-module .drive-transfer-section-header {
+  min-width: 880px;
+}
+
+.drive-transfers-module .drive-transfer-section-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:first-child {
+  grid-column: 2;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:nth-child(2) {
+  grid-column: 3;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:nth-child(3) {
+  grid-column: 4;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:nth-child(4) {
+  grid-column: 5;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:nth-child(5) {
+  grid-column: 6;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:nth-child(6) {
+  grid-column: 7;
+}
+
+.drive-transfers-module .drive-transfer-section-table .drive-module-table-head span:nth-child(7) {
+  grid-column: 8;
+  text-align: right;
+}
+
+.drive-transfers-module .drive-transfer-row {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.drive-transfers-module .drive-transfer-row:hover {
+  background: rgba(249, 251, 255, 0.84);
+  box-shadow: 0 6px 14px rgba(35, 56, 94, 0.018);
+  transform: translateY(-1px);
+}
+
+.drive-transfers-module .drive-transfer-row[data-status="running"] {
+  box-shadow: none;
+}
+
+.drive-transfers-module .drive-transfer-row[data-status="running"]:hover {
+  background: #f7faff;
+}
+
+.drive-transfers-module .drive-transfer-row[data-status="paused"] {
+  box-shadow: none;
+}
+
+.drive-transfers-module .drive-transfer-row[data-status="completed"] {
+  box-shadow: none;
+}
+
+.drive-transfers-module .drive-transfer-row[data-status="failed"],
+.drive-transfers-module .drive-transfer-row[data-status="canceled"] {
+  box-shadow: none;
+}
+
+.drive-transfers-module .drive-transfer-section .drive-module-row-icon {
+  height: 30px;
+  width: 30px;
+}
+
+.drive-transfers-module .drive-transfer-section .drive-module-row-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.drive-transfers-module .drive-transfer-file-icon {
+  align-items: center;
+  background: #fbfdff;
+  border: 1px solid #e3ebf6;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(35, 56, 94, 0.028);
+  display: inline-flex;
+  height: 31px;
+  justify-content: center;
+  position: relative;
+  width: 31px;
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="running"] {
+  background: #eef3ff;
+  border-color: #dbe5ff;
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="completed"] {
+  background: #ecfdf3;
+  border-color: #d9f4e2;
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="paused"] {
+  background: #fff7e8;
+  border-color: #fde8bf;
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="failed"],
+.drive-transfers-module .drive-transfer-file-icon[data-status="canceled"] {
+  background: #fff1f1;
+  border-color: #ffd9d9;
+}
+
+.drive-transfers-module .drive-transfer-status-mark {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dfe8f4;
+  border-radius: 999px;
+  bottom: -4px;
+  box-shadow: 0 3px 8px rgba(35, 56, 94, 0.08);
+  color: var(--drive-ui-blue-600);
+  display: inline-flex;
+  height: 14px;
+  justify-content: center;
+  position: absolute;
+  right: -5px;
+  width: 14px;
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="completed"] .drive-transfer-status-mark {
+  color: var(--drive-ui-success);
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="paused"] .drive-transfer-status-mark {
+  color: var(--drive-ui-warning);
+}
+
+.drive-transfers-module .drive-transfer-file-icon[data-status="failed"] .drive-transfer-status-mark,
+.drive-transfers-module .drive-transfer-file-icon[data-status="canceled"] .drive-transfer-status-mark {
+  color: var(--drive-ui-danger);
+}
+
+.drive-transfers-module .drive-transfer-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-progress-header {
+  align-items: center;
+  color: #7b89a2;
+  display: flex;
+  font-size: 12px;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-progress-header span:first-child {
+  color: #1f2937;
+  font-weight: 820;
+  min-width: 34px;
+}
+
+.drive-transfers-module .drive-transfer-progress-header span:last-child {
+  color: #7b89a2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-transfers-module .drive-transfer-size-cell,
+.drive-transfers-module .drive-transfer-speed-cell,
+.drive-transfers-module .drive-transfer-time-cell {
+  color: #52617a;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-actions {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  min-height: 32px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-actions .icedr-tool-button {
+  --tool-hover-bg: transparent;
+  --tool-hover-border: transparent;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #586780 !important;
+  height: 28px;
+  min-width: 28px;
+  opacity: 0.9;
+  width: 28px;
+}
+
+.drive-transfers-module .drive-transfer-actions .icedr-tool-button:hover {
+  color: #172033 !important;
+  transform: translateY(-1px);
+  opacity: 1;
+}
+
+.drive-transfers-module .drive-transfer-row .icedr-status-pill {
+  background: #ffffff !important;
+  box-shadow: none !important;
+  min-height: 24px;
+  min-width: 88px;
+  padding: 2px 10px;
+}
+
+.drive-transfers-module .drive-module-side-card:hover {
+  border-color: #d9e4f1;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.014), 0 16px 32px rgba(35, 56, 94, 0.026);
+  transform: none;
+}
+
+.drive-transfers-module .drive-module-side-list {
+  padding: 6px 18px 14px;
+}
+
+.drive-transfers-module .drive-module-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-settings-card {
+  overflow: hidden;
+}
+
+.drive-transfers-module .drive-transfer-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 15px 18px 14px;
+}
+
+.drive-transfers-module .drive-transfer-setting-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 94px;
+  min-height: 38px;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-setting-row > span:first-child {
+  color: #5f6d83;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.drive-transfers-module .drive-transfer-setting-select {
+  align-items: center;
+  background: #fbfdff;
+  border: 1px solid #e0e8f2;
+  border-radius: 8px;
+  color: #1f2937;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  height: 38px;
+  min-width: 0;
+  padding: 0 9px 0 11px;
+}
+
+.drive-transfers-module .drive-transfer-setting-select select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 760;
+  min-width: 0;
+  outline: 0;
+  width: 100%;
+}
+
+.drive-transfers-module .drive-transfer-setting-select svg {
+  color: #7b89a2;
+  pointer-events: none;
+}
+
+.drive-transfers-module .drive-transfer-setting-switch-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.drive-transfers-module .drive-transfer-setting-switch {
+  display: inline-flex;
+  height: 22px;
+  position: relative;
+  width: 38px;
+}
+
+.drive-transfers-module .drive-transfer-setting-switch input {
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  position: absolute;
+}
+
+.drive-transfers-module .drive-transfer-setting-switch span {
+  background: #d7e1ee;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+  display: block;
+  height: 100%;
+  transition: background-color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease);
+  width: 100%;
+}
+
+.drive-transfers-module .drive-transfer-setting-switch span::after {
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+  content: "";
+  height: 18px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: transform 170ms var(--drive-ui-ease);
+  width: 18px;
+}
+
+.drive-transfers-module .drive-transfer-setting-switch[data-checked="true"] span {
+  background: linear-gradient(90deg, #2f6df6, #6f7bf2);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12), 0 0 0 3px rgba(47, 109, 246, 0.12);
+}
+
+.drive-transfers-module .drive-transfer-setting-switch[data-checked="true"] span::after {
+  transform: translateX(16px);
+}
+
+.drive-transfers-module .drive-transfer-settings-health {
+  border-top: 1px solid #eef3f9;
+}
+
+.drive-transfers-module .drive-transfer-settings-summary {
+  border-top: 1px solid #eef3f9;
+  display: grid;
+  gap: 0 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 5px;
+}
+
+.drive-transfers-module .drive-module-info-row {
+  border-bottom: 1px solid #edf2f8;
+  min-height: 31px;
+}
+
+.drive-transfers-module .drive-module-info-row:last-child {
+  border-bottom: 0;
+}
+
+.drive-transfers-module .drive-module-info-row span:first-child {
+  color: #64748b;
+}
+
+.drive-transfers-module .drive-module-info-row span:last-child {
+  color: #111827;
+  font-weight: 780;
+}
+
+.drive-transfers-module .drive-transfer-health {
+  display: grid;
+  gap: 7px;
+  padding: 12px 18px 10px;
+}
+
+.drive-transfers-module .drive-transfer-health > div {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-health > div span {
+  color: #5f6d83;
+  font-size: 12px;
+  font-weight: 720;
+  min-width: 0;
+}
+
+.drive-transfers-module .drive-transfer-health > div strong {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 840;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.drive-transfers-module .drive-speed-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 13px 18px 16px;
+}
+
+.drive-transfers-module .drive-speed-legend {
+  align-items: center;
+  color: #52617a;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 7px;
+  font-weight: 720;
+}
+
+.drive-transfers-module .drive-speed-dot {
+  background: linear-gradient(180deg, #6f7bf2, #2f6df6);
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.1);
+  display: inline-flex;
+  height: 7px;
+  width: 7px;
+}
+
+.drive-transfers-module .drive-speed-chart {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #e5ecf5;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+  height: 158px;
+  overflow: hidden;
+  position: relative;
+}
+
+.drive-transfers-module .drive-speed-chart::before {
+  background-image:
+    linear-gradient(#edf2f8 1px, transparent 1px),
+    linear-gradient(90deg, #edf2f8 1px, transparent 1px);
+  background-size: 100% 34px, 52px 100%;
+  content: "";
+  inset: 0;
+  opacity: 0.34;
+  position: absolute;
+}
+
+.drive-transfers-module .drive-speed-echart {
+  bottom: 8px;
+  height: 140px;
+  left: 8px;
+  position: absolute;
+  right: 8px;
+  top: 6px;
+}
+
+.drive-transfers-module .drive-speed-samples {
+  align-items: center;
+  bottom: 8px;
+  color: #64748b;
+  display: flex;
+  font-size: 10px;
+  font-weight: 700;
+  gap: 8px;
+  left: 58px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  transform: translateY(4px);
+  transition: opacity 160ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
+  z-index: 3;
+}
+
+.drive-transfers-module .drive-speed-chart:hover .drive-speed-samples {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.drive-transfers-module .drive-speed-empty {
+  align-items: center;
+  color: #94a3b8;
+  display: flex;
+  font-size: 12px;
+  font-weight: 760;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+@media (max-width: 1180px) {
+  .drive-transfers-module .drive-module-stat-grid-transfers {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .drive-transfers-module .drive-transfer-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-transfers-module .drive-module-side-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .drive-transfers-module .drive-module-side-stack,
+  .drive-transfers-module .drive-module-stat-grid-transfers {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+
+  .drive-transfers-module .drive-module-side-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .drive-transfers-module .drive-transfer-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .drive-transfers-module .drive-module-stat-grid-transfers,
+  .drive-transfers-module .drive-module-side-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-transfers-module .drive-transfer-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .drive-transfers-module .drive-transfer-progress {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .drive-transfers-module .drive-transfer-section-table .drive-module-table-head,
+  .drive-transfers-module .drive-transfer-section-table .drive-module-table-row {
+    min-width: 880px;
+  }
+}

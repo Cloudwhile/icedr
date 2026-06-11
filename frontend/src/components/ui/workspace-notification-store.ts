@@ -1,0 +1,102 @@
+import type { ReactNode } from "react";
+
+export type WorkspaceNotificationTone = "success" | "error" | "info" | "warning" | "neutral";
+
+export type WorkspaceNotificationOptions = {
+  debounceMs?: number;
+  dedupeKey?: string;
+  description?: ReactNode;
+  title: ReactNode;
+  tone?: WorkspaceNotificationTone;
+};
+
+export type WorkspaceNotification = Required<Pick<WorkspaceNotificationOptions, "tone">> & {
+  createdAt: number;
+  description?: ReactNode;
+  id: string;
+  title: ReactNode;
+};
+
+const defaultNotificationDebounceMs = 900;
+const maxWorkspaceNotifications = 5;
+const listeners = new Set<() => void>();
+const recentNotificationTimestamps = new Map<string, number>();
+let notificationCounter = 0;
+let notifications: WorkspaceNotification[] = [];
+
+export function showWorkspaceNotification({
+  debounceMs = defaultNotificationDebounceMs,
+  dedupeKey,
+  description,
+  title,
+  tone = "success",
+}: WorkspaceNotificationOptions) {
+  const key = dedupeKey ?? createWorkspaceNotificationDedupeKey({ description, title, tone });
+  const now = Date.now();
+  const recentTimestamp = recentNotificationTimestamps.get(key);
+
+  if (recentTimestamp && now - recentTimestamp < debounceMs) return null;
+
+  recentNotificationTimestamps.set(key, now);
+  pruneRecentNotificationTimestamps(now);
+
+  const id = `workspace-notification-${now}-${notificationCounter++}`;
+  notifications = [
+    ...notifications,
+    {
+      createdAt: now,
+      description,
+      id,
+      title,
+      tone,
+    },
+  ].slice(-maxWorkspaceNotifications);
+  emitWorkspaceNotifications();
+  return id;
+}
+
+export function closeWorkspaceNotification(id: string) {
+  notifications = notifications.filter((notification) => notification.id !== id);
+  emitWorkspaceNotifications();
+}
+
+export function subscribeWorkspaceNotifications(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function getWorkspaceNotificationsSnapshot() {
+  return notifications;
+}
+
+function emitWorkspaceNotifications() {
+  listeners.forEach((listener) => listener());
+}
+
+function createWorkspaceNotificationDedupeKey({
+  description,
+  title,
+  tone,
+}: {
+  description?: ReactNode;
+  title: ReactNode;
+  tone: WorkspaceNotificationTone;
+}) {
+  return [tone, normalizeNotificationNode(title), normalizeNotificationNode(description)].join(":");
+}
+
+function normalizeNotificationNode(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number" || typeof node === "bigint") return String(node);
+  if (Array.isArray(node)) return node.map(normalizeNotificationNode).join("|");
+  return "notification-node";
+}
+
+function pruneRecentNotificationTimestamps(now: number) {
+  if (recentNotificationTimestamps.size < 64) return;
+  recentNotificationTimestamps.forEach((timestamp, key) => {
+    if (now - timestamp > 10_000) recentNotificationTimestamps.delete(key);
+  });
+}

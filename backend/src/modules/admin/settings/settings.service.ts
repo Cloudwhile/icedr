@@ -21,6 +21,7 @@ import {
   UpdatePasskeySettingsDto,
   UpdateSiteSettingsDto,
   UpsertTranslationBundleDto,
+  VerifyDatabaseDto,
 } from './settings.dto';
 import {
   bootstrapMeta,
@@ -93,8 +94,16 @@ export class SettingsService {
     }
   }
 
-  async verifyDatabase() {
+  async verifyDatabase(dto: VerifyDatabaseDto = {}) {
     await this.assertSetupOpen();
+    const remoteInput = this.normalizeRemoteDatabaseInput(dto);
+    if (remoteInput) {
+      const source = await this.prisma.migrateToPostgres(remoteInput);
+      const profile = this.toDatabaseProfile(source, true);
+      await this.repository.set(settingsParentMeta, databaseMeta, profile);
+      return profile;
+    }
+
     if (!(await this.databaseReachable())) {
       throw new ServiceUnavailableException('Database is not reachable');
     }
@@ -125,7 +134,6 @@ export class SettingsService {
       ...this.defaultDatabaseProfile(),
       ...stored,
       passwordProvided: Boolean(stored.passwordProvided),
-      passwordSource: 'env',
     };
   }
 
@@ -402,15 +410,82 @@ export class SettingsService {
   }
 
   private defaultDatabaseProfile(): DatabaseProfile {
+    const source = this.prisma.getSource();
+    if (source.provider === 'sqlite') {
+      return {
+        provider: 'sqlite',
+        host: 'local',
+        port: 0,
+        dbName: 'icedr.sqlite',
+        user: '',
+        passwordProvided: false,
+        passwordSource: 'local',
+        verified: true,
+        verifiedAt: source.verifiedAt,
+      };
+    }
+
     return {
+      provider: 'postgresql',
       host: this.config.get<string>('database.host') ?? '',
       port: this.config.get<number>('database.port') ?? 5432,
       dbName: this.config.get<string>('database.dbName') ?? '',
       user: this.config.get<string>('database.user') ?? '',
       passwordProvided: Boolean(this.config.get<string>('database.password')),
-      passwordSource: 'env',
+      passwordSource: source.source,
       verified: false,
       verifiedAt: null,
+    };
+  }
+
+  private toDatabaseProfile(
+    source: ReturnType<PrismaService['getSource']>,
+    verified: boolean,
+  ): DatabaseProfile {
+    if (source.provider === 'sqlite') {
+      return this.defaultDatabaseProfile();
+    }
+
+    return {
+      provider: 'postgresql',
+      host: source.host,
+      port: source.port,
+      dbName: source.dbName,
+      user: source.user,
+      passwordProvided: Boolean(source.password),
+      passwordSource: source.source,
+      verified,
+      verifiedAt: verified
+        ? (source.verifiedAt ?? new Date().toISOString())
+        : null,
+    };
+  }
+
+  private normalizeRemoteDatabaseInput(dto: VerifyDatabaseDto) {
+    const hasRemoteValue = Boolean(
+      dto.provider ||
+      dto.host?.trim() ||
+      dto.dbName?.trim() ||
+      dto.user?.trim() ||
+      dto.password,
+    );
+    if (!hasRemoteValue) return null;
+
+    const host = dto.host?.trim();
+    const dbName = dto.dbName?.trim();
+    const user = dto.user?.trim();
+    if (!host || !dbName || !user) {
+      throw new BadRequestException(
+        'Remote database host, database name, and user are required',
+      );
+    }
+
+    return {
+      host,
+      port: dto.port || 5432,
+      dbName,
+      user,
+      password: dto.password ?? '',
     };
   }
 

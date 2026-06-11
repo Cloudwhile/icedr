@@ -7,7 +7,7 @@ import {
   type ShareDownloadPolicy,
 } from "@/lib/drive-api";
 
-const apiUnavailableMessage = "ICEDR share API is unavailable";
+const apiUnavailableMessage = "Share API is unavailable";
 
 export type RegisteredShareMode = "single-file" | "multi-file" | "folder";
 export type RegisteredShareSpeedUnit = "KB/s" | "MB/s";

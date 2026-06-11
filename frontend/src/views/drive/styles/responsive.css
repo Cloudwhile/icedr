@@ -1,0 +1,379 @@
+@media (max-width: 1280px) {
+  .drive-header {
+    padding-inline: 24px;
+  }
+
+  .drive-header-brand {
+    margin-left: -24px;
+    padding-left: 24px;
+  }
+
+  .drive-workspace-bar {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-workspace-tools {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1180px) {
+  .drive-header {
+    grid-template-columns: auto minmax(220px, 1fr) auto;
+    min-height: 78px;
+  }
+
+  .drive-header-brand {
+    border-right: 0;
+    margin-left: 0;
+    padding-left: 0;
+    padding-right: 0;
+    width: auto;
+  }
+
+  .drive-header-search-wrap {
+    padding-left: 0;
+  }
+
+  .drive-main-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .drive-sidebar,
+  .drive-details-panel {
+    display: none;
+  }
+
+  .drive-mobile-only {
+    display: flex;
+  }
+
+  .drive-mobile-sidebar {
+    display: block;
+  }
+
+  .drive-workspace-scroll {
+    height: calc(100dvh - 78px);
+    padding: 22px;
+  }
+
+  .drive-module-stat-grid-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-module-stat-card-wide {
+    grid-column: 1 / -1;
+  }
+
+  .drive-links-board,
+  .drive-module-split,
+  .drive-audit-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-links-side-stack,
+  .drive-module-side-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-audit-filter-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .drive-settings-user {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .drive-settings-profile-grid,
+  .drive-system-settings {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+
+  .drive-system-usage-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .drive-module-stat-grid-links {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+
+  .drive-links-side-stack,
+  .drive-risk-grid,
+  .drive-module-side-stack,
+  .drive-system-breakdown-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-audit-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-audit-filter[data-wide="true"],
+  .drive-audit-filter-summary {
+    grid-column: 1 / -1;
+  }
+
+  .drive-audit-filter-summary {
+    justify-content: flex-start;
+  }
+
+  .drive-settings-user,
+  .drive-settings-profile-grid,
+  .drive-system-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-settings-tab-list {
+    align-items: center;
+    flex-direction: row;
+    overflow-x: auto;
+    position: static;
+  }
+
+  .drive-settings-tab {
+    flex: 0 0 auto;
+    min-width: 148px;
+  }
+
+  .drive-settings-avatar-panel {
+    align-items: flex-start;
+  }
+
+  .drive-settings-avatar-wrap {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .drive-settings-meta-grid,
+  .drive-system-fact-grid,
+  .drive-system-usage-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .drive-header {
+    gap: 10px;
+    grid-template-columns: auto 1fr;
+    min-height: 112px;
+    padding: 12px;
+  }
+
+  .drive-header-search-wrap {
+    grid-column: 1 / -1;
+    order: 3;
+    padding-left: 0;
+  }
+
+  .drive-header-secondary {
+    display: none;
+  }
+
+  .drive-account-text {
+    display: none;
+  }
+
+  .drive-workspace-scroll {
+    height: calc(100dvh - 112px);
+    padding: 18px 14px 32px;
+  }
+
+  .drive-workspace-tools {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .drive-toolbar-group {
+    justify-content: flex-start;
+  }
+
+  .drive-page-title {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .drive-table-shell {
+    overflow-x: auto;
+  }
+
+  .drive-table {
+    min-width: 720px;
+  }
+
+  .drive-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-upload-hud-presence {
+    bottom: 14px;
+    left: 14px;
+    right: 14px;
+    width: auto;
+  }
+
+  .drive-upload-hud-topline {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .workspace-notification-region {
+    bottom: 14px;
+    left: 14px;
+    width: min(420px, calc(100% - 28px));
+  }
+
+  .drive-module-stack,
+  .drive-settings-workspace {
+    gap: 14px;
+  }
+
+  .drive-module-scope-strip,
+  .drive-module-console-strip {
+    font-size: 11px;
+  }
+
+  .drive-module-panel-header {
+    min-height: 50px;
+    padding-inline: 12px;
+  }
+
+  .drive-module-panel-header > div:first-child {
+    flex: 1 1 auto;
+  }
+
+  .drive-module-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .drive-module-row-main {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .drive-module-row-copy {
+    flex: 1 1 auto;
+  }
+
+  .drive-module-row-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .drive-link-table .drive-module-table-head,
+  .drive-link-table .drive-module-table-row,
+  .drive-audit-table .drive-module-table-head,
+  .drive-audit-table .drive-module-table-row {
+    min-width: 980px;
+  }
+
+  .drive-module-info-row span:last-child {
+    max-width: min(52vw, 220px);
+  }
+
+  .drive-settings-header h1 {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .drive-settings-tab-list {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .drive-settings-tab {
+    min-height: 40px;
+  }
+
+  .drive-settings-main-column,
+  .drive-system-settings-block {
+    padding: 14px;
+  }
+
+  .drive-settings-storage-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-system-settings-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .drive-module-stat-grid-links,
+  .drive-settings-meta-grid,
+  .drive-system-fact-grid,
+  .drive-system-usage-grid,
+  .drive-audit-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-module-stat-card {
+    min-height: 96px;
+    padding: 14px;
+  }
+
+  .drive-module-stat-icon {
+    height: 42px;
+    width: 42px;
+  }
+
+  .drive-risk-title {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .drive-risk-title .icedr-status-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .drive-risk-actions {
+    flex-wrap: wrap;
+  }
+
+  .drive-link-table .drive-module-table-head,
+  .drive-link-table .drive-module-table-row {
+    min-width: 680px;
+  }
+
+  .drive-audit-table .drive-module-table-head,
+  .drive-audit-table .drive-module-table-row {
+    min-width: 980px;
+  }
+
+  .drive-module-meta-icon {
+    max-width: 100%;
+  }
+
+  .drive-audit-filter[data-wide="true"],
+  .drive-audit-filter-summary {
+    grid-column: auto;
+  }
+
+  .drive-settings-avatar-wrap {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .drive-quota-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-system-breakdown-panel > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding-block: 8px;
+  }
+
+  .drive-system-breakdown-panel > div span:last-child {
+    white-space: normal;
+  }
+}

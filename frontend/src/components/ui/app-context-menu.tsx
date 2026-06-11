@@ -186,7 +186,6 @@ export function AppContextMenu({
         "--menu-focus": palette.focusRing,
         left: renderPosition.x,
         top: renderPosition.y,
-        visibility: activeResolvedPosition ? undefined : "hidden",
       } as CSSProperties}
     >
       {items.map((item) => (

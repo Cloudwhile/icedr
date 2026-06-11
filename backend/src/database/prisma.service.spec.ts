@@ -8,15 +8,16 @@ function config(values: Record<string, unknown>) {
 }
 
 describe('PrismaService', () => {
-  it('rejects startup without database connection fields', () => {
-    expect(
-      () =>
-        new PrismaService(
-          config({
-            'database.configured': false,
-          }),
-        ),
-    ).toThrow('DATABASE_HOST');
+  it('uses SQLite when database connection fields are missing', async () => {
+    const service = new PrismaService(
+      config({
+        'database.configured': false,
+      }),
+    );
+
+    expect(service.isSqlite()).toBe(true);
+    expect(typeof service.workspace.findMany).toBe('function');
+    await service.onModuleDestroy();
   });
 
   it('creates a Prisma client when database config is complete', async () => {
@@ -31,6 +32,7 @@ describe('PrismaService', () => {
       }),
     );
 
+    expect(service.getSource().provider).toBe('postgresql');
     expect(typeof service.workspace.findMany).toBe('function');
     await service.onModuleDestroy();
   });

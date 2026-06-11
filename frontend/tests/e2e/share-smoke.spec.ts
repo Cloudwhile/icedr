@@ -55,9 +55,22 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
   expect(state.downloaded).toBe(true);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Activity" }).click();
-  await expect(page.getByText("Audit log")).toBeVisible();
-  await expect(page.getByText(/visitor share download_started/)).toBeVisible();
+  await page.getByRole("button", { name: "User menu" }).click();
+  await page.getByRole("menuitem", { name: "Admin panel" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await page.locator(".admin-panel-nav").getByRole("button", { name: "Audit log" }).click();
+  await expect(page).toHaveURL(/\/admin\/audit$/);
+  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  const auditRow = page.locator(".drive-audit-table .drive-audit-row").filter({
+    hasText: /Guest Visitor.*Download.*Share link.*reviewer@example.com downloaded File/,
+  });
+  await expect(auditRow).toBeVisible();
+  await expect(auditRow.locator(".drive-audit-actor-avatar")).toBeVisible();
+  await expect(auditRow).toContainText("192.168.1.45");
+  await expect(page.locator(".drive-audit-table")).not.toContainText(shareToken);
+  await expect(page.locator(".drive-audit-table")).not.toContainText(fileName);
+  await expect(page.locator(".drive-audit-table")).not.toContainText(fileId);
 });
 
 async function mockIcedrApi(page: Page) {
@@ -221,7 +234,13 @@ async function mockIcedrApi(page: Page) {
     }
 
     if (method === "GET" && path === "/audit/events") {
-      await fulfillJson(route, state.downloaded ? [auditEvent()] : []);
+      const items = state.downloaded ? [auditEvent()] : [];
+      await fulfillJson(route, {
+        items,
+        limit: Number(url.searchParams.get("limit") ?? items.length),
+        offset: Number(url.searchParams.get("offset") ?? 0),
+        total: items.length,
+      });
       return;
     }
 
@@ -347,7 +366,14 @@ function auditEvent() {
     actor: "visitor",
     createdAt: now,
     id: "audit-download-smoke",
-    metadata: { source: "e2e" },
+    metadata: {
+      actorEmail: "reviewer@example.com",
+      actorName: "Guest Visitor",
+      ip: "192.168.1.45",
+      result: "success",
+      source: "e2e",
+      visitorEmail: "reviewer@example.com",
+    },
     nodeId: fileId,
     shareToken,
     target: shareToken,

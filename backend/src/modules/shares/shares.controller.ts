@@ -12,6 +12,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import type { AuditActor } from '../logs/audit-events';
+import {
+  createRequestAuditMetadata,
+  createVisitorAuditMetadata,
+} from '../../common/security/audit-metadata';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
 import { AuthService } from '../auth/core/auth.service';
 import {
@@ -34,9 +39,17 @@ export class SharesController {
   async createShare(
     @Body() dto: CreateShareDto,
     @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'share', 'write');
-    return this.sharesService.createShare(dto);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'share',
+      'write',
+    );
+    return this.sharesService.createShare(
+      dto,
+      createRequestAuditMetadata(session, request),
+    );
   }
 
   @Get()
@@ -49,17 +62,28 @@ export class SharesController {
   }
 
   @Get(':token')
-  getShare(@Param('token') token: string, @Req() request: Request) {
-    return this.sharesService.getShare(token, getVisitorAuditMetadata(request));
+  async getShare(
+    @Param('token') token: string,
+    @Headers('authorization') authorization: string | undefined,
+    @Req() request: Request,
+  ) {
+    const audit = await this.resolveShareRequestAudit(authorization, request);
+    return this.sharesService.getShare(token, audit.metadata, {
+      actor: audit.actor,
+    });
   }
 
   @Delete(':token')
   async revokeShare(
     @Param('token') token: string,
     @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
-    return this.sharesService.revokeShare(token);
+    const session = await this.adminGuard.requireAdminSession(authorization);
+    return this.sharesService.revokeShare(
+      token,
+      createRequestAuditMetadata(session, request),
+    );
   }
 
   @Post(':token/access-sessions/email-code')
@@ -71,7 +95,7 @@ export class SharesController {
     return this.sharesService.sendEmailAccessCode(
       token,
       dto,
-      getVisitorAuditMetadata(request),
+      createVisitorAuditMetadata(request),
     );
   }
 
@@ -84,19 +108,45 @@ export class SharesController {
     return this.sharesService.verifyEmailAccessCode(
       token,
       dto,
-      getVisitorAuditMetadata(request),
+      createVisitorAuditMetadata(request),
+    );
+  }
+
+  @Post(':token/access-sessions/account')
+  async createAccountAccessSession(
+    @Param('token') token: string,
+    @Headers('authorization') authorization: string | undefined,
+    @Req() request: Request,
+  ) {
+    const session = await this.adminGuard.requireSession(authorization);
+    return this.sharesService.createVerifiedAccountAccessSession(
+      token,
+      session.user,
+      createRequestAuditMetadata(session, request),
     );
   }
 
   @Post(':token/access-sessions/oauth')
-  async createOAuthAccessSession(@Param('token') token: string) {
-    await this.sharesService.getShare(token);
+  async createOAuthAccessSession(
+    @Param('token') token: string,
+    @Req() request: Request,
+  ) {
+    await this.sharesService.getShare(
+      token,
+      createVisitorAuditMetadata(request),
+    );
     return this.authService.startOAuthShareAccess(token);
   }
 
   @Get(':token/oauth/start')
-  async startOAuthAccess(@Param('token') token: string) {
-    await this.sharesService.getShare(token);
+  async startOAuthAccess(
+    @Param('token') token: string,
+    @Req() request: Request,
+  ) {
+    await this.sharesService.getShare(
+      token,
+      createVisitorAuditMetadata(request),
+    );
     return this.authService.startOAuthShareAccess(token);
   }
 
@@ -111,6 +161,8 @@ export class SharesController {
     }
     const session = await this.sharesService.createVerifiedOAuthAccessSession(
       result.shareToken,
+      result.user,
+      createRequestAuditMetadata({ user: result.user }, request),
     );
     const redirectTarget = this.authService.buildShareOAuthFrontendCallbackUrl(
       result.shareToken,
@@ -120,17 +172,19 @@ export class SharesController {
   }
 
   @Post(':token/items/:nodeId/download-intents')
-  createDownloadIntent(
+  async createDownloadIntent(
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Headers('x-share-access-session') accessSessionId?: string,
+    @Headers('authorization') authorization?: string,
     @Req() request?: Request,
   ) {
+    const audit = await this.resolveShareRequestAudit(authorization, request);
     return this.sharesService.createDownloadIntent(
       token,
       nodeId,
       accessSessionId,
-      request ? getVisitorAuditMetadata(request) : {},
+      audit.metadata,
     );
   }
 
@@ -139,6 +193,7 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Query('downloadId') downloadId: string,
+    @Query('purpose') purpose: string | undefined,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
@@ -146,7 +201,8 @@ export class SharesController {
       token,
       nodeId,
       downloadId,
-      getVisitorAuditMetadata(request),
+      createVisitorAuditMetadata(request),
+      { auditPurpose: purpose === 'preview' ? 'preview' : 'download' },
     );
     if (download.method === 'presigned-url') {
       response.redirect(302, download.redirectUrl);
@@ -162,17 +218,19 @@ export class SharesController {
   }
 
   @Post(':token/items/:nodeId/preview-intents')
-  createPreviewIntent(
+  async createPreviewIntent(
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Headers('x-share-access-session') accessSessionId?: string,
+    @Headers('authorization') authorization?: string,
     @Req() request?: Request,
   ) {
+    const audit = await this.resolveShareRequestAudit(authorization, request);
     return this.sharesService.createPreviewIntent(
       token,
       nodeId,
       accessSessionId,
-      request ? getVisitorAuditMetadata(request) : {},
+      audit.metadata,
     );
   }
 
@@ -184,11 +242,29 @@ export class SharesController {
   ) {
     return this.sharesService.getPreviewStatus(token, nodeId, previewId);
   }
-}
 
-function getVisitorAuditMetadata(request: Request) {
-  return {
-    ip: request.ip,
-    userAgent: request.get('user-agent') ?? '',
-  };
+  private async resolveShareRequestAudit(
+    authorization: string | undefined,
+    request?: Request,
+  ): Promise<{ actor: AuditActor; metadata: Record<string, unknown> }> {
+    if (!authorization) {
+      return {
+        actor: 'visitor',
+        metadata: createVisitorAuditMetadata(request),
+      };
+    }
+
+    try {
+      const session = await this.adminGuard.requireSession(authorization);
+      return {
+        actor: 'account',
+        metadata: createRequestAuditMetadata(session, request),
+      };
+    } catch {
+      return {
+        actor: 'visitor',
+        metadata: createVisitorAuditMetadata(request),
+      };
+    }
+  }
 }

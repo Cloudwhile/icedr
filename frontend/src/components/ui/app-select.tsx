@@ -2,7 +2,7 @@
 
 import type { CSSProperties, SelectHTMLAttributes } from "react";
 import { cn } from "./cn";
-import { LocalIcon } from "./local-icon";
+import { LocalIcon } from "./app-icon";
 import type { Palette } from "@/features/file/model";
 
 export type AppSelectOption = {

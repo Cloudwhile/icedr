@@ -1,6 +1,7 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { writeSqliteSchema } = require('./create-sqlite-schema.cjs');
 
 const backendRoot = path.resolve(__dirname, '..');
 const lockDir = path.join(backendRoot, '.prisma-generate.lock');
@@ -40,17 +41,30 @@ function releaseLock() {
 
 acquireLock();
 try {
+  writeSqliteSchema();
   const prismaPackage = require.resolve('prisma/package.json', {
     paths: [backendRoot],
   });
   const prismaCli = path.join(path.dirname(prismaPackage), 'build', 'index.js');
-  const result = spawnSync(
+  const postgresResult = runGenerate(prismaCli, '../database/schema.prisma');
+  if ((postgresResult.status ?? 1) !== 0) {
+    process.exitCode = postgresResult.status ?? 1;
+    return;
+  }
+  const sqliteResult = runGenerate(prismaCli, '../database/schema.sqlite.prisma');
+  process.exitCode = sqliteResult.status ?? 1;
+} finally {
+  releaseLock();
+}
+
+function runGenerate(prismaCli, schema) {
+  return spawnSync(
     process.execPath,
     [
       prismaCli,
       'generate',
       '--schema',
-      '../database/schema.prisma',
+      schema,
       '--config',
       '../prisma.config.ts',
     ],
@@ -59,7 +73,4 @@ try {
       stdio: 'inherit',
     },
   );
-  process.exitCode = result.status ?? 1;
-} finally {
-  releaseLock();
 }

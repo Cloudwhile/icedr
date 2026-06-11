@@ -6,13 +6,20 @@ import type {
 export type AuditEventResponse = {
   id: string;
   action: string;
-  actor: "workspace" | "visitor" | "system";
+  actor: "workspace" | "account" | "visitor" | "system";
   target: string;
   workspaceId: string | null;
   shareToken: string | null;
   nodeId: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
+};
+
+export type AuditEventsPageResponse = {
+  items: AuditEventResponse[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 export type ShareAccessIdentityType = "anonymous" | "email" | "ica" | "workspace";
@@ -81,11 +88,19 @@ export type AuthSettings = {
 
 export type StorageSettings = {
   distributedStorageEnabled: boolean;
+  quotaBytes: number | null;
   endpoint: string;
   region: string;
   bucket: string;
   accessKeyId: string;
   forcePathStyle: boolean;
+  physicalAvailableBytes: number | null;
+  physicalCapacityBytes: number | null;
+  physicalCapacityCheckedAt: string;
+  physicalCapacityKnown: boolean;
+  physicalCapacityReason: string | null;
+  physicalQuotaLimitBytes: number | null;
+  storageProvider: "local" | "object";
   objectStorageConfigured: boolean;
   secretAccessKeyConfigured: boolean;
   localRoot: string;
@@ -101,6 +116,7 @@ export type StorageSettingsInput = Partial<
     | "bucket"
     | "accessKeyId"
     | "forcePathStyle"
+    | "quotaBytes"
   >
 > & {
   secretAccessKey?: string;
@@ -122,11 +138,32 @@ export type StorageUsage = {
   fileCount: number;
   folderCount: number;
   quotaBytes: number | null;
+  quotaSource: "policy" | "unlimited" | "workspace";
+  storagePolicyQuotaBytes: number | null;
   trashBytes: number;
   trashFileCount: number;
   usagePercent: number | null;
   versionBytes: number;
   versionCount: number;
+  updatedAt: string;
+};
+
+export type SystemOverview = {
+  apiName: string;
+  appVersion: string;
+  architecture: string;
+  loadAverage: number[];
+  memoryFreeBytes: number;
+  memoryTotalBytes: number;
+  memoryUsagePercent: number;
+  nodeVersion: string;
+  operatingSystem: string;
+  osPlatform: string;
+  osRelease: string;
+  osUptimeSeconds: number;
+  processUptimeSeconds: number;
+  runtime: string;
+  serviceStartedAt: string;
   updatedAt: string;
 };
 
@@ -187,20 +224,39 @@ export type UpdateCurrentUserInput = Partial<{
 }>;
 
 export type DatabaseProfile = {
+  provider: "sqlite" | "postgresql";
   host: string;
   port: number;
   dbName: string;
   user: string;
   passwordProvided: boolean;
-  passwordSource: "env";
+  passwordSource: "env" | "setup" | "local";
   verified: boolean;
   verifiedAt: string | null;
+};
+
+export type VerifyDatabaseInput = {
+  provider?: "postgresql";
+  host?: string;
+  port?: number;
+  dbName?: string;
+  user?: string;
+  password?: string;
 };
 
 export type PublicSiteSettings = {
   siteName: string;
   authLogoDataUrl: string | null;
 };
+
+export const defaultPublicSiteSettings: PublicSiteSettings = {
+  siteName: "ICEDR",
+  authLogoDataUrl: null,
+};
+
+export function resolvePublicSiteName(siteName: string) {
+  return siteName.trim() || defaultPublicSiteSettings.siteName;
+}
 
 export type TranslationBundle = {
   code: string;
@@ -445,7 +501,7 @@ export type TransferResponse = {
   nodeId: string | null;
   objectKey: string | null;
   name: string;
-  type: "upload" | "download";
+  type: "upload";
   progress: number;
   status: "running" | "paused" | "completed" | "failed" | "canceled";
   createdAt: string;
@@ -506,7 +562,7 @@ export class DriveApiError extends Error {
 }
 
 export function getApiBaseUrl() {
-  return (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:13001/api").replace(/\/$/, "");
+  return (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 }
 
 export function buildApiUrl(path: string) {
@@ -595,13 +651,14 @@ export async function fetchAuditEvents(filters: {
   nodeId?: string;
   action?: string;
   limit?: number;
+  offset?: number;
 } = {}) {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
   });
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return requestDriveApi<AuditEventResponse[]>(`/audit/events${suffix}`);
+  return requestDriveApi<AuditEventsPageResponse>(`/audit/events${suffix}`);
 }
 
 export async function fetchFileNodes(filters: { workspaceId?: string; parentNodeId?: string | null } = {}) {
@@ -785,6 +842,12 @@ export function verifyShareEmailCode(token: string, email: string, code: string)
   });
 }
 
+export function createShareAccountAccessSession(token: string) {
+  return requestDriveApi<ShareAccessSession>(`/shares/${encodeURIComponent(token)}/access-sessions/account`, {
+    method: "POST",
+  });
+}
+
 export function createShareOAuthSession(token: string) {
   return startShareOAuth(token);
 }
@@ -797,10 +860,10 @@ export function fetchSetupStatus() {
   return requestDriveApi<SetupStatus>("/setup/status");
 }
 
-export function verifySetupDatabase() {
+export function verifySetupDatabase(input: VerifyDatabaseInput = {}) {
   return requestDriveApi<DatabaseProfile>("/setup/verify-database", {
     method: "POST",
-    body: JSON.stringify({ confirm: true }),
+    body: JSON.stringify({ confirm: true, ...input }),
   });
 }
 
@@ -1042,6 +1105,10 @@ export function confirmPasswordReset(input: { email: string; code: string; passw
 
 export function fetchStorageSettings() {
   return requestDriveApi<StorageSettings>("/storage/settings");
+}
+
+export function fetchSystemOverview() {
+  return requestDriveApi<SystemOverview>("/system/overview");
 }
 
 export function fetchStorageUsage(workspaceId: string) {

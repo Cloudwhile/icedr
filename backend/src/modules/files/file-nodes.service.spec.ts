@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Readable } from 'stream';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -31,6 +31,7 @@ describe('FileNodesService', () => {
     | 'deleteUploadSessionParts'
     | 'distributedStorageEnabled'
     | 'findMultipartUploadPart'
+    | 'getConfiguredQuotaBytes'
     | 'writeUploadSessionPart'
   >;
   let transfers: {
@@ -228,6 +229,7 @@ describe('FileNodesService', () => {
     } as unknown as FileNodesRepository;
     storage = {
       distributedStorageEnabled: jest.fn(() => Promise.resolve(true)),
+      getConfiguredQuotaBytes: jest.fn(() => Promise.resolve(null)),
       createPresignedUpload: jest.fn((key: string) => ({
         key,
         bucket: 'icedr-drive',
@@ -451,6 +453,63 @@ describe('FileNodesService', () => {
     ).resolves.toBe(1);
   });
 
+  it('continues multipart uploads when the transfer progress task is gone', async () => {
+    transfers.updateTransfer.mockRejectedValueOnce(
+      new NotFoundException('Transfer not found'),
+    );
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Progress Race.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-progress-race',
+    });
+
+    await expect(
+      service.completeUploadPart(intent.sessionId ?? '', 0, {
+        eTag: '"etag-0"',
+        sizeBytes: 4096,
+      }),
+    ).resolves.toMatchObject({
+      progress: 95,
+      uploadedBytes: 4096,
+      uploadedPartIndexes: [0],
+    });
+  });
+
+  it('keeps completed uploads when the transfer completion task is gone', async () => {
+    transfers.completeTransfer.mockRejectedValueOnce(
+      new NotFoundException('Transfer not found'),
+    );
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Completion Race.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-completion-race',
+    });
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+
+    await expect(
+      service.completeUpload({
+        workspaceId: 'workspace-default',
+        fileName: 'Completion Race.pdf',
+        objectKey: intent.objectKey,
+        sizeBytes: 4096,
+        parentNodeId: undefined,
+        mimeType: 'application/pdf',
+        transferId: intent.transferId,
+        uploadSessionId: intent.sessionId,
+      }),
+    ).resolves.toMatchObject({
+      name: 'Completion Race.pdf',
+      objectKey: intent.objectKey,
+    });
+  });
+
   it('creates backend-local upload intents when distributed storage is disabled', async () => {
     jest
       .spyOn(storage, 'distributedStorageEnabled')
@@ -482,6 +541,64 @@ describe('FileNodesService', () => {
       trashBytes: 0,
       trashFileCount: 0,
       usagePercent: 90,
+      usedBytes: 900,
+      versionBytes: 0,
+      versionCount: 0,
+      workspaceId: 'workspace-default',
+      updatedAt: new Date(0).toISOString(),
+    });
+
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'Too Large.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 200,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('rejects upload intents that exceed configured storage quota', async () => {
+    jest.spyOn(storage, 'getConfiguredQuotaBytes').mockResolvedValueOnce(1000);
+    jest.spyOn(repository, 'getStorageUsage').mockResolvedValueOnce({
+      activeBytes: 900,
+      defaultUserQuotaBytes: null,
+      fileCount: 1,
+      folderCount: 0,
+      quotaBytes: null,
+      trashBytes: 0,
+      trashFileCount: 0,
+      usagePercent: null,
+      usedBytes: 900,
+      versionBytes: 0,
+      versionCount: 0,
+      workspaceId: 'workspace-default',
+      updatedAt: new Date(0).toISOString(),
+    });
+
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'Too Large.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 200,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('uses the storage policy quota when it is stricter than workspace quota', async () => {
+    jest.spyOn(storage, 'getConfiguredQuotaBytes').mockResolvedValueOnce(1000);
+    jest.spyOn(repository, 'getStorageUsage').mockResolvedValueOnce({
+      activeBytes: 900,
+      defaultUserQuotaBytes: null,
+      fileCount: 1,
+      folderCount: 0,
+      quotaBytes: 2000,
+      trashBytes: 0,
+      trashFileCount: 0,
+      usagePercent: 45,
       usedBytes: 900,
       versionBytes: 0,
       versionCount: 0,

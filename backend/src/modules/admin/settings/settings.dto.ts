@@ -16,12 +16,13 @@ import { Type } from 'class-transformer';
 export type JsonRecord = Record<string, unknown>;
 
 export type DatabaseProfile = {
+  provider: 'sqlite' | 'postgresql';
   host: string;
   port: number;
   dbName: string;
   user: string;
   passwordProvided: boolean;
-  passwordSource: 'env';
+  passwordSource: 'env' | 'setup' | 'local';
   verified: boolean;
   verifiedAt: string | null;
 };
@@ -225,6 +226,33 @@ export class TestMailSettingsDto {
 }
 
 export class VerifyDatabaseDto {
+  @IsIn(['postgresql'])
+  @IsOptional()
+  provider?: 'postgresql';
+
+  @IsString()
+  @IsOptional()
+  host?: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  @Type(() => Number)
+  @IsOptional()
+  port?: number;
+
+  @IsString()
+  @IsOptional()
+  dbName?: string;
+
+  @IsString()
+  @IsOptional()
+  user?: string;
+
+  @IsString()
+  @IsOptional()
+  password?: string;
+
   @IsBoolean()
   @IsOptional()
   confirm?: boolean;

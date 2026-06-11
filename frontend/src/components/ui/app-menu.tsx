@@ -1,7 +1,7 @@
 "use client";
 
-import { isValidElement, useCallback, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent, MutableRefObject, ReactNode } from "react";
+import { cloneElement, isValidElement, useCallback, useRef, useState } from "react";
+import type { KeyboardEvent, MouseEvent, MutableRefObject, PointerEvent, ReactNode } from "react";
 import { AppContextMenu, type AppContextMenuPosition } from "./app-context-menu";
 import type { Palette } from "@/features/file/model";
 
@@ -25,6 +25,7 @@ export type AppMenuProps = {
 
 export function AppMenu({ ariaLabel = "Actions", children, className, items, palette }: AppMenuProps) {
   const triggerRef = useRef<HTMLElement | null>(null);
+  const ignoreNextClickRef = useRef(false);
   const [position, setPosition] = useState<AppContextMenuPosition | null>(null);
   const open = Boolean(position);
   const closeMenu = useCallback(() => {
@@ -50,6 +51,16 @@ export function AppMenu({ ariaLabel = "Actions", children, className, items, pal
         open={open}
         onPress={(event) => {
           event.stopPropagation();
+          if (ignoreNextClickRef.current) {
+            ignoreNextClickRef.current = false;
+            return;
+          }
+          toggleMenu();
+        }}
+        onTriggerPointerDownCapture={(event) => {
+          if (event.button !== 0) return;
+          event.stopPropagation();
+          ignoreNextClickRef.current = true;
           toggleMenu();
         }}
         onTriggerKeyDown={(event) => {
@@ -66,6 +77,7 @@ export function AppMenu({ ariaLabel = "Actions", children, className, items, pal
         ariaLabel={ariaLabel}
         anchorRef={triggerRef}
         className={className}
+        closeOnScroll={false}
         items={items}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) closeMenu();
@@ -79,22 +91,53 @@ export function AppMenu({ ariaLabel = "Actions", children, className, items, pal
   );
 }
 
-function AppMenuTrigger({ ariaLabel, children, onPress, onTriggerKeyDown, open, triggerRef }: {
+function AppMenuTrigger({ ariaLabel, children, onPress, onTriggerKeyDown, onTriggerPointerDownCapture, open, triggerRef }: {
   ariaLabel: string;
   children: ReactNode;
   onPress: (event: MouseEvent<HTMLElement>) => void;
   onTriggerKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  onTriggerPointerDownCapture: (event: PointerEvent<HTMLElement>) => void;
   open: boolean;
   triggerRef: MutableRefObject<HTMLElement | null>;
 }) {
+  const triggerProps = {
+    "aria-expanded": open,
+    "aria-haspopup": "menu" as const,
+    "aria-label": ariaLabel,
+    onClick: (event: MouseEvent<HTMLElement>) => onPress(event),
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => onTriggerKeyDown(event),
+  };
+
+  if (isValidElement<MenuTriggerChildProps>(children)) {
+    return (
+      <span
+        className="icedr-menu-trigger-anchor"
+        onPointerDownCapture={(event) => onTriggerPointerDownCapture(event)}
+        ref={(node) => {
+          triggerRef.current = node;
+        }}
+      >
+        {cloneElement(children, {
+          ...triggerProps,
+          "aria-label": children.props["aria-label"] ?? ariaLabel,
+          onClick: (event: MouseEvent<HTMLElement>) => {
+            children.props.onClick?.(event);
+            if (!event.defaultPrevented) triggerProps.onClick(event);
+          },
+          onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+            children.props.onKeyDown?.(event);
+            if (!event.defaultPrevented) triggerProps.onKeyDown(event);
+          },
+        })}
+      </span>
+    );
+  }
+
   return (
     <span
-      aria-expanded={open}
-      aria-haspopup="menu"
-      aria-label={ariaLabel}
+      {...triggerProps}
       className="icedr-menu-trigger-anchor"
-      onClick={(event) => onPress(event)}
-      onKeyDown={(event) => onTriggerKeyDown(event)}
+      onPointerDownCapture={(event) => onTriggerPointerDownCapture(event)}
       ref={(node) => {
         triggerRef.current = node;
       }}
@@ -107,3 +150,11 @@ function AppMenuTrigger({ ariaLabel, children, onPress, onTriggerKeyDown, open, 
     </span>
   );
 }
+
+type MenuTriggerChildProps = {
+  "aria-expanded"?: boolean;
+  "aria-haspopup"?: "menu";
+  "aria-label"?: string;
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
+};

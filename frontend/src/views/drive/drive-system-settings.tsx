@@ -1,37 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentProps, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { AppInput } from "@/components/ui/app-input";
 import { AppSelect } from "@/components/ui/app-select";
-import { showAppToast } from "@/components/ui/app-toast";
+import { showAppToast } from "@/components/ui/app-toast-store";
+import { EChart, type EChartOption } from "@/components/ui/e-chart";
 import { useTranslations } from "@/i18n/react";
 import {
-  fetchAuthSettings,
   fetchFilePolicySettings,
-  fetchSiteSettings,
+  fetchStorageSettings,
   fetchStorageUsage,
   fetchStorageUsageBreakdown,
-  updateAuthSettings,
   updateFilePolicySettings,
-  updateSiteSettings,
+  updateStorageSettings,
   updateUserStorageQuota,
   updateWorkspaceStorageQuota,
-  type AuthSettings,
   type FilePolicySettings,
-  type PublicSiteSettings,
+  type StorageSettings,
   type StorageUsageBreakdown,
   type StorageUsage,
+  type SystemOverview,
 } from "@/lib/drive-api";
 import { formatFileSize, getIntlLocale, type Locale, type Palette } from "@/features/file/model";
+import { formatStorageBackendSpace, formatSystemDuration, formatSystemOperatingSystem, getStorageBackendUsagePercent } from "./drive-formatters";
 import { LocalIcon, ToolButton } from "./drive-primitives";
+import { DriveSystemPlatformSettings } from "./drive-system-platform-settings";
 
 export type DriveSystemSettingsProps = {
   locale: Locale;
   onStorageUsageUpdated: (usage: StorageUsage) => void;
   palette: Palette;
+  section: DriveSystemSettingsSection;
   storageUsage: StorageUsage | null;
+  systemOverview: SystemOverview | null;
   workspaceId: string | null;
 };
+
+export type DriveSystemSettingsSection = "platform" | "storage" | "lifecycle";
 
 const defaultPolicy: FilePolicySettings = {
   trashRetentionDays: 30,
@@ -40,12 +45,24 @@ const defaultPolicy: FilePolicySettings = {
   updatedAt: new Date(0).toISOString(),
 };
 
-const defaultAuthSettings: AuthSettings = {
-  localEnabled: true,
-  oauthEnabled: false,
-  passkeyEnabled: false,
-  oauthConfigured: false,
-  passkeyConfigured: false,
+const defaultStorageSettings: StorageSettings = {
+  accessKeyId: "",
+  bucket: "",
+  distributedStorageEnabled: true,
+  endpoint: "",
+  forcePathStyle: true,
+  localRoot: "",
+  objectStorageConfigured: false,
+  physicalAvailableBytes: null,
+  physicalCapacityBytes: null,
+  physicalCapacityCheckedAt: new Date(0).toISOString(),
+  physicalCapacityKnown: false,
+  physicalCapacityReason: null,
+  physicalQuotaLimitBytes: null,
+  quotaBytes: null,
+  region: "us-east-1",
+  secretAccessKeyConfigured: false,
+  storageProvider: "object",
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -69,21 +86,19 @@ export function DriveSystemSettings({
   locale,
   onStorageUsageUpdated,
   palette,
+  section,
   storageUsage,
+  systemOverview,
   workspaceId,
 }: DriveSystemSettingsProps) {
   const t = useTranslations();
-  const [auth, setAuth] = useState<AuthSettings>(defaultAuthSettings);
   const [policy, setPolicy] = useState<FilePolicySettings>(defaultPolicy);
-  const [site, setSite] = useState<PublicSiteSettings>({
-    authLogoDataUrl: null,
-    siteName: "ICEDR",
-  });
+  const [storageSettings, setStorageSettings] = useState<StorageSettings>(defaultStorageSettings);
   const [usageBreakdown, setUsageBreakdown] = useState<StorageUsageBreakdown | null>(null);
   const [userQuotaEmail, setUserQuotaEmail] = useState("");
   const [userQuotaDraft, setUserQuotaDraft] = useState("");
   const [userQuotaUnit, setUserQuotaUnit] = useState<QuotaUnit>("GB");
-  const quotaSource = storageUsage?.quotaBytes ?? null;
+  const quotaSource = storageSettings.quotaBytes;
   const defaultUserQuotaSource = storageUsage?.defaultUserQuotaBytes ?? null;
   const [quotaDraftState, setQuotaDraftState] = useState<QuotaDraftState>(() => createQuotaDraftState(quotaSource));
   const [defaultUserQuotaDraftState, setDefaultUserQuotaDraftState] = useState<QuotaDraftState>(() => createQuotaDraftState(defaultUserQuotaSource));
@@ -98,16 +113,14 @@ export function DriveSystemSettings({
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      fetchSiteSettings(),
-      fetchAuthSettings(),
       fetchFilePolicySettings(),
+      fetchStorageSettings(),
       workspaceId ? fetchStorageUsageBreakdown(workspaceId) : Promise.resolve(null),
     ])
-      .then(([settings, authSettings, filePolicy, breakdown]) => {
+      .then(([filePolicy, nextStorageSettings, breakdown]) => {
         if (cancelled) return;
-        setSite(settings.site);
-        setAuth(authSettings);
         setPolicy(filePolicy);
+        setStorageSettings(nextStorageSettings);
         setUsageBreakdown(breakdown);
       })
       .catch(() => {
@@ -134,45 +147,58 @@ export function DriveSystemSettings({
     ];
   }, [locale, storageUsage, t]);
 
-  const saveSite = () => {
-    setSavingKey("site");
-    void updateSiteSettings(site)
-      .then((next) => {
-        setSite(next);
-        showAppToast({ title: t("admin.saved"), tone: "success" });
-      })
-      .catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" }))
-      .finally(() => setSavingKey(null));
-  };
+  const storagePolicyRows = useMemo(() => [
+    { label: t("settings.storagePolicyQuota"), value: storageSettings.quotaBytes ? formatFileSize(storageSettings.quotaBytes, locale) : t("settings.unlimitedQuota") },
+    { label: t("settings.storagePhysicalLimit"), value: storageSettings.physicalQuotaLimitBytes !== null ? formatFileSize(storageSettings.physicalQuotaLimitBytes, locale) : t("settings.capacityUnknown") },
+    { label: t("settings.storageAvailableSpace"), value: storageSettings.physicalAvailableBytes !== null ? formatFileSize(storageSettings.physicalAvailableBytes, locale) : t("settings.capacityUnknown") },
+    { label: t("settings.storageProvider"), value: storageSettings.storageProvider === "local" ? t("settings.localStorage") : t("settings.objectStorage") },
+  ], [locale, storageSettings.physicalAvailableBytes, storageSettings.physicalQuotaLimitBytes, storageSettings.quotaBytes, storageSettings.storageProvider, t]);
+  const storageProviderLabel = storageSettings.storageProvider === "local" ? t("settings.localStorage") : t("settings.objectStorage");
+  const storageSpaceLabel = formatStorageBackendSpace(storageSettings, locale, t);
+  const storagePhysicalPercent = getStorageBackendUsagePercent(storageSettings);
+  const storagePhysicalPercentLabel = storagePhysicalPercent !== null ? formatPercent(storagePhysicalPercent, locale) : "--";
+  const usedStorageLabel = storageUsage ? formatFileSize(storageUsage.usedBytes, locale) : "--";
 
-  const saveAuth = () => {
-    setSavingKey("auth");
-    void updateAuthSettings({
-      localEnabled: auth.localEnabled,
-      oauthEnabled: auth.oauthEnabled,
-      passkeyEnabled: auth.passkeyEnabled,
-    })
-      .then(setAuth)
-      .then(() => showAppToast({ title: t("admin.saved"), tone: "success" }))
-      .catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" }))
-      .finally(() => setSavingKey(null));
-  };
-
-  const saveQuota = () => {
-    if (!workspaceId) return;
+  const getValidatedQuotaDraft = () => {
     const quotaBytes = parseQuotaBytes(quotaDraft.value, quotaDraft.unit);
     const defaultUserQuotaBytes = parseQuotaBytes(defaultUserQuotaDraft.value, defaultUserQuotaDraft.unit);
     if (quotaBytes === undefined || defaultUserQuotaBytes === undefined) {
       showAppToast({ title: t("settings.quotaInvalid"), tone: "error" });
-      return;
+      return null;
     }
+    if (
+      quotaBytes !== null &&
+      storageSettings.physicalQuotaLimitBytes !== null &&
+      quotaBytes > storageSettings.physicalQuotaLimitBytes
+    ) {
+      showAppToast({ title: t("settings.quotaExceedsPhysicalLimit"), tone: "error" });
+      return null;
+    }
+    if (
+      quotaBytes !== null &&
+      defaultUserQuotaBytes !== null &&
+      defaultUserQuotaBytes > quotaBytes
+    ) {
+      showAppToast({ title: t("settings.defaultUserQuotaExceedsPolicy"), tone: "error" });
+      return null;
+    }
+    return { defaultUserQuotaBytes, quotaBytes };
+  };
+
+  const saveQuota = () => {
+    if (!workspaceId) return;
+    const validatedQuota = getValidatedQuotaDraft();
+    if (!validatedQuota) return;
     setSavingKey("quota");
-    void updateWorkspaceStorageQuota({
-      defaultUserQuotaBytes,
-      workspaceId,
-      quotaBytes,
-    })
-      .then((usage) => {
+    void updateStorageSettings({ quotaBytes: validatedQuota.quotaBytes })
+      .then((nextStorageSettings) =>
+        updateWorkspaceStorageQuota({
+          defaultUserQuotaBytes: validatedQuota.defaultUserQuotaBytes,
+          workspaceId,
+        }).then((usage) => [nextStorageSettings, usage] as const),
+      )
+      .then(([nextStorageSettings, usage]) => {
+        setStorageSettings(nextStorageSettings);
         onStorageUsageUpdated(usage);
         showAppToast({ title: t("admin.saved"), tone: "success" });
       })
@@ -210,10 +236,12 @@ export function DriveSystemSettings({
     if (!workspaceId) return;
     setSavingKey("usage");
     void Promise.all([
+      fetchStorageSettings(),
       fetchStorageUsage(workspaceId),
       fetchStorageUsageBreakdown(workspaceId),
     ])
-      .then(([usage, breakdown]) => {
+      .then(([nextStorageSettings, usage, breakdown]) => {
+        setStorageSettings(nextStorageSettings);
         onStorageUsageUpdated(usage);
         setUsageBreakdown(breakdown);
       })
@@ -222,85 +250,157 @@ export function DriveSystemSettings({
   };
 
   return (
-    <section className="drive-system-settings" aria-label={t("settings.systemSettings")}>
-      <SettingsBlock icon="settings" palette={palette} title={t("settings.siteSettings")}>
-        <SettingsField label={t("setup.siteName")}>
-          <AppInput
+    <section className="drive-system-settings" data-section={section} aria-label={t("settings.systemSettings")}>
+      <div className="drive-system-settings-main">
+        {section === "platform" ? (
+          <DriveSystemPlatformSettings
+            onStorageSettingsUpdated={setStorageSettings}
             palette={palette}
-            value={site.siteName}
-            onChange={(event) => setSite((value) => ({ ...value, siteName: event.target.value }))}
+            storageSettings={storageSettings}
           />
-        </SettingsField>
-        <div className="drive-system-fact-grid">
-          <SettingsFact label={t("settings.siteLogo")} value={site.authLogoDataUrl ? t("settings.configured") : t("settings.notConfigured")} />
-        </div>
-        <BlockActions>
-          <ToolButton isPending={savingKey === "site"} label={t("admin.save")} palette={palette} onClick={saveSite} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
-
-      <SettingsBlock icon="key" palette={palette} title={t("settings.authSettings")}>
-        <SettingsSelectRow
-          label={t("admin.localAuth")}
-          onChange={(value) => setAuth((current) => ({ ...current, localEnabled: value === "true" }))}
-          palette={palette}
-          value={String(auth.localEnabled)}
-        />
-        <SettingsSelectRow
-          label={t("admin.oauthAuth")}
-          onChange={(value) => setAuth((current) => ({ ...current, oauthEnabled: value === "true" }))}
-          palette={palette}
-          value={String(auth.oauthEnabled)}
-        />
-        <SettingsSelectRow
-          label={t("admin.passkeyAuth")}
-          onChange={(value) => setAuth((current) => ({ ...current, passkeyEnabled: value === "true" }))}
-          palette={palette}
-          value={String(auth.passkeyEnabled)}
-        />
-        <div className="drive-system-fact-grid">
-          <SettingsFact label={t("settings.oauthConfiguration")} value={auth.oauthConfigured ? t("settings.configured") : t("settings.notConfigured")} />
-          <SettingsFact label={t("settings.passkeyConfiguration")} value={auth.passkeyConfigured ? t("settings.configured") : t("settings.notConfigured")} />
-          <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(auth.updatedAt, locale)} />
-        </div>
-        <BlockActions>
-          <ToolButton isPending={savingKey === "auth"} label={t("admin.save")} palette={palette} onClick={saveAuth} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
-
-      <SettingsBlock icon="file" palette={palette} title={t("settings.storagePolicy")}>
-        <div className="drive-system-usage-grid">
-          {usageRows.map((row) => (
-            <div className="drive-settings-fact" key={row.label}>
-              <span className="drive-settings-label">{row.label}</span>
-              <span className="drive-settings-value icedr-truncate">{row.value}</span>
-            </div>
-          ))}
-        </div>
-        {usageBreakdown ? (
-          <div className="drive-system-breakdown-grid">
-            <UsageBreakdownList items={usageBreakdown.byUser} locale={locale} title={t("settings.usageByUser")} />
-            <UsageBreakdownList items={usageBreakdown.byDirectory} locale={locale} title={t("settings.usageByDirectory")} />
-            <UsageBreakdownList items={usageBreakdown.byType} locale={locale} title={t("settings.usageByType")} />
-            <UsageTrendSummary locale={locale} points={usageBreakdown.trend} title={t("settings.usageTrend")} />
-          </div>
         ) : null}
+        {section === "storage" ? (
+          <StoragePolicySection
+            defaultUserQuotaDraft={defaultUserQuotaDraft}
+            locale={locale}
+            onDefaultUserQuotaUnitChange={setDefaultUserQuotaUnit}
+            onDefaultUserQuotaValueChange={setDefaultUserQuotaDraft}
+            onQuotaUnitChange={setQuotaUnit}
+            onQuotaValueChange={setQuotaDraft}
+            onRefreshUsage={refreshUsage}
+            onSaveQuota={saveQuota}
+            onSaveUserQuota={saveUserQuota}
+            onUserQuotaDraftChange={setUserQuotaDraft}
+            onUserQuotaEmailChange={setUserQuotaEmail}
+            onUserQuotaUnitChange={setUserQuotaUnit}
+            palette={palette}
+            quotaDraft={quotaDraft}
+            savingKey={savingKey}
+            storagePolicyRows={storagePolicyRows}
+            usageBreakdown={usageBreakdown}
+            usageRows={usageRows}
+            userQuotaDraft={userQuotaDraft}
+            userQuotaEmail={userQuotaEmail}
+            userQuotaUnit={userQuotaUnit}
+          />
+        ) : null}
+        {section === "lifecycle" ? (
+          <LifecyclePolicySection
+            locale={locale}
+            onPolicyChange={setPolicy}
+            onSavePolicy={savePolicy}
+            palette={palette}
+            policy={policy}
+            savingKey={savingKey}
+          />
+        ) : null}
+      </div>
+
+      <aside className="drive-system-settings-side">
+        <SettingsSideCard icon="shield" title={t("settings.systemStatus")}>
+          <SettingsSideRow label={t("settings.runningStatus")} value={systemOverview ? t("admin.running") : "--"} tone={systemOverview ? "secure" : undefined} />
+          <SettingsSideRow label={t("settings.storageUsagePercent")} value={storagePhysicalPercentLabel} />
+          <SettingsSideRow label={t("settings.storageSpace")} value={storageSpaceLabel} />
+          <SettingsSideRow label={t("settings.usedStorage")} value={usedStorageLabel} />
+          <SettingsSideRow label={t("settings.storageProvider")} value={storageProviderLabel} />
+          <SettingsSideRow label={t("settings.storageAvailableSpace")} value={storageSettings.physicalAvailableBytes !== null ? formatFileSize(storageSettings.physicalAvailableBytes, locale) : "--"} />
+          <SettingsSideRow label={t("settings.capacityCheckedAt")} value={formatSystemDate(storageSettings.physicalCapacityCheckedAt, locale)} />
+        </SettingsSideCard>
+        <SettingsSideCard icon="info" title={t("settings.systemInformation")}>
+          <SettingsSideRow label={t("settings.appVersion")} value={systemOverview?.appVersion || "--"} />
+          <SettingsSideRow label={t("settings.runtime")} value={systemOverview?.runtime || "--"} />
+          <SettingsSideRow label={t("settings.nodeVersion")} value={systemOverview?.nodeVersion || "--"} />
+          <SettingsSideRow label={t("settings.systemArchitecture")} value={systemOverview?.architecture ?? "--"} />
+          <SettingsSideRow label={t("settings.operatingSystem")} value={systemOverview ? formatSystemOperatingSystem(systemOverview) : "--"} />
+          <SettingsSideRow label={t("settings.hostUptime")} value={systemOverview ? formatSystemDuration(systemOverview.osUptimeSeconds, t) : "--"} />
+          <SettingsSideRow label={t("settings.driveUptime")} value={systemOverview ? formatSystemDuration(systemOverview.processUptimeSeconds, t) : "--"} />
+          <SettingsSideRow label={t("settings.serviceStartedAt")} value={systemOverview ? formatSystemDate(systemOverview.serviceStartedAt, locale) : "--"} />
+        </SettingsSideCard>
+      </aside>
+    </section>
+  );
+}
+
+function StoragePolicySection({
+  defaultUserQuotaDraft,
+  locale,
+  onDefaultUserQuotaUnitChange,
+  onDefaultUserQuotaValueChange,
+  onQuotaUnitChange,
+  onQuotaValueChange,
+  onRefreshUsage,
+  onSaveQuota,
+  onSaveUserQuota,
+  onUserQuotaDraftChange,
+  onUserQuotaEmailChange,
+  onUserQuotaUnitChange,
+  palette,
+  quotaDraft,
+  savingKey,
+  storagePolicyRows,
+  usageBreakdown,
+  usageRows,
+  userQuotaDraft,
+  userQuotaEmail,
+  userQuotaUnit,
+}: {
+  defaultUserQuotaDraft: QuotaDraftState;
+  locale: Locale;
+  onDefaultUserQuotaUnitChange: (unit: QuotaUnit) => void;
+  onDefaultUserQuotaValueChange: (value: string) => void;
+  onQuotaUnitChange: (unit: QuotaUnit) => void;
+  onQuotaValueChange: (value: string) => void;
+  onRefreshUsage: () => void;
+  onSaveQuota: () => void;
+  onSaveUserQuota: () => void;
+  onUserQuotaDraftChange: (value: string) => void;
+  onUserQuotaEmailChange: (value: string) => void;
+  onUserQuotaUnitChange: (unit: QuotaUnit) => void;
+  palette: Palette;
+  quotaDraft: QuotaDraftState;
+  savingKey: string | null;
+  storagePolicyRows: Array<{ label: string; value: string }>;
+  usageBreakdown: StorageUsageBreakdown | null;
+  usageRows: Array<{ label: string; value: string }>;
+  userQuotaDraft: string;
+  userQuotaEmail: string;
+  userQuotaUnit: QuotaUnit;
+}) {
+  const t = useTranslations();
+  return (
+    <SettingsBlock
+      actions={(
+        <BlockActions>
+          <ToolButton isPending={savingKey === "usage"} label={t("app.refresh")} palette={palette} onClick={onRefreshUsage} visual="surface">
+            <LocalIcon name="refresh" size={17} />
+          </ToolButton>
+          <ToolButton isPending={savingKey === "user-quota"} label={t("settings.userQuota")} palette={palette} onClick={onSaveUserQuota} visual="surface">
+            <LocalIcon name="user_check" size={17} />
+          </ToolButton>
+          <ToolButton isPending={savingKey === "quota"} label={t("admin.save")} palette={palette} onClick={onSaveQuota} visual="surface">
+            <LocalIcon name="tick" size={17} />
+          </ToolButton>
+        </BlockActions>
+      )}
+      id="storage-policy"
+      icon="file"
+      palette={palette}
+      subtitle={t("settings.storagePolicySubtitle")}
+      title={t("settings.storagePolicy")}
+    >
+      <div className="drive-system-control-grid drive-system-quota-grid">
         <QuotaField
-          label={t("settings.workspaceQuota")}
-          onUnitChange={setQuotaUnit}
-          onValueChange={setQuotaDraft}
+          label={t("settings.storagePolicyQuota")}
+          onUnitChange={onQuotaUnitChange}
+          onValueChange={onQuotaValueChange}
           palette={palette}
           unit={quotaDraft.unit}
           value={quotaDraft.value}
         />
         <QuotaField
           label={t("settings.defaultUserQuota")}
-          onUnitChange={setDefaultUserQuotaUnit}
-          onValueChange={setDefaultUserQuotaDraft}
+          onUnitChange={onDefaultUserQuotaUnitChange}
+          onValueChange={onDefaultUserQuotaValueChange}
           palette={palette}
           unit={defaultUserQuotaDraft.unit}
           value={defaultUserQuotaDraft.value}
@@ -310,81 +410,132 @@ export function DriveSystemSettings({
             inputMode="email"
             palette={palette}
             value={userQuotaEmail}
-            onChange={(event) => setUserQuotaEmail(event.target.value)}
+            onChange={(event) => onUserQuotaEmailChange(event.target.value)}
           />
         </SettingsField>
         <QuotaField
           label={t("settings.userQuota")}
-          onUnitChange={setUserQuotaUnit}
-          onValueChange={setUserQuotaDraft}
+          onUnitChange={onUserQuotaUnitChange}
+          onValueChange={onUserQuotaDraftChange}
           palette={palette}
           unit={userQuotaUnit}
           value={userQuotaDraft}
         />
+      </div>
+      <div className="drive-system-policy-strip">
+        {storagePolicyRows.map((row) => (
+          <SettingsFact key={row.label} label={row.label} value={row.value} />
+        ))}
+      </div>
+      <div className="drive-system-usage-grid">
+        {usageRows.map((row) => (
+          <div className="drive-settings-fact" key={row.label}>
+            <span className="drive-settings-label">{row.label}</span>
+            <span className="drive-settings-value icedr-truncate">{row.value}</span>
+          </div>
+        ))}
+      </div>
+      {usageBreakdown ? (
+        <div className="drive-system-breakdown-grid">
+          <UsageBreakdownList items={usageBreakdown.byUser} locale={locale} title={t("settings.usageByUser")} />
+          <UsageBreakdownList items={usageBreakdown.byDirectory} locale={locale} title={t("settings.usageByDirectory")} />
+          <UsageBreakdownList items={usageBreakdown.byType} locale={locale} title={t("settings.usageByType")} />
+          <UsageTrendSummary locale={locale} palette={palette} points={usageBreakdown.trend} title={t("settings.usageTrend")} />
+        </div>
+      ) : null}
+    </SettingsBlock>
+  );
+}
+
+function LifecyclePolicySection({
+  locale,
+  onPolicyChange,
+  onSavePolicy,
+  palette,
+  policy,
+  savingKey,
+}: {
+  locale: Locale;
+  onPolicyChange: Dispatch<SetStateAction<FilePolicySettings>>;
+  onSavePolicy: () => void;
+  palette: Palette;
+  policy: FilePolicySettings;
+  savingKey: string | null;
+}) {
+  const t = useTranslations();
+  return (
+    <SettingsBlock
+      actions={(
         <BlockActions>
-          <ToolButton isPending={savingKey === "usage"} label={t("app.refresh")} palette={palette} onClick={refreshUsage} visual="surface">
-            <LocalIcon name="refresh" size={17} />
-          </ToolButton>
-          <ToolButton isPending={savingKey === "user-quota"} label={t("settings.userQuota")} palette={palette} onClick={saveUserQuota} visual="surface">
-            <LocalIcon name="user_check" size={17} />
-          </ToolButton>
-          <ToolButton isPending={savingKey === "quota"} label={t("admin.save")} palette={palette} onClick={saveQuota} visual="surface">
+          <ToolButton isPending={savingKey === "policy"} label={t("admin.save")} palette={palette} onClick={onSavePolicy} visual="surface">
             <LocalIcon name="tick" size={17} />
           </ToolButton>
         </BlockActions>
-      </SettingsBlock>
-
-      <SettingsBlock icon="trash" palette={palette} title={t("settings.lifecyclePolicy")}>
+      )}
+      id="lifecycle-policy"
+      icon="trash"
+      palette={palette}
+      subtitle={t("settings.lifecyclePolicySubtitle")}
+      title={t("settings.lifecyclePolicy")}
+    >
+      <div className="drive-system-control-grid">
         <SettingsSelectRow
           label={t("settings.trashRetentionDays")}
-          onChange={(value) => setPolicy((current) => ({ ...current, trashRetentionDays: Number(value) }))}
+          onChange={(value) => onPolicyChange((current) => ({ ...current, trashRetentionDays: Number(value) }))}
           options={["7", "30", "90", "180", "365"]}
           palette={palette}
           value={String(policy.trashRetentionDays)}
         />
         <SettingsSelectRow
           label={t("settings.versionRetentionCount")}
-          onChange={(value) => setPolicy((current) => ({ ...current, versionRetentionCount: Number(value) }))}
+          onChange={(value) => onPolicyChange((current) => ({ ...current, versionRetentionCount: Number(value) }))}
           options={["5", "10", "20", "50", "100"]}
           palette={palette}
           value={String(policy.versionRetentionCount)}
         />
         <SettingsSelectRow
           label={t("settings.versionRetentionDays")}
-          onChange={(value) => setPolicy((current) => ({ ...current, versionRetentionDays: Number(value) }))}
+          onChange={(value) => onPolicyChange((current) => ({ ...current, versionRetentionDays: Number(value) }))}
           options={["30", "90", "180", "365", "730"]}
           palette={palette}
           value={String(policy.versionRetentionDays)}
         />
-        <div className="drive-system-fact-grid">
-          <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(policy.updatedAt, locale)} />
-        </div>
-        <BlockActions>
-          <ToolButton isPending={savingKey === "policy"} label={t("admin.save")} palette={palette} onClick={savePolicy} visual="surface">
-            <LocalIcon name="tick" size={17} />
-          </ToolButton>
-        </BlockActions>
-      </SettingsBlock>
-    </section>
+      </div>
+      <div className="drive-system-fact-grid">
+        <SettingsFact label={t("settings.lastUpdated")} value={formatSystemDate(policy.updatedAt, locale)} />
+      </div>
+    </SettingsBlock>
   );
 }
 
 function SettingsBlock({
+  actions,
   children,
   icon,
+  id,
   palette,
+  subtitle,
   title,
 }: {
+  actions?: ReactNode;
   children: ReactNode;
   icon: ComponentProps<typeof LocalIcon>["name"];
+  id: string;
   palette: Palette;
+  subtitle?: string;
   title: string;
 }) {
   return (
-    <section className="drive-system-settings-block">
+    <section className="drive-system-settings-block" id={id}>
       <header className="drive-system-settings-block-header">
-        <LocalIcon name={icon} size={17} color={palette.primaryHover} />
-        <span>{title}</span>
+        <span className="drive-system-settings-block-title">
+          <LocalIcon name={icon} size={17} color={palette.primaryHover} />
+          <span className="drive-system-settings-block-heading">
+            <span>{title}</span>
+            {subtitle ? <small>{subtitle}</small> : null}
+          </span>
+        </span>
+        {actions}
       </header>
       {children}
     </section>
@@ -477,6 +628,43 @@ function SettingsFact({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SettingsSideCard({
+  children,
+  icon,
+  title,
+}: {
+  children: ReactNode;
+  icon: ComponentProps<typeof LocalIcon>["name"];
+  title: string;
+}) {
+  return (
+    <section className="drive-system-side-card">
+      <header className="drive-system-side-card-header">
+        <LocalIcon name={icon} size={16} />
+        <span className="icedr-truncate">{title}</span>
+      </header>
+      <div className="drive-system-side-card-body">{children}</div>
+    </section>
+  );
+}
+
+function SettingsSideRow({
+  label,
+  tone,
+  value,
+}: {
+  label: string;
+  tone?: "secure";
+  value: string;
+}) {
+  return (
+    <div className="drive-system-side-row">
+      <span>{label}</span>
+      <span data-tone={tone} className="icedr-truncate">{value}</span>
+    </div>
+  );
+}
+
 function UsageBreakdownList({
   items,
   locale,
@@ -502,18 +690,27 @@ function UsageBreakdownList({
 
 function UsageTrendSummary({
   locale,
+  palette,
   points,
   title,
 }: {
   locale: Locale;
+  palette: Palette;
   points: Array<{ bytes: number; count: number; date: string }>;
   title: string;
 }) {
+  const t = useTranslations();
   const totalBytes = points.reduce((sum, point) => sum + point.bytes, 0);
   const totalCount = points.reduce((sum, point) => sum + point.count, 0);
+  const trendOption = useMemo(
+    () => buildSystemUsageTrendOption(points, palette, locale, t),
+    [locale, palette, points, t],
+  );
+
   return (
-    <div className="drive-system-breakdown-panel">
+    <div className="drive-system-breakdown-panel drive-system-trend-panel">
       <span>{title}</span>
+      <EChart ariaLabel={title} className="drive-system-trend-echart" option={trendOption} />
       <div>
         <span>{points[0]?.date ?? "--"}</span>
         <span>{points.at(-1)?.date ?? "--"}</span>
@@ -524,6 +721,87 @@ function UsageTrendSummary({
       </div>
     </div>
   );
+}
+
+function buildSystemUsageTrendOption(
+  points: Array<{ bytes: number; count: number; date: string }>,
+  palette: Palette,
+  locale: Locale,
+  t: ReturnType<typeof useTranslations>,
+): EChartOption {
+  const dateFormatter = new Intl.DateTimeFormat(getIntlLocale(locale), { month: "2-digit", day: "2-digit" });
+  const normalizedPoints = points.length > 0 ? points : [{ bytes: 0, count: 0, date: "--" }];
+  const labels = normalizedPoints.map((point) => {
+    const date = new Date(`${point.date}T00:00:00.000Z`);
+    return Number.isNaN(date.getTime()) ? point.date : dateFormatter.format(date);
+  });
+
+  return {
+    animationDuration: 460,
+    animationEasing: "cubicOut",
+    backgroundColor: "transparent",
+    grid: { bottom: 18, containLabel: false, left: 8, right: 8, top: 10 },
+    series: [
+      {
+        areaStyle: {
+          color: {
+            colorStops: [
+              { color: "rgba(94, 106, 210, 0.18)", offset: 0 },
+              { color: "rgba(94, 106, 210, 0.02)", offset: 1 },
+            ],
+            type: "linear",
+            x: 0,
+            x2: 0,
+            y: 0,
+            y2: 1,
+          },
+        },
+        data: normalizedPoints.map((point) => ({
+          count: point.count,
+          date: point.date,
+          value: point.bytes,
+        })),
+        itemStyle: { color: palette.primary },
+        lineStyle: { color: palette.primary, width: 2.5 },
+        showSymbol: true,
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 6,
+        type: "line",
+      },
+    ],
+    tooltip: {
+      backgroundColor: palette.surface1,
+      borderColor: palette.hairline,
+      borderWidth: 1,
+      confine: true,
+      formatter: (params: unknown) => {
+        const item = Array.isArray(params) ? params[0] : params;
+        const data = typeof item === "object" && item && "data" in item
+          ? (item as { data?: { count?: number; date?: string; value?: number } }).data
+          : undefined;
+        const bytes = data?.value ?? 0;
+        const count = data?.count ?? 0;
+        return `${data?.date ?? "--"}<br/>${formatFileSize(bytes, locale)}<br/>${t("settings.fileCount")}: ${count}`;
+      },
+      textStyle: { color: palette.ink, fontSize: 12, fontWeight: 700 },
+      trigger: "axis",
+    },
+    xAxis: {
+      axisLabel: { color: palette.subtle, fontSize: 10, fontWeight: 700 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      data: labels,
+      splitLine: { show: false },
+      type: "category",
+    },
+    yAxis: {
+      axisLabel: { show: false },
+      min: 0,
+      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.14)" } },
+      type: "value",
+    },
+  };
 }
 
 function BlockActions({ children }: { children: ReactNode }) {

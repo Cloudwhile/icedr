@@ -1,12 +1,17 @@
 node_modules
 .next
 dist
+build
 coverage
+docs/.vitepress/.temp/
+docs/.vitepress/cache/
 .env
 .env.local
 *.log
 Dockerfile.local
-backend/src/generated/prisma/
+backend/src/generated/
+database/schema.sqlite.prisma
+*temp*/
 
 .pnpm-store/
 
@@ -22,3 +27,7 @@ skills*
 # private settings
 *.drawio
 data/
+designpics/
+test*/
+frontend/visual-artifacts/
+private-docs/

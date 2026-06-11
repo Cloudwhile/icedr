@@ -22,7 +22,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, createWriteStream, type Dirent } from 'fs';
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  statfs,
+  writeFile,
+} from 'fs/promises';
 import { dirname, relative, resolve, sep } from 'path';
 import type { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -61,6 +69,15 @@ type ObjectStorageConnectionSettings = Pick<
   | 'forcePathStyle'
 >;
 
+type StoragePhysicalCapacity = {
+  availableBytes: number | null;
+  capacityBytes: number | null;
+  checkedAt: string;
+  known: boolean;
+  quotaLimitBytes: number | null;
+  reason: string | null;
+};
+
 @Injectable()
 export class StorageService {
   private readonly signer: Signer;
@@ -92,6 +109,7 @@ export class StorageService {
 
   async getProfile() {
     const settings = await this.getResolvedSettings();
+    const physicalCapacity = await this.getPhysicalCapacity(settings);
     return {
       provider: 'MinIO / S3 / R2',
       bucket: settings.bucket,
@@ -100,11 +118,18 @@ export class StorageService {
       forcePathStyle: settings.forcePathStyle,
       configured: this.isConfigured(settings),
       localRoot: this.getLocalRoot(),
+      physicalAvailableBytes: physicalCapacity.availableBytes,
+      physicalCapacityBytes: physicalCapacity.capacityBytes,
+      physicalCapacityKnown: physicalCapacity.known,
     };
   }
 
   async getSettings(): Promise<StorageSettingsResponse> {
-    return this.withProfileState(await this.getResolvedSettings());
+    const settings = await this.getResolvedSettings();
+    return this.withProfileState(
+      settings,
+      await this.getPhysicalCapacity(settings),
+    );
   }
 
   async updateSettings(
@@ -120,13 +145,14 @@ export class StorageService {
         'Object storage must be configured before enabling distributed storage',
       );
     }
+    await this.assertStoragePolicyQuotaWithinCapacity(nextDraft);
     const next = await this.settingsRepository.update(nextDraft);
 
     if (switchingToDistributed) {
       await this.purgeLocalStorage();
     }
 
-    return this.withProfileState(next);
+    return this.withProfileState(next, await this.getPhysicalCapacity(next));
   }
 
   async testSettings(
@@ -194,10 +220,15 @@ export class StorageService {
     const trashBytes = Number(trashStats._sum.sizeBytes ?? 0);
     const versionBytes = Number(versionStats._sum.sizeBytes ?? 0);
     const usedBytes = activeBytes + trashBytes + versionBytes;
-    const quotaBytes =
+    const workspaceQuotaBytes =
       workspace?.quotaBytes !== null && workspace?.quotaBytes !== undefined
         ? Number(workspace.quotaBytes)
-        : (this.config.get<number | null>('storage.quotaBytes') ?? null);
+        : null;
+    const storagePolicyQuotaBytes = await this.getConfiguredQuotaBytes();
+    const quotaBytes = this.resolveEffectiveQuotaBytes(
+      workspaceQuotaBytes,
+      storagePolicyQuotaBytes,
+    );
     return {
       workspaceId,
       activeBytes,
@@ -210,6 +241,13 @@ export class StorageService {
       fileCount: activeStats._count._all,
       folderCount,
       quotaBytes,
+      quotaSource:
+        quotaBytes === null
+          ? 'unlimited'
+          : workspaceQuotaBytes !== null && quotaBytes === workspaceQuotaBytes
+            ? 'workspace'
+            : 'policy',
+      storagePolicyQuotaBytes,
       trashBytes,
       trashFileCount: trashStats._count._all,
       usagePercent:
@@ -220,6 +258,10 @@ export class StorageService {
       versionCount: versionStats._count._all,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  async getConfiguredQuotaBytes() {
+    return (await this.getResolvedSettings()).quotaBytes;
   }
 
   async getUsageBreakdown(
@@ -252,20 +294,7 @@ export class StorageService {
         _count: { _all: true },
         _sum: { sizeBytes: true },
       }),
-      this.prisma.$queryRaw<
-        Array<{ bytes: bigint | null; count: bigint; date: string }>
-      >`
-        select
-          to_char(created_at, 'YYYY-MM-DD') as date,
-          coalesce(sum(size_bytes), 0)::bigint as bytes,
-          count(*)::bigint as count
-        from file_nodes
-        where workspace_id = ${workspaceId}
-          and archived_at is null
-          and size_bytes is not null
-          and created_at >= ${since}
-        group by to_char(created_at, 'YYYY-MM-DD')
-      `,
+      this.getUsageTrendRows(workspaceId, since),
     ]);
     const folderPathById = await this.fetchFolderPathMap(
       directoryRows
@@ -341,6 +370,14 @@ export class StorageService {
   }
 
   async updateWorkspaceQuota(dto: UpdateWorkspaceQuotaDto) {
+    await this.assertQuotaWithinPolicy(
+      dto.quotaBytes,
+      'Workspace quota exceeds the storage policy quota',
+    );
+    await this.assertQuotaWithinPolicy(
+      dto.defaultUserQuotaBytes,
+      'Default user quota exceeds the storage policy quota',
+    );
     await this.prisma.workspace.update({
       where: { id: dto.workspaceId },
       data: {
@@ -384,6 +421,10 @@ export class StorageService {
         throw new BadRequestException('User id and email do not match');
       }
     }
+    await this.assertQuotaWithinPolicy(
+      dto.quotaBytes,
+      'User quota exceeds the storage policy quota',
+    );
     const userWhere = userId ? { id: userId } : { email: email as string };
     const user = await this.prisma.user.update({
       where: userWhere,
@@ -1003,15 +1044,26 @@ export class StorageService {
     }
   }
 
-  private withProfileState(settings: StorageSettings): StorageSettingsResponse {
+  private withProfileState(
+    settings: StorageSettings,
+    physicalCapacity: StoragePhysicalCapacity,
+  ): StorageSettingsResponse {
     return {
       distributedStorageEnabled: settings.distributedStorageEnabled,
+      quotaBytes: settings.quotaBytes,
       endpoint: settings.endpoint,
       region: settings.region,
       bucket: settings.bucket,
       accessKeyId: settings.accessKeyId,
       forcePathStyle: settings.forcePathStyle,
       updatedAt: settings.updatedAt,
+      physicalAvailableBytes: physicalCapacity.availableBytes,
+      physicalCapacityBytes: physicalCapacity.capacityBytes,
+      physicalCapacityCheckedAt: physicalCapacity.checkedAt,
+      physicalCapacityKnown: physicalCapacity.known,
+      physicalCapacityReason: physicalCapacity.reason,
+      physicalQuotaLimitBytes: physicalCapacity.quotaLimitBytes,
+      storageProvider: settings.distributedStorageEnabled ? 'object' : 'local',
       objectStorageConfigured: this.isConfigured(settings),
       secretAccessKeyConfigured: Boolean(settings.secretAccessKey.trim()),
       localRoot: this.getLocalRoot(),
@@ -1048,6 +1100,8 @@ export class StorageService {
           ? current.secretAccessKey
           : dto.secretAccessKey,
       forcePathStyle: dto.forcePathStyle ?? current.forcePathStyle,
+      quotaBytes:
+        dto.quotaBytes === undefined ? current.quotaBytes : dto.quotaBytes,
       updatedAt: new Date().toISOString(),
     });
   }
@@ -1063,12 +1117,14 @@ export class StorageService {
       secretAccessKey:
         settings.secretAccessKey || configDefaults.secretAccessKey,
       forcePathStyle: settings.forcePathStyle ?? configDefaults.forcePathStyle,
+      quotaBytes: settings.quotaBytes,
     });
   }
 
   private configStorageSettings(): StorageSettings {
     return this.normalizeSettings({
       distributedStorageEnabled: true,
+      quotaBytes: this.config.get<number | null>('storage.quotaBytes') ?? null,
       endpoint: this.config.get<string>('storage.endpoint') ?? '',
       region: this.config.get<string>('storage.region') ?? 'us-east-1',
       bucket: this.config.get<string>('storage.bucket') ?? '',
@@ -1083,6 +1139,7 @@ export class StorageService {
   private normalizeSettings(settings: StorageSettings): StorageSettings {
     return {
       ...settings,
+      quotaBytes: this.normalizeQuotaBytes(settings.quotaBytes),
       endpoint: settings.endpoint.trim(),
       region: settings.region.trim() || 'us-east-1',
       bucket: settings.bucket.trim(),
@@ -1091,8 +1148,242 @@ export class StorageService {
     };
   }
 
+  private normalizeQuotaBytes(quotaBytes: number | null | undefined) {
+    if (quotaBytes === null || quotaBytes === undefined) return null;
+    if (!Number.isFinite(quotaBytes) || quotaBytes < 0) {
+      throw new BadRequestException('Storage quota must be a positive number');
+    }
+    return Math.trunc(quotaBytes);
+  }
+
   private getLocalRoot() {
     return this.config.get<string>('storage.localRoot') ?? 'data/local-files';
+  }
+
+  private async getPhysicalCapacity(
+    settings: StorageSettings,
+  ): Promise<StoragePhysicalCapacity> {
+    const checkedAt = new Date().toISOString();
+    if (settings.distributedStorageEnabled) {
+      return (
+        (await this.getObjectStoragePhysicalCapacity(checkedAt)) ?? {
+          availableBytes: null,
+          capacityBytes: null,
+          checkedAt,
+          known: false,
+          quotaLimitBytes: null,
+          reason: 'object-storage-capacity-unavailable',
+        }
+      );
+    }
+
+    try {
+      const root = await this.resolveExistingCapacityPath(
+        resolve(this.getLocalRoot()),
+      );
+      const stats = await statfs(root);
+      const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+      const capacityBytes = Number(stats.blocks) * Number(stats.bsize);
+      const usedBytes = await this.getTotalUsedBytes();
+      return {
+        availableBytes,
+        capacityBytes,
+        checkedAt,
+        known:
+          Number.isFinite(availableBytes) && Number.isFinite(capacityBytes),
+        quotaLimitBytes: Number.isFinite(availableBytes)
+          ? usedBytes + availableBytes
+          : null,
+        reason: null,
+      };
+    } catch {
+      return {
+        availableBytes: null,
+        capacityBytes: null,
+        checkedAt,
+        known: false,
+        quotaLimitBytes: null,
+        reason: 'local-capacity-unavailable',
+      };
+    }
+  }
+
+  private async getObjectStoragePhysicalCapacity(
+    checkedAt: string,
+  ): Promise<StoragePhysicalCapacity | null> {
+    const metricsEndpoint = this.getMetricsEndpoint();
+    if (!metricsEndpoint) return null;
+
+    try {
+      const metrics = await this.fetchObjectStorageMetrics(metricsEndpoint);
+      const capacityBytes = this.readFirstPrometheusMetric(metrics, [
+        'minio_cluster_capacity_usable_total_bytes',
+        'minio_cluster_health_capacity_usable_total_bytes',
+        'minio_cluster_capacity_raw_total_bytes',
+        'minio_cluster_health_capacity_raw_total_bytes',
+      ]);
+      const availableBytes = this.readFirstPrometheusMetric(metrics, [
+        'minio_cluster_capacity_usable_free_bytes',
+        'minio_cluster_health_capacity_usable_free_bytes',
+        'minio_cluster_capacity_raw_free_bytes',
+        'minio_cluster_health_capacity_raw_free_bytes',
+      ]);
+      if (
+        capacityBytes === null ||
+        availableBytes === null ||
+        capacityBytes <= 0
+      ) {
+        return null;
+      }
+
+      const boundedAvailableBytes = Math.min(
+        Math.max(0, availableBytes),
+        capacityBytes,
+      );
+      return {
+        availableBytes: boundedAvailableBytes,
+        capacityBytes,
+        checkedAt,
+        known: true,
+        quotaLimitBytes: capacityBytes,
+        reason: null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private getMetricsEndpoint() {
+    const metricsEndpoint = this.config
+      .get<string>('storage.metricsEndpoint')
+      ?.trim();
+    if (!metricsEndpoint) return null;
+
+    try {
+      return new URL(metricsEndpoint).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchObjectStorageMetrics(metricsEndpoint: string) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    const metricsBearerToken = this.config
+      .get<string>('storage.metricsBearerToken')
+      ?.trim();
+
+    try {
+      const response = await fetch(metricsEndpoint, {
+        headers: {
+          Accept: 'text/plain',
+          ...(metricsBearerToken
+            ? { Authorization: `Bearer ${metricsBearerToken}` }
+            : {}),
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) return '';
+      return response.text();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private readFirstPrometheusMetric(metrics: string, names: string[]) {
+    for (const name of names) {
+      const value = this.readPrometheusMetric(metrics, name);
+      if (value !== null) return value;
+    }
+    return null;
+  }
+
+  private readPrometheusMetric(metrics: string, name: string) {
+    let total = 0;
+    let matched = false;
+    for (const line of metrics.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (
+        !trimmed ||
+        trimmed.startsWith('#') ||
+        !(trimmed.startsWith(`${name} `) || trimmed.startsWith(`${name}{`))
+      ) {
+        continue;
+      }
+      const value = Number(trimmed.split(/\s+/).at(-1));
+      if (!Number.isFinite(value) || value < 0) continue;
+      total += value;
+      matched = true;
+    }
+    return matched ? total : null;
+  }
+
+  private async resolveExistingCapacityPath(path: string): Promise<string> {
+    try {
+      const pathStat = await stat(path);
+      if (pathStat.isDirectory()) return path;
+    } catch {
+      const parent = dirname(path);
+      if (parent !== path) return this.resolveExistingCapacityPath(parent);
+    }
+    return path;
+  }
+
+  private async getTotalUsedBytes() {
+    const [fileStats, versionStats] = await Promise.all([
+      this.prisma.fileNode.aggregate({
+        where: { sizeBytes: { not: null } },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.fileVersion.aggregate({
+        _sum: { sizeBytes: true },
+      }),
+    ]);
+    return (
+      Number(fileStats._sum.sizeBytes ?? 0) +
+      Number(versionStats._sum.sizeBytes ?? 0)
+    );
+  }
+
+  private async assertStoragePolicyQuotaWithinCapacity(
+    settings: StorageSettings,
+  ) {
+    if (settings.quotaBytes === null) return;
+    const physicalCapacity = await this.getPhysicalCapacity(settings);
+    if (!physicalCapacity.known || physicalCapacity.quotaLimitBytes === null) {
+      return;
+    }
+    if (settings.quotaBytes > physicalCapacity.quotaLimitBytes) {
+      throw new BadRequestException(
+        'Storage policy quota exceeds physical storage capacity',
+      );
+    }
+  }
+
+  private async assertQuotaWithinPolicy(
+    quotaBytes: number | null | undefined,
+    message: string,
+  ) {
+    if (quotaBytes === null || quotaBytes === undefined) return;
+    const storagePolicyQuotaBytes = await this.getConfiguredQuotaBytes();
+    if (
+      storagePolicyQuotaBytes !== null &&
+      quotaBytes > storagePolicyQuotaBytes
+    ) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  private resolveEffectiveQuotaBytes(
+    workspaceQuotaBytes: number | null,
+    storagePolicyQuotaBytes: number | null,
+  ) {
+    const candidates = [workspaceQuotaBytes, storagePolicyQuotaBytes].filter(
+      (quotaBytes): quotaBytes is number =>
+        quotaBytes !== null && quotaBytes > 0,
+    );
+    if (candidates.length === 0) return null;
+    return Math.min(...candidates);
   }
 
   private getPublicObjectEndpoint() {
@@ -1251,6 +1542,44 @@ export class StorageService {
     current.bytes += bytes;
     current.count += count;
     buckets.set(id, current);
+  }
+
+  private getUsageTrendRows(workspaceId: string, since: Date) {
+    if (this.prisma.isSqlite()) {
+      return this.prisma.$queryRaw<
+        Array<{
+          bytes: bigint | number | null;
+          count: bigint | number;
+          date: string;
+        }>
+      >`
+        select
+          substr(created_at, 1, 10) as date,
+          coalesce(sum(size_bytes), 0) as bytes,
+          count(*) as count
+        from file_nodes
+        where workspace_id = ${workspaceId}
+          and archived_at is null
+          and size_bytes is not null
+          and created_at >= ${since}
+        group by substr(created_at, 1, 10)
+      `;
+    }
+
+    return this.prisma.$queryRaw<
+      Array<{ bytes: bigint | null; count: bigint; date: string }>
+    >`
+      select
+        to_char(created_at, 'YYYY-MM-DD') as date,
+        coalesce(sum(size_bytes), 0)::bigint as bytes,
+        count(*)::bigint as count
+      from file_nodes
+      where workspace_id = ${workspaceId}
+        and archived_at is null
+        and size_bytes is not null
+        and created_at >= ${since}
+      group by to_char(created_at, 'YYYY-MM-DD')
+    `;
   }
 
   private toStorageBuckets(

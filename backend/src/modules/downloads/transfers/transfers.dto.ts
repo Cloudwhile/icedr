@@ -8,7 +8,7 @@ import {
   Min,
 } from 'class-validator';
 
-export type TransferType = 'upload' | 'download';
+export type TransferType = 'upload';
 export type TransferStatus =
   | 'running'
   | 'paused'

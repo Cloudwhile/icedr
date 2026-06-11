@@ -1,0 +1,189 @@
+.drive-upload-hud-presence {
+  bottom: 22px;
+  pointer-events: none;
+  position: fixed;
+  right: 24px;
+  width: min(380px, calc(100vw - 32px));
+  z-index: 170;
+}
+
+.drive-upload-hud {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
+  border: 1px solid #cbd8ed;
+  border-radius: 8px;
+  box-shadow: 0 22px 62px rgba(35, 56, 94, 0.24), 0 0 0 1px rgba(79, 128, 255, 0.08), 0 1px 2px rgba(15, 23, 42, 0.08);
+  color: #111827;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 12px;
+  pointer-events: auto;
+  position: relative;
+  transition: border-color 160ms var(--drive-ui-ease), box-shadow 180ms var(--drive-ui-ease), transform 180ms var(--drive-ui-ease);
+}
+
+.drive-upload-hud::before {
+  background: linear-gradient(180deg, #4f80ff 0%, #5e6ad2 100%);
+  bottom: 0;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 3px;
+}
+
+.drive-upload-hud:hover {
+  border-color: #c7d4ea;
+  box-shadow: 0 22px 56px rgba(35, 56, 94, 0.22), 0 1px 2px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.drive-upload-hud:active {
+  transform: scale(0.99);
+}
+
+.drive-upload-hud:focus-visible {
+  outline: 2px solid rgba(94, 106, 210, 0.34);
+  outline-offset: 3px;
+}
+
+.drive-upload-hud-topline {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.drive-upload-hud-icon {
+  align-items: center;
+  background: #eef3ff;
+  border: 1px solid #d9e2ff;
+  border-radius: 8px;
+  color: var(--drive-ui-blue-600);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.drive-upload-hud-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-upload-hud-title span:first-child,
+.drive-upload-hud-percent {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 780;
+  line-height: 18px;
+}
+
+.drive-upload-hud-title span:last-child {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.drive-upload-hud-meter {
+  margin-top: 12px;
+}
+
+.drive-upload-hud-meter .progress-bar__track,
+.drive-upload-hud-meter [data-slot="track"] {
+  background: #e8edf5;
+  height: 5px;
+}
+
+.workspace-notification-region {
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  left: 24px;
+  pointer-events: none;
+  position: absolute;
+  width: min(420px, calc(100% - 48px));
+  z-index: 84;
+}
+
+.workspace-notification {
+  --workspace-notification-accent: var(--drive-ui-blue-600);
+  align-items: start;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  box-shadow: 0 18px 46px rgba(35, 56, 94, 0.12), 0 1px 2px rgba(15, 23, 42, 0.045);
+  box-sizing: border-box;
+  color: #111827;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 58px;
+  min-width: 0;
+  padding: 11px 10px 11px 12px;
+  pointer-events: auto;
+}
+
+.workspace-notification[data-tone="success"] {
+  --workspace-notification-accent: var(--drive-ui-success);
+}
+
+.workspace-notification[data-tone="error"] {
+  --workspace-notification-accent: var(--drive-ui-danger);
+}
+
+.workspace-notification[data-tone="warning"] {
+  --workspace-notification-accent: var(--drive-ui-warning);
+}
+
+.workspace-notification[data-tone="info"],
+.workspace-notification[data-tone="neutral"] {
+  --workspace-notification-accent: var(--drive-ui-blue-600);
+}
+
+.workspace-notification-icon {
+  align-items: center;
+  background: color-mix(in srgb, var(--workspace-notification-accent) 10%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--workspace-notification-accent) 18%, #dfe7f2);
+  border-radius: 8px;
+  color: var(--workspace-notification-accent);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.workspace-notification-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.workspace-notification-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-notification-description {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 17px;
+  max-height: 68px;
+  overflow: hidden;
+  white-space: pre-line;
+}
+
+.workspace-notification-close {
+  color: #7b89a2;
+}

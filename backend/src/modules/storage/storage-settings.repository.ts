@@ -7,6 +7,7 @@ const storageSettingsKey = 'global';
 
 export const defaultStorageSettings: StorageSettings = {
   distributedStorageEnabled: true,
+  quotaBytes: null,
   endpoint: '',
   region: 'us-east-1',
   bucket: '',
@@ -32,12 +33,20 @@ export class StorageSettingsRepository implements OnModuleInit {
     return this.update(defaultStorageSettings);
   }
 
+  async initializeQuota(quotaBytes: number | null) {
+    const current = await this.get();
+    if (current.quotaBytes !== null) return current;
+    return this.update({ ...current, quotaBytes });
+  }
+
   async update(settings: StorageSettings): Promise<StorageSettings> {
     const row = await this.prisma.storageSetting.upsert({
       where: { settingKey: storageSettingsKey },
       create: this.toPrismaCreate(settings),
       update: {
         distributedStorageEnabled: settings.distributedStorageEnabled,
+        quotaBytes:
+          settings.quotaBytes === null ? null : BigInt(settings.quotaBytes),
         endpoint: settings.endpoint,
         region: settings.region,
         bucket: settings.bucket,
@@ -62,6 +71,8 @@ export class StorageSettingsRepository implements OnModuleInit {
     return {
       settingKey: storageSettingsKey,
       distributedStorageEnabled: settings.distributedStorageEnabled,
+      quotaBytes:
+        settings.quotaBytes === null ? null : BigInt(settings.quotaBytes),
       endpoint: settings.endpoint,
       region: settings.region,
       bucket: settings.bucket,
@@ -74,6 +85,10 @@ export class StorageSettingsRepository implements OnModuleInit {
   private mapRow(row: StorageSetting): StorageSettings {
     return {
       distributedStorageEnabled: row.distributedStorageEnabled,
+      quotaBytes:
+        row.quotaBytes !== null && row.quotaBytes !== undefined
+          ? Number(row.quotaBytes)
+          : null,
       endpoint: row.endpoint,
       region: row.region,
       bucket: row.bucket,

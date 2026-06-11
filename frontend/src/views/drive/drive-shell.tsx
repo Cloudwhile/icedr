@@ -4,7 +4,7 @@ import { I18nProvider, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { getIntlLocale, palettes, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
 import { getLocaleDocument, getMessagesWithOverrides, parseTslnLocale } from "@/i18n/messages";
-import { fetchPublicTranslationSettings } from "@/lib/drive-api";
+import { defaultPublicSiteSettings, fetchPublicSiteSettings, fetchPublicTranslationSettings, type PublicSiteSettings } from "@/lib/drive-api";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 
 const localeStorageKey = "icedr.ui.locale";
@@ -152,6 +152,7 @@ export type DriveShellState = {
   themePreference: ThemePreference;
   timeZone: string;
   timeZonePreference: string;
+  siteSettings: PublicSiteSettings;
 };
 
 export function LocalizedDriveShell({
@@ -166,13 +167,14 @@ export function LocalizedDriveShell({
   const [systemTimeZone] = useState<string>(resolveSystemTimeZone);
   const [translationOverrides, setTranslationOverrides] = useState<Record<string, Record<string, unknown>>>({});
   const [customLanguageOptions, setCustomLanguageOptions] = useState<LanguageOption[]>([]);
+  const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const themeMode = themePreference === "system" ? systemThemeMode : themePreference;
   const timeZone = timeZonePreference === "system" || !isValidTimeZone(timeZonePreference) ? systemTimeZone : timeZonePreference;
   const palette = palettes[themeMode];
   const languageOptions = useMemo(() => {
     const builtInOptions: LanguageOption[] = [
-      { label: getLocaleDocument("zh").language || "中文-简体", value: "zh" },
-      { label: getLocaleDocument("en").language || "ENGLISH", value: "en" },
+      { label: getLocaleDocument("zh").language || "zh_CN", value: "zh" },
+      { label: getLocaleDocument("en").language || "en_US", value: "en" },
     ];
     const known = new Set(builtInOptions.map((option) => option.value));
     return [
@@ -228,6 +230,20 @@ export function LocalizedDriveShell({
 
   useEffect(() => {
     let cancelled = false;
+    void fetchPublicSiteSettings()
+      .then((settings) => {
+        if (!cancelled) setSiteSettings(settings);
+      })
+      .catch(() => {
+        if (!cancelled) setSiteSettings(defaultPublicSiteSettings);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     void fetchPublicTranslationSettings()
       .then((settings) => {
         if (cancelled) return;
@@ -275,6 +291,7 @@ export function LocalizedDriveShell({
         locale,
         palette,
         setLocale,
+        siteSettings,
         setThemeMode,
         setThemePreference,
         setTimeZonePreference,

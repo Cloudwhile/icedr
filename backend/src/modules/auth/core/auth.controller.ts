@@ -47,13 +47,13 @@ export class AuthController {
   }
 
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  register(@Body() dto: RegisterDto, @Req() request: Request) {
+    return this.authService.register(dto, request);
   }
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() request: Request) {
+    return this.authService.login(dto, request);
   }
 
   @Post('logout')
@@ -85,8 +85,11 @@ export class AuthController {
   }
 
   @Post('password-reset/confirm')
-  confirmPasswordReset(@Body() dto: PasswordResetConfirmDto) {
-    return this.authService.confirmPasswordReset(dto);
+  confirmPasswordReset(
+    @Body() dto: PasswordResetConfirmDto,
+    @Req() request: Request,
+  ) {
+    return this.authService.confirmPasswordReset(dto, request);
   }
 
   @Get('oauth/start')
@@ -108,13 +111,19 @@ export class AuthController {
   }
 
   @Post('oauth/callback')
-  completeFrontendOAuthCallback(@Body() dto: OAuthCallbackDto) {
-    return this.authService.completeFrontendOAuthCallback(dto.callbackUrl);
+  completeFrontendOAuthCallback(
+    @Body() dto: OAuthCallbackDto,
+    @Req() request: Request,
+  ) {
+    return this.authService.completeFrontendOAuthCallback(
+      dto.callbackUrl,
+      request,
+    );
   }
 
   @Post('oauth/exchange')
-  exchangeOAuth(@Body() dto: OAuthExchangeDto) {
-    return this.authService.exchangeOAuthCode(dto);
+  exchangeOAuth(@Body() dto: OAuthExchangeDto, @Req() request: Request) {
+    return this.authService.exchangeOAuthCode(dto, request);
   }
 
   @Post('passkeys/registration-options')
@@ -142,8 +151,9 @@ export class AuthController {
   @Post('passkeys/authentication-verification')
   verifyPasskeyAuthentication(
     @Body() dto: PasskeyAuthenticationVerificationDto,
+    @Req() request: Request,
   ) {
-    return this.authService.verifyPasskeyAuthentication(dto);
+    return this.authService.verifyPasskeyAuthentication(dto, request);
   }
 
   @Get('passkeys')

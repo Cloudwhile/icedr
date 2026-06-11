@@ -43,7 +43,7 @@ export function SegmentedToolGroup<T extends string>({
       selectionMode="single"
       size={size}
       style={{
-        "--segmented-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+        "--segmented-bg": "transparent",
         "--segmented-border": palette.canvas === "#010102" ? palette.hairline : palette.hairlineStrong,
         "--segmented-focus": palette.focusRing,
         "--segmented-separator": "transparent",

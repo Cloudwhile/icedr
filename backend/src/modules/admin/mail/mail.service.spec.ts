@@ -17,7 +17,7 @@ describe('MailService', () => {
     secure: false,
     username: 'mailer',
     password: 'secret',
-    fromName: 'ICEDR',
+    fromName: 'Mail Sender',
     fromEmail: 'noreply@example.com',
     replyTo: '',
     verifiedAt: null,
@@ -48,7 +48,7 @@ describe('MailService', () => {
       ),
       getPublicSiteSettings: jest.fn(() =>
         Promise.resolve({
-          siteName: 'ICEDR',
+          siteName: 'Northstar',
           authLogoDataUrl: null,
         }),
       ),
@@ -77,7 +77,10 @@ describe('MailService', () => {
     expect(sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'admin@example.com',
-        from: { name: 'ICEDR', address: 'noreply@example.com' },
+        from: { name: 'Mail Sender', address: 'noreply@example.com' },
+        subject: 'Northstar SMTP test',
+        text: 'Northstar mail delivery is configured and ready.',
+        html: '<p>Northstar mail delivery is configured and ready.</p>',
       }),
     );
     expect(settingsService.markMailVerified).toHaveBeenCalled();
@@ -98,6 +101,23 @@ describe('MailService', () => {
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
+  it('sends a share access code with the configured site name', async () => {
+    const { service, sendMail } = createService();
+
+    await service.sendShareAccessCode({
+      email: 'reviewer@example.com',
+      code: '123456',
+      expiresAt: new Date(0).toISOString(),
+      shareTitle: 'Roadmap',
+    });
+
+    const message = sendMail.mock.calls[0][0];
+    expect(message.subject).toBe('Your Northstar access code for Roadmap');
+    expect(message.text).toContain('Your Northstar access code is 123456.');
+    expect(message.html).toContain('Your Northstar access code is:');
+    expect(message.html).toContain('123456');
+  });
+
   it('sends an English password reset code email with branded HTML', async () => {
     const { service, sendMail } = createService();
 
@@ -110,7 +130,7 @@ describe('MailService', () => {
     });
 
     const message = sendMail.mock.calls[0][0];
-    expect(message.subject).toBe('ICEDR password reset request');
+    expect(message.subject).toBe('Northstar password reset request');
     expect(message.text).toContain('A1B2C3');
     expect(message.text).toContain('valid for 15 minutes');
     expect(message.text).toContain('Do not share this code with anyone.');
@@ -128,7 +148,7 @@ describe('MailService', () => {
   it('sends a Chinese password reset code email and escapes HTML values', async () => {
     const { service, sendMail, settingsService } = createService();
     settingsService.getPublicSiteSettings.mockResolvedValue({
-      siteName: 'ICEDR <Cloud>',
+      siteName: 'Cloud <Portal>',
       authLogoDataUrl: null,
     });
 
@@ -141,11 +161,11 @@ describe('MailService', () => {
     });
 
     const message = sendMail.mock.calls[0][0];
-    expect(message.subject).toBe('ICEDR <Cloud> 密码重置请求');
+    expect(message.subject).toBe('Cloud <Portal> 密码重置请求');
     expect(message.text).toContain('<A&1>');
     expect(message.text).toContain('15 分钟内有效');
     expect(message.text).toContain('请勿将验证码告诉任何人。');
-    expect(message.html).toContain('ICEDR &lt;Cloud&gt;');
+    expect(message.html).toContain('Cloud &lt;Portal&gt;');
     expect(message.html).toContain('&lt;A&amp;1&gt;');
     expect(message.html).toContain('验证码');
     expect(message.html).toContain('15 分钟');

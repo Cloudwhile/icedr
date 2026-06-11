@@ -260,12 +260,13 @@ model PreviewArtifact {
 }
 
 model FileDownloadIntent {
-  id        String   @id
-  nodeId    String   @map("node_id")
-  filename  String
-  method    String
-  expiresAt DateTime @map("expires_at") @db.Timestamptz
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id            String   @id
+  nodeId        String   @map("node_id")
+  filename      String
+  method        String
+  auditMetadata Json     @default("{}") @map("audit_metadata")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("file_download_intents")
 }
@@ -310,6 +311,7 @@ model UploadSessionPart {
 model StorageSetting {
   settingKey                String   @id @map("setting_key")
   distributedStorageEnabled Boolean  @map("distributed_storage_enabled")
+  quotaBytes                BigInt?  @map("quota_bytes")
   endpoint                  String   @default("")
   region                    String   @default("us-east-1")
   bucket                    String   @default("")
