@@ -1,0 +1,9 @@
+{
+  "comments": "Standalone ICEDR",
+  "companyName": "ICEDR",
+  "copyright": "Copyright (C) 2026 ICEDR",
+  "fileDescription": "ICEDR",
+  "icon": "frontend/public/logo.png",
+  "internalName": "icedr",
+  "productName": "ICEDR"
+}

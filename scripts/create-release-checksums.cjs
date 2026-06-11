@@ -5,6 +5,7 @@ const path = require('node:path');
 const workspaceRoot = path.resolve(__dirname, '..');
 const inputDir = path.resolve(workspaceRoot, readOption('input') || 'release-assets');
 const outputDir = path.resolve(workspaceRoot, readOption('output') || path.join('dist', 'release'));
+const { resolveBinaryMetadata } = require('./binary-metadata.cjs');
 
 if (!existsSync(inputDir)) {
   throw new Error(`Release asset directory does not exist: ${inputDir}`);
@@ -47,6 +48,7 @@ writeFileSync(
     {
       commit: process.env.GITHUB_SHA || '',
       generatedAt: new Date().toISOString(),
+      metadata: resolveBinaryMetadata(),
       releaseTag: process.env.GITHUB_REF_NAME || '',
       runId: process.env.GITHUB_RUN_ID || '',
       files: entries,

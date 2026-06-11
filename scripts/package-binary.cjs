@@ -9,11 +9,13 @@ const backendEntry = path.join(workspaceRoot, 'backend', 'dist', 'main.js');
 const workDir = path.join(workspaceRoot, 'build', 'binary');
 const outputDir = path.join(workspaceRoot, 'dist', 'binaries');
 const rootPackage = require(path.join(workspaceRoot, 'package.json'));
+const { resolveBinaryMetadata } = require('./binary-metadata.cjs');
 const displayVersion = resolveBinaryVersion();
 const version = normalizeNamePart(displayVersion);
 const targetPlatform = normalizeTargetPlatform(
   readOption('platform') || process.env.ICEDR_BINARY_PLATFORM || detectNativePlatform(),
 );
+const binaryMetadata = resolveBinaryMetadata();
 const seaFuse = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 
 main().catch((error) => {
@@ -75,6 +77,7 @@ async function main() {
   }
   await copyFile(process.execPath, binaryPath);
   await makeExecutable(binaryPath);
+  await applyBinaryMetadata(binaryPath, binaryName);
 
   if (process.platform === 'darwin') {
     runOptional('codesign', ['--remove-signature', binaryPath]);
@@ -154,6 +157,66 @@ function bundleBackend(entrySource, bundleFile) {
 function createBinaryName() {
   const extension = targetPlatform.startsWith('windows-') ? '.exe' : '';
   return `icedr_${version}_${targetPlatform}${extension}`;
+}
+
+async function applyBinaryMetadata(binaryPath, binaryName) {
+  if (!targetPlatform.startsWith('windows-')) return;
+
+  const { rcedit } = await import('rcedit');
+  const icon = await resolveWindowsIcon();
+  const versionStrings = {
+    Comments: binaryMetadata.comments,
+    CompanyName: binaryMetadata.companyName,
+    FileDescription: binaryMetadata.fileDescription,
+    FileVersion: displayVersion,
+    InternalName: binaryMetadata.internalName,
+    LegalCopyright: binaryMetadata.copyright,
+    OriginalFilename: binaryName,
+    ProductName: binaryMetadata.productName,
+    ProductVersion: displayVersion,
+  };
+
+  await rcedit(binaryPath, {
+    ...(icon ? { icon } : {}),
+    'file-version': toWindowsVersion(displayVersion),
+    'product-version': toWindowsVersion(displayVersion),
+    'version-string': Object.fromEntries(
+      Object.entries(versionStrings).filter(([, value]) => Boolean(value)),
+    ),
+  });
+}
+
+async function resolveWindowsIcon() {
+  if (!binaryMetadata.icon) return null;
+
+  const iconSource = path.resolve(workspaceRoot, binaryMetadata.icon);
+  if (!existsSync(iconSource)) {
+    throw new Error(`Binary icon does not exist: ${binaryMetadata.icon}`);
+  }
+
+  const extension = path.extname(iconSource).toLowerCase();
+  if (extension === '.ico') return iconSource;
+  if (extension !== '.png') {
+    throw new Error(`Binary icon must be a .ico or .png file: ${binaryMetadata.icon}`);
+  }
+
+  const { default: pngToIco } = await import('png-to-ico');
+  const iconBuffer = await pngToIco(iconSource);
+  const iconPath = path.join(workDir, 'icedr-binary.ico');
+  writeFileSync(iconPath, iconBuffer);
+  return iconPath;
+}
+
+function toWindowsVersion(value) {
+  const [core] = value.split(/[+-]/);
+  const parts = core.split('.').map((part) => Number(part));
+  while (parts.length < 4) parts.push(0);
+  return parts
+    .slice(0, 4)
+    .map((part) =>
+      Number.isInteger(part) && part >= 0 && part <= 65535 ? part : 0,
+    )
+    .join('.');
 }
 
 function normalizeNamePart(value) {
