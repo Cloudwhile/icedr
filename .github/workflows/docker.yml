@@ -22,8 +22,7 @@ jobs:
     env:
       DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      DOCKER_HUB_IMAGE_NAMESPACE: ${{ vars.DOCKER_HUB_NAMESPACE || vars.DOCKERHUB_NAMESPACE || secrets.DOCKER_HUB_USERNAME }}
-      DOCKER_HUB_REPOSITORY: icedr-po
+      DOCKER_HUB_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/icedr-po
 
     steps:
       - name: Checkout
@@ -33,10 +32,6 @@ jobs:
         run: |
           if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_ACCESS_TOKEN" ]; then
             echo "::error::Set DOCKER_HUB_USERNAME and DOCKER_HUB_ACCESS_TOKEN secrets before publishing Docker images."
-            exit 1
-          fi
-          if [ -z "$DOCKER_HUB_IMAGE_NAMESPACE" ]; then
-            echo "::error::Set DOCKER_HUB_NAMESPACE variable or DOCKER_HUB_USERNAME secret for the Docker image namespace."
             exit 1
           fi
 
@@ -56,7 +51,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKER_HUB_IMAGE_NAMESPACE }}/${{ env.DOCKER_HUB_REPOSITORY }}
+          images: ${{ env.DOCKER_HUB_IMAGE }}
           tags: |
             type=ref,event=tag
             type=semver,pattern={{version}}
@@ -71,7 +66,5 @@ jobs:
           file: deploy/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            VITE_API_BASE_URL=/api
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}

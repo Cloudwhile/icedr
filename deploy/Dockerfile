@@ -1,17 +1,22 @@
-FROM node:24-alpine AS deps
+FROM node:24-alpine AS base
 WORKDIR /workspace
-RUN corepack enable
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN apk add --no-cache libstdc++ openssl \
+  && corepack enable \
+  && corepack prepare pnpm@10.18.1 --activate
+
+FROM base AS deps
 RUN apk add --no-cache python3 make g++
+ENV npm_config_build_from_source=true
+ENV npm_config_nodedir=/usr/local
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json ./frontend/package.json
 COPY backend/package.json ./backend/package.json
 RUN pnpm install --frozen-lockfile
 
-FROM node:24-alpine AS builder
+FROM base AS builder
 WORKDIR /workspace
-RUN corepack enable
-ARG VITE_API_BASE_URL=/api
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=/api
 COPY --from=deps /workspace/node_modules ./node_modules
 COPY --from=deps /workspace/frontend/node_modules ./frontend/node_modules
 COPY --from=deps /workspace/backend/node_modules ./backend/node_modules
@@ -23,15 +28,13 @@ COPY backend ./backend
 RUN pnpm --filter frontend build
 RUN pnpm --filter backend build
 
-FROM node:24-alpine AS runner
+FROM base AS runner
 WORKDIR /workspace/backend
 ENV NODE_ENV=production
 ENV APP_ENV=production
 ENV API_HOST=0.0.0.0
 ENV API_PORT=13000
 ENV FRONTEND_DIST_DIR=/workspace/backend/public
-RUN apk add --no-cache libstdc++ openssl
-RUN corepack enable
 COPY --from=builder /workspace/package.json /workspace/pnpm-lock.yaml /workspace/pnpm-workspace.yaml ../
 COPY --from=builder /workspace/prisma.config.ts ../prisma.config.ts
 COPY --from=builder /workspace/database ../database
