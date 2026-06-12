@@ -4,74 +4,76 @@
 >
 > 这是 ICEDR 的第二个预发布版本，适合部署体验、功能验证和早期反馈。预发布阶段仍可能调整接口、配置项和数据结构；升级前请备份数据库、`data` 目录和对象存储配置。
 
-ICEDR v0.0.1-alpha.2 基于首次预发布继续完善部署体验、发布文档和首次初始化流程。本次发布重点解决二进制运行时数据目录、Docker 镜像命名、GitHub Pages 发布信息读取和对象存储设置引导问题。
+## Highlights / 更新亮点
 
-## 本次重点
+- Docker 与二进制部署体验更完整，README 提供最小部署命令，VitePress 文档提供完整配置说明。
+- 二进制运行时默认在可执行文件所在目录旁创建 `data`，便于复制、备份和迁移。
+- 首次初始化中的对象存储配置更清晰，未启用对象存储时不会要求填写 S3 / MinIO 参数。
+- 文档站的最新发布信息改为构建时生成，减少页面访问时触发 GitHub API 限流的风险。
+- Docker 镜像仓库名统一为 `corecherry/icedr-po` 和 `ghcr.io/cloudwhile/icedr-po`。
 
-- 完善 Docker 与二进制部署文档，明确已发布镜像、持久化目录、端口映射、环境变量和升级方式。
-- 修复二进制包在 Windows 等环境下错误使用用户目录创建 `data` 的问题，默认数据目录改为可执行文件所在目录旁的 `data`。
+## Added / 新增
+
+- 新增 Docker 部署文档，覆盖已发布镜像、`docker run -d`、端口映射、持久化目录、环境变量和升级方式。
+- 新增二进制部署文档，覆盖平台选择、启动方式、长期运行、数据目录和校验方式。
+- 新增发布与校验说明，展示 Release 文件、Docker 标签、MD5 / SHA256 和 `release-manifest.json` 的用途。
+- 新增应用和文档站 favicon，统一浏览器标签页图标。
+- README 新增最小 Docker 部署和最小二进制部署示例。
+
+## Changed / 变更
+
+- README 保留快速部署入口，详细部署矩阵统一放入 VitePress 文档，减少重复说明。
+- 长期部署文档中的固定版本号示例改为 `VERSION` 占位，避免每次发布重复修改同一块内容。
+- 首次初始化流程中，对象存储配置改为启用后展示；未启用时继续使用本地文件存储。
+- Docker Compose 默认镜像指向 `corecherry/icedr-po`。
+- 文档站最新发布组件展示 Docker 标签和发布类型，并优先读取构建生成的发布数据。
+
+## Fixed / 修复
+
+- 修复 Docker 构建时未复制 `patches/entities@7.0.1.patch`，导致 `pnpm install --frozen-lockfile` 失败的问题。
+- 修复二进制包在 Windows 等环境下错误使用用户目录创建 `data` 的问题。
 - 修复二进制包加载 SQLite 原生扩展时缺少模块根目录的问题。
-- 保持 Docker Hub 和 GHCR 仓库名一致：`corecherry/icedr-po` 与 `ghcr.io/cloudwhile/icedr-po`。
-- 优化首次初始化中的对象存储设置：未启用对象存储时不显示 S3 / MinIO 必填项，启用后再展示对应配置。
-- 调整文档站最新发布信息的生成方式，避免页面访问时触发 GitHub API 限流。
-- 为应用和文档站接入统一 favicon。
 - 修复文档站在 Node.js 24 构建环境下的依赖兼容问题。
+- 修复 GHCR 镜像命名空间，避免发布到不存在的 owner。
 
-## 使用者可见变化
+## Security / 安全
 
-### 部署文档
+- 对象存储密钥相关配置仅在启用对象存储后展示，降低初始化阶段误填或误暴露敏感配置的概率。
+- Release 继续提供 MD5、SHA256 和 manifest，便于校验下载文件完整性和来源。
 
-- 新增 Docker 部署文档，推荐使用 `docker run -d` 直接启动已发布镜像。
-- 新增二进制部署文档，说明平台文件选择、启动方式、长期运行、数据目录和校验方式。
-- 扩充配置说明，覆盖数据库、Redis、文件存储、外链公开地址、SMTP、OIDC、更新检查和生产环境校验。
-- 发布说明页会展示最新 Release 信息、发布文件、日期、Docker 标签和校验方式。
+## Breaking Changes / 破坏性变更
 
-### 首次初始化
+None / 暂无
 
-- 对象存储改为显式启用后再填写配置项。
-- 未配置对象存储时，系统继续使用本地文件存储。
-- 初始化流程保留 SQLite 优先体验，适合单机或试用部署；需要 PostgreSQL 时可在数据库步骤配置。
-
-### 二进制运行
-
-- 二进制文件默认在自身所在目录旁创建 `data`。
-- SQLite 数据库、本地文件、原生扩展缓存和数据库来源记录都会保存在该目录中。
-- 可继续通过 `ICEDR_DATA_DIR` 指定自定义数据目录。
-
-### Docker 发布
-
-- Docker Hub：`corecherry/icedr-po`
-- GitHub Container Registry：`ghcr.io/cloudwhile/icedr-po`
-- 当前版本为预发布版本，因此不会更新 `latest` 标签。
-
-```bash
-docker pull corecherry/icedr-po:0.0.1-alpha.2
-docker pull ghcr.io/cloudwhile/icedr-po:0.0.1-alpha.2
-```
-
-## 升级提示
+## Upgrade Notes / 升级说明
 
 - 从 `v0.0.1-alpha.1` 升级前，请备份 SQLite 数据库、`data/local-files` 和对象存储配置。
-- 使用 Docker 部署时，继续挂载原来的宿主机数据目录或 volume。
-- 使用二进制部署时，建议将新二进制文件放到原目录，继续使用原来的 `data`。
-- 如果曾经因为旧二进制在用户目录下创建了 `data`，请先确认真实数据所在位置，再迁移到新的程序目录旁。
-- 如果启用了对象存储，请确认 S3 / MinIO endpoint、bucket、access key、secret key 和 path-style 选项仍然正确。
+- Docker 部署需要重新拉取 `corecherry/icedr-po:0.0.1-alpha.2` 或 `ghcr.io/cloudwhile/icedr-po:0.0.1-alpha.2`。
+- Docker 部署应继续挂载原来的宿主机数据目录或 volume。
+- 二进制部署建议将新二进制文件放到原目录，继续使用原来的 `data`。
+- 如果旧二进制曾在用户目录下创建 `data`，请先确认真实数据位置，再迁移到新的程序目录旁。
+- 环境变量无需为本次发布强制修改。
 
-## 文件完整性
+## Known Issues / 已知问题
 
-Release 会自动附加发布文件列表、文件大小、MD5、SHA256 和 `release-manifest.json`。下载后可使用下列命令校验：
+- 这是预发布版本，接口、配置项和数据结构仍可能在后续版本调整。
+- 当前发布流程只生成已支持平台的二进制文件；未出现在 Release assets 中的平台暂未提供官方二进制。
+- 预发布版本不会更新 Docker `latest` 标签，部署时需要使用明确版本号。
 
-```bash
-md5sum -c MD5SUMS.txt
-sha256sum -c SHA256SUMS.txt
-```
+## Compatibility / 兼容性
 
-Windows PowerShell 示例：
+- Node.js：24
+- 包管理器：pnpm 10.18.1
+- Docker 镜像：`corecherry/icedr-po:0.0.1-alpha.2`、`ghcr.io/cloudwhile/icedr-po:0.0.1-alpha.2`
+- Docker 平台：linux/amd64、linux/arm64
+- 数据库：默认 SQLite，可配置 PostgreSQL
+- 文件存储：默认本地文件存储，可配置 S3 / MinIO 兼容对象存储
+- 浏览器：现代 Chromium、Firefox、Safari 和 Edge
 
-```powershell
-Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm SHA256
-```
+## Contributors / 贡献者
 
-## Full Changelog
+- Cloudwhile
+
+## Full Changelog / 完整变更
 
 https://github.com/Cloudwhile/icedr/compare/v0.0.1-alpha.1...v0.0.1-alpha.2

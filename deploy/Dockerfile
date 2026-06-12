@@ -10,6 +10,7 @@ RUN apk add --no-cache python3 make g++
 ENV npm_config_build_from_source=true
 ENV npm_config_nodedir=/usr/local
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
 COPY frontend/package.json ./frontend/package.json
 COPY backend/package.json ./backend/package.json
 RUN pnpm install --frozen-lockfile
