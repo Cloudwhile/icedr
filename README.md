@@ -125,7 +125,7 @@ Container images are published to Docker Hub and GitHub Container Registry:
 
 ```bash
 docker pull corecherry/icedr-po:<tag>
-docker pull ghcr.io/corecherry/icedr-po:<tag>
+docker pull ghcr.io/cloudwhile/icedr-po:<tag>
 ```
 
 Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.1`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
