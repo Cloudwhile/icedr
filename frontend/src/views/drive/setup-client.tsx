@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
-import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type VerifyDatabaseInput, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type StorageSettings, type StorageSettingsInput, type VerifyDatabaseInput, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
@@ -64,6 +64,15 @@ const defaultMailSettings: MailSettings = {
   configured: false,
   passwordConfigured: false,
   verifiedAt: null
+};
+const defaultSetupStorage: Pick<StorageSettings, "accessKeyId" | "bucket" | "endpoint" | "forcePathStyle" | "objectStorageConfigured" | "region" | "secretAccessKeyConfigured"> = {
+  accessKeyId: "",
+  bucket: "icedr-drive",
+  endpoint: "",
+  forcePathStyle: true,
+  objectStorageConfigured: false,
+  region: "us-east-1",
+  secretAccessKeyConfigured: false
 };
 const icetowneBlogOAuthPreset = {
   providerProfile: "icetowne-blog",
@@ -181,6 +190,8 @@ function SetupPage({
   const [oauthEnabled, setOAuthEnabled] = useState(false);
   const [passkeyEnabled, setPasskeyEnabled] = useState(false);
   const [distributedStorageEnabled, setDistributedStorageEnabled] = useState(false);
+  const [objectStorage, setObjectStorage] = useState(defaultSetupStorage);
+  const [objectStorageSecret, setObjectStorageSecret] = useState("");
   const [sharePolicy, setSharePolicy] = useState(defaultSharePolicy);
   const [domainText, setDomainText] = useState("");
   const [stepIndex, setStepIndex] = useState(0);
@@ -216,6 +227,17 @@ function SetupPage({
       setMail(setup.mail);
       setOAuthEnabled(setup.oauth.enabled);
       setPasskeyEnabled(setup.passkey.enabled);
+      setDistributedStorageEnabled(setup.storage.distributedStorageEnabled);
+      setObjectStorage({
+        accessKeyId: setup.storage.accessKeyId,
+        bucket: setup.storage.bucket,
+        endpoint: setup.storage.endpoint,
+        forcePathStyle: setup.storage.forcePathStyle,
+        objectStorageConfigured: setup.storage.objectStorageConfigured,
+        region: setup.storage.region,
+        secretAccessKeyConfigured: setup.storage.secretAccessKeyConfigured
+      });
+      setObjectStorageSecret("");
     }).catch(() => setStatus({
       tone: "error",
       message: t("setup.statusFailed")
@@ -226,9 +248,13 @@ function SetupPage({
   }, [next, router, t]);
   const logoPreview = site.authLogoDataUrl || "/logo.png";
   const adminComplete = Boolean(admin.email.trim() && admin.displayName.trim() && admin.password.length >= 8);
-  const authComplete = localEnabled || oauthEnabled || passkeyEnabled;
+  const oauthReady = !oauthEnabled || Boolean(oauth.issuerUrl.trim() && oauth.clientId.trim() && (oauth.providerProfile !== "icetowne-blog" || oauthSecret.trim() || oauth.clientSecretConfigured));
+  const passkeyReady = !passkeyEnabled || Boolean(passkey.rpId.trim() && passkey.origin.trim());
+  const authComplete = Boolean((localEnabled || oauthEnabled || passkeyEnabled) && oauthReady && passkeyReady);
   const brandComplete = Boolean(site.siteName.trim());
   const mailComplete = !mail.enabled || Boolean(mail.verifiedAt);
+  const objectStorageSecretReady = Boolean(objectStorageSecret.trim() || objectStorage.secretAccessKeyConfigured);
+  const objectStorageComplete = !distributedStorageEnabled || Boolean(objectStorage.endpoint.trim() && objectStorage.region.trim() && objectStorage.bucket.trim() && objectStorage.accessKeyId.trim() && objectStorageSecretReady);
   const remoteDatabaseDirty = Boolean(
     remoteDatabaseTouched &&
       (remoteDatabase.host.trim() ||
@@ -239,7 +265,7 @@ function SetupPage({
   const remoteDatabaseReady = Boolean(remoteDatabase.host.trim() && remoteDatabase.dbName.trim() && remoteDatabase.user.trim());
   const remoteDatabaseSelected = databaseMode === "postgresql";
   const databaseComplete = database.provider === databaseMode && database.verified && !(remoteDatabaseSelected && remoteDatabaseDirty);
-  const canComplete = databaseComplete && adminComplete && authComplete && mailComplete && brandComplete;
+  const canComplete = databaseComplete && adminComplete && authComplete && mailComplete && objectStorageComplete && brandComplete;
   const canSelectLocalDatabase = database.provider !== "postgresql";
   const databaseSummary = useMemo(() => {
     if (databaseMode === "sqlite") return t("setup.databaseLocal");
@@ -264,14 +290,24 @@ function SetupPage({
     admin: adminComplete,
     auth: authComplete,
     mail: mailComplete,
-    policy: true,
+    policy: objectStorageComplete,
     brand: brandComplete,
     finish: canComplete
   };
-  const canContinue = stepCompletion[currentStep.id];
+  const requiredSetupSteps = setupSteps.filter(step => step.id !== "finish");
+  const completedRequiredSteps = requiredSetupSteps.filter(step => stepCompletion[step.id]).length;
+  const currentStepReady = stepCompletion[currentStep.id];
+  const isFinishStep = currentStep.id === "finish";
+  const canContinue = isFinishStep ? canComplete : true;
   const canReachStep = (targetIndex: number) => {
-    if (targetIndex <= stepIndex) return true;
-    return setupSteps.slice(0, targetIndex).every(step => stepCompletion[step.id]);
+    const targetStep = setupSteps[targetIndex];
+    if (!targetStep) return false;
+    if (targetStep.id === "finish") return canComplete || targetIndex <= stepIndex;
+    return true;
+  };
+  const getStepStatusLabel = (step: (typeof setupSteps)[number], index: number) => {
+    if (index === stepIndex) return t("setup.cardActive");
+    return stepCompletion[step.id] ? t("setup.cardReady") : t("setup.cardPending");
   };
   const goBack = () => {
     if (busy) return;
@@ -341,6 +377,22 @@ function SetupPage({
       replyTo: mail.replyTo || undefined
     };
   };
+  const currentStorageInput = (): StorageSettingsInput => {
+    if (!distributedStorageEnabled) return {
+      distributedStorageEnabled: false
+    };
+    return {
+      accessKeyId: objectStorage.accessKeyId.trim(),
+      bucket: objectStorage.bucket.trim(),
+      distributedStorageEnabled: true,
+      endpoint: objectStorage.endpoint.trim(),
+      forcePathStyle: objectStorage.forcePathStyle,
+      region: objectStorage.region.trim(),
+      ...(objectStorageSecret.trim() ? {
+        secretAccessKey: objectStorageSecret.trim()
+      } : {})
+    };
+  };
   const testMail = () => {
     const recipientEmail = (mailTestEmail || admin.email).trim();
     if (!mail.enabled || !recipientEmail || busy) return;
@@ -400,6 +452,7 @@ function SetupPage({
         enabled: passkeyEnabled
       },
       mail: currentMailInput(),
+      storage: currentStorageInput(),
       localEnabled,
       oauthEnabled,
       passkeyEnabled,
@@ -441,6 +494,12 @@ function SetupPage({
     reader.readAsDataURL(file);
   };
   const authSummary = [localEnabled ? t("admin.localAuth") : "", oauthEnabled ? t("admin.oauthAuth") : "", passkeyEnabled ? t("admin.passkeyAuth") : ""].filter(Boolean).join(" / ") || "--";
+  const mailSummary = !mail.enabled ? t("setup.mailDisabled") : mail.verifiedAt ? t("setup.mailVerified") : t("setup.testMail");
+  const storageSummary = distributedStorageEnabled
+    ? objectStorageComplete
+      ? t("admin.objectStorageConfigured")
+      : t("admin.objectStorageMissing")
+    : t("admin.localFileStorage");
 
   return <div className="icedr-setup-page">
       <div className="icedr-setup-topbar">
@@ -451,26 +510,46 @@ function SetupPage({
             <span className="icedr-truncate">{t("setup.title")}</span>
           </div>
         </div>
-        <div className="icedr-setup-progress" style={{ "--setup-step-count": setupSteps.length } as React.CSSProperties}>
-          {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} completed={index < stepIndex && stepCompletion[step.id]} disabled={!canReachStep(index)} index={index} label={t(step.key)} onClick={() => {
-          if (canReachStep(index) && !busy) setStepIndex(index);
-        }} palette={palette} step={step} />)}
-        </div>
         <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
       </div>
 
       <div className="icedr-setup-body">
+        <aside className="icedr-setup-rail">
+          <div className="icedr-setup-rail-head">
+            <span>{t("setup.flowBoard")}</span>
+            <strong>{completedRequiredSteps}/{requiredSetupSteps.length}</strong>
+          </div>
+          <div className="icedr-setup-rail-steps">
+            {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} completed={index !== stepIndex && stepCompletion[step.id]} description={t(step.summaryKey)} disabled={!canReachStep(index) || busy} index={index} label={t(step.key)} onClick={() => {
+            if (canReachStep(index) && !busy) setStepIndex(index);
+          }} palette={palette} statusLabel={getStepStatusLabel(step, index)} step={step} />)}
+          </div>
+          <div className="icedr-setup-rail-summary">
+            <InfoTile label={t("setup.database")} value={database.verified ? t("setup.databaseVerified") : t("setup.verifyDatabase")} palette={palette} tone={databaseComplete ? "secure" : "warning"} />
+            <InfoTile label={t("setup.admin")} value={adminComplete ? admin.email : t("setup.cardPending")} palette={palette} tone={adminComplete ? "secure" : "neutral"} />
+            <InfoTile label={t("setup.mail")} value={mailSummary} palette={palette} tone={mailComplete ? "secure" : "warning"} />
+          </div>
+        </aside>
         <main className="icedr-setup-main-scroll">
           <div className="icedr-setup-main">
             {status ? <AuthStatusNotice palette={palette} status={status} /> : null}
 
             <div className="icedr-setup-mobile-steps icedr-hide-scrollbar">
-              {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} compact completed={index < stepIndex && stepCompletion[step.id]} disabled={!canReachStep(index)} index={index} label={t(step.key)} onClick={() => {
+              {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} compact completed={index !== stepIndex && stepCompletion[step.id]} disabled={!canReachStep(index) || busy} index={index} label={t(step.key)} onClick={() => {
               if (canReachStep(index) && !busy) setStepIndex(index);
             }} palette={palette} step={step} />)}
             </div>
 
             <div className="icedr-setup-content-grid">
+              <div className="icedr-setup-step-head">
+                <div className="icedr-setup-step-kicker">
+                  <span>{String(stepIndex + 1).padStart(2, "0")} / {String(setupSteps.length).padStart(2, "0")}</span>
+                  <StatusPill palette={palette} tone={currentStepReady ? "secure" : "neutral"}>
+                    {currentStepReady ? t("setup.cardReady") : t("setup.cardActive")}
+                  </StatusPill>
+                </div>
+                <p>{t(currentStep.summaryKey)}</p>
+              </div>
             {currentStep.id === "database" ? <SetupSection icon="folder" palette={palette} title={t("setup.database")}>
                 <div className="icedr-setup-form-grid">
                   <SelectButton active={databaseMode === "sqlite"} disabled={!canSelectLocalDatabase || busy} label={t("setup.databaseLocalChoice")} onClick={() => {
@@ -566,100 +645,102 @@ function SetupPage({
             {currentStep.id === "auth" ? <SetupSection icon="key" palette={palette} title={t("setup.auth")}>
                 <ToggleRow checked={localEnabled} label={t("admin.localAuth")} onToggle={() => setLocalEnabled(value => !value)} palette={palette} />
                 <ToggleRow checked={oauthEnabled} label={t("admin.oauthAuth")} onToggle={() => setOAuthEnabled(value => !value)} palette={palette} />
-                <AuthPrimaryButton icon="import" palette={palette} onClick={applyIcetowneBlogOAuthPreset}>
-                  {t("setup.applyIcetowneBlogPreset")}
-                </AuthPrimaryButton>
-                <div className="icedr-setup-form-grid">
-                  <SelectButton active={oauth.providerProfile === "oidc"} label={t("setup.providerOidc")} onClick={() => setOAuth(value => ({
+                {oauthEnabled ? <>
+                  <AuthPrimaryButton icon="import" palette={palette} onClick={applyIcetowneBlogOAuthPreset}>
+                    {t("setup.applyIcetowneBlogPreset")}
+                  </AuthPrimaryButton>
+                  <div className="icedr-setup-form-grid">
+                    <SelectButton active={oauth.providerProfile === "oidc"} label={t("setup.providerOidc")} onClick={() => setOAuth(value => ({
                 ...value,
                 providerProfile: "oidc",
                 providerMode: "standard"
               }))} palette={palette} />
-                  <SelectButton active={oauth.providerProfile === "icetowne-blog"} label={t("setup.providerIcetowneBlog")} onClick={applyIcetowneBlogOAuthPreset} palette={palette} />
-                </div>
-                <StatusPill palette={palette} tone={oauth.providerMode === "compatibility" ? "risk" : "secure"} style={{
+                    <SelectButton active={oauth.providerProfile === "icetowne-blog"} label={t("setup.providerIcetowneBlog")} onClick={applyIcetowneBlogOAuthPreset} palette={palette} />
+                  </div>
+                  <StatusPill palette={palette} tone={oauth.providerMode === "compatibility" ? "risk" : "secure"} style={{
               alignSelf: "flex-start"
                 }}>
-                  {oauth.providerMode === "compatibility" ? t("setup.oauthCompatibilityMode") : t("setup.oauthStandardMode")}
-                </StatusPill>
-                <div className="icedr-setup-form-grid">
-                  <AuthField label={t("setup.oauthIssuer")} palette={palette}>
-                    <AuthInput palette={palette} value={oauth.issuerUrl} onChange={event => setOAuth(value => ({
+                    {oauth.providerMode === "compatibility" ? t("setup.oauthCompatibilityMode") : t("setup.oauthStandardMode")}
+                  </StatusPill>
+                  <div className="icedr-setup-form-grid">
+                    <AuthField label={t("setup.oauthIssuer")} palette={palette}>
+                      <AuthInput palette={palette} value={oauth.issuerUrl} onChange={event => setOAuth(value => ({
                   ...value,
                   issuerUrl: event.target.value
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.oauthClientId")} palette={palette}>
-                    <AuthInput palette={palette} value={oauth.clientId} onChange={event => setOAuth(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.oauthClientId")} palette={palette}>
+                      <AuthInput palette={palette} value={oauth.clientId} onChange={event => setOAuth(value => ({
                   ...value,
                   clientId: event.target.value
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.oauthAudience")} palette={palette}>
-                    <AuthInput palette={palette} value={oauth.audience} onChange={event => setOAuth(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.oauthAudience")} palette={palette}>
+                      <AuthInput palette={palette} value={oauth.audience} onChange={event => setOAuth(value => ({
                   ...value,
                   audience: event.target.value
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.oauthScopes")} palette={palette}>
-                    <AuthInput palette={palette} value={oauth.scopes} onChange={event => setOAuth(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.oauthScopes")} palette={palette}>
+                      <AuthInput palette={palette} value={oauth.scopes} onChange={event => setOAuth(value => ({
                   ...value,
                   scopes: event.target.value
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.systemBaseUrl")} palette={palette}>
-                    <AuthInput palette={palette} value={oauthCallbackBaseUrl} onChange={event => setOAuth(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.systemBaseUrl")} palette={palette}>
+                      <AuthInput palette={palette} value={oauthCallbackBaseUrl} onChange={event => setOAuth(value => ({
                   ...value,
                   redirectUri: buildLoginCallbackUrl(event.target.value)
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.oauthRedirectUri")} palette={palette}>
-                    <div className="icedr-setup-inline-field">
-                      <AuthInput palette={palette} readOnly value={effectiveOAuthRedirectUri} style={{
+                    </AuthField>
+                    <AuthField label={t("setup.oauthRedirectUri")} palette={palette}>
+                      <div className="icedr-setup-inline-field">
+                        <AuthInput palette={palette} readOnly value={effectiveOAuthRedirectUri} style={{
                     flex: "1 1 auto",
                     minWidth: "0px"
                   }} />
-                      <ToolButton label={t("setup.copyOAuthRedirectUri")} palette={palette} onClick={() => copyOAuthCallback(effectiveOAuthRedirectUri)}>
-                        <LocalIcon name="copy" size={17} />
-                      </ToolButton>
-                    </div>
-                  </AuthField>
-                  <AuthField label={t("setup.oauthShareRedirectUri")} palette={palette}>
-                    <div className="icedr-setup-inline-field">
-                      <AuthInput palette={palette} readOnly value={oauthShareRedirectUri} style={{
+                        <ToolButton label={t("setup.copyOAuthRedirectUri")} palette={palette} onClick={() => copyOAuthCallback(effectiveOAuthRedirectUri)}>
+                          <LocalIcon name="copy" size={17} />
+                        </ToolButton>
+                      </div>
+                    </AuthField>
+                    <AuthField label={t("setup.oauthShareRedirectUri")} palette={palette}>
+                      <div className="icedr-setup-inline-field">
+                        <AuthInput palette={palette} readOnly value={oauthShareRedirectUri} style={{
                     flex: "1 1 auto",
                     minWidth: "0px"
                   }} />
-                      <ToolButton label={t("setup.copyOAuthRedirectUri")} palette={palette} onClick={() => copyOAuthCallback(oauthShareRedirectUri)}>
-                        <LocalIcon name="copy" size={17} />
-                      </ToolButton>
-                    </div>
-                  </AuthField>
-                  <AuthField label={t("setup.oauthSecret")} palette={palette}>
-                    <AuthInput palette={palette} type="password" value={oauthSecret} placeholder={oauth.clientSecretConfigured ? t("setup.secretConfigured") : ""} onChange={event => setOAuthSecret(event.target.value)} />
-                  </AuthField>
-                </div>
+                        <ToolButton label={t("setup.copyOAuthRedirectUri")} palette={palette} onClick={() => copyOAuthCallback(oauthShareRedirectUri)}>
+                          <LocalIcon name="copy" size={17} />
+                        </ToolButton>
+                      </div>
+                    </AuthField>
+                    <AuthField label={t("setup.oauthSecret")} palette={palette}>
+                      <AuthInput palette={palette} type="password" value={oauthSecret} placeholder={oauth.clientSecretConfigured ? t("setup.secretConfigured") : ""} onChange={event => setOAuthSecret(event.target.value)} />
+                    </AuthField>
+                  </div>
+                </> : null}
                 <ToggleRow checked={passkeyEnabled} label={t("admin.passkeyAuth")} onToggle={() => setPasskeyEnabled(value => !value)} palette={palette} />
-                <div className="icedr-setup-form-grid" data-columns="3">
-                  <AuthField label={t("setup.rpName")} palette={palette}>
-                    <AuthInput palette={palette} value={passkey.rpName} onChange={event => setPasskey(value => ({
+                {passkeyEnabled ? <div className="icedr-setup-form-grid" data-columns="3">
+                    <AuthField label={t("setup.rpName")} palette={palette}>
+                      <AuthInput palette={palette} value={passkey.rpName} onChange={event => setPasskey(value => ({
                   ...value,
                   rpName: event.target.value
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.rpId")} palette={palette}>
-                    <AuthInput palette={palette} value={passkey.rpId} onChange={event => setPasskey(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.rpId")} palette={palette}>
+                      <AuthInput palette={palette} value={passkey.rpId} onChange={event => setPasskey(value => ({
                   ...value,
                   rpId: event.target.value
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.origin")} palette={palette}>
-                    <AuthInput palette={palette} value={passkey.origin} onChange={event => setPasskey(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.origin")} palette={palette}>
+                      <AuthInput palette={palette} value={passkey.origin} onChange={event => setPasskey(value => ({
                   ...value,
                   origin: event.target.value
                 }))} />
-                  </AuthField>
-                </div>
+                    </AuthField>
+                  </div> : null}
               </SetupSection> : null}
 
             {currentStep.id === "mail" ? <SetupSection icon="mail" palette={palette} title={t("setup.mail")}>
@@ -668,77 +749,115 @@ function SetupPage({
               enabled: !value.enabled,
               verifiedAt: null
             }))} palette={palette} />
-                <div className="icedr-setup-form-grid">
-                  <AuthField label={t("setup.smtpHost")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} value={mail.host} onChange={event => setMail(value => ({
+                {mail.enabled ? <>
+                  <div className="icedr-setup-form-grid">
+                    <AuthField label={t("setup.smtpHost")} palette={palette} required>
+                      <AuthInput palette={palette} value={mail.host} onChange={event => setMail(value => ({
                   ...value,
                   host: event.target.value,
                   verifiedAt: null
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpPort")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} inputMode="numeric" value={String(mail.port)} onChange={event => setMail(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.smtpPort")} palette={palette} required>
+                      <AuthInput palette={palette} inputMode="numeric" value={String(mail.port)} onChange={event => setMail(value => ({
                   ...value,
                   port: Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1),
                   verifiedAt: null
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpUsername")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} value={mail.username} onChange={event => setMail(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.smtpUsername")} palette={palette} required>
+                      <AuthInput palette={palette} value={mail.username} onChange={event => setMail(value => ({
                   ...value,
                   username: event.target.value,
                   verifiedAt: null
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpPassword")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} type="password" value={mailPassword} placeholder={mail.passwordConfigured ? t("setup.secretConfigured") : ""} onChange={event => {
+                    </AuthField>
+                    <AuthField label={t("setup.smtpPassword")} palette={palette} required>
+                      <AuthInput palette={palette} type="password" value={mailPassword} placeholder={mail.passwordConfigured ? t("setup.secretConfigured") : ""} onChange={event => {
                   setMailPassword(event.target.value);
                   setMail(value => ({
                     ...value,
                     verifiedAt: null
                   }));
                 }} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpFromName")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} value={mail.fromName} onChange={event => setMail(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.smtpFromName")} palette={palette} required>
+                      <AuthInput palette={palette} value={mail.fromName} onChange={event => setMail(value => ({
                   ...value,
                   fromName: event.target.value,
                   verifiedAt: null
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpFromEmail")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} type="email" value={mail.fromEmail} onChange={event => setMail(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.smtpFromEmail")} palette={palette} required>
+                      <AuthInput palette={palette} type="email" value={mail.fromEmail} onChange={event => setMail(value => ({
                   ...value,
                   fromEmail: event.target.value,
                   verifiedAt: null
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpReplyTo")} palette={palette}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} type="email" value={mail.replyTo} onChange={event => setMail(value => ({
+                    </AuthField>
+                    <AuthField label={t("setup.smtpReplyTo")} palette={palette}>
+                      <AuthInput palette={palette} type="email" value={mail.replyTo} onChange={event => setMail(value => ({
                   ...value,
                   replyTo: event.target.value,
                   verifiedAt: null
                 }))} />
-                  </AuthField>
-                  <AuthField label={t("setup.smtpTestEmail")} palette={palette} required={mail.enabled}>
-                    <AuthInput disabled={!mail.enabled} palette={palette} type="email" value={mailTestEmailTouched ? mailTestEmail : admin.email} onChange={event => {
+                    </AuthField>
+                    <AuthField label={t("setup.smtpTestEmail")} palette={palette} required>
+                      <AuthInput palette={palette} type="email" value={mailTestEmailTouched ? mailTestEmail : admin.email} onChange={event => {
                   setMailTestEmailTouched(true);
                   setMailTestEmail(event.target.value);
                 }} />
-                  </AuthField>
-                </div>
-                <ToggleRow checked={mail.secure} label={t("setup.smtpSecure")} onToggle={() => setMail(value => ({
+                    </AuthField>
+                  </div>
+                  <ToggleRow checked={mail.secure} label={t("setup.smtpSecure")} onToggle={() => setMail(value => ({
               ...value,
               secure: !value.secure,
               verifiedAt: null
             }))} palette={palette} />
-                <AuthPrimaryButton icon="mail" palette={palette} busy={busy} disabled={busy || !mail.enabled || !(mailTestEmail || admin.email).trim()} onClick={testMail}>
-                  {mail.verifiedAt ? t("setup.testMailAgain") : t("setup.testMail")}
-                </AuthPrimaryButton>
+                  <AuthPrimaryButton icon="mail" palette={palette} busy={busy} disabled={busy || !(mailTestEmail || admin.email).trim()} onClick={testMail}>
+                    {mail.verifiedAt ? t("setup.testMailAgain") : t("setup.testMail")}
+                  </AuthPrimaryButton>
+                </> : null}
               </SetupSection> : null}
 
             {currentStep.id === "policy" ? <SetupSection icon="shield" palette={palette} title={t("setup.policy")}>
                 <ToggleRow checked={distributedStorageEnabled} label={t("admin.useDistributedStorage")} onToggle={() => setDistributedStorageEnabled(value => !value)} palette={palette} />
+                {distributedStorageEnabled ? <>
+                  <div className="icedr-setup-form-grid" data-columns="3">
+                    <AuthField label={t("admin.s3Endpoint")} palette={palette} required>
+                      <AuthInput palette={palette} value={objectStorage.endpoint} onChange={event => setObjectStorage(value => ({
+                    ...value,
+                    endpoint: event.target.value
+                  }))} />
+                    </AuthField>
+                    <AuthField label={t("admin.s3Region")} palette={palette} required>
+                      <AuthInput palette={palette} value={objectStorage.region} onChange={event => setObjectStorage(value => ({
+                    ...value,
+                    region: event.target.value
+                  }))} />
+                    </AuthField>
+                    <AuthField label={t("admin.s3Bucket")} palette={palette} required>
+                      <AuthInput palette={palette} value={objectStorage.bucket} onChange={event => setObjectStorage(value => ({
+                    ...value,
+                    bucket: event.target.value
+                  }))} />
+                    </AuthField>
+                    <AuthField label={t("admin.s3AccessKeyId")} palette={palette} required>
+                      <AuthInput palette={palette} value={objectStorage.accessKeyId} onChange={event => setObjectStorage(value => ({
+                    ...value,
+                    accessKeyId: event.target.value
+                  }))} />
+                    </AuthField>
+                    <AuthField label={t("admin.s3SecretAccessKey")} palette={palette} required>
+                      <AuthInput palette={palette} type="password" value={objectStorageSecret} placeholder={objectStorage.secretAccessKeyConfigured ? t("admin.secretConfigured") : ""} onChange={event => setObjectStorageSecret(event.target.value)} />
+                    </AuthField>
+                    <ToggleRow checked={objectStorage.forcePathStyle} label={t("admin.s3ForcePathStyle")} onToggle={() => setObjectStorage(value => ({
+                  ...value,
+                  forcePathStyle: !value.forcePathStyle
+                }))} palette={palette} />
+                  </div>
+                  <InfoTile label={t("admin.objectFileStorage")} value={storageSummary} palette={palette} tone={objectStorageComplete ? "secure" : "warning"} />
+                </> : null}
                 <div className="icedr-setup-form-grid">
                   <SelectButton active={sharePolicy.anonymousAccess === "blocked"} label={t("admin.blockAnonymous")} onClick={() => setSharePolicy(value => ({
                 ...value,
@@ -796,10 +915,11 @@ function SetupPage({
 
             {currentStep.id === "finish" ? <SetupSection icon="tick" palette={palette} title={t("setup.finish")}>
                 <div className="icedr-setup-form-grid">
-                  <InfoTile label={t("setup.database")} value={database.verified ? t("share.ready") : t("setup.verifyDatabase")} palette={palette} />
+                  <InfoTile label={t("setup.database")} value={database.verified ? t("setup.databaseVerified") : t("setup.verifyDatabase")} palette={palette} />
                   <InfoTile label={t("setup.admin")} value={admin.email || "--"} palette={palette} />
                   <InfoTile label={t("setup.auth")} value={authSummary} palette={palette} />
-                  <InfoTile label={t("setup.mail")} value={!mail.enabled ? t("setup.mailDisabled") : mail.verifiedAt ? t("setup.mailVerified") : t("setup.testMail")} palette={palette} />
+                  <InfoTile label={t("setup.mail")} value={mailSummary} palette={palette} />
+                  <InfoTile label={t("admin.fileStorage")} value={storageSummary} palette={palette} tone={objectStorageComplete ? "secure" : "warning"} />
                   <InfoTile label={t("setup.brand")} value={site.siteName || "--"} palette={palette} />
                 </div>
               </SetupSection> : null}

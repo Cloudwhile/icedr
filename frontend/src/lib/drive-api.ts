@@ -339,6 +339,7 @@ export type SetupStatus = {
   oauth: OAuthSettings;
   passkey: PasskeySettings;
   mail: MailSettings;
+  storage: StorageSettings;
 };
 
 export type AdminSettings = {
@@ -356,6 +357,7 @@ export type CompleteSetupInput = {
   oauth?: Partial<OAuthSettingsInput> & { clientSecret?: string };
   passkey?: Partial<PasskeySettings>;
   mail?: MailSettingsInput;
+  storage?: StorageSettingsInput;
   localEnabled: boolean;
   oauthEnabled: boolean;
   passkeyEnabled: boolean;

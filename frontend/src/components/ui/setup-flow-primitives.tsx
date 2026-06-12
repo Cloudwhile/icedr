@@ -13,27 +13,32 @@ export type SetupFlowStep = {
   icon: LocalIconName;
   id: string;
   key: string;
+  summaryKey?: string;
 };
 
 export function SetupStepNavItem({
   active,
   compact,
   completed,
+  description,
   disabled,
   index,
   label,
   onClick,
   palette,
+  statusLabel,
   step,
 }: {
   active: boolean;
   compact?: boolean;
   completed: boolean;
+  description?: string;
   disabled: boolean;
   index: number;
   label: string;
   onClick: () => void;
   palette: Palette;
+  statusLabel?: string;
   step: SetupFlowStep;
 }) {
   return (
@@ -68,7 +73,11 @@ export function SetupStepNavItem({
           <LocalIcon name={step.icon} size={16} />
         </span>
       )}
-      <span className="icedr-truncate">{label}</span>
+      <span className="icedr-setup-step-copy">
+        <span className="icedr-setup-step-label icedr-truncate">{label}</span>
+        {!compact && description ? <span className="icedr-setup-step-description">{description}</span> : null}
+      </span>
+      {!compact && statusLabel ? <span className="icedr-setup-step-status">{statusLabel}</span> : null}
     </button>
   );
 }

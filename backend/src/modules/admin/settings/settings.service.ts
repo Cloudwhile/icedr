@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
+import { StorageService } from '../../storage/storage.service';
 import {
   AdminSettingsResponse,
   DatabaseProfile,
@@ -51,6 +52,7 @@ export class SettingsService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly repository: SettingsRepository,
+    private readonly storageService: StorageService,
   ) {}
 
   async getSetupStatus(): Promise<SetupStatusResponse> {
@@ -65,6 +67,7 @@ export class SettingsService {
       oauth: this.toOAuthResponse(await this.getOAuthSettings()),
       passkey: await this.getPasskeySettings(),
       mail: this.toMailResponse(await this.getMailSettings()),
+      storage: await this.storageService.getSettings(),
     };
   }
 

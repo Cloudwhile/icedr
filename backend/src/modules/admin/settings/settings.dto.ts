@@ -12,6 +12,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  UpdateStorageSettingsDto,
+  type StorageSettingsResponse,
+} from '../../storage/storage-settings.dto';
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -95,6 +99,7 @@ export type SetupStatusResponse = {
   oauth: OAuthSettingsResponse;
   passkey: PasskeySettings;
   mail: MailSettingsResponse;
+  storage: StorageSettingsResponse;
 };
 
 export type AdminSettingsResponse = {
@@ -357,6 +362,12 @@ export class CompleteSetupDto {
 
   @IsBoolean()
   distributedStorageEnabled!: boolean;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => UpdateStorageSettingsDto)
+  @IsOptional()
+  storage?: UpdateStorageSettingsDto;
 
   @IsObject()
   @ValidateNested()

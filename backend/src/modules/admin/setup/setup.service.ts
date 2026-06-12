@@ -62,6 +62,7 @@ export class SetupService {
     } satisfies UpdateAuthSettingsDto);
 
     await this.storageService.updateSettings({
+      ...(dto.storage ?? {}),
       distributedStorageEnabled: dto.distributedStorageEnabled,
     });
     await this.workspacesService.updateShareSettings(
