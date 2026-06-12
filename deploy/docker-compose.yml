@@ -1,6 +1,6 @@
 services:
   icedr:
-    image: ${ICEDR_IMAGE:-icedr-po}:${ICEDR_TAG:-latest}
+    image: ${ICEDR_IMAGE:-corecherry/icedr-po}:${ICEDR_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

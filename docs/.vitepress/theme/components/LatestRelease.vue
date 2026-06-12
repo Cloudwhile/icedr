@@ -46,6 +46,8 @@ const releaseBody = computed(() =>
     .slice(0, 18),
 );
 
+const dockerTag = computed(() => release.value?.tag_name.replace(/^v(?=\d)/i, "") || "");
+
 onMounted(async () => {
   try {
     const response = await fetch(releaseDataUrl, { headers: { Accept: "application/json" } });
@@ -99,18 +101,22 @@ function formatBytes(value: number) {
           <dd>{{ release.tag_name }}</dd>
         </div>
         <div>
+          <dt>Docker 标签</dt>
+          <dd>{{ dockerTag }}</dd>
+        </div>
+        <div>
           <dt>发布日期</dt>
           <dd>{{ publishedAt }}</dd>
         </div>
         <div>
           <dt>发布类型</dt>
-          <dd>{{ release.prerelease ? "Prerelease" : "Stable" }}</dd>
-        </div>
-        <div>
-          <dt>文件数量</dt>
-          <dd>{{ release.assets.length }}</dd>
+          <dd>{{ release.prerelease ? "预发布" : "稳定版" }}</dd>
         </div>
       </dl>
+
+      <div class="latest-release__docker">
+        <code>docker pull corecherry/icedr-po:{{ dockerTag }}</code>
+      </div>
 
       <div class="latest-release__section">
         <h3>Release 改动</h3>
@@ -197,6 +203,15 @@ function formatBytes(value: number) {
 .latest-release__meta dd {
   margin: 4px 0 0;
   font-weight: 700;
+}
+
+.latest-release__docker {
+  margin-top: 16px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-code-block-bg);
 }
 
 .latest-release__section {

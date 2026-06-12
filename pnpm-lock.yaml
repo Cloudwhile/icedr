@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  entities@7.0.1:
+    hash: b05dc98ae0c016b6fadde2ac855022f585a4fcf35ec95cfaf049e194b9851c12
+    path: patches/entities@7.0.1.patch
+
 importers:
 
   .:
@@ -9073,7 +9078,7 @@ snapshots:
     dependencies:
       '@babel/parser': 7.29.7
       '@vue/shared': 3.5.38
-      entities: 7.0.1
+      entities: 7.0.1(patch_hash=b05dc98ae0c016b6fadde2ac855022f585a4fcf35ec95cfaf049e194b9851c12)
       estree-walker: 2.0.2
       source-map-js: 1.2.1
 
@@ -9893,7 +9898,7 @@ snapshots:
       graceful-fs: 4.2.11
       tapable: 2.3.3
 
-  entities@7.0.1: {}
+  entities@7.0.1(patch_hash=b05dc98ae0c016b6fadde2ac855022f585a4fcf35ec95cfaf049e194b9851c12): {}
 
   entities@8.0.0: {}
 

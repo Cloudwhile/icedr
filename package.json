@@ -29,5 +29,10 @@
     "postject": "1.0.0-alpha.6",
     "rcedit": "5.0.2",
     "vitepress": "1.6.4"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "entities@7.0.1": "patches/entities@7.0.1.patch"
+    }
   }
 }
