@@ -25,8 +25,10 @@ docker pull corecherry/icedr-po:latest
 拉取预发布版本时，请使用具体版本号：
 
 ```bash
-docker pull corecherry/icedr-po:0.0.1-alpha.1
+docker pull corecherry/icedr-po:VERSION
 ```
+
+这里的 `VERSION` 指不带 `v` 前缀的 Docker 标签，例如 Git tag `v1.2.0-alpha.1` 对应镜像标签 `1.2.0-alpha.1`。
 
 预发布版本不会更新 `latest` 标签。生产环境建议固定具体版本号。
 

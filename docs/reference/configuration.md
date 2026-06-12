@@ -76,7 +76,7 @@ docker run -d \
 二进制示例：
 
 ```bash
-DATABASE_HOST=postgres.example.internal DATABASE_PORT=5432 DATABASE_DBNAME=icedr DATABASE_USER=icedr_app DATABASE_PASSWORD=strong-password ./icedr_0.0.1-alpha.1_linux-x86_64
+DATABASE_HOST=postgres.example.internal DATABASE_PORT=5432 DATABASE_DBNAME=icedr DATABASE_USER=icedr_app DATABASE_PASSWORD=strong-password ./icedr_VERSION_linux-x86_64
 ```
 
 也可以在首次初始化向导中选择 PostgreSQL。系统会保存已验证的数据库来源。

@@ -37,7 +37,7 @@ v1.2.0
 预发布版本示例：
 
 ```text
-v0.0.1-alpha.1
+v1.2.0-alpha.1
 v1.2.0-beta.1
 ```
 
@@ -46,13 +46,15 @@ v1.2.0-beta.1
 Docker 镜像使用不带 `v` 的版本号：
 
 ```bash
-docker pull corecherry/icedr-po:0.0.1-alpha.1
+docker pull corecherry/icedr-po:VERSION
 ```
+
+例如 GitHub Release 标签 `v1.2.0-alpha.1` 对应 Docker 镜像标签 `1.2.0-alpha.1`。
 
 GitHub Release 标签仍然使用：
 
 ```text
-v0.0.1-alpha.1
+v1.2.0-alpha.1
 ```
 
 ## Release 文件选择
@@ -63,16 +65,18 @@ v0.0.1-alpha.1
 icedr_VERSION_PLATFORM
 ```
 
+`VERSION` 不包含 `v` 前缀，`PLATFORM` 表示系统和 CPU 架构。
+
 示例：
 
 | 系统 | 下载文件 |
 | --- | --- |
-| Linux x86_64 | `icedr_0.0.1-alpha.1_linux-x86_64` |
-| Linux ARM64 | `icedr_0.0.1-alpha.1_linux-arm64` |
-| Windows x86_64 | `icedr_0.0.1-alpha.1_windows-x86_64.exe` |
-| Windows ARM64 | `icedr_0.0.1-alpha.1_windows-arm64.exe` |
-| macOS x86_64 | `icedr_0.0.1-alpha.1_macos-x86_64` |
-| macOS ARM64 | `icedr_0.0.1-alpha.1_macos-arm64` |
+| Linux x86_64 | `icedr_VERSION_linux-x86_64` |
+| Linux ARM64 | `icedr_VERSION_linux-arm64` |
+| Windows x86_64 | `icedr_VERSION_windows-x86_64.exe` |
+| Windows ARM64 | `icedr_VERSION_windows-arm64.exe` |
+| macOS x86_64 | `icedr_VERSION_macos-x86_64` |
+| macOS ARM64 | `icedr_VERSION_macos-arm64` |
 
 平台选择参考：
 
@@ -89,14 +93,14 @@ icedr_VERSION_PLATFORM
 Linux / macOS：
 
 ```bash
-sha256sum ./icedr_0.0.1-alpha.1_linux-x86_64
-grep icedr_0.0.1-alpha.1_linux-x86_64 SHA256SUMS.txt
+sha256sum ./icedr_VERSION_linux-x86_64
+grep icedr_VERSION_linux-x86_64 SHA256SUMS.txt
 ```
 
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\icedr_0.0.1-alpha.1_windows-x86_64.exe -Algorithm SHA256
+Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm SHA256
 ```
 
 如果得到的哈希值和 `SHA256SUMS.txt` 中对应文件一致，说明文件下载完整。
@@ -104,7 +108,7 @@ Get-FileHash .\icedr_0.0.1-alpha.1_windows-x86_64.exe -Algorithm SHA256
 MD5 示例：
 
 ```powershell
-Get-FileHash .\icedr_0.0.1-alpha.1_windows-x86_64.exe -Algorithm MD5
+Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm MD5
 ```
 
 ## release-manifest.json
@@ -122,7 +126,7 @@ Get-FileHash .\icedr_0.0.1-alpha.1_windows-x86_64.exe -Algorithm MD5
 生产环境建议固定版本号以获得更可控的部署结果：
 
 ```bash
-docker pull corecherry/icedr-po:0.0.1-alpha.1
+docker pull corecherry/icedr-po:VERSION
 ```
 
 ## 更新检查

@@ -21,11 +21,13 @@ ICEDR 的 GitHub Release 会提供平台二进制文件。二进制文件适合�
 icedr_VERSION_PLATFORM
 ```
 
+`VERSION` 是不带 `v` 前缀的发布版本，`PLATFORM` 是系统和 CPU 架构。
+
 示例：
 
 ```text
-icedr_0.0.1-alpha.1_linux-x86_64
-icedr_0.0.1-alpha.1_windows-x86_64.exe
+icedr_VERSION_linux-x86_64
+icedr_VERSION_windows-x86_64.exe
 ```
 
 ## 下载
@@ -58,13 +60,13 @@ sudo chown "$USER":"$USER" /opt/icedr
 
 ```bash
 cd /opt/icedr
-chmod +x ./icedr_0.0.1-alpha.1_linux-x86_64
+chmod +x ./icedr_VERSION_linux-x86_64
 ```
 
 启动：
 
 ```bash
-./icedr_0.0.1-alpha.1_linux-x86_64
+./icedr_VERSION_linux-x86_64
 ```
 
 访问：
@@ -82,14 +84,14 @@ http://服务器地址:13000
 ```bash
 mkdir -p "$HOME/Applications/icedr"
 cd "$HOME/Applications/icedr"
-chmod +x ./icedr_0.0.1-alpha.1_macos-arm64
-./icedr_0.0.1-alpha.1_macos-arm64
+chmod +x ./icedr_VERSION_macos-arm64
+./icedr_VERSION_macos-arm64
 ```
 
 如果 macOS 拦截未签名程序，需要在系统安全设置中允许该程序运行，或在终端中解除隔离属性：
 
 ```bash
-xattr -d com.apple.quarantine ./icedr_0.0.1-alpha.1_macos-arm64
+xattr -d com.apple.quarantine ./icedr_VERSION_macos-arm64
 ```
 
 ## Windows 启动
@@ -100,11 +102,11 @@ xattr -d com.apple.quarantine ./icedr_0.0.1-alpha.1_macos-arm64
 C:\ICEDR
 ```
 
-把 `icedr_0.0.1-alpha.1_windows-x86_64.exe` 放入该目录，然后在 PowerShell 中运行：
+把 `icedr_VERSION_windows-x86_64.exe` 放入该目录，然后在 PowerShell 中运行：
 
 ```powershell
 cd C:\ICEDR
-.\icedr_0.0.1-alpha.1_windows-x86_64.exe
+.\icedr_VERSION_windows-x86_64.exe
 ```
 
 访问：
@@ -120,7 +122,7 @@ http://localhost:13000
 二进制文件默认在可执行文件所在目录创建 `data`：
 
 ```text
-icedr_0.0.1-alpha.1_linux-x86_64
+icedr_VERSION_linux-x86_64
 data/
   icedr.sqlite
   local-files/
@@ -135,14 +137,14 @@ data/
 Linux / macOS：
 
 ```bash
-ICEDR_DATA_DIR=/var/lib/icedr ./icedr_0.0.1-alpha.1_linux-x86_64
+ICEDR_DATA_DIR=/var/lib/icedr ./icedr_VERSION_linux-x86_64
 ```
 
 Windows PowerShell：
 
 ```powershell
 $env:ICEDR_DATA_DIR="D:\icedr-data"
-.\icedr_0.0.1-alpha.1_windows-x86_64.exe
+.\icedr_VERSION_windows-x86_64.exe
 ```
 
 ## 常用环境变量
@@ -172,7 +174,7 @@ DATABASE_PORT=5432 \
 DATABASE_DBNAME=icedr \
 DATABASE_USER=icedr_app \
 DATABASE_PASSWORD=strong-password \
-./icedr_0.0.1-alpha.1_linux-x86_64
+./icedr_VERSION_linux-x86_64
 ```
 
 也可以先启动 SQLite，在首次初始化向导的数据库步骤中填写 PostgreSQL 信息。
@@ -188,7 +190,7 @@ S3_BUCKET=icedr-drive \
 S3_ACCESS_KEY_ID=your-access-key \
 S3_SECRET_ACCESS_KEY=your-secret-key \
 S3_FORCE_PATH_STYLE=true \
-./icedr_0.0.1-alpha.1_linux-x86_64
+./icedr_VERSION_linux-x86_64
 ```
 
 也可以在初始化向导中勾选对象存储后填写配置。未勾选时，系统不会要求对象存储参数。
@@ -198,14 +200,14 @@ S3_FORCE_PATH_STYLE=true \
 Linux / macOS：
 
 ```bash
-sha256sum ./icedr_0.0.1-alpha.1_linux-x86_64
-grep icedr_0.0.1-alpha.1_linux-x86_64 SHA256SUMS.txt
+sha256sum ./icedr_VERSION_linux-x86_64
+grep icedr_VERSION_linux-x86_64 SHA256SUMS.txt
 ```
 
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\icedr_0.0.1-alpha.1_windows-x86_64.exe -Algorithm SHA256
+Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm SHA256
 ```
 
 对比结果是否与 `SHA256SUMS.txt` 中相同。也可以用 `MD5SUMS.txt` 做兼容性校验，但 SHA256 更适合作为主要完整性检查。
@@ -232,7 +234,7 @@ Get-FileHash .\icedr_0.0.1-alpha.1_windows-x86_64.exe -Algorithm SHA256
 确认端口是否被占用，或把端口改成其他值：
 
 ```bash
-API_PORT=18000 ./icedr_0.0.1-alpha.1_linux-x86_64
+API_PORT=18000 ./icedr_VERSION_linux-x86_64
 ```
 
 然后访问 `http://服务器地址:18000`。

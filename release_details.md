@@ -1,96 +1,77 @@
-# ICEDR v0.0.1-alpha.1
+# ICEDR v0.0.1-alpha.2
 
 > [!IMPORTANT]
 >
-> 这是 ICEDR 的首次预发布版本，适合部署体验、功能验证和早期反馈。预发布阶段仍可能调整接口、配置项和数据结构。
+> 这是 ICEDR 的第二个预发布版本，适合部署体验、功能验证和早期反馈。预发布阶段仍可能调整接口、配置项和数据结构；升级前请备份数据库、`data` 目录和对象存储配置。
 
-ICEDR v0.0.1-alpha.1 是项目的第一个公开版本。它提供一个自托管的工作区网盘，用于集中管理文件、在线预览、外链分享、访问审计和基础运维设置。
+ICEDR v0.0.1-alpha.2 基于首次预发布继续完善部署体验、发布文档和首次初始化流程。本次发布重点解决二进制运行时数据目录、Docker 镜像命名、GitHub Pages 发布信息读取和对象存储设置引导问题。
 
-## 新功能
+## 本次重点
 
-### 工作区网盘
+- 完善 Docker 与二进制部署文档，明确已发布镜像、持久化目录、端口映射、环境变量和升级方式。
+- 修复二进制包在 Windows 等环境下错误使用用户目录创建 `data` 的问题，默认数据目录改为可执行文件所在目录旁的 `data`。
+- 修复二进制包加载 SQLite 原生扩展时缺少模块根目录的问题。
+- 保持 Docker Hub 和 GHCR 仓库名一致：`corecherry/icedr-po` 与 `ghcr.io/cloudwhile/icedr-po`。
+- 优化首次初始化中的对象存储设置：未启用对象存储时不显示 S3 / MinIO 必填项，启用后再展示对应配置。
+- 调整文档站最新发布信息的生成方式，避免页面访问时触发 GitHub API 限流。
+- 为应用和文档站接入统一 favicon。
+- 修复文档站在 Node.js 24 构建环境下的依赖兼容问题。
 
-- 上传、下载、重命名、移动、复制和删除工作区文件。
-- 支持文件夹浏览、列表视图、搜索、收藏和详情面板。
-- 支持回收站与文件历史版本，降低误删和覆盖风险。
-- 支持常见文件类型预览，并为无法预览的文件保留清晰的下载入口。
-- 支持上传任务、下载任务和后台传输状态展示。
+## 使用者可见变化
 
-### 外链分享
+### 部署文档
 
-- 可为单个文件、多个文件或文件夹创建外链。
-- 支持公开访问、邮箱验证访问、已登录用户访问和 OAuth 访问策略。
-- 支持外链有效期、永久链接开关、预览权限和下载权限。
-- 支持邮箱域名限制、等待时间、下载次数限制和限速策略。
-- 外链页面会识别访问主体，区分匿名访客、邮箱验证访客、OAuth 访客和工作区用户。
+- 新增 Docker 部署文档，推荐使用 `docker run -d` 直接启动已发布镜像。
+- 新增二进制部署文档，说明平台文件选择、启动方式、长期运行、数据目录和校验方式。
+- 扩充配置说明，覆盖数据库、Redis、文件存储、外链公开地址、SMTP、OIDC、更新检查和生产环境校验。
+- 发布说明页会展示最新 Release 信息、发布文件、日期、Docker 标签和校验方式。
 
-### 身份与账号
+### 首次初始化
 
-- 首次引导可创建管理员账号。
-- 支持本地账号登录。
-- 支持 OIDC OAuth 登录，并保留兼容模式用于旧的 ICETOWNE BLOG OAuth。
-- 支持 Passkey / WebAuthn 配置。
-- SMTP 为可选配置；未配置邮件时也可以完成首次引导，之后可在管理员设置中启用。
+- 对象存储改为显式启用后再填写配置项。
+- 未配置对象存储时，系统继续使用本地文件存储。
+- 初始化流程保留 SQLite 优先体验，适合单机或试用部署；需要 PostgreSQL 时可在数据库步骤配置。
 
-### 管理员设置
+### 二进制运行
 
-- 提供系统状态、系统设置、存储设置、外链策略和审计日志页面。
-- 系统状态展示应用版本、运行状态和存储相关信息。
-- 存储设置支持本地存储和 S3 / MinIO 对象存储配置。
-- 外链策略可统一管理匿名访问、邮箱规则、有效期、预览、下载和审计选项。
-- 审计日志支持分页查看，覆盖登录、分享访问、文件预览、文件下载和管理操作等活动。
+- 二进制文件默认在自身所在目录旁创建 `data`。
+- SQLite 数据库、本地文件、原生扩展缓存和数据库来源记录都会保存在该目录中。
+- 可继续通过 `ICEDR_DATA_DIR` 指定自定义数据目录。
 
-### 持久化与部署
+### Docker 发布
 
-- 默认使用本地 SQLite，数据保存在 ICEDR 数据目录下，适合快速启动和单机部署。
-- 可在配置数据库后迁移到 PostgreSQL。
-- Docker 镜像发布到 `corecherry/icedr-po` 和 `ghcr.io/cloudwhile/icedr-po`。
-- 提供 VitePress 文档站，并通过 GitHub Pages 发布。
-- 提供二进制打包流程，方便在不使用 Docker 的场景中部署。
+- Docker Hub：`corecherry/icedr-po`
+- GitHub Container Registry：`ghcr.io/cloudwhile/icedr-po`
+- 当前版本为预发布版本，因此不会更新 `latest` 标签。
 
-## 下载与校验
+```bash
+docker pull corecherry/icedr-po:0.0.1-alpha.2
+docker pull ghcr.io/cloudwhile/icedr-po:0.0.1-alpha.2
+```
 
-GitHub Release 会根据实际上传的发布文件自动追加下载链接、文件大小、MD5、SHA256 和 release manifest。不支持的平台不会生成发布文件。
+## 升级提示
 
-下载发布文件后，可以使用 Release 附带的校验文件确认完整性：
+- 从 `v0.0.1-alpha.1` 升级前，请备份 SQLite 数据库、`data/local-files` 和对象存储配置。
+- 使用 Docker 部署时，继续挂载原来的宿主机数据目录或 volume。
+- 使用二进制部署时，建议将新二进制文件放到原目录，继续使用原来的 `data`。
+- 如果曾经因为旧二进制在用户目录下创建了 `data`，请先确认真实数据所在位置，再迁移到新的程序目录旁。
+- 如果启用了对象存储，请确认 S3 / MinIO endpoint、bucket、access key、secret key 和 path-style 选项仍然正确。
+
+## 文件完整性
+
+Release 会自动附加发布文件列表、文件大小、MD5、SHA256 和 `release-manifest.json`。下载后可使用下列命令校验：
 
 ```bash
 md5sum -c MD5SUMS.txt
 sha256sum -c SHA256SUMS.txt
 ```
 
-Windows 用户可以使用 `Get-FileHash` 计算文件摘要，并与 `MD5SUMS.txt` 或 `SHA256SUMS.txt` 中的值比对。
+Windows PowerShell 示例：
 
-## Docker 镜像
-
-本次发布的 Docker 镜像位置：
-
-```text
-corecherry/icedr-po:v0.0.1-alpha.1
-ghcr.io/cloudwhile/icedr-po:v0.0.1-alpha.1
+```powershell
+Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm SHA256
 ```
-
-这是预发布版本，因此不会更新 `corecherry/icedr-po:latest` 或 `ghcr.io/cloudwhile/icedr-po:latest`。
-
-Docker Hub：
-
-```bash
-docker pull corecherry/icedr-po:v0.0.1-alpha.1
-```
-
-GitHub Container Registry：
-
-```bash
-docker pull ghcr.io/cloudwhile/icedr-po:v0.0.1-alpha.1
-```
-
-## 首次发布说明
-
-- 这是 ICEDR 的首次发布，没有来自旧版本的升级差异。
-- 如果使用本地开发构建或手动部署数据，升级或替换构建前仍建议备份数据库和 `data` 目录。
-- 如果使用对象存储，请确认 S3 / MinIO endpoint、bucket、access key 和 secret key 配置正确。
-- 如果启用 SMTP，请先发送测试邮件并确认投递成功。
 
 ## Full Changelog
 
-这是 ICEDR 的首次发布，没有历史 release changelog。
+https://github.com/Cloudwhile/icedr/compare/v0.0.1-alpha.1...v0.0.1-alpha.2

@@ -98,47 +98,55 @@ External login should use the standard `oidc` provider profile for normal OIDC p
 
 Configuration reference lives in the VitePress documentation under `docs/reference/configuration.md`.
 
-## Docker Packaging
+## Published Builds
+
+The current pre-release is `v0.0.1-alpha.2`. Container images are published as `corecherry/icedr-po:<tag>` and `ghcr.io/cloudwhile/icedr-po:<tag>`. Use `0.0.1-alpha.2` as the Docker tag for this release.
+
+Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.2`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
+
+### Minimal Docker Deployment
+
+The Docker image contains the ICEDR web client and API in one container. Persist `/workspace/backend/data` to keep SQLite data, local files, setup state, and runtime metadata across upgrades:
 
 ```bash
-cp .env.production.example .env.production
-docker build -f deploy/Dockerfile -t corecherry/icedr-po:local .
+mkdir -p /opt/icedr/data
+
+docker run -d \
+  --name icedr \
+  --restart unless-stopped \
+  -p 13000:13000 \
+  -v /opt/icedr/data:/workspace/backend/data \
+  -e NODE_ENV=production \
+  -e APP_ENV=production \
+  -e API_HOST=0.0.0.0 \
+  -e API_PORT=13000 \
+  -e SMTP_ENABLED=false \
+  corecherry/icedr-po:0.0.1-alpha.2
 ```
 
-The Docker image packages the ICEDR web client and API together. Runtime services such as persistence, cache, object storage, and mail delivery should be supplied by the target environment rather than described as part of the project image build.
+Open `http://localhost:13000`, or replace `localhost` with the server address. A fresh data directory opens the first-run setup page.
 
-The image always builds the browser client for production with same-origin `/api`. Local development values such as `VITE_API_BASE_URL=http://localhost:13001/api` are ignored by the Docker build so the image is not polluted by workstation configuration.
+### Minimal Binary Deployment
 
-The included Compose file follows the same boundary and only runs the ICEDR application services:
+Standalone binaries are attached to each GitHub Release. Artifact names follow the `icedr_VERSION_PLATFORM` convention. Release notes include generated download links, file sizes, `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json`.
+
+Linux x86_64 example:
 
 ```bash
-pnpm docker:build
-pnpm docker:up
-pnpm docker:down
+mkdir -p /opt/icedr
+cd /opt/icedr
+chmod +x ./icedr_0.0.1-alpha.2_linux-x86_64
+./icedr_0.0.1-alpha.2_linux-x86_64
 ```
 
-Compose environment variables are namespaced with `ICEDR_DOCKER_*` to avoid accidentally reading local development values from `.env`. For example, use `ICEDR_DOCKER_HTTP_PORT`, `ICEDR_DOCKER_DATABASE_HOST`, and `ICEDR_DOCKER_API_PUBLIC_BASE_URL` when customizing the packaged service.
+Binary builds create `data` beside the executable by default. Set `ICEDR_DATA_DIR` only when the data directory must live elsewhere.
 
-Compose persists runtime data in the `icedr-data` volume. Rebuilding or replacing the image keeps the existing bootstrap state; to test a truly fresh setup flow, use a new volume or intentionally remove the Compose volume after backing up any data you need.
+Deployment details live in the VitePress documentation:
 
-Container images are published to Docker Hub and GitHub Container Registry:
-
-```bash
-docker pull corecherry/icedr-po:<tag>
-docker pull ghcr.io/cloudwhile/icedr-po:<tag>
-```
-
-Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.1`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
-
-## Binary Packaging
-
-ICEDR can build standalone Node.js SEA binaries for supported platforms:
-
-```bash
-pnpm package:binary
-```
-
-Release artifacts follow the `icedr_VERSION_PLATFORM` naming convention. GitHub Release notes include concrete download links, file sizes, checksums, and release notes generated from the actual uploaded files.
+- Docker: `docs/guide/docker.md`
+- Binary: `docs/guide/binary.md`
+- Configuration: `docs/reference/configuration.md`
+- Releases and checksums: `docs/reference/releases.md`
 
 ## Release Versioning
 
@@ -146,7 +154,7 @@ Examples:
 
 ```text
 v1.2.0
-v0.0.1-alpha.1
+v0.0.1-alpha.2
 v1.2.0-alpha.1
 v1.2.0-beta.1
 ```

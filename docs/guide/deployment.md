@@ -82,7 +82,7 @@ docker run -d \
 上线前建议确认：
 
 - 已备份 `data` 目录或 Docker volume。
-- 使用明确版本标签，例如 `0.0.1-alpha.1`，避免在生产环境直接跟随 `latest`。
+- 使用明确版本标签，例如 `1.2.0-alpha.1`，避免在生产环境直接跟随 `latest`。
 - 如果通过域名访问，已设置 `PUBLIC_SHARE_BASE_URL`、`API_PUBLIC_BASE_URL` 和 `API_CORS_ORIGIN`。
 - 如果需要邮箱验证，SMTP 已测试通过。
 - 如果使用对象存储，桶权限和访问密钥只授予 ICEDR 所需范围。

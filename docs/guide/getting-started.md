@@ -50,7 +50,7 @@ ICEDR 默认把运行数据放在 `data` 中：
 
 Docker 部署时，这些路径位于容器内 `/workspace/backend/data`。推荐用 `docker run -v /opt/icedr/data:/workspace/backend/data` 映射到宿主机本地目录。
 
-二进制部署时，默认会在可执行文件所在目录创建 `data` 目录。例如可执行文件放在 `/opt/icedr/icedr_0.0.1-alpha.1_linux-x86_64`，数据会写入 `/opt/icedr/data`。
+二进制部署时，默认会在可执行文件所在目录创建 `data` 目录。例如可执行文件放在 `/opt/icedr/icedr_VERSION_linux-x86_64`，数据会写入 `/opt/icedr/data`。
 
 ## 什么时候需要额外配置
 
