@@ -25,10 +25,24 @@ Docker Hub 镜像位置为 `corecherry/icedr-po`：
 docker pull corecherry/icedr-po:<tag>
 ```
 
+## GitHub Container Registry 镜像
+
+GitHub Container Registry 镜像位置为 `ghcr.io/corecherry/icedr-po`：
+
+```bash
+docker pull ghcr.io/corecherry/icedr-po:<tag>
+```
+
 如果使用 `deploy/docker-compose.yml`，可以通过环境变量指定镜像：
 
 ```bash
 ICEDR_IMAGE=corecherry/icedr-po ICEDR_TAG=<tag> docker compose -f deploy/docker-compose.yml up -d
+```
+
+也可以直接使用 GitHub Container Registry 镜像：
+
+```bash
+ICEDR_IMAGE=ghcr.io/corecherry/icedr-po ICEDR_TAG=<tag> docker compose -f deploy/docker-compose.yml up -d
 ```
 
 ## 二进制文件

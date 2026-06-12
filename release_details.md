@@ -44,7 +44,7 @@ ICEDR v0.0.1-alpha.1 是项目的第一个公开版本。它提供一个自托�
 
 - 默认使用本地 SQLite，数据保存在 ICEDR 数据目录下，适合快速启动和单机部署。
 - 可在配置数据库后迁移到 PostgreSQL。
-- Docker 镜像发布到 `corecherry/icedr-po`。
+- Docker 镜像发布到 `corecherry/icedr-po` 和 `ghcr.io/corecherry/icedr-po`。
 - 提供 VitePress 文档站，并通过 GitHub Pages 发布。
 - 提供二进制打包流程，方便在不使用 Docker 的场景中部署。
 
@@ -67,9 +67,22 @@ Windows 用户可以使用 `Get-FileHash` 计算文件摘要，并与 `MD5SUMS.t
 
 ```text
 corecherry/icedr-po:v0.0.1-alpha.1
+ghcr.io/corecherry/icedr-po:v0.0.1-alpha.1
 ```
 
-这是预发布版本，因此不会更新 `corecherry/icedr-po:latest`。
+这是预发布版本，因此不会更新 `corecherry/icedr-po:latest` 或 `ghcr.io/corecherry/icedr-po:latest`。
+
+Docker Hub：
+
+```bash
+docker pull corecherry/icedr-po:v0.0.1-alpha.1
+```
+
+GitHub Container Registry：
+
+```bash
+docker pull ghcr.io/corecherry/icedr-po:v0.0.1-alpha.1
+```
 
 ## 首次发布说明
 

@@ -1,6 +1,6 @@
 # 发布动态
 
-ICEDR 的发布页提供 GitHub Release、校验文件、Docker 镜像和平台二进制文件。Docker Hub 镜像位置为 `corecherry/icedr-po`。
+ICEDR 的发布页提供 GitHub Release、校验文件、Docker 镜像和平台二进制文件。Docker Hub 镜像位置为 `corecherry/icedr-po`，GitHub Container Registry 镜像位置为 `ghcr.io/corecherry/icedr-po`。
 
 ## 最新发布
 
@@ -26,7 +26,7 @@ v0.0.1-alpha.1
 v1.2.0-beta.1
 ```
 
-稳定版本会更新 `corecherry/icedr-po:latest`；预发布版本不会更新 `latest`。
+稳定版本会更新 `corecherry/icedr-po:latest` 和 `ghcr.io/corecherry/icedr-po:latest`；预发布版本不会更新 `latest`。
 
 ## 文件完整性校验
 
