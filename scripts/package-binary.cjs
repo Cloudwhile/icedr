@@ -323,13 +323,16 @@ function runTool(toolName, packageName, args, options) {
 }
 
 function resolveLocalTool(name) {
+  const localBin = findLocalBin(name);
+  if (localBin) return { command: localBin, args: [] };
+
   const packageBin = findPackageBin(name);
-  if (packageBin) {
+  if (!packageBin) return undefined;
+
+  if (process.platform === 'win32' && /\.(?:cjs|mjs|js)$/i.test(packageBin)) {
     return { command: process.execPath, args: [packageBin] };
   }
-
-  const localBin = findLocalBin(name);
-  return localBin ? { command: localBin, args: [] } : undefined;
+  return { command: packageBin, args: [] };
 }
 
 function findPackageBin(name) {
