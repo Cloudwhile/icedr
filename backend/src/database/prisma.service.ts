@@ -272,9 +272,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private createClient(source: ActiveDatabaseSource): ActivePrismaClient {
     if (source.provider === 'sqlite') {
       mkdirSync(dirname(source.filePath), { recursive: true });
+      const nativeBinding = process.env.BETTER_SQLITE3_NATIVE_BINDING?.trim();
       return new SqlitePrismaClient({
         adapter: new PrismaBetterSqlite3(
-          { url: source.filePath },
+          {
+            url: source.filePath,
+            ...(nativeBinding ? { nativeBinding } : {}),
+          },
           { timestampFormat: 'iso8601' },
         ),
       });

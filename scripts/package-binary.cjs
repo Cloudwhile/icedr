@@ -8,6 +8,8 @@ const workspaceRoot = path.resolve(__dirname, '..');
 const backendEntry = path.join(workspaceRoot, 'backend', 'dist', 'main.js');
 const workDir = path.join(workspaceRoot, 'build', 'binary');
 const outputDir = path.join(workspaceRoot, 'dist', 'binaries');
+const nativeAssetName = 'better_sqlite3.node';
+const sqliteTemplateAssetName = 'icedr-template.sqlite';
 const rootPackage = require(path.join(workspaceRoot, 'package.json'));
 const { resolveBinaryMetadata } = require('./binary-metadata.cjs');
 const displayVersion = resolveBinaryVersion();
@@ -47,6 +49,8 @@ async function main() {
   const bundleFile = path.join(workDir, 'sea-entry.cjs');
   const seaConfigFile = path.join(workDir, 'sea-config.json');
   const seaBlobFile = path.join(workDir, 'sea-prep.blob');
+  const sqliteNativeAddon = resolveBetterSqlite3NativeAddon();
+  const sqliteTemplateFile = createSqliteTemplateDatabase();
   const binaryName = createBinaryName();
   const binaryPath = path.join(outputDir, binaryName);
 
@@ -61,6 +65,10 @@ async function main() {
         output: seaBlobFile,
         disableExperimentalSEAWarning: true,
         useCodeCache: true,
+        assets: {
+          [nativeAssetName]: sqliteNativeAddon,
+          [sqliteTemplateAssetName]: sqliteTemplateFile,
+        },
       },
       null,
       2,
@@ -124,9 +132,71 @@ function createEntrySource() {
   const relativeEntry = toRequirePath(path.relative(workDir, backendEntry));
   return [
     `'use strict';`,
+    `const fs = require('node:fs');`,
+    `const path = require('node:path');`,
+    `const sea = require('node:sea');`,
+    createNativeAddonBootstrapSource(),
+    createSqliteTemplateBootstrapSource(),
+    createBinaryPathBootstrapSource(),
+    `const binaryDir = path.dirname(process.execPath);`,
+    `const dataDir = process.env.ICEDR_DATA_DIR ? resolveBinaryPath(process.env.ICEDR_DATA_DIR, binaryDir) : path.join(binaryDir, 'data');`,
+    `const sqlitePath = process.env.SQLITE_DATABASE_PATH ? resolveBinaryPath(process.env.SQLITE_DATABASE_PATH, binaryDir) : path.join(dataDir, 'icedr.sqlite');`,
+    `process.env.ICEDR_DATA_DIR = dataDir;`,
+    `process.env.SQLITE_DATABASE_PATH = sqlitePath;`,
+    `process.env.LOCAL_STORAGE_ROOT = process.env.LOCAL_STORAGE_ROOT ? resolveBinaryPath(process.env.LOCAL_STORAGE_ROOT, binaryDir) : path.join(dataDir, 'local-files');`,
+    `process.env.FRONTEND_DIST_DIR = process.env.FRONTEND_DIST_DIR || path.join(binaryDir, 'public');`,
+    `configureSqliteTemplate(sqlitePath);`,
+    `configureNativeAddons(dataDir);`,
     `process.env.APP_VERSION = process.env.APP_VERSION || ${JSON.stringify(displayVersion)};`,
     `process.env.ICEDR_BINARY = process.env.ICEDR_BINARY || '1';`,
     `require(${JSON.stringify(relativeEntry)});`,
+    '',
+  ].join('\n');
+}
+
+function createBinaryPathBootstrapSource() {
+  return [
+    `function resolveBinaryPath(value, binaryDir) {`,
+    `  return path.isAbsolute(value) ? value : path.resolve(binaryDir, value);`,
+    `}`,
+    '',
+  ].join('\n');
+}
+
+function createNativeAddonBootstrapSource() {
+  return [
+    `function configureNativeAddons(dataDir) {`,
+    `  if (process.env.BETTER_SQLITE3_NATIVE_BINDING) return;`,
+    `  if (typeof sea.isSea !== 'function' || !sea.isSea()) return;`,
+    `  const nativeDir = path.join(dataDir, 'native', process.platform + '-' + process.arch, process.versions.modules);`,
+    `  fs.mkdirSync(nativeDir, { recursive: true });`,
+    `  const nativePath = path.join(nativeDir, ${JSON.stringify(nativeAssetName)});`,
+    `  const asset = sea.getAsset(${JSON.stringify(nativeAssetName)});`,
+    `  const next = Buffer.isBuffer(asset) ? asset : Buffer.from(asset);`,
+    `  let shouldWrite = true;`,
+    `  try {`,
+    `    const current = fs.readFileSync(nativePath);`,
+    `    shouldWrite = current.length !== next.length || !current.equals(next);`,
+    `  } catch {`,
+    `    shouldWrite = true;`,
+    `  }`,
+    `  if (shouldWrite) fs.writeFileSync(nativePath, next);`,
+    `  process.env.BETTER_SQLITE3_NATIVE_BINDING = nativePath;`,
+    `}`,
+    '',
+  ].join('\n');
+}
+
+function createSqliteTemplateBootstrapSource() {
+  return [
+    `function configureSqliteTemplate(sqlitePath) {`,
+    `  if (fs.existsSync(sqlitePath)) return;`,
+    `  if (typeof sea.isSea !== 'function' || !sea.isSea()) return;`,
+    `  fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });`,
+    `  const asset = sea.getAsset(${JSON.stringify(sqliteTemplateAssetName)});`,
+    `  const next = Buffer.isBuffer(asset) ? asset : Buffer.from(asset);`,
+    `  fs.writeFileSync(sqlitePath, next);`,
+    `}`,
     '',
   ].join('\n');
 }
@@ -335,6 +405,56 @@ function resolveLocalTool(name) {
   return { command: packageBin, args: [] };
 }
 
+function resolveBetterSqlite3NativeAddon() {
+  const packageJsonPath = require.resolve('better-sqlite3/package.json', {
+    paths: [workspaceRoot, path.join(workspaceRoot, 'backend')],
+  });
+  const packageRoot = path.dirname(packageJsonPath);
+  const candidates = [
+    path.join(packageRoot, 'build', 'Release', nativeAssetName),
+    path.join(packageRoot, 'build', 'Debug', nativeAssetName),
+  ];
+  const nativeAddon = candidates.find((candidate) => existsSync(candidate));
+  if (nativeAddon) return nativeAddon;
+
+  throw new Error(
+    `Missing ${nativeAssetName}. Run pnpm install with scripts enabled or rebuild better-sqlite3 for this platform before packaging.`,
+  );
+}
+
+function createSqliteTemplateDatabase() {
+  const sqliteTemplateFile = path.join(workDir, sqliteTemplateAssetName);
+  if (existsSync(sqliteTemplateFile)) {
+    rmSync(sqliteTemplateFile, { force: true });
+  }
+
+  const prismaPackage = require.resolve('prisma/package.json', {
+    paths: [workspaceRoot, path.join(workspaceRoot, 'backend')],
+  });
+  const prismaCli = path.join(path.dirname(prismaPackage), 'build', 'index.js');
+  run(
+    process.execPath,
+    [
+      prismaCli,
+      'db',
+      'push',
+      '--schema',
+      path.join(workspaceRoot, 'database', 'schema.sqlite.prisma'),
+      '--config',
+      path.join(workspaceRoot, 'prisma.config.ts'),
+    ],
+    {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        PRISMA_DATABASE_PROVIDER: 'sqlite',
+        SQLITE_DATABASE_PATH: sqliteTemplateFile,
+      },
+    },
+  );
+  return sqliteTemplateFile;
+}
+
 function findPackageBin(name) {
   try {
     const packageJsonPath = require.resolve(`${name}/package.json`, {
@@ -371,7 +491,7 @@ function resolvePackageRunner(name) {
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || workspaceRoot,
-    env: process.env,
+    env: options.env || process.env,
     stdio: 'inherit',
     shell: process.platform === 'win32' && command.endsWith('.cmd'),
   });
