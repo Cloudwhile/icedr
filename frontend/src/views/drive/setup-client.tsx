@@ -53,7 +53,7 @@ const defaultSharePolicy: Omit<WorkspaceShareSettings, "workspaceId" | "updatedA
   }
 };
 const defaultMailSettings: MailSettings = {
-  enabled: true,
+  enabled: false,
   host: "",
   port: 587,
   secure: false,
@@ -228,7 +228,7 @@ function SetupPage({
   const adminComplete = Boolean(admin.email.trim() && admin.displayName.trim() && admin.password.length >= 8);
   const authComplete = localEnabled || oauthEnabled || passkeyEnabled;
   const brandComplete = Boolean(site.siteName.trim());
-  const mailComplete = Boolean(mail.verifiedAt);
+  const mailComplete = !mail.enabled || Boolean(mail.verifiedAt);
   const remoteDatabaseDirty = Boolean(
     remoteDatabaseTouched &&
       (remoteDatabase.host.trim() ||
@@ -323,22 +323,27 @@ function SetupPage({
       message: t("setup.databaseFailed")
     })).finally(() => setBusy(false));
   };
-  const currentMailInput = (): MailSettingsInput => ({
-    enabled: mail.enabled,
-    host: mail.host,
-    port: mail.port,
-    secure: mail.secure,
-    username: mail.username,
-    ...(mailPassword ? {
-      password: mailPassword
-    } : {}),
-    fromName: mail.fromName,
-    fromEmail: mail.fromEmail,
-    replyTo: mail.replyTo || undefined
-  });
+  const currentMailInput = (): MailSettingsInput => {
+    if (!mail.enabled) return {
+      enabled: false
+    };
+    return {
+      enabled: true,
+      host: mail.host,
+      port: mail.port,
+      secure: mail.secure,
+      username: mail.username,
+      ...(mailPassword ? {
+        password: mailPassword
+      } : {}),
+      fromName: mail.fromName,
+      fromEmail: mail.fromEmail,
+      replyTo: mail.replyTo || undefined
+    };
+  };
   const testMail = () => {
     const recipientEmail = (mailTestEmail || admin.email).trim();
-    if (!recipientEmail || busy) return;
+    if (!mail.enabled || !recipientEmail || busy) return;
     setBusy(true);
     setStatus(null);
     void updateSetupMailSettings(currentMailInput()).then(settings => {
@@ -664,29 +669,29 @@ function SetupPage({
               verifiedAt: null
             }))} palette={palette} />
                 <div className="icedr-setup-form-grid">
-                  <AuthField label={t("setup.smtpHost")} palette={palette} required>
-                    <AuthInput palette={palette} value={mail.host} onChange={event => setMail(value => ({
+                  <AuthField label={t("setup.smtpHost")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} value={mail.host} onChange={event => setMail(value => ({
                   ...value,
                   host: event.target.value,
                   verifiedAt: null
                 }))} />
                   </AuthField>
-                  <AuthField label={t("setup.smtpPort")} palette={palette} required>
-                    <AuthInput palette={palette} inputMode="numeric" value={String(mail.port)} onChange={event => setMail(value => ({
+                  <AuthField label={t("setup.smtpPort")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} inputMode="numeric" value={String(mail.port)} onChange={event => setMail(value => ({
                   ...value,
                   port: Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1),
                   verifiedAt: null
                 }))} />
                   </AuthField>
-                  <AuthField label={t("setup.smtpUsername")} palette={palette} required>
-                    <AuthInput palette={palette} value={mail.username} onChange={event => setMail(value => ({
+                  <AuthField label={t("setup.smtpUsername")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} value={mail.username} onChange={event => setMail(value => ({
                   ...value,
                   username: event.target.value,
                   verifiedAt: null
                 }))} />
                   </AuthField>
-                  <AuthField label={t("setup.smtpPassword")} palette={palette} required>
-                    <AuthInput palette={palette} type="password" value={mailPassword} placeholder={mail.passwordConfigured ? t("setup.secretConfigured") : ""} onChange={event => {
+                  <AuthField label={t("setup.smtpPassword")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} type="password" value={mailPassword} placeholder={mail.passwordConfigured ? t("setup.secretConfigured") : ""} onChange={event => {
                   setMailPassword(event.target.value);
                   setMail(value => ({
                     ...value,
@@ -694,29 +699,29 @@ function SetupPage({
                   }));
                 }} />
                   </AuthField>
-                  <AuthField label={t("setup.smtpFromName")} palette={palette} required>
-                    <AuthInput palette={palette} value={mail.fromName} onChange={event => setMail(value => ({
+                  <AuthField label={t("setup.smtpFromName")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} value={mail.fromName} onChange={event => setMail(value => ({
                   ...value,
                   fromName: event.target.value,
                   verifiedAt: null
                 }))} />
                   </AuthField>
-                  <AuthField label={t("setup.smtpFromEmail")} palette={palette} required>
-                    <AuthInput palette={palette} type="email" value={mail.fromEmail} onChange={event => setMail(value => ({
+                  <AuthField label={t("setup.smtpFromEmail")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} type="email" value={mail.fromEmail} onChange={event => setMail(value => ({
                   ...value,
                   fromEmail: event.target.value,
                   verifiedAt: null
                 }))} />
                   </AuthField>
                   <AuthField label={t("setup.smtpReplyTo")} palette={palette}>
-                    <AuthInput palette={palette} type="email" value={mail.replyTo} onChange={event => setMail(value => ({
+                    <AuthInput disabled={!mail.enabled} palette={palette} type="email" value={mail.replyTo} onChange={event => setMail(value => ({
                   ...value,
                   replyTo: event.target.value,
                   verifiedAt: null
                 }))} />
                   </AuthField>
-                  <AuthField label={t("setup.smtpTestEmail")} palette={palette} required>
-                    <AuthInput palette={palette} type="email" value={mailTestEmailTouched ? mailTestEmail : admin.email} onChange={event => {
+                  <AuthField label={t("setup.smtpTestEmail")} palette={palette} required={mail.enabled}>
+                    <AuthInput disabled={!mail.enabled} palette={palette} type="email" value={mailTestEmailTouched ? mailTestEmail : admin.email} onChange={event => {
                   setMailTestEmailTouched(true);
                   setMailTestEmail(event.target.value);
                 }} />
@@ -727,7 +732,7 @@ function SetupPage({
               secure: !value.secure,
               verifiedAt: null
             }))} palette={palette} />
-                <AuthPrimaryButton icon="mail" palette={palette} busy={busy} disabled={busy || !(mailTestEmail || admin.email).trim()} onClick={testMail}>
+                <AuthPrimaryButton icon="mail" palette={palette} busy={busy} disabled={busy || !mail.enabled || !(mailTestEmail || admin.email).trim()} onClick={testMail}>
                   {mail.verifiedAt ? t("setup.testMailAgain") : t("setup.testMail")}
                 </AuthPrimaryButton>
               </SetupSection> : null}
@@ -794,7 +799,7 @@ function SetupPage({
                   <InfoTile label={t("setup.database")} value={database.verified ? t("share.ready") : t("setup.verifyDatabase")} palette={palette} />
                   <InfoTile label={t("setup.admin")} value={admin.email || "--"} palette={palette} />
                   <InfoTile label={t("setup.auth")} value={authSummary} palette={palette} />
-                  <InfoTile label={t("setup.mail")} value={mail.verifiedAt ? t("setup.mailVerified") : t("setup.testMail")} palette={palette} />
+                  <InfoTile label={t("setup.mail")} value={!mail.enabled ? t("setup.mailDisabled") : mail.verifiedAt ? t("setup.mailVerified") : t("setup.testMail")} palette={palette} />
                   <InfoTile label={t("setup.brand")} value={site.siteName || "--"} palette={palette} />
                 </div>
               </SetupSection> : null}

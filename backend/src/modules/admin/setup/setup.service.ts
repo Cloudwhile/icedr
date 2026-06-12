@@ -45,7 +45,8 @@ export class SetupService {
     }
 
     if (dto.mail) await this.settingsService.updateMailSettings(dto.mail);
-    await this.mailService.assertReady();
+    const mailSettings = await this.settingsService.getMailSettings();
+    if (mailSettings.enabled) await this.mailService.assertReady();
 
     const session = await this.authService.createSetupAdmin(dto.admin, request);
     await this.settingsService.updateSiteSettings(dto.site ?? {});

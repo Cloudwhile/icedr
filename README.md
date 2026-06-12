@@ -90,9 +90,9 @@ pnpm --filter frontend exec playwright install --with-deps chromium
 
 Start from `.env.example` for local development and `.env.production.example` for production. Production deployments should provide the public share URL, persistence, storage, cache, and SMTP values required by the selected runtime environment.
 
-Fresh data directories open the first-run setup page. Setup starts with local SQLite and local file storage, and the database step lets administrators keep SQLite or switch to PostgreSQL before completing bootstrap.
+Fresh data directories open the first-run setup page. Setup starts with local SQLite and local file storage, and the database step lets administrators keep SQLite or switch to PostgreSQL before completing bootstrap. SMTP is optional during first-run setup; it can stay disabled and be configured later from the administrator settings.
 
-The backend validates production configuration during startup. Missing values, malformed URLs or ports, disabled SMTP delivery, development mail delivery, and common placeholder values cause startup to fail with clear variable names.
+The backend validates production configuration during startup. Missing values, malformed URLs or ports, development-only mail delivery, and common placeholder values cause startup to fail with clear variable names. SMTP values are required only when mail delivery is enabled.
 
 External login should use the standard `oidc` provider profile for normal OIDC providers. The `icetowne-blog` profile remains available only for the legacy Blog OAuth shape.
 

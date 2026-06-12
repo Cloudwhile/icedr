@@ -65,6 +65,16 @@ describe('production environment validation', () => {
     ).not.toThrow();
   });
 
+  it('allows SMTP to stay disabled in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        NODE_ENV: 'production',
+        APP_ENV: 'production',
+        SMTP_ENABLED: 'false',
+      }),
+    ).not.toThrow();
+  });
+
   it('rejects placeholder values in production', () => {
     expect(() =>
       validateProductionEnv({

@@ -54,6 +54,11 @@ describe('SetupService', () => {
             verifiedAt: new Date().toISOString(),
           }),
         ),
+        getMailSettings: jest.fn(() =>
+          Promise.resolve({
+            enabled: true,
+          }),
+        ),
       } as never,
       {} as never,
       {} as never,
@@ -62,5 +67,61 @@ describe('SetupService', () => {
     await expect(service.complete(completeDto)).rejects.toThrow(
       'SMTP must be configured and verified',
     );
+  });
+
+  it('allows setup to complete when SMTP delivery is disabled', async () => {
+    const assertReady = jest.fn(() => Promise.resolve());
+    const service = new SetupService(
+      {
+        createSetupAdmin: jest.fn(() =>
+          Promise.resolve({
+            token: 'session-token',
+            user: {
+              id: 'user-admin',
+              email: completeDto.admin.email,
+              displayName: completeDto.admin.displayName,
+              role: 'admin',
+            },
+          }),
+        ),
+        updateSettingsForSetup: jest.fn(() => Promise.resolve()),
+      } as never,
+      { assertReady } as never,
+      {
+        assertSetupOpen: jest.fn(() => Promise.resolve()),
+        getDatabaseProfile: jest.fn(() =>
+          Promise.resolve({
+            verified: true,
+            verifiedAt: new Date().toISOString(),
+          }),
+        ),
+        getMailSettings: jest.fn(() =>
+          Promise.resolve({
+            enabled: false,
+          }),
+        ),
+        updateMailSettings: jest.fn(() => Promise.resolve()),
+        updateSiteSettings: jest.fn(() => Promise.resolve()),
+        markBootstrapCompleted: jest.fn(() => Promise.resolve()),
+      } as never,
+      {
+        updateSettings: jest.fn(() => Promise.resolve()),
+      } as never,
+      {
+        updateShareSettings: jest.fn(() => Promise.resolve()),
+      } as never,
+    );
+
+    await expect(
+      service.complete({
+        ...completeDto,
+        mail: {
+          enabled: false,
+        },
+      }),
+    ).resolves.toMatchObject({
+      bootstrapCompleted: true,
+    });
+    expect(assertReady).not.toHaveBeenCalled();
   });
 });

@@ -29,6 +29,7 @@ v0.0.1-alpha.1
 - 工作区文件管理，包括上传、下载、预览、回收站、收藏和历史版本。
 - 外链分享能力，包括匿名访问、邮箱验证、登录用户识别、下载策略和访问审计。
 - 管理员面板，包括系统状态、系统设置、存储策略、外链策略和审计日志。
+- 首次引导支持跳过 SMTP 配置，邮件投递可在管理员设置中稍后启用。
 - 默认本地 SQLite 数据源，持久化数据保存在服务数据目录下。
 - 本地文件存储和 S3 / MinIO 对象存储配置。
 - Docker 镜像发布，镜像位置为 `corecherry/icedr-po`。
@@ -42,10 +43,6 @@ v0.0.1-alpha.1
 - 当前版本为预发布版本时，更新检查会同时识别更高的预发布版本和稳定版本。
 - 当前版本为稳定版本时，默认只把稳定版本作为可用更新。
 - 默认更新源为 ICEDR GitHub Releases，也可以通过 `ICEDR_UPDATE_CHECK_URL` 指向兼容的 JSON 发布源。
-
-## Generated Release Files
-
-具体发布文件、下载 URL、文件大小和校验值会根据实际产物自动追加到 GitHub Release 说明中。不支持的平台不会生成发布文件。
 
 ## Integrity
 
@@ -74,17 +71,6 @@ corecherry/icedr-po:v0.0.1-alpha.1
 - 如果你使用的是本地开发构建或手动部署数据，升级前仍建议备份数据库和 `data` 目录。
 - 预发布阶段接口、配置项和数据结构可能继续调整。
 - 如果使用对象存储，请确认 S3 / MinIO endpoint、bucket、access key 和 secret key 配置正确。
-
-## Verification
-
-推荐发布后执行：
-
-```bash
-pnpm --filter backend build
-pnpm --filter frontend build
-pnpm docs:build
-docker compose -f deploy/docker-compose.yml config
-```
 
 ## Full Changelog
 

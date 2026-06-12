@@ -113,10 +113,6 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     errors.push('SHARE_EMAIL_PROVIDER=dev-log is not allowed in production');
   }
 
-  if (env.SMTP_ENABLED !== undefined && !readBooleanFlag(env.SMTP_ENABLED)) {
-    errors.push('SMTP_ENABLED must not disable mail delivery in production');
-  }
-
   for (const name of placeholderEnv) {
     const value = env[name];
     if (hasValue(value) && isPlaceholderValue(name, value)) {
