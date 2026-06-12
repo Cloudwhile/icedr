@@ -6,9 +6,15 @@ on:
       - master
     paths:
       - "docs/**"
+      - "scripts/create-docs-release-data.cjs"
       - ".github/workflows/pages.yml"
       - "package.json"
       - "pnpm-lock.yaml"
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -24,6 +30,7 @@ jobs:
   build:
     name: Build VitePress
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout
@@ -47,6 +54,12 @@ jobs:
         shell: bash
         run: |
           echo "VITEPRESS_BASE=/" >> "$GITHUB_ENV"
+
+      - name: Generate release data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/create-docs-release-data.cjs
 
       - name: Build docs
         run: pnpm docs:build

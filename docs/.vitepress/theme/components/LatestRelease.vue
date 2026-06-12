@@ -19,7 +19,13 @@ type GitHubRelease = {
   tag_name: string;
 };
 
-const apiUrl = "https://api.github.com/repos/Cloudwhile/icedr/releases?per_page=1";
+type ReleasePayload = {
+  generated_at: string | null;
+  release: GitHubRelease | null;
+  error?: string | null;
+};
+
+const releaseDataUrl = `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/releases/latest.json`;
 const release = ref<GitHubRelease | null>(null);
 const loading = ref(true);
 const error = ref("");
@@ -42,15 +48,17 @@ const releaseBody = computed(() =>
 
 onMounted(async () => {
   try {
-    const response = await fetch(apiUrl, {
-      headers: { Accept: "application/vnd.github+json" },
-    });
+    const response = await fetch(releaseDataUrl, { headers: { Accept: "application/json" } });
     if (!response.ok) {
-      throw new Error(`GitHub Releases 返回 ${response.status}`);
+      throw new Error("无法读取发布数据。");
     }
 
-    const releases = (await response.json()) as GitHubRelease[];
-    release.value = releases[0] ?? null;
+    const payload = (await response.json()) as ReleasePayload;
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+
+    release.value = payload.release;
     if (!release.value) error.value = "暂无发布记录。";
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : "无法读取最新发布。";
