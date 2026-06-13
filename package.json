@@ -7,7 +7,7 @@
   },
   "packageManager": "pnpm@10.18.1",
   "scripts": {
-    "dev": "concurrently -n web,api -c blue,green \"pnpm --filter frontend dev\" \"pnpm --filter backend start:dev\"",
+    "dev": "node scripts/dev.cjs",
     "dev:app": "pnpm --filter frontend dev",
     "dev:api": "pnpm --filter backend start:dev",
     "build": "pnpm --filter frontend build && pnpm --filter backend build",
