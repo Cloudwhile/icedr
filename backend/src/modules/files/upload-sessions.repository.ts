@@ -17,6 +17,7 @@ export type UploadSession = {
   id: string;
   transferId: string;
   workspaceId: string;
+  spaceScope: 'workspace' | 'personal';
   objectKey: string;
   multipartUploadId: string | null;
   resumeKey: string | null;
@@ -54,6 +55,7 @@ export class UploadSessionsRepository {
     parentNodeId?: string | null;
     resumeKey?: string | null;
     sizeBytes: number;
+    spaceScope?: 'workspace' | 'personal';
     transferId: string;
     workspaceId: string;
   }) {
@@ -63,6 +65,7 @@ export class UploadSessionsRepository {
         id,
         transferId: input.transferId,
         workspaceId: input.workspaceId,
+        spaceScope: input.spaceScope ?? 'workspace',
         objectKey: input.objectKey,
         multipartUploadId: input.multipartUploadId ?? null,
         resumeKey: input.resumeKey ?? null,
@@ -82,11 +85,13 @@ export class UploadSessionsRepository {
     parentNodeId?: string | null;
     resumeKey: string;
     sizeBytes: number;
+    spaceScope?: 'workspace' | 'personal';
     workspaceId: string;
   }) {
     const row = await this.prisma.uploadSession.findFirst({
       where: {
         workspaceId: input.workspaceId,
+        spaceScope: input.spaceScope ?? 'workspace',
         resumeKey: input.resumeKey,
         fileName: input.fileName,
         parentNodeId: input.parentNodeId ?? null,
@@ -174,6 +179,7 @@ export class UploadSessionsRepository {
       id: row.id,
       transferId: row.transferId,
       workspaceId: row.workspaceId,
+      spaceScope: row.spaceScope as 'workspace' | 'personal',
       objectKey: row.objectKey,
       multipartUploadId: row.multipartUploadId,
       resumeKey: row.resumeKey,

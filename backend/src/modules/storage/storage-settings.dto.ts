@@ -39,13 +39,14 @@ export type StorageTestResponse = {
 
 export type StorageUsageResponse = {
   workspaceId: string;
+  spaceScope: 'workspace' | 'personal';
   activeBytes: number;
   defaultUserQuotaBytes: number | null;
   usedBytes: number;
   fileCount: number;
   folderCount: number;
   quotaBytes: number | null;
-  quotaSource: 'policy' | 'unlimited' | 'workspace';
+  quotaSource: 'defaultUser' | 'policy' | 'unlimited' | 'user' | 'workspace';
   storagePolicyQuotaBytes: number | null;
   trashBytes: number;
   trashFileCount: number;

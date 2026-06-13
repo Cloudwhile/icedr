@@ -121,9 +121,11 @@ export type DriveSidebarProps = {
   folderPath: DriveItem[];
   onNavigateFolder: (id: string) => void;
   onNavigateRoot: () => void;
+  onSelectPersonalSpace: () => void;
   onSelectWorkspaceSpace: () => void;
   palette: Palette;
   rootLabel: string;
+  workspaceLabel: string;
   setActiveNav: (id: DriveUserNav) => void;
   sidebarOpen: boolean;
   spaceScope: "workspace" | "personal";
@@ -138,9 +140,11 @@ export function Sidebar({
   folderPath,
   onNavigateFolder,
   onNavigateRoot,
+  onSelectPersonalSpace,
   onSelectWorkspaceSpace,
   palette,
   rootLabel,
+  workspaceLabel,
   setActiveNav,
   sidebarOpen,
   spaceScope,
@@ -151,12 +155,12 @@ export function Sidebar({
   const storageLabel = storageUsage?.quotaBytes
     ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${formatFileSize(storageUsage.quotaBytes, locale)}`
     : storageUsage
-      ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${storageUsage.fileCount} files`
+      ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${t("settings.unlimitedQuota")}`
       : t("app.storageUsage");
   const storageProgress = Math.max(0, Math.min(100, storageUsage?.usagePercent ?? 0));
 
   const navById = new Map(navItems.map((item) => [item.id, item]));
-  const activeSpaceLabel = spaceScope === "workspace" ? rootLabel : t("app.personalSpace");
+  const activeSpaceLabel = spaceScope === "workspace" ? t("app.workspaceSpace") : t("app.personalSpace");
   const activeSpaceMeta = storageLabel;
   const activeSpaceIcon: LocalIconName = spaceScope === "workspace" ? "user_group" : "user_avatar";
 
@@ -186,12 +190,13 @@ export function Sidebar({
           activeIcon={activeSpaceIcon}
           activeLabel={activeSpaceLabel}
           activeMeta={activeSpaceMeta}
+          onSelectPersonalSpace={onSelectPersonalSpace}
           onSelectWorkspaceSpace={onSelectWorkspaceSpace}
           palette={palette}
-          rootLabel={rootLabel}
           spaceScope={spaceScope}
           storageLabel={storageLabel}
           storageProgress={storageProgress}
+          workspaceLabel={workspaceLabel}
         />
 
         <DriveDirectoryTree
@@ -497,21 +502,23 @@ function SpaceScopeSelector({
   activeLabel,
   activeMeta,
   onSelectWorkspaceSpace,
+  onSelectPersonalSpace,
   palette,
-  rootLabel,
   spaceScope,
   storageLabel,
   storageProgress,
+  workspaceLabel,
 }: {
   activeIcon: LocalIconName;
   activeLabel: string;
   activeMeta: string;
+  onSelectPersonalSpace: () => void;
   onSelectWorkspaceSpace: () => void;
   palette: Palette;
-  rootLabel: string;
   spaceScope: "workspace" | "personal";
   storageLabel: string;
   storageProgress: number;
+  workspaceLabel: string;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
@@ -575,21 +582,24 @@ function SpaceScopeSelector({
             <LocalIcon name="user_group" size={15} />
             <span className="drive-space-menu-text">
               <span className="icedr-truncate">{t("app.workspaceSpace")}</span>
-              <span className="icedr-truncate">{rootLabel}</span>
+              <span className="icedr-truncate">{workspaceLabel}</span>
             </span>
           </button>
           <button
             {...buttonTypeAttr}
-            aria-disabled="true"
             className="drive-space-inline-item"
-            data-disabled="true"
-            disabled
+            data-active={spaceScope === "personal" ? "true" : undefined}
+            onClick={() => {
+              onSelectPersonalSpace();
+              setOpen(false);
+            }}
             role="menuitemradio"
             aria-checked={spaceScope === "personal"}
           >
             <LocalIcon name="user_avatar" size={15} />
             <span className="drive-space-menu-text">
               <span className="icedr-truncate">{t("app.personalSpace")}</span>
+              <span className="icedr-truncate">{t("nav.drive")}</span>
             </span>
           </button>
         </div>
@@ -673,7 +683,7 @@ export function WorkspaceBar({
   const t = useTranslations();
   const isPathView = activeNav === "drive";
   const isFileListView = !["links", "transfers", "settings"].includes(activeNav);
-  const activeLabel = activeNav === "settings" ? t("app.settings") : t(`nav.${activeNav}`);
+  const activeLabel = activeNav === "drive" ? rootLabel : activeNav === "settings" ? t("app.settings") : t(`nav.${activeNav}`);
   const activeNavIcon = navItems.find((item) => item.id === activeNav)?.icon ?? "folder";
   const moduleSubtitleKey =
     activeNav === "links"
@@ -695,20 +705,10 @@ export function WorkspaceBar({
               <button
                 {...buttonTypeAttr}
                 className="drive-address-segment drive-address-root icedr-truncate"
-                onClick={onNavigateRoot}
-              >
-                <span className="icedr-truncate">{rootLabel}</span>
-              </button>
-              <span className="drive-address-separator">
-                <LocalIcon name="arrow_right" size={13} />
-              </span>
-              <button
-                {...buttonTypeAttr}
-                className="drive-address-segment drive-address-drive icedr-truncate"
                 data-current={isRootCurrent ? "true" : undefined}
                 onClick={onNavigateRoot}
               >
-                <span className="icedr-truncate">{activeLabel}</span>
+                <span className="icedr-truncate">{rootLabel}</span>
               </button>
               {pathItems.map((item, index) => (
                 <span key={item.id} className="drive-address-segment-wrap">

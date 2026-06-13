@@ -45,10 +45,18 @@ export class StorageController {
   @Get('usage')
   async getUsage(
     @Query('workspaceId') workspaceId = 'workspace-default',
+    @Query('spaceScope') spaceScope?: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'storage', 'read');
-    return this.storageService.getUsage(workspaceId);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'storage',
+      'read',
+    );
+    return this.storageService.getUsage(workspaceId, {
+      spaceScope,
+      userId: session.user.id,
+    });
   }
 
   @Get('usage/breakdown')

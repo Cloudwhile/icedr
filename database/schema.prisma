@@ -204,6 +204,7 @@ model WorkspaceShareSetting {
 model FileNode {
   id           String    @id
   workspaceId  String    @map("workspace_id")
+  spaceScope   String    @default("workspace") @map("space_scope")
   parentNodeId String?   @map("parent_node_id")
   name         String
   kind         String
@@ -223,6 +224,7 @@ model FileNode {
   owner    User?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   versions FileVersion[]
 
+  @@index([workspaceId, spaceScope])
   @@index([ownerUserId])
   @@map("file_nodes")
 }
@@ -275,6 +277,7 @@ model UploadSession {
   id                String   @id
   transferId        String   @map("transfer_id")
   workspaceId       String   @map("workspace_id")
+  spaceScope        String   @default("workspace") @map("space_scope")
   objectKey         String   @map("object_key")
   multipartUploadId String?  @map("multipart_upload_id")
   resumeKey         String?  @map("resume_key")

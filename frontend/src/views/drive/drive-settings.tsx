@@ -472,7 +472,7 @@ function StorageSettingsPanel({
   const usageLabel = storageUsage?.quotaBytes
     ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${formatFileSize(storageUsage.quotaBytes, locale)}`
     : storageUsage
-      ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${storageUsage.fileCount}`
+      ? `${formatFileSize(storageUsage.usedBytes, locale)} / ${t("settings.unlimitedQuota")}`
       : "--";
 
   return (

@@ -25,6 +25,7 @@ import {
   DownloadIntentResponse,
   FileNodeListState,
   type FileNodeKind,
+  type FileNodeSpaceScope,
   FilePolicyResponse,
   MoveFileNodeDto,
   PreviewIntentResponse,
@@ -74,20 +75,33 @@ export class FileNodesService {
   async listFileNodes(
     workspaceId?: string,
     parentNodeId?: string | null,
-    options: { state?: string } = {},
+    options: { ownerUserId?: string; spaceScope?: string; state?: string } = {},
   ) {
     const state = this.normalizeListState(options.state);
+    const spaceScope = this.normalizeSpaceScope(options.spaceScope);
     if (state !== 'active') {
       await this.cleanupExpiredTrashIfDue();
     }
-    return this.fileNodesRepository.list(workspaceId, parentNodeId, state);
+    return this.fileNodesRepository.list(workspaceId, parentNodeId, state, {
+      ownerUserId: spaceScope === 'personal' ? options.ownerUserId : undefined,
+      spaceScope,
+    });
   }
 
   async searchFileNodes(
     query: SearchFileNodesQueryDto,
-    options: Pick<FileAuditOptions, 'auditMetadata'> = {},
+    options: Pick<FileAuditOptions, 'auditMetadata'> & {
+      ownerUserId?: string;
+    } = {},
   ) {
-    const result = await this.fileNodesRepository.search(query);
+    const spaceScope = this.normalizeSpaceScope(query.spaceScope);
+    const result = await this.fileNodesRepository.search(
+      { ...query, spaceScope },
+      {
+        ownerUserId:
+          spaceScope === 'personal' ? options.ownerUserId : undefined,
+      },
+    );
     await this.fileNodesRepository.recordAudit(
       'file.search_performed',
       query.workspaceId ?? 'workspace-default',
@@ -95,6 +109,7 @@ export class FileNodesService {
         metadata: {
           ...options.auditMetadata,
           query: query.query ?? '',
+          spaceScope,
           state: query.state ?? 'active',
           type: query.type ?? 'all',
         },
@@ -124,9 +139,11 @@ export class FileNodesService {
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
     const sizeBytes = Math.max(0, Math.trunc(dto.fileSizeBytes ?? 0));
+    const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
     await this.assertWithinWorkspaceQuota(
       dto.workspaceId,
       sizeBytes,
+      spaceScope,
       options.ownerUserId,
       options.auditMetadata,
     );
@@ -137,6 +154,7 @@ export class FileNodesService {
     if (resumeKey && dto.fileSizeBytes !== undefined) {
       const reusable = await this.uploadSessionsRepository.findReusable({
         workspaceId: dto.workspaceId,
+        spaceScope,
         resumeKey,
         fileName: dto.fileName,
         parentNodeId: dto.parentNodeId ?? null,
@@ -165,7 +183,10 @@ export class FileNodesService {
       }
     }
 
-    const objectKey = this.createUploadObjectKey(dto, distributedStorage);
+    const objectKey = this.createUploadObjectKey(
+      { ...dto, spaceScope },
+      distributedStorage,
+    );
     const transfer = await this.transfersService.createUploadTransfer({
       auditMetadata: options.auditMetadata,
       workspaceId: dto.workspaceId,
@@ -181,6 +202,7 @@ export class FileNodesService {
     try {
       const session = await this.uploadSessionsRepository.create({
         workspaceId: dto.workspaceId,
+        spaceScope,
         transferId: transfer.id,
         objectKey,
         multipartUploadId: multipartUpload?.uploadId ?? null,
@@ -374,11 +396,17 @@ export class FileNodesService {
     options: { auditMetadata?: AuditMetadata; ownerUserId?: string } = {},
   ) {
     this.assertUploadObjectKey(dto);
+    const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
     const existingUploadTarget = (
       await this.fileNodesRepository.list(
         dto.workspaceId,
         dto.parentNodeId ?? null,
         'active',
+        {
+          ownerUserId:
+            spaceScope === 'personal' ? options.ownerUserId : undefined,
+          spaceScope,
+        },
       )
     ).find((node) => node.name === dto.fileName && Boolean(node.objectKey));
     const uploadSession = dto.uploadSessionId
@@ -416,6 +444,7 @@ export class FileNodesService {
       ...dto,
       owner: dto.owner?.trim() || undefined,
       ownerUserId: options.ownerUserId,
+      spaceScope,
     });
     await this.deleteStoredObjects(
       await this.fileNodesRepository.pruneVersions(node.id),
@@ -450,12 +479,18 @@ export class FileNodesService {
     },
   ) {
     const name = this.normalizeNodeName(dto.name);
-    await this.assertValidParent(dto.workspaceId, dto.parentNodeId ?? null);
+    const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
+    await this.assertValidParent(
+      dto.workspaceId,
+      dto.parentNodeId ?? null,
+      spaceScope,
+    );
     const node = await this.fileNodesRepository.createFolder({
       ...dto,
       name,
       owner: dto.owner?.trim() || undefined,
       parentNodeId: dto.parentNodeId ?? undefined,
+      spaceScope,
     });
     await this.fileNodesRepository.recordAudit('file.folder_created', node.id, {
       metadata: dto.auditMetadata,
@@ -486,7 +521,12 @@ export class FileNodesService {
   ) {
     const source = await this.requireActiveNode(id);
     const parentNodeId = dto.parentNodeId ?? null;
-    await this.assertValidParent(source.workspaceId, parentNodeId, source.id);
+    await this.assertValidParent(
+      source.workspaceId,
+      parentNodeId,
+      source.spaceScope,
+      source.id,
+    );
     const node = await this.fileNodesRepository.move(id, parentNodeId);
     if (!node) throw new NotFoundException('File node not found');
     await this.fileNodesRepository.recordAudit('file.moved', id, {
@@ -502,7 +542,12 @@ export class FileNodesService {
   ) {
     const source = await this.requireActiveNode(id);
     const parentNodeId = dto.parentNodeId ?? source.parentNodeId;
-    await this.assertValidParent(source.workspaceId, parentNodeId, source.id);
+    await this.assertValidParent(
+      source.workspaceId,
+      parentNodeId,
+      source.spaceScope,
+      source.id,
+    );
     const node = await this.fileNodesRepository.copyTree(source, {
       name: dto.name
         ? this.normalizeNodeName(dto.name)
@@ -555,6 +600,7 @@ export class FileNodesService {
     const objectKey = createFileObjectKey({
       distributedStorage,
       fileName: node.name,
+      spaceScope: node.spaceScope,
       workspaceId: node.workspaceId,
     });
     await this.storageService.writeObjectText(
@@ -631,7 +677,12 @@ export class FileNodesService {
       dto.parentNodeId === undefined
         ? source.originalParentNodeId
         : dto.parentNodeId;
-    await this.assertValidParent(source.workspaceId, parentNodeId ?? null, id);
+    await this.assertValidParent(
+      source.workspaceId,
+      parentNodeId ?? null,
+      source.spaceScope,
+      id,
+    );
     const node = await this.fileNodesRepository.restoreTree(id, {
       name: dto.name ? this.normalizeNodeName(dto.name) : undefined,
       parentNodeId,
@@ -990,7 +1041,9 @@ export class FileNodesService {
   }
 
   async getStorageUsage(workspaceId: string, quotaBytes: number | null) {
-    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId);
+    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId, {
+      spaceScope: 'workspace',
+    });
     const resolvedQuotaBytes = usage.quotaBytes ?? quotaBytes;
     const usagePercent =
       resolvedQuotaBytes && resolvedQuotaBytes > 0
@@ -1011,13 +1064,62 @@ export class FileNodesService {
   private async assertWithinWorkspaceQuota(
     workspaceId: string,
     incomingBytes: number,
+    spaceScope: FileNodeSpaceScope,
     ownerUserId?: string,
     auditMetadata: AuditMetadata = {},
   ) {
-    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId);
-    const workspaceQuotaBytes = usage.quotaBytes;
     const storagePolicyQuotaBytes =
       await this.storageService.getConfiguredQuotaBytes();
+    if (spaceScope === 'personal') {
+      if (!ownerUserId) {
+        throw new BadRequestException('Personal space requires a user');
+      }
+      const usage = await this.fileNodesRepository.getUserStorageUsage(
+        workspaceId,
+        ownerUserId,
+      );
+      const userQuotaBytes = usage.quotaBytes;
+      const quotaBytes = resolveEffectiveQuotaBytes(
+        userQuotaBytes,
+        storagePolicyQuotaBytes,
+      );
+      const quotaScope =
+        userQuotaBytes !== null &&
+        userQuotaBytes !== undefined &&
+        quotaBytes === userQuotaBytes
+          ? 'user'
+          : 'storage';
+      if (
+        quotaBytes &&
+        quotaBytes > 0 &&
+        usage.usedBytes + incomingBytes > quotaBytes
+      ) {
+        await this.fileNodesRepository.recordAudit(
+          'file.quota_upload_rejected',
+          workspaceId,
+          {
+            metadata: {
+              ...auditMetadata,
+              incomingBytes,
+              quotaBytes,
+              scope: quotaScope,
+              spaceScope,
+              usedBytes: usage.usedBytes,
+              userId: ownerUserId,
+            },
+            nodeId: null,
+            workspaceId,
+          },
+        );
+        throw new BadRequestException(insufficientStorageMessage);
+      }
+      return;
+    }
+
+    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId, {
+      spaceScope: 'workspace',
+    });
+    const workspaceQuotaBytes = usage.quotaBytes;
     const quotaBytes = resolveEffectiveQuotaBytes(
       workspaceQuotaBytes,
       storagePolicyQuotaBytes,
@@ -1042,6 +1144,7 @@ export class FileNodesService {
             incomingBytes,
             quotaBytes,
             scope: quotaScope,
+            spaceScope,
             usedBytes: usage.usedBytes,
           },
           nodeId: null,
@@ -1050,36 +1153,6 @@ export class FileNodesService {
       );
       throw new BadRequestException(insufficientStorageMessage);
     }
-    if (!ownerUserId) return;
-    const userUsage = await this.fileNodesRepository.getUserStorageUsage(
-      workspaceId,
-      ownerUserId,
-    );
-    const userQuotaBytes = userUsage.quotaBytes;
-    if (
-      !userQuotaBytes ||
-      userQuotaBytes <= 0 ||
-      userUsage.usedBytes + incomingBytes <= userQuotaBytes
-    ) {
-      return;
-    }
-    await this.fileNodesRepository.recordAudit(
-      'file.quota_upload_rejected',
-      workspaceId,
-      {
-        metadata: {
-          ...auditMetadata,
-          incomingBytes,
-          quotaBytes: userQuotaBytes,
-          scope: 'user',
-          usedBytes: userUsage.usedBytes,
-          userId: ownerUserId,
-        },
-        nodeId: null,
-        workspaceId,
-      },
-    );
-    throw new BadRequestException(insufficientStorageMessage);
   }
 
   private async deleteStoredObjects(objectKeys: Array<string | null>) {
@@ -1274,6 +1347,7 @@ export class FileNodesService {
       session.objectKey !== dto.objectKey ||
       session.fileName !== dto.fileName ||
       session.sizeBytes !== dto.sizeBytes ||
+      session.spaceScope !== this.normalizeSpaceScope(dto.spaceScope) ||
       (session.parentNodeId ?? null) !== (dto.parentNodeId ?? null)
     ) {
       throw new BadRequestException(
@@ -1299,12 +1373,13 @@ export class FileNodesService {
   }
 
   private createUploadObjectKey(
-    dto: CreateUploadIntentDto,
+    dto: CreateUploadIntentDto & { spaceScope: FileNodeSpaceScope },
     distributedStorage: boolean,
   ) {
     return createFileObjectKey({
       distributedStorage,
       fileName: dto.fileName,
+      spaceScope: dto.spaceScope,
       workspaceId: dto.workspaceId,
     });
   }
@@ -1320,6 +1395,10 @@ export class FileNodesService {
   private normalizeListState(value?: string): FileNodeListState {
     if (value === 'archived' || value === 'all') return value;
     return 'active';
+  }
+
+  private normalizeSpaceScope(value?: string): FileNodeSpaceScope {
+    return value === 'personal' ? 'personal' : 'workspace';
   }
 
   private normalizeNodeName(value: string) {
@@ -1375,6 +1454,7 @@ export class FileNodesService {
   private async assertValidParent(
     workspaceId: string,
     parentNodeId: string | null,
+    spaceScope: FileNodeSpaceScope,
     sourceNodeId?: string,
   ) {
     if (!parentNodeId) return;
@@ -1387,6 +1467,9 @@ export class FileNodesService {
       throw new BadRequestException(
         'Parent folder belongs to another workspace',
       );
+    }
+    if (parent.spaceScope !== spaceScope) {
+      throw new BadRequestException('Parent folder belongs to another space');
     }
     if (parent.kind !== 'folder') {
       throw new BadRequestException('Parent node must be a folder');

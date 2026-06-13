@@ -77,6 +77,8 @@ type StoragePhysicalCapacity = {
   quotaLimitBytes: number | null;
   reason: string | null;
 };
+type StorageUsageScope = 'workspace' | 'personal';
+type StorageUsageQuotaSource = StorageUsageResponse['quotaSource'];
 
 @Injectable()
 export class StorageService {
@@ -183,41 +185,66 @@ export class StorageService {
     };
   }
 
-  async getUsage(workspaceId: string): Promise<StorageUsageResponse> {
-    const [activeStats, trashStats, folderCount, versionStats, workspace] =
-      await Promise.all([
-        this.prisma.fileNode.aggregate({
-          where: {
-            archivedAt: null,
-            sizeBytes: { not: null },
-            workspaceId,
-          },
-          _count: { _all: true },
-          _sum: { sizeBytes: true },
-        }),
-        this.prisma.fileNode.aggregate({
-          where: {
-            archivedAt: { not: null },
-            sizeBytes: { not: null },
-            workspaceId,
-          },
-          _count: { _all: true },
-          _sum: { sizeBytes: true },
-        }),
-        this.prisma.fileNode.count({
-          where: {
-            archivedAt: null,
-            sizeBytes: null,
-            workspaceId,
-          },
-        }),
-        this.prisma.fileVersion.aggregate({
-          where: { node: { workspaceId } },
-          _count: { _all: true },
-          _sum: { sizeBytes: true },
-        }),
-        this.prisma.workspace.findUnique({ where: { id: workspaceId } }),
-      ]);
+  async getUsage(
+    workspaceId: string,
+    options: { spaceScope?: string; userId?: string } = {},
+  ): Promise<StorageUsageResponse> {
+    const spaceScope = this.normalizeStorageUsageScope(options.spaceScope);
+    const ownerUserId =
+      spaceScope === 'personal'
+        ? options.userId?.trim() || undefined
+        : undefined;
+    const scopedFileWhere: Prisma.FileNodeWhereInput = {
+      workspaceId,
+      spaceScope,
+      ...(ownerUserId ? { ownerUserId } : {}),
+    };
+    const [
+      activeStats,
+      trashStats,
+      folderCount,
+      versionStats,
+      workspace,
+      user,
+    ] = await Promise.all([
+      this.prisma.fileNode.aggregate({
+        where: {
+          archivedAt: null,
+          sizeBytes: { not: null },
+          ...scopedFileWhere,
+        },
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.fileNode.aggregate({
+        where: {
+          archivedAt: { not: null },
+          sizeBytes: { not: null },
+          ...scopedFileWhere,
+        },
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.fileNode.count({
+        where: {
+          archivedAt: null,
+          sizeBytes: null,
+          ...scopedFileWhere,
+        },
+      }),
+      this.prisma.fileVersion.aggregate({
+        where: { node: scopedFileWhere },
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      }),
+      this.prisma.workspace.findUnique({ where: { id: workspaceId } }),
+      ownerUserId
+        ? this.prisma.user.findUnique({
+            where: { id: ownerUserId },
+            select: { storageQuotaBytes: true },
+          })
+        : Promise.resolve(null),
+    ]);
     const activeBytes = Number(activeStats._sum.sizeBytes ?? 0);
     const trashBytes = Number(trashStats._sum.sizeBytes ?? 0);
     const versionBytes = Number(versionStats._sum.sizeBytes ?? 0);
@@ -226,29 +253,45 @@ export class StorageService {
       workspace?.quotaBytes !== null && workspace?.quotaBytes !== undefined
         ? Number(workspace.quotaBytes)
         : null;
+    const defaultUserQuotaBytes =
+      workspace?.defaultUserQuotaBytes !== null &&
+      workspace?.defaultUserQuotaBytes !== undefined
+        ? Number(workspace.defaultUserQuotaBytes)
+        : null;
+    const userQuotaBytes =
+      user?.storageQuotaBytes !== null && user?.storageQuotaBytes !== undefined
+        ? Number(user.storageQuotaBytes)
+        : null;
     const storagePolicyQuotaBytes = await this.getConfiguredQuotaBytes();
-    const quotaBytes = this.resolveEffectiveQuotaBytes(
+    const workspaceEffectiveQuotaBytes = this.resolveEffectiveQuotaBytes(
       workspaceQuotaBytes,
       storagePolicyQuotaBytes,
     );
+    const personalQuotaBytes = ownerUserId
+      ? (userQuotaBytes ?? defaultUserQuotaBytes)
+      : null;
+    const quotaBytes = ownerUserId
+      ? this.resolveEffectiveQuotaBytes(
+          personalQuotaBytes,
+          storagePolicyQuotaBytes,
+        )
+      : workspaceEffectiveQuotaBytes;
     return {
       workspaceId,
+      spaceScope,
       activeBytes,
-      defaultUserQuotaBytes:
-        workspace?.defaultUserQuotaBytes !== null &&
-        workspace?.defaultUserQuotaBytes !== undefined
-          ? Number(workspace.defaultUserQuotaBytes)
-          : null,
+      defaultUserQuotaBytes,
       usedBytes,
       fileCount: activeStats._count._all,
       folderCount,
       quotaBytes,
-      quotaSource:
-        quotaBytes === null
-          ? 'unlimited'
-          : workspaceQuotaBytes !== null && quotaBytes === workspaceQuotaBytes
-            ? 'workspace'
-            : 'policy',
+      quotaSource: this.resolveUsageQuotaSource({
+        defaultUserQuotaBytes: ownerUserId ? defaultUserQuotaBytes : null,
+        quotaBytes,
+        storagePolicyQuotaBytes,
+        userQuotaBytes: ownerUserId ? userQuotaBytes : null,
+        workspaceQuotaBytes: ownerUserId ? null : workspaceQuotaBytes,
+      }),
       storagePolicyQuotaBytes,
       trashBytes,
       trashFileCount: trashStats._count._all,
@@ -1402,6 +1445,43 @@ export class StorageService {
     );
     if (candidates.length === 0) return null;
     return Math.min(...candidates);
+  }
+
+  private normalizeStorageUsageScope(value?: string): StorageUsageScope {
+    return value === 'personal' ? 'personal' : 'workspace';
+  }
+
+  private resolveUsageQuotaSource(input: {
+    defaultUserQuotaBytes: number | null;
+    quotaBytes: number | null;
+    storagePolicyQuotaBytes: number | null;
+    userQuotaBytes: number | null;
+    workspaceQuotaBytes: number | null;
+  }): StorageUsageQuotaSource {
+    if (input.quotaBytes === null) return 'unlimited';
+    const candidates: Array<{
+      priority: number;
+      source: StorageUsageQuotaSource;
+      value: number | null;
+    }> = [
+      { priority: 0, source: 'user', value: input.userQuotaBytes },
+      {
+        priority: 1,
+        source: 'defaultUser',
+        value: input.defaultUserQuotaBytes,
+      },
+      { priority: 2, source: 'workspace', value: input.workspaceQuotaBytes },
+      { priority: 3, source: 'policy', value: input.storagePolicyQuotaBytes },
+    ];
+    const matched = candidates
+      .filter(
+        (candidate) =>
+          candidate.value !== null &&
+          candidate.value > 0 &&
+          candidate.value === input.quotaBytes,
+      )
+      .sort((left, right) => left.priority - right.priority)[0];
+    return matched?.source ?? 'policy';
   }
 
   private getPublicObjectEndpoint() {

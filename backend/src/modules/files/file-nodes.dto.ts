@@ -26,6 +26,7 @@ export type FileNodeKind =
   | 'archive'
   | 'other';
 export type FileNodeListState = 'active' | 'archived' | 'all';
+export type FileNodeSpaceScope = 'workspace' | 'personal';
 export type FileNodeSortField =
   | 'name'
   | 'createdAt'
@@ -59,6 +60,10 @@ export class CreateUploadIntentDto {
   @IsString()
   @IsOptional()
   parentNodeId?: string;
+
+  @IsIn(['workspace', 'personal'])
+  @IsOptional()
+  spaceScope?: FileNodeSpaceScope;
 
   @IsString()
   @IsOptional()
@@ -100,6 +105,10 @@ export class CompleteUploadDto {
   @IsString()
   @IsOptional()
   parentNodeId?: string;
+
+  @IsIn(['workspace', 'personal'])
+  @IsOptional()
+  spaceScope?: FileNodeSpaceScope;
 
   @IsString()
   @IsOptional()
@@ -151,6 +160,10 @@ export class CreateFolderDto {
   @IsString()
   @IsOptional()
   parentNodeId?: string;
+
+  @IsIn(['workspace', 'personal'])
+  @IsOptional()
+  spaceScope?: FileNodeSpaceScope;
 
   @IsString()
   @IsOptional()
@@ -258,6 +271,10 @@ export class ListFileNodesQueryDto {
   @IsIn(['active', 'archived', 'all'])
   @IsOptional()
   state?: FileNodeListState;
+
+  @IsIn(['workspace', 'personal'])
+  @IsOptional()
+  spaceScope?: FileNodeSpaceScope;
 }
 
 export class SearchFileNodesQueryDto {
@@ -280,6 +297,10 @@ export class SearchFileNodesQueryDto {
   @IsIn(['active', 'archived', 'all'])
   @IsOptional()
   state?: FileNodeListState;
+
+  @IsIn(['workspace', 'personal'])
+  @IsOptional()
+  spaceScope?: FileNodeSpaceScope;
 
   @IsIn(['shared', 'unshared', 'all'])
   @IsOptional()
@@ -338,6 +359,7 @@ export class SearchFileNodesQueryDto {
 export type FileNodeResponse = {
   id: string;
   workspaceId: string;
+  spaceScope: FileNodeSpaceScope;
   parentNodeId: string | null;
   name: string;
   kind: FileNodeKind;
@@ -345,6 +367,7 @@ export type FileNodeResponse = {
   sizeBytes: number | null;
   objectKey: string | null;
   owner: string;
+  ownerUserId: string | null;
   starred: boolean;
   archivedAt: string | null;
   archivedBy: string | null;

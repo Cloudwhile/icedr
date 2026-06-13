@@ -3,7 +3,14 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
   min-height: 100%;
+  min-width: 0;
+}
+
+.drive-files-blank-zone {
+  flex: 1 1 auto;
+  min-height: 80px;
   min-width: 0;
 }
 

@@ -1,4 +1,4 @@
-import type { TransferResponse } from "@/lib/drive-api";
+import type { DriveSpaceScope, TransferResponse } from "@/lib/drive-api";
 
 export type TransferStatus = TransferResponse["status"] | "queued";
 
@@ -14,5 +14,6 @@ export type TransferRow = Omit<TransferResponse, "status"> & {
 } & Partial<TransferMetrics>;
 
 export type UploadTelemetry = Omit<TransferResponse, "status"> & {
+  spaceScope?: DriveSpaceScope;
   status: TransferStatus;
 } & TransferMetrics;

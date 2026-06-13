@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 import { StorageService } from '../storage/storage.service';
 import {
   CompleteUploadDto,
+  FileNodeSpaceScope,
   FileNodeResponse,
   PreviewIntentResponse,
 } from './file-nodes.dto';
@@ -45,11 +46,37 @@ describe('FileNodesService', () => {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
   function createNode(
-    input: Omit<FileNodeResponse, 'previewCapability'>,
+    input: Omit<
+      FileNodeResponse,
+      | 'archivedBy'
+      | 'originalParentNodeId'
+      | 'originalPath'
+      | 'ownerUserId'
+      | 'previewCapability'
+      | 'spaceScope'
+    > &
+      Partial<
+        Pick<
+          FileNodeResponse,
+          | 'archivedBy'
+          | 'originalParentNodeId'
+          | 'originalPath'
+          | 'ownerUserId'
+          | 'spaceScope'
+        >
+      >,
   ): FileNodeResponse {
-    return {
+    const node = {
+      archivedBy: null,
+      originalParentNodeId: null,
+      originalPath: null,
+      ownerUserId: null,
+      spaceScope: 'workspace' as FileNodeSpaceScope,
       ...input,
-      previewCapability: resolveFilePreviewCapability(input),
+    };
+    return {
+      ...node,
+      previewCapability: resolveFilePreviewCapability(node),
     };
   }
 
@@ -118,51 +145,97 @@ describe('FileNodesService', () => {
     const sessionParts = new Map<string, UploadSessionPart[]>();
     let sessionCounter = 0;
     repository = {
-      list: jest.fn((workspaceId?: string) =>
-        Promise.resolve(
-          workspaceId
-            ? nodes.filter((node) => node.workspaceId === workspaceId)
-            : nodes,
-        ),
+      list: jest.fn(
+        (
+          workspaceId?: string,
+          parentNodeId?: string | null,
+          state = 'active',
+          filter: {
+            ownerUserId?: string;
+            spaceScope?: FileNodeSpaceScope;
+          } = {},
+        ) =>
+          Promise.resolve(
+            nodes.filter(
+              (node) =>
+                (!workspaceId || node.workspaceId === workspaceId) &&
+                node.parentNodeId === (parentNodeId ?? null) &&
+                (state !== 'active' || !node.archivedAt) &&
+                node.spaceScope === (filter.spaceScope ?? 'workspace') &&
+                (!filter.ownerUserId ||
+                  node.ownerUserId === filter.ownerUserId),
+            ),
+          ),
       ),
-      getStorageUsage: jest.fn((workspaceId: string) =>
-        Promise.resolve({
-          activeBytes: nodes
-            .filter(
-              (node) => node.workspaceId === workspaceId && !node.archivedAt,
-            )
-            .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
-          defaultUserQuotaBytes: null,
-          fileCount: nodes.filter(
-            (node) =>
-              node.workspaceId === workspaceId &&
-              !node.archivedAt &&
-              node.sizeBytes !== null,
-          ).length,
-          folderCount: nodes.filter(
-            (node) =>
-              node.workspaceId === workspaceId &&
-              !node.archivedAt &&
-              node.sizeBytes === null,
-          ).length,
-          quotaBytes: null,
-          trashBytes: 0,
-          trashFileCount: 0,
-          usagePercent: null,
-          usedBytes: nodes
-            .filter((node) => node.workspaceId === workspaceId)
-            .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
-          versionBytes: 0,
-          versionCount: 0,
-          workspaceId,
-          updatedAt: new Date(0).toISOString(),
-        }),
+      getStorageUsage: jest.fn(
+        (
+          workspaceId: string,
+          filter: {
+            ownerUserId?: string;
+            spaceScope?: FileNodeSpaceScope;
+          } = {},
+        ) =>
+          Promise.resolve({
+            activeBytes: nodes
+              .filter(
+                (node) =>
+                  node.workspaceId === workspaceId &&
+                  !node.archivedAt &&
+                  node.spaceScope === (filter.spaceScope ?? 'workspace') &&
+                  (!filter.ownerUserId ||
+                    node.ownerUserId === filter.ownerUserId),
+              )
+              .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
+            defaultUserQuotaBytes: null,
+            fileCount: nodes.filter(
+              (node) =>
+                node.workspaceId === workspaceId &&
+                !node.archivedAt &&
+                node.sizeBytes !== null &&
+                node.spaceScope === (filter.spaceScope ?? 'workspace') &&
+                (!filter.ownerUserId ||
+                  node.ownerUserId === filter.ownerUserId),
+            ).length,
+            folderCount: nodes.filter(
+              (node) =>
+                node.workspaceId === workspaceId &&
+                !node.archivedAt &&
+                node.sizeBytes === null &&
+                node.spaceScope === (filter.spaceScope ?? 'workspace') &&
+                (!filter.ownerUserId ||
+                  node.ownerUserId === filter.ownerUserId),
+            ).length,
+            quotaBytes: null,
+            trashBytes: 0,
+            trashFileCount: 0,
+            usagePercent: null,
+            usedBytes: nodes
+              .filter(
+                (node) =>
+                  node.workspaceId === workspaceId &&
+                  node.spaceScope === (filter.spaceScope ?? 'workspace') &&
+                  (!filter.ownerUserId ||
+                    node.ownerUserId === filter.ownerUserId),
+              )
+              .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
+            versionBytes: 0,
+            versionCount: 0,
+            workspaceId,
+            updatedAt: new Date(0).toISOString(),
+          }),
       ),
       getUserStorageUsage: jest.fn((workspaceId: string, userId: string) =>
         Promise.resolve({
           defaultUserQuotaBytes: null,
           quotaBytes: null,
-          usedBytes: 0,
+          usedBytes: nodes
+            .filter(
+              (node) =>
+                node.workspaceId === workspaceId &&
+                node.spaceScope === 'personal' &&
+                node.ownerUserId === userId,
+            )
+            .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
           userId,
           workspaceId,
         }),
@@ -170,25 +243,29 @@ describe('FileNodesService', () => {
       findById: jest.fn((id: string) =>
         Promise.resolve(nodes.find((node) => node.id === id) ?? null),
       ),
-      completeUpload: jest.fn((dto: CompleteUploadDto) => {
-        const node = createNode({
-          id: `node_${nodes.length + 1}`,
-          workspaceId: dto.workspaceId,
-          parentNodeId: dto.parentNodeId ?? null,
-          name: dto.fileName,
-          kind: 'doc',
-          mimeType: dto.mimeType ?? 'application/octet-stream',
-          sizeBytes: dto.sizeBytes,
-          objectKey: dto.objectKey,
-          owner: dto.owner ?? 'Workspace User',
-          starred: false,
-          archivedAt: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        nodes.push(node);
-        return Promise.resolve(node);
-      }),
+      completeUpload: jest.fn(
+        (dto: CompleteUploadDto & { ownerUserId?: string }) => {
+          const node = createNode({
+            id: `node_${nodes.length + 1}`,
+            workspaceId: dto.workspaceId,
+            parentNodeId: dto.parentNodeId ?? null,
+            name: dto.fileName,
+            kind: 'doc',
+            mimeType: dto.mimeType ?? 'application/octet-stream',
+            sizeBytes: dto.sizeBytes,
+            objectKey: dto.objectKey,
+            owner: dto.owner ?? 'Workspace User',
+            ownerUserId: dto.ownerUserId ?? null,
+            spaceScope: dto.spaceScope ?? 'workspace',
+            starred: false,
+            archivedAt: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          nodes.push(node);
+          return Promise.resolve(node);
+        },
+      ),
       createPreviewArtifact: jest.fn(
         (
           node: FileNodeResponse,
@@ -305,6 +382,7 @@ describe('FileNodesService', () => {
             id: `upload-session-test-${++sessionCounter}`,
             transferId: input.transferId,
             workspaceId: input.workspaceId,
+            spaceScope: input.spaceScope ?? 'workspace',
             objectKey: input.objectKey,
             multipartUploadId: input.multipartUploadId ?? null,
             resumeKey: input.resumeKey ?? null,
@@ -326,6 +404,7 @@ describe('FileNodesService', () => {
           const session = Array.from(sessions.values()).find(
             (item) =>
               item.workspaceId === input.workspaceId &&
+              item.spaceScope === (input.spaceScope ?? 'workspace') &&
               item.resumeKey === input.resumeKey &&
               item.fileName === input.fileName &&
               item.parentNodeId === (input.parentNodeId ?? null) &&
@@ -423,7 +502,7 @@ describe('FileNodesService', () => {
     expect(intent.uploadedPartIndexes).toEqual([]);
     expect(partIntent.uploadUrl).toContain('s3://icedr-drive/');
     expect(intent.objectKey).toMatch(
-      /^workspaces\/workspace-default\/objects\/original\/\d{4}\/\d{2}\/[A-Za-z0-9_-]{16}\/Customer%20Notes\.pdf$/,
+      /^workspaces\/workspace-default\/spaces\/workspace\/objects\/original\/\d{4}\/\d{2}\/[A-Za-z0-9_-]{16}\/Customer%20Notes\.pdf$/,
     );
     expect(storage.createMultipartUpload).toHaveBeenCalledWith(
       intent.objectKey,
@@ -633,6 +712,7 @@ describe('FileNodesService', () => {
           fileName: 'Member Quota.pdf',
           mimeType: 'application/pdf',
           fileSizeBytes: 100,
+          spaceScope: 'personal',
         },
         { ownerUserId: 'user-test' },
       ),

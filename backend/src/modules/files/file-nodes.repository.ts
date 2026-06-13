@@ -17,6 +17,7 @@ import {
   FileNodeSearchResultResponse,
   FileNodeListState,
   FileNodeKind,
+  FileNodeSpaceScope,
   FileNodeResponse,
   FilePolicyResponse,
   FileVersionResponse,
@@ -57,6 +58,10 @@ export type FileAuditAction =
 const filePolicySettingsKey = 'global';
 
 type FileNodePathRow = Pick<FileNode, 'id' | 'name' | 'parentNodeId'>;
+type FileNodeSpaceFilter = {
+  ownerUserId?: string;
+  spaceScope?: FileNodeSpaceScope;
+};
 
 @Injectable()
 export class FileNodesRepository {
@@ -66,10 +71,13 @@ export class FileNodesRepository {
     workspaceId?: string,
     parentNodeId?: string | null,
     state: FileNodeListState = 'active',
+    filter: FileNodeSpaceFilter = {},
   ) {
     const rows = await this.prisma.fileNode.findMany({
       where: {
         ...(workspaceId ? { workspaceId } : {}),
+        spaceScope: filter.spaceScope ?? 'workspace',
+        ...(filter.ownerUserId ? { ownerUserId: filter.ownerUserId } : {}),
         ...(parentNodeId !== undefined ? { parentNodeId } : {}),
         ...(state === 'active' ? { archivedAt: null } : {}),
         ...(state === 'archived' ? { archivedAt: { not: null } } : {}),
@@ -122,12 +130,18 @@ export class FileNodesRepository {
     return this.mapPolicyRow(row);
   }
 
-  async createFolder(dto: CreateFolderDto & { ownerUserId?: string }) {
+  async createFolder(
+    dto: CreateFolderDto & {
+      ownerUserId?: string;
+      spaceScope?: FileNodeSpaceScope;
+    },
+  ) {
     const now = new Date();
     const row = await this.prisma.fileNode.create({
       data: {
         id: `node_${randomBytes(12).toString('base64url')}`,
         workspaceId: dto.workspaceId,
+        spaceScope: dto.spaceScope ?? 'workspace',
         parentNodeId: dto.parentNodeId ?? null,
         name: dto.name,
         kind: 'folder',
@@ -218,6 +232,7 @@ export class FileNodesRepository {
         data: {
           id: copiedId,
           workspaceId: row.workspaceId,
+          spaceScope: row.spaceScope,
           parentNodeId: copiedParent,
           name: copiedName,
           kind: row.kind,
@@ -228,6 +243,7 @@ export class FileNodesRepository {
               : BigInt(row.sizeBytes),
           objectKey: row.objectKey,
           ownerName: row.owner,
+          ownerUserId: row.ownerUserId,
           starred: false,
           archivedAt: null,
           createdAt: now,
@@ -306,6 +322,7 @@ export class FileNodesRepository {
       desiredName: options.name?.trim() || source.name,
       excludeIds: ids,
       parentNodeId: targetParentNodeId ?? null,
+      spaceScope: source.spaceScope as FileNodeSpaceScope,
       workspaceId: source.workspaceId,
     });
     const now = new Date();
@@ -479,12 +496,14 @@ export class FileNodesRepository {
   async completeUpload(dto: CompleteUploadDto & { ownerUserId?: string }) {
     const now = new Date();
     const parentNodeId = dto.parentNodeId ?? null;
+    const spaceScope = dto.spaceScope ?? 'workspace';
     const row = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.fileNode.findFirst({
         where: {
           archivedAt: null,
           name: dto.fileName,
           parentNodeId,
+          spaceScope,
           workspaceId: dto.workspaceId,
         },
       });
@@ -512,6 +531,7 @@ export class FileNodesRepository {
         data: {
           id: `node_${randomBytes(12).toString('base64url')}`,
           workspaceId: dto.workspaceId,
+          spaceScope,
           parentNodeId,
           name: dto.fileName,
           kind: this.getKind(dto.fileName, dto.mimeType),
@@ -565,6 +585,7 @@ export class FileNodesRepository {
           object_key as "objectKey",
           owner_name as "ownerName",
           owner_user_id as "ownerUserId",
+          space_scope as "spaceScope",
           starred,
           archived_at as "archivedAt",
           archived_by as "archivedBy",
@@ -587,6 +608,7 @@ export class FileNodesRepository {
           child.object_key as "objectKey",
           child.owner_name as "ownerName",
           child.owner_user_id as "ownerUserId",
+          child.space_scope as "spaceScope",
           child.starred,
           child.archived_at as "archivedAt",
           child.archived_by as "archivedBy",
@@ -609,6 +631,7 @@ export class FileNodesRepository {
         "objectKey",
         "ownerName",
         "ownerUserId",
+        "spaceScope",
         starred,
         "archivedAt",
         "archivedBy",
@@ -683,12 +706,14 @@ export class FileNodesRepository {
     desiredName: string;
     excludeIds: Set<string>;
     parentNodeId: string | null;
+    spaceScope: FileNodeSpaceScope;
     workspaceId: string;
   }) {
     const siblings = await this.prisma.fileNode.findMany({
       where: {
         archivedAt: null,
         parentNodeId: input.parentNodeId,
+        spaceScope: input.spaceScope,
         workspaceId: input.workspaceId,
         id: { notIn: [...input.excludeIds] },
       },
@@ -779,6 +804,7 @@ export class FileNodesRepository {
 
   async search(
     input: SearchFileNodesQueryDto,
+    options: { ownerUserId?: string } = {},
   ): Promise<FileNodeSearchResultResponse> {
     const workspaceId = input.workspaceId?.trim() || undefined;
     const state = input.state ?? 'active';
@@ -799,6 +825,8 @@ export class FileNodesRepository {
 
     const where: Prisma.FileNodeWhereInput = {
       ...(workspaceId ? { workspaceId } : {}),
+      spaceScope: input.spaceScope ?? 'workspace',
+      ...(options.ownerUserId ? { ownerUserId: options.ownerUserId } : {}),
       ...(parentNodeId !== undefined ? { parentNodeId } : {}),
       ...(state === 'active' ? { archivedAt: null } : {}),
       ...(state === 'archived' ? { archivedAt: { not: null } } : {}),
@@ -891,14 +919,19 @@ export class FileNodesRepository {
     };
   }
 
-  async getStorageUsage(workspaceId: string) {
+  async getStorageUsage(workspaceId: string, filter: FileNodeSpaceFilter = {}) {
+    const scopedWhere: Prisma.FileNodeWhereInput = {
+      workspaceId,
+      spaceScope: filter.spaceScope ?? 'workspace',
+      ...(filter.ownerUserId ? { ownerUserId: filter.ownerUserId } : {}),
+    };
     const [activeStats, trashStats, folderCount, versionStats, workspace] =
       await Promise.all([
         this.prisma.fileNode.aggregate({
           where: {
             archivedAt: null,
             sizeBytes: { not: null },
-            workspaceId,
+            ...scopedWhere,
           },
           _count: { _all: true },
           _sum: { sizeBytes: true },
@@ -907,7 +940,7 @@ export class FileNodesRepository {
           where: {
             archivedAt: { not: null },
             sizeBytes: { not: null },
-            workspaceId,
+            ...scopedWhere,
           },
           _count: { _all: true },
           _sum: { sizeBytes: true },
@@ -916,12 +949,12 @@ export class FileNodesRepository {
           where: {
             archivedAt: null,
             sizeBytes: null,
-            workspaceId,
+            ...scopedWhere,
           },
         }),
         this.prisma.fileVersion.aggregate({
           where: {
-            node: { workspaceId },
+            node: scopedWhere,
           },
           _count: { _all: true },
           _sum: { sizeBytes: true },
@@ -958,6 +991,7 @@ export class FileNodesRepository {
         where: {
           ownerUserId: userId,
           sizeBytes: { not: null },
+          spaceScope: 'personal',
           workspaceId,
         },
         _sum: { sizeBytes: true },
@@ -966,6 +1000,7 @@ export class FileNodesRepository {
         where: {
           node: {
             ownerUserId: userId,
+            spaceScope: 'personal',
             workspaceId,
           },
         },
@@ -1182,6 +1217,7 @@ export class FileNodesRepository {
     const mapped = {
       id: row.id,
       workspaceId: row.workspaceId,
+      spaceScope: row.spaceScope as FileNodeSpaceScope,
       parentNodeId: row.parentNodeId,
       name: row.name,
       kind: row.kind as FileNodeKind,
@@ -1192,6 +1228,7 @@ export class FileNodesRepository {
           : Number(row.sizeBytes),
       objectKey: row.objectKey,
       owner: row.ownerName,
+      ownerUserId: row.ownerUserId,
       starred: row.starred,
       archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
       archivedBy: row.archivedBy,

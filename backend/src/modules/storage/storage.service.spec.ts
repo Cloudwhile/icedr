@@ -43,25 +43,27 @@ describe('StorageService', () => {
       get: jest.fn((key: string) => values[key]),
     } as unknown as ConfigService;
     const deleteMany = jest.fn(() => Promise.resolve({ count: 0 }));
+    const fileNodeAggregate = jest.fn(() =>
+      Promise.resolve({
+        _count: { _all: 0 },
+        _sum: { sizeBytes: 0n },
+      }),
+    );
+    const fileVersionAggregate = jest.fn(() =>
+      Promise.resolve({
+        _count: { _all: 0 },
+        _sum: { sizeBytes: 0n },
+      }),
+    );
     const workspaceUpdate = jest.fn(() => Promise.resolve({}));
     const prisma = {
       fileNode: {
-        aggregate: jest.fn(() =>
-          Promise.resolve({
-            _count: { _all: 0 },
-            _sum: { sizeBytes: 0n },
-          }),
-        ),
+        aggregate: fileNodeAggregate,
         count: jest.fn(() => Promise.resolve(0)),
         deleteMany,
       },
       fileVersion: {
-        aggregate: jest.fn(() =>
-          Promise.resolve({
-            _count: { _all: 0 },
-            _sum: { sizeBytes: 0n },
-          }),
-        ),
+        aggregate: fileVersionAggregate,
       },
       workspace: {
         findUnique: jest.fn(() => Promise.resolve(null)),
@@ -97,6 +99,8 @@ describe('StorageService', () => {
 
     return {
       deleteMany,
+      fileNodeAggregate,
+      fileVersionAggregate,
       prisma,
       service: new StorageService(
         config,
@@ -110,6 +114,38 @@ describe('StorageService', () => {
       workspaceUpdate,
       signer,
     };
+  }
+
+  function aggregateCallsIncludeWhere(
+    calls: unknown,
+    expected: Record<string, string>,
+  ) {
+    if (!Array.isArray(calls)) return false;
+    return calls.some((entry) => {
+      if (!Array.isArray(entry)) return false;
+      const where = (entry[0] as { where?: Record<string, unknown> }).where;
+      if (!where) return false;
+      return Object.entries(expected).every(
+        ([key, value]) => where[key] === value,
+      );
+    });
+  }
+
+  function aggregateCallsIncludeNodeWhere(
+    calls: unknown,
+    expected: Record<string, string>,
+  ) {
+    if (!Array.isArray(calls)) return false;
+    return calls.some((entry) => {
+      if (!Array.isArray(entry)) return false;
+      const where = (entry[0] as { where?: { node?: Record<string, unknown> } })
+        .where;
+      const node = where?.node;
+      if (!node) return false;
+      return Object.entries(expected).every(
+        ([key, value]) => node[key] === value,
+      );
+    });
   }
 
   afterEach(() => {
@@ -377,6 +413,82 @@ minio_cluster_capacity_usable_free_bytes 250
     expect(usage.quotaBytes).toBe(1000);
     expect(usage.quotaSource).toBe('policy');
     expect(usage.storagePolicyQuotaBytes).toBe(1000);
+  });
+
+  it('reads personal storage usage with the current user quota', async () => {
+    const {
+      fileNodeAggregate,
+      fileVersionAggregate,
+      prisma,
+      service,
+      settingsRepository,
+    } = createService();
+    jest.spyOn(settingsRepository, 'get').mockResolvedValue({
+      ...baseSettings(),
+      quotaBytes: 2048,
+    });
+    jest.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
+      createdAt: new Date(),
+      defaultUserQuotaBytes: 1536n,
+      id: 'workspace-default',
+      memberCount: 1,
+      name: 'Default Workspace',
+      quotaBytes: 1800n,
+      rootNodeId: 'root',
+      updatedAt: new Date(),
+    });
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      storageQuotaBytes: 1024n,
+    } as never);
+
+    const usage = await service.getUsage('workspace-default', {
+      spaceScope: 'personal',
+      userId: 'user-1',
+    });
+
+    expect(usage.quotaBytes).toBe(1024);
+    expect(usage.quotaSource).toBe('user');
+    expect(
+      aggregateCallsIncludeWhere(fileNodeAggregate.mock.calls, {
+        ownerUserId: 'user-1',
+        spaceScope: 'personal',
+      }),
+    ).toBe(true);
+    expect(
+      aggregateCallsIncludeNodeWhere(fileVersionAggregate.mock.calls, {
+        ownerUserId: 'user-1',
+        spaceScope: 'personal',
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps personal quotas independent from workspace quotas', async () => {
+    const { prisma, service, settingsRepository } = createService();
+    jest.spyOn(settingsRepository, 'get').mockResolvedValue({
+      ...baseSettings(),
+      quotaBytes: 4096,
+    });
+    jest.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
+      createdAt: new Date(),
+      defaultUserQuotaBytes: 3000n,
+      id: 'workspace-default',
+      memberCount: 1,
+      name: 'Default Workspace',
+      quotaBytes: 1200n,
+      rootNodeId: 'root',
+      updatedAt: new Date(),
+    });
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      storageQuotaBytes: null,
+    } as never);
+
+    const usage = await service.getUsage('workspace-default', {
+      spaceScope: 'personal',
+      userId: 'user-1',
+    });
+
+    expect(usage.quotaBytes).toBe(3000);
+    expect(usage.quotaSource).toBe('defaultUser');
   });
 
   it('rejects workspace quotas above the storage policy quota', async () => {

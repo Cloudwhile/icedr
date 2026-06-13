@@ -38,6 +38,7 @@ export type FilesModuleProps = {
   createMenuItems: AppMenuItem[];
   currentFolderId: string | null;
   canLoadMore?: boolean;
+  canPaste: boolean;
   error: string | null;
   goUp: () => void;
   hasQuery: boolean;
@@ -46,6 +47,7 @@ export type FilesModuleProps = {
   onArchiveItem: FileAction;
   onBlankGoRoot: () => void;
   onBlankGoUp: () => void;
+  onBlankPaste: () => void;
   onBlankSelect: () => void;
   onBlankRefresh: () => void;
   onCancelRenameItem: () => void;
@@ -55,9 +57,10 @@ export type FilesModuleProps = {
   onDownloadItem: FileAction;
   onEditItem: FileAction;
   onBatchArchiveItems: (items: DriveItem[]) => void;
+  onBatchCopyItems: (items: DriveItem[]) => void;
+  onBatchCutItems: (items: DriveItem[]) => void;
   onBatchDeletePermanentlyItems: (items: DriveItem[]) => void;
   onBatchDownloadItems: (items: DriveItem[]) => void;
-  onBatchMoveItems: (items: DriveItem[]) => void;
   onBatchRestoreItems: (items: DriveItem[]) => void;
   onBatchShareItems: (items: DriveItem[]) => void;
   onDeletePermanentlyItem: FileAction;
@@ -88,6 +91,7 @@ export function FilesModule({
   createMenuItems,
   currentFolderId,
   canLoadMore,
+  canPaste,
   error,
   goUp,
   hasQuery,
@@ -96,6 +100,7 @@ export function FilesModule({
   onArchiveItem,
   onBlankGoRoot,
   onBlankGoUp,
+  onBlankPaste,
   onBlankSelect,
   onBlankRefresh,
   onCancelRenameItem,
@@ -105,9 +110,10 @@ export function FilesModule({
   onDownloadItem,
   onEditItem,
   onBatchArchiveItems,
+  onBatchCopyItems,
+  onBatchCutItems,
   onBatchDeletePermanentlyItems,
   onBatchDownloadItems,
-  onBatchMoveItems,
   onBatchRestoreItems,
   onBatchShareItems,
   onDeletePermanentlyItem,
@@ -144,11 +150,18 @@ export function FilesModule({
   ].filter(Boolean) as AppMenuItem[];
   const blankCreateItems = createMenuItems.map((item, index) => ({
     ...item,
-    separatorBefore: index === 0 ? blankNavigationItems.length > 0 : item.separatorBefore,
+    separatorBefore: index === 0 && blankNavigationItems.length > 0 ? true : item.separatorBefore,
   }));
+  const blankPasteItem: AppMenuItem | null = canPaste ? {
+    icon: <LocalIcon name="paste" size={15} />,
+    label: t("actions.paste"),
+    onClick: onBlankPaste,
+    value: "paste",
+  } : null;
   const blankMenuItems: AppMenuItem[] = [
     ...blankNavigationItems,
     ...blankCreateItems,
+    ...(blankPasteItem ? [blankPasteItem] : []),
     { icon: <LocalIcon name="refresh" size={15} />, label: t("app.refresh"), onClick: onBlankRefresh, value: "refresh" },
     { icon: <LocalIcon name="menu7" size={15} />, label: t("actions.listView"), onClick: () => onSetViewMode("list"), separatorBefore: true, disabled: viewMode === "list", value: "view-list" },
     { icon: <LocalIcon name="grid" size={15} />, label: t("actions.gridView"), onClick: () => onSetViewMode("grid"), disabled: viewMode === "grid", value: "view-grid" },
@@ -217,9 +230,10 @@ export function FilesModule({
               onBlankSelect();
               setSelectionAnchorId(null);
             }}
+            onCopy={() => onBatchCopyItems(selectedItems)}
+            onCut={() => onBatchCutItems(selectedItems)}
             onDeletePermanently={() => onBatchDeletePermanentlyItems(selectedItems)}
             onDownload={() => onBatchDownloadItems(selectedItems)}
-            onMove={() => onBatchMoveItems(selectedItems)}
             onRestore={() => onBatchRestoreItems(selectedItems)}
             onShare={() => onBatchShareItems(selectedItems)}
             palette={palette}
@@ -311,6 +325,7 @@ export function FilesModule({
             </ToolButton>
           </div>
         ) : null}
+        <div className="drive-files-blank-zone" aria-hidden="true" />
         <AppContextMenu
           ariaLabel={t("actions.more")}
           items={blankMenuItems}
@@ -446,9 +461,10 @@ function BatchToolbar({
   items,
   onArchive,
   onClear,
+  onCopy,
+  onCut,
   onDeletePermanently,
   onDownload,
-  onMove,
   onRestore,
   onShare,
   palette,
@@ -458,9 +474,10 @@ function BatchToolbar({
   items: DriveItem[];
   onArchive: () => void;
   onClear: () => void;
+  onCopy: () => void;
+  onCut: () => void;
   onDeletePermanently: () => void;
   onDownload: () => void;
-  onMove: () => void;
   onRestore: () => void;
   onShare: () => void;
   palette: Palette;
@@ -493,8 +510,11 @@ function BatchToolbar({
             <ToolButton label={t("actions.download")} palette={palette} onClick={onDownload}>
               <LocalIcon name="download" size={16} />
             </ToolButton>
-            <ToolButton label={t("actions.moveTo")} palette={palette} onClick={onMove}>
-              <LocalIcon name="folder" size={16} />
+            <ToolButton label={t("actions.copy")} palette={palette} onClick={onCopy}>
+              <LocalIcon name="copy" size={16} />
+            </ToolButton>
+            <ToolButton label={t("actions.cut")} palette={palette} onClick={onCut}>
+              <LocalIcon name="cut" size={16} />
             </ToolButton>
             <ToolButton label={t("actions.share")} palette={palette} onClick={onShare}>
               <LocalIcon name="share2" size={16} />
@@ -562,8 +582,8 @@ function buildFileActionItems({
     !isFolder ? { icon: <LocalIcon name="download" size={15} />, label: t("actions.download"), onClick: () => onDownload(item), value: "download" } : null,
     { icon: <LocalIcon name="document" size={15} />, label: t("actions.rename"), onClick: () => onRename(item), separatorBefore: true, value: "rename" },
     editable ? { icon: <LocalIcon name="visible" size={15} />, label: t("actions.edit"), onClick: () => onEdit(item), value: "edit" } : null,
-    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyTo"), onClick: () => onCopyNode(item), value: "copy-node" },
-    { icon: <LocalIcon name="folder" size={15} />, label: t("actions.moveTo"), onClick: () => onMove(item), value: "move-node" },
+    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copy"), onClick: () => onCopyNode(item), value: "copy-node" },
+    { icon: <LocalIcon name="cut" size={15} />, label: t("actions.cut"), onClick: () => onMove(item), value: "cut-node" },
     { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), separatorBefore: true, value: "details" },
     {
       icon: <LocalIcon name="star" size={15} color={item.starred ? palette.primaryHover : "currentColor"} />,
@@ -664,14 +684,17 @@ function FileTable({
   | "createMenuItems"
   | "error"
   | "hasQuery"
+  | "canPaste"
   | "onBatchArchiveItems"
+  | "onBatchCopyItems"
+  | "onBatchCutItems"
   | "onBatchDeletePermanentlyItems"
   | "onBatchDownloadItems"
-  | "onBatchMoveItems"
   | "onBatchRestoreItems"
   | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
+  | "onBlankPaste"
   | "onBlankSelect"
   | "onBlankRefresh"
   | "onSetViewMode"
@@ -901,14 +924,17 @@ function FileGrid({
   | "createMenuItems"
   | "error"
   | "hasQuery"
+  | "canPaste"
   | "onBatchArchiveItems"
+  | "onBatchCopyItems"
+  | "onBatchCutItems"
   | "onBatchDeletePermanentlyItems"
   | "onBatchDownloadItems"
-  | "onBatchMoveItems"
   | "onBatchRestoreItems"
   | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
+  | "onBlankPaste"
   | "onBlankSelect"
   | "onBlankRefresh"
   | "onSortChange"

@@ -22,6 +22,7 @@ export type LocalIconName =
   | "calendar"
   | "clock"
   | "copy"
+  | "cut"
   | "cross"
   | "dark_mode"
   | "document"
@@ -47,6 +48,7 @@ export type LocalIconName =
   | "pause"
   | "play"
   | "plus"
+  | "paste"
   | "refresh"
   | "save"
   | "search"
@@ -73,8 +75,10 @@ export type DriveItem = {
   name: string;
   kind?: DriveItemKind;
   workspaceId?: string;
+  spaceScope?: "workspace" | "personal";
   parentId: string | null;
   owner: string;
+  ownerUserId?: string | null;
   createdAt?: string | null;
   modifiedAt: string | null;
   mimeType?: string;

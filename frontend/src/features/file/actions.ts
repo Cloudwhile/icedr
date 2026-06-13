@@ -8,6 +8,7 @@ import {
   getApiBaseUrl,
   getAuthHeaders,
   updateTransfer,
+  type DriveSpaceScope,
   type FileNodeResponse,
   type FilePreviewCapability,
   type PreviewRenderMode,
@@ -250,12 +251,14 @@ export function createUploadDriveFileTask({
   file,
   onProgress,
   parentNodeId,
+  spaceScope = "workspace",
   workspaceActor,
   workspaceId,
 }: {
   file: File;
   onProgress?: (progress: UploadDriveFileProgress) => void;
   parentNodeId?: string | null;
+  spaceScope?: DriveSpaceScope;
   workspaceActor?: string;
   workspaceId: string;
 }): UploadDriveFileTask {
@@ -271,7 +274,7 @@ export function createUploadDriveFileTask({
   let status: UploadDriveFileTaskStatus = "idle";
   let uploadedPartIndexes = new Set<number>();
   let uploadStartedAt = getMonotonicNow();
-  const resumeKey = createUploadResumeKey({ file, parentNodeId, workspaceId });
+  const resumeKey = createUploadResumeKey({ file, parentNodeId, spaceScope, workspaceId });
 
   const normalizeProgress = (progress: number) => Math.min(100, Math.max(0, Math.round(progress * 10) / 10));
 
@@ -339,6 +342,7 @@ export function createUploadDriveFileTask({
         fileName: file.name,
         fileSizeBytes: file.size,
         parentNodeId: parentNodeId ?? undefined,
+        spaceScope,
         mimeType: file.type || "application/octet-stream",
         resumeKey,
       }),
@@ -420,6 +424,7 @@ export function createUploadDriveFileTask({
           objectKey: currentIntent.objectKey,
           sizeBytes: file.size,
           parentNodeId: parentNodeId ?? undefined,
+          spaceScope,
           mimeType: file.type || "application/octet-stream",
           transferId: currentIntent.transferId,
           uploadSessionId: currentIntent.sessionId,
@@ -753,15 +758,18 @@ function uploadRawChunkWithProgress({
 function createUploadResumeKey({
   file,
   parentNodeId,
+  spaceScope,
   workspaceId,
 }: {
   file: File;
   parentNodeId?: string | null;
+  spaceScope: DriveSpaceScope;
   workspaceId: string;
 }) {
   return [
     "drive-upload-v1",
     workspaceId,
+    spaceScope,
     parentNodeId ?? "root",
     file.name,
     file.size,

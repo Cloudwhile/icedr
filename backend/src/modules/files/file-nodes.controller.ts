@@ -58,9 +58,16 @@ export class FileNodesController {
     @Query('workspaceId') workspaceId?: string,
     @Query('parentNodeId') parentNodeId?: string,
     @Query('state') state?: string,
+    @Query('spaceScope') spaceScope?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'read');
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'read',
+    );
     return this.fileNodesService.listFileNodes(workspaceId, parentNodeId, {
+      ownerUserId: spaceScope === 'personal' ? session.user.id : undefined,
+      spaceScope,
       state,
     });
   }
@@ -78,6 +85,8 @@ export class FileNodesController {
     );
     return this.fileNodesService.searchFileNodes(query, {
       auditMetadata: createRequestAuditMetadata(session, request),
+      ownerUserId:
+        query.spaceScope === 'personal' ? session.user.id : undefined,
     });
   }
 

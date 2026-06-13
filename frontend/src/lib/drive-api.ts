@@ -132,13 +132,14 @@ export type StorageTestResponse = {
 
 export type StorageUsage = {
   workspaceId: string;
+  spaceScope: DriveSpaceScope;
   activeBytes: number;
   defaultUserQuotaBytes: number | null;
   usedBytes: number;
   fileCount: number;
   folderCount: number;
   quotaBytes: number | null;
-  quotaSource: "policy" | "unlimited" | "workspace";
+  quotaSource: "defaultUser" | "policy" | "unlimited" | "user" | "workspace";
   storagePolicyQuotaBytes: number | null;
   trashBytes: number;
   trashFileCount: number;
@@ -464,6 +465,8 @@ export type FileNodeResponse = {
   sizeBytes: number | null;
   objectKey: string | null;
   owner: string;
+  ownerUserId: string | null;
+  spaceScope: DriveSpaceScope;
   starred: boolean;
   archivedAt: string | null;
   archivedBy: string | null;
@@ -475,11 +478,13 @@ export type FileNodeResponse = {
 };
 
 export type FileNodeListState = "active" | "archived" | "all";
+export type DriveSpaceScope = "workspace" | "personal";
 
 export type FileNodeSearchQuery = Partial<{
   workspaceId: string;
   query: string;
   parentNodeId: string | null;
+  spaceScope: DriveSpaceScope;
   type: "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
   state: FileNodeListState;
   shared: "shared" | "unshared" | "all";
@@ -727,18 +732,19 @@ export async function fetchAuditEvents(filters: {
   return requestDriveApi<AuditEventsPageResponse>(`/audit/events${suffix}`);
 }
 
-export async function fetchFileNodes(filters: { workspaceId?: string; parentNodeId?: string | null } = {}) {
+export async function fetchFileNodes(filters: { workspaceId?: string; parentNodeId?: string | null; spaceScope?: DriveSpaceScope } = {}) {
   const query = new URLSearchParams();
   if (filters.workspaceId) query.set("workspaceId", filters.workspaceId);
   if (filters.parentNodeId !== undefined && filters.parentNodeId !== null) {
     query.set("parentNodeId", filters.parentNodeId);
   }
+  if (filters.spaceScope) query.set("spaceScope", filters.spaceScope);
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return requestDriveApi<FileNodeResponse[]>(`/file-nodes${suffix}`);
 }
 
 export async function fetchFileNodesByState(
-  filters: { workspaceId?: string; parentNodeId?: string | null; state?: FileNodeListState } = {},
+  filters: { workspaceId?: string; parentNodeId?: string | null; state?: FileNodeListState; spaceScope?: DriveSpaceScope } = {},
 ) {
   const query = new URLSearchParams();
   if (filters.workspaceId) query.set("workspaceId", filters.workspaceId);
@@ -746,6 +752,7 @@ export async function fetchFileNodesByState(
     query.set("parentNodeId", filters.parentNodeId);
   }
   if (filters.state) query.set("state", filters.state);
+  if (filters.spaceScope) query.set("spaceScope", filters.spaceScope);
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return requestDriveApi<FileNodeResponse[]>(`/file-nodes${suffix}`);
 }
@@ -819,6 +826,7 @@ export function createFolderNode(input: {
   name: string;
   owner?: string;
   parentNodeId?: string | null;
+  spaceScope?: DriveSpaceScope;
   workspaceId: string;
 }) {
   return requestDriveApi<FileNodeResponse>("/file-nodes/folders", {
@@ -1181,8 +1189,9 @@ export function fetchSystemUpdateStatus() {
   return requestDriveApi<SystemUpdateStatus>("/system/updates");
 }
 
-export function fetchStorageUsage(workspaceId: string) {
-  return requestDriveApi<StorageUsage>(`/storage/usage?workspaceId=${encodeURIComponent(workspaceId)}`);
+export function fetchStorageUsage(workspaceId: string, spaceScope: DriveSpaceScope = "workspace") {
+  const query = new URLSearchParams({ workspaceId, spaceScope });
+  return requestDriveApi<StorageUsage>(`/storage/usage?${query.toString()}`);
 }
 
 export function fetchStorageUsageBreakdown(workspaceId: string) {
