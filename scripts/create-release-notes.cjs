@@ -18,32 +18,46 @@ if (!existsSync(detailsFile)) {
 }
 
 const details = readFileSync(detailsFile, 'utf8').trim();
-const md5 = readChecksumFile('MD5SUMS.txt');
-const sha256 = readChecksumFile('SHA256SUMS.txt');
 const manifest = readManifest();
 
 mkdirSync(path.dirname(outputFile), { recursive: true });
 writeFileSync(
   outputFile,
-  renderReleaseNotes(details, manifest, md5, sha256),
+  renderReleaseNotes(details, manifest),
   'utf8',
 );
 console.log(`Wrote ${path.relative(workspaceRoot, outputFile)}`);
 
-function renderReleaseNotes(details, manifest, md5, sha256) {
+function renderReleaseNotes(details, manifest) {
   const sections = [details || '# Release Notes'];
   sections.push(renderReleaseAssets(manifest));
-  sections.push('## File Checksums');
-  sections.push('### MD5');
-  sections.push(['```text', md5.trim(), '```'].join('\n'));
-  sections.push('### SHA256');
-  sections.push(['```text', sha256.trim(), '```'].join('\n'));
+  sections.push(renderFileChecksumInstructions());
   return `${sections.join('\n\n')}\n`;
+}
+
+function renderFileChecksumInstructions() {
+  return [
+    '## File Checksums',
+    '',
+    '下载目标文件和 `SHA256SUMS.txt` 后，在同一目录运行：',
+    '',
+    '```bash',
+    'sha256sum -c SHA256SUMS.txt --ignore-missing',
+    '```',
+    '',
+    '如需兼容性校验，也可以下载 `MD5SUMS.txt` 后运行：',
+    '',
+    '```bash',
+    'md5sum -c MD5SUMS.txt --ignore-missing',
+    '```',
+    '',
+    '命令输出 `OK` 表示本地文件与 Release 中记录的 checksum 匹配。',
+  ].join('\n');
 }
 
 function renderReleaseAssets(manifest) {
   const entries = buildReleaseAssetEntries(manifest);
-  if (entries.length === 0) return '## Release Assets\n\nNo release assets were generated.';
+  if (entries.length === 0) return '## Release Assets\n\nNo release assets are available.';
 
   const lines = [
     '## Release Assets',
@@ -107,14 +121,6 @@ function createReleaseAssetUrl(file, manifest) {
     'v0.0.1-alpha.1';
 
   return `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(file)}`;
-}
-
-function readChecksumFile(fileName) {
-  const filePath = path.join(checksumsDir, fileName);
-  if (!existsSync(filePath)) {
-    throw new Error(`Checksum file does not exist: ${path.relative(workspaceRoot, filePath)}`);
-  }
-  return readFileSync(filePath, 'utf8');
 }
 
 function readManifest() {

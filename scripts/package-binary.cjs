@@ -50,7 +50,7 @@ async function main() {
   const seaConfigFile = path.join(workDir, 'sea-config.json');
   const seaBlobFile = path.join(workDir, 'sea-prep.blob');
   const sqliteNativeAddon = resolveBetterSqlite3NativeAddon();
-  const sqliteTemplateFile = createSqliteTemplateDatabase();
+  const sqliteTemplateFile = createSqliteTemplateDatabase(sqliteNativeAddon);
   const binaryName = createBinaryName();
   const binaryPath = path.join(outputDir, binaryName);
 
@@ -134,11 +134,13 @@ function createEntrySource() {
     `'use strict';`,
     `const fs = require('node:fs');`,
     `const path = require('node:path');`,
+    `const { createRequire } = require('node:module');`,
     `const sea = require('node:sea');`,
     createNativeAddonBootstrapSource(),
     createSqliteTemplateBootstrapSource(),
     createBinaryPathBootstrapSource(),
     `const binaryDir = path.dirname(process.execPath);`,
+    `globalThis.__non_webpack_require__ = createRequire(path.join(binaryDir, 'icedr-binary.cjs'));`,
     `const dataDir = process.env.ICEDR_DATA_DIR ? resolveBinaryPath(process.env.ICEDR_DATA_DIR, binaryDir) : path.join(binaryDir, 'data');`,
     `const sqlitePath = process.env.SQLITE_DATABASE_PATH ? resolveBinaryPath(process.env.SQLITE_DATABASE_PATH, binaryDir) : path.join(dataDir, 'icedr.sqlite');`,
     `process.env.ICEDR_DATA_DIR = dataDir;`,
@@ -422,10 +424,14 @@ function resolveBetterSqlite3NativeAddon() {
   );
 }
 
-function createSqliteTemplateDatabase() {
+function createSqliteTemplateDatabase(sqliteNativeAddon) {
   const sqliteTemplateFile = path.join(workDir, sqliteTemplateAssetName);
   if (existsSync(sqliteTemplateFile)) {
     rmSync(sqliteTemplateFile, { force: true });
+  }
+  const sqliteSchemaSqlFile = path.join(workDir, 'icedr-template-schema.sql');
+  if (existsSync(sqliteSchemaSqlFile)) {
+    rmSync(sqliteSchemaSqlFile, { force: true });
   }
 
   const prismaPackage = require.resolve('prisma/package.json', {
@@ -436,10 +442,14 @@ function createSqliteTemplateDatabase() {
     process.execPath,
     [
       prismaCli,
-      'db',
-      'push',
-      '--schema',
+      'migrate',
+      'diff',
+      '--from-empty',
+      '--to-schema',
       path.join(workspaceRoot, 'database', 'schema.sqlite.prisma'),
+      '--script',
+      '--output',
+      sqliteSchemaSqlFile,
       '--config',
       path.join(workspaceRoot, 'prisma.config.ts'),
     ],
@@ -448,10 +458,29 @@ function createSqliteTemplateDatabase() {
       env: {
         ...process.env,
         PRISMA_DATABASE_PROVIDER: 'sqlite',
-        SQLITE_DATABASE_PATH: sqliteTemplateFile,
+        SQLITE_DATABASE_URL: 'file:./build/binary/icedr-template.sqlite',
       },
     },
   );
+  const sqliteSchemaSql = readFileSync(sqliteSchemaSqlFile, 'utf8').trim();
+  if (!sqliteSchemaSql) {
+    throw new Error('Prisma did not create SQLite schema SQL.');
+  }
+  const betterSqlite3PackageRoot = path.dirname(
+    require.resolve('better-sqlite3/package.json', {
+      paths: [workspaceRoot, path.join(workspaceRoot, 'backend')],
+    }),
+  );
+  const Database = require(betterSqlite3PackageRoot);
+  const database = new Database(sqliteTemplateFile, {
+    nativeBinding: sqliteNativeAddon,
+  });
+  try {
+    database.pragma('foreign_keys = ON');
+    database.exec(sqliteSchemaSql);
+  } finally {
+    database.close();
+  }
   return sqliteTemplateFile;
 }
 

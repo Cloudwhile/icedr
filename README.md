@@ -100,9 +100,9 @@ Configuration reference lives in the VitePress documentation under `docs/referen
 
 ## Published Builds
 
-The current pre-release is `v0.0.1-alpha.2`. Container images are published as `corecherry/icedr-po:<tag>` and `ghcr.io/cloudwhile/icedr-po:<tag>`. Use `0.0.1-alpha.2` as the Docker tag for this release.
+The current pre-release is `v0.0.1-alpha.3`. Container images are published as `corecherry/icedr-po:<tag>` and `ghcr.io/cloudwhile/icedr-po:<tag>`. Use `0.0.1-alpha.3` as the Docker tag for this release.
 
-Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.2`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
+Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.3`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
 
 ### Minimal Docker Deployment
 
@@ -121,22 +121,22 @@ docker run -d \
   -e API_HOST=0.0.0.0 \
   -e API_PORT=13000 \
   -e SMTP_ENABLED=false \
-  corecherry/icedr-po:0.0.1-alpha.2
+  corecherry/icedr-po:0.0.1-alpha.3
 ```
 
 Open `http://localhost:13000`, or replace `localhost` with the server address. A fresh data directory opens the first-run setup page.
 
 ### Minimal Binary Deployment
 
-Standalone binaries are attached to each GitHub Release. Artifact names follow the `icedr_VERSION_PLATFORM` convention. Release notes include generated download links, file sizes, `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json`.
+Standalone binaries are attached to each GitHub Release. Artifact names follow the `icedr_VERSION_PLATFORM` convention. Release notes include download links, file sizes, `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json`.
 
 Linux x86_64 example:
 
 ```bash
 mkdir -p /opt/icedr
 cd /opt/icedr
-chmod +x ./icedr_0.0.1-alpha.2_linux-x86_64
-./icedr_0.0.1-alpha.2_linux-x86_64
+chmod +x ./icedr_0.0.1-alpha.3_linux-x86_64
+./icedr_0.0.1-alpha.3_linux-x86_64
 ```
 
 Binary builds create `data` beside the executable by default. Set `ICEDR_DATA_DIR` only when the data directory must live elsewhere.
@@ -154,7 +154,7 @@ Examples:
 
 ```text
 v1.2.0
-v0.0.1-alpha.2
+v0.0.1-alpha.3
 v1.2.0-alpha.1
 v1.2.0-beta.1
 ```
@@ -163,7 +163,7 @@ Tags that contain a pre-release marker after the version, such as `-alpha.1` or 
 
 The ICEDR runtime normalizes `v`-prefixed tags for version comparison while keeping the standard tag form in system information. Pre-release builds can detect newer pre-release and stable releases; stable builds only treat stable releases as updates by default.
 
-Each GitHub Release includes generated asset links, `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json` so downloaded files can be checked for integrity and source.
+Each GitHub Release includes asset links, `MD5SUMS.txt`, `SHA256SUMS.txt`, and `release-manifest.json` so downloaded files can be checked for integrity and source.
 
 ## Verification Flow
 
