@@ -135,7 +135,9 @@ export class StorageService {
   async updateSettings(
     dto: UpdateStorageSettingsDto,
   ): Promise<StorageSettingsResponse> {
-    const current = await this.getResolvedSettings();
+    const current = await this.getResolvedSettings({
+      enableConfiguredObjectStorage: false,
+    });
     const nextDraft = this.applySettingsUpdate(current, dto);
     const switchingToDistributed =
       current.distributedStorageEnabled === false &&
@@ -487,7 +489,7 @@ export class StorageService {
   }
 
   async distributedStorageEnabled() {
-    return (await this.settingsRepository.get()).distributedStorageEnabled;
+    return (await this.getResolvedSettings()).distributedStorageEnabled;
   }
 
   async configured() {
@@ -1080,8 +1082,13 @@ export class StorageService {
     );
   }
 
-  private async getResolvedSettings() {
-    return this.applyConfigFallbacks(await this.settingsRepository.get());
+  private async getResolvedSettings(
+    options: { enableConfiguredObjectStorage?: boolean } = {},
+  ) {
+    return this.applyConfigFallbacks(await this.settingsRepository.get(), {
+      enableConfiguredObjectStorage:
+        options.enableConfiguredObjectStorage ?? true,
+    });
   }
 
   private applySettingsUpdate(
@@ -1106,9 +1113,12 @@ export class StorageService {
     });
   }
 
-  private applyConfigFallbacks(settings: StorageSettings): StorageSettings {
+  private applyConfigFallbacks(
+    settings: StorageSettings,
+    options: { enableConfiguredObjectStorage: boolean },
+  ): StorageSettings {
     const configDefaults = this.configStorageSettings();
-    return this.normalizeSettings({
+    const next = this.normalizeSettings({
       ...settings,
       endpoint: settings.endpoint || configDefaults.endpoint,
       region: settings.region || configDefaults.region,
@@ -1119,6 +1129,14 @@ export class StorageService {
       forcePathStyle: settings.forcePathStyle ?? configDefaults.forcePathStyle,
       quotaBytes: settings.quotaBytes,
     });
+    return {
+      ...next,
+      distributedStorageEnabled:
+        (settings.distributedStorageEnabled ||
+          (options.enableConfiguredObjectStorage &&
+            this.isConfigured(configDefaults))) &&
+        this.isConfigured(next),
+    };
   }
 
   private configStorageSettings(): StorageSettings {

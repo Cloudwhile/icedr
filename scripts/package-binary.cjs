@@ -1,11 +1,13 @@
 const { createHash } = require('node:crypto');
-const { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } = require('node:fs');
 const { chmod, copyFile } = require('node:fs/promises');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const workspaceRoot = path.resolve(__dirname, '..');
 const backendEntry = path.join(workspaceRoot, 'backend', 'dist', 'main.js');
+const frontendDistDir = path.join(workspaceRoot, 'frontend', 'dist');
+const frontendIndex = path.join(frontendDistDir, 'index.html');
 const workDir = path.join(workspaceRoot, 'build', 'binary');
 const outputDir = path.join(workspaceRoot, 'dist', 'binaries');
 const nativeAssetName = 'better_sqlite3.node';
@@ -36,7 +38,7 @@ async function main() {
 
   const skipBuild = process.argv.includes('--skip-build') || process.env.ICEDR_BINARY_SKIP_BUILD === '1';
   if (!skipBuild) {
-    run(resolvePackageRunner('pnpm'), ['--filter', 'backend', 'build'], {
+    run(resolvePackageRunner('pnpm'), ['build'], {
       cwd: workspaceRoot,
     });
   }
@@ -51,10 +53,11 @@ async function main() {
   const seaBlobFile = path.join(workDir, 'sea-prep.blob');
   const sqliteNativeAddon = resolveBetterSqlite3NativeAddon();
   const sqliteTemplateFile = createSqliteTemplateDatabase(sqliteNativeAddon);
+  const frontendAssets = collectFrontendAssets();
   const binaryName = createBinaryName();
   const binaryPath = path.join(outputDir, binaryName);
 
-  writeFileSync(entrySource, createEntrySource(), 'utf8');
+  writeFileSync(entrySource, createEntrySource(frontendAssets), 'utf8');
   bundleBackend(entrySource, bundleFile);
 
   writeFileSync(
@@ -68,6 +71,9 @@ async function main() {
         assets: {
           [nativeAssetName]: sqliteNativeAddon,
           [sqliteTemplateAssetName]: sqliteTemplateFile,
+          ...Object.fromEntries(
+            frontendAssets.map((asset) => [asset.assetName, asset.filePath]),
+          ),
         },
       },
       null,
@@ -123,12 +129,13 @@ async function main() {
 function ensureBuildArtifacts() {
   const missing = [];
   if (!existsSync(backendEntry)) missing.push(path.relative(workspaceRoot, backendEntry));
+  if (!existsSync(frontendIndex)) missing.push(path.relative(workspaceRoot, frontendIndex));
   if (missing.length > 0) {
-    throw new Error(`Missing build artifacts: ${missing.join(', ')}. Run pnpm --filter backend build first.`);
+    throw new Error(`Missing build artifacts: ${missing.join(', ')}. Run pnpm build first.`);
   }
 }
 
-function createEntrySource() {
+function createEntrySource(frontendAssets) {
   const relativeEntry = toRequirePath(path.relative(workDir, backendEntry));
   return [
     `'use strict';`,
@@ -138,20 +145,42 @@ function createEntrySource() {
     `const sea = require('node:sea');`,
     createNativeAddonBootstrapSource(),
     createSqliteTemplateBootstrapSource(),
+    createFrontendAssetBootstrapSource(frontendAssets),
     createBinaryPathBootstrapSource(),
+    createBinaryRuntimeDefaultsSource(),
     `const binaryDir = path.dirname(process.execPath);`,
     `globalThis.__non_webpack_require__ = createRequire(path.join(binaryDir, 'icedr-binary.cjs'));`,
+    `configureBinaryRuntimeDefaults();`,
     `const dataDir = process.env.ICEDR_DATA_DIR ? resolveBinaryPath(process.env.ICEDR_DATA_DIR, binaryDir) : path.join(binaryDir, 'data');`,
     `const sqlitePath = process.env.SQLITE_DATABASE_PATH ? resolveBinaryPath(process.env.SQLITE_DATABASE_PATH, binaryDir) : path.join(dataDir, 'icedr.sqlite');`,
     `process.env.ICEDR_DATA_DIR = dataDir;`,
     `process.env.SQLITE_DATABASE_PATH = sqlitePath;`,
     `process.env.LOCAL_STORAGE_ROOT = process.env.LOCAL_STORAGE_ROOT ? resolveBinaryPath(process.env.LOCAL_STORAGE_ROOT, binaryDir) : path.join(dataDir, 'local-files');`,
-    `process.env.FRONTEND_DIST_DIR = process.env.FRONTEND_DIST_DIR || path.join(binaryDir, 'public');`,
+    `configureFrontendAssets(binaryDir);`,
     `configureSqliteTemplate(sqlitePath);`,
     `configureNativeAddons(dataDir);`,
     `process.env.APP_VERSION = process.env.APP_VERSION || ${JSON.stringify(displayVersion)};`,
-    `process.env.ICEDR_BINARY = process.env.ICEDR_BINARY || '1';`,
     `require(${JSON.stringify(relativeEntry)});`,
+    '',
+  ].join('\n');
+}
+
+function createBinaryRuntimeDefaultsSource() {
+  return [
+    `function configureBinaryRuntimeDefaults() {`,
+    `  process.env.ICEDR_BINARY = process.env.ICEDR_BINARY || '1';`,
+    `  if (!process.env.APP_ENV && !process.env.NODE_ENV) {`,
+    `    process.env.APP_ENV = 'production';`,
+    `    process.env.NODE_ENV = 'production';`,
+    `  } else if (!process.env.APP_ENV && process.env.NODE_ENV) {`,
+    `    process.env.APP_ENV = process.env.NODE_ENV;`,
+    `  } else if (process.env.APP_ENV && !process.env.NODE_ENV) {`,
+    `    process.env.NODE_ENV = process.env.APP_ENV;`,
+    `  }`,
+    `  if (!process.env.API_PORT && !process.env.PORT) {`,
+    `    process.env.API_PORT = '13000';`,
+    `  }`,
+    `}`,
     '',
   ].join('\n');
 }
@@ -198,6 +227,49 @@ function createSqliteTemplateBootstrapSource() {
     `  const asset = sea.getAsset(${JSON.stringify(sqliteTemplateAssetName)});`,
     `  const next = Buffer.isBuffer(asset) ? asset : Buffer.from(asset);`,
     `  fs.writeFileSync(sqlitePath, next);`,
+    `}`,
+    '',
+  ].join('\n');
+}
+
+function createFrontendAssetBootstrapSource(frontendAssets) {
+  const entries = frontendAssets.map((asset) => ({
+    assetName: asset.assetName,
+    relativePath: asset.relativePath,
+  }));
+  const marker = {
+    version: displayVersion,
+    files: entries.map((entry) => entry.relativePath),
+  };
+  return [
+    `const frontendAssetEntries = ${JSON.stringify(entries)};`,
+    `const frontendAssetMarker = ${JSON.stringify(marker)};`,
+    `function configureFrontendAssets(binaryDir) {`,
+    `  if (process.env.FRONTEND_DIST_DIR) {`,
+    `    process.env.FRONTEND_DIST_DIR = resolveBinaryPath(process.env.FRONTEND_DIST_DIR, binaryDir);`,
+    `    return;`,
+    `  }`,
+    `  const publicDir = path.join(binaryDir, 'public');`,
+    `  process.env.FRONTEND_DIST_DIR = publicDir;`,
+    `  if (typeof sea.isSea !== 'function' || !sea.isSea()) return;`,
+    `  const markerPath = path.join(publicDir, '.icedr-assets.json');`,
+    `  const markerContent = JSON.stringify(frontendAssetMarker, null, 2) + '\\n';`,
+    `  if (fs.existsSync(path.join(publicDir, 'index.html'))) {`,
+    `    try {`,
+    `      if (fs.readFileSync(markerPath, 'utf8') === markerContent) return;`,
+    `      fs.rmSync(publicDir, { recursive: true, force: true });`,
+    `    } catch {`,
+    `      // Existing unmanaged files are overwritten in place below.`,
+    `    }`,
+    `  }`,
+    `  for (const entry of frontendAssetEntries) {`,
+    `    const targetPath = path.join(publicDir, ...entry.relativePath.split('/'));`,
+    `    fs.mkdirSync(path.dirname(targetPath), { recursive: true });`,
+    `    const asset = sea.getAsset(entry.assetName);`,
+    `    fs.writeFileSync(targetPath, Buffer.isBuffer(asset) ? asset : Buffer.from(asset));`,
+    `  }`,
+    `  fs.mkdirSync(publicDir, { recursive: true });`,
+    `  fs.writeFileSync(markerPath, markerContent);`,
     `}`,
     '',
   ].join('\n');
@@ -422,6 +494,31 @@ function resolveBetterSqlite3NativeAddon() {
   throw new Error(
     `Missing ${nativeAssetName}. Run pnpm install with scripts enabled or rebuild better-sqlite3 for this platform before packaging.`,
   );
+}
+
+function collectFrontendAssets() {
+  return walkFiles(frontendDistDir)
+    .sort((left, right) => left.localeCompare(right))
+    .map((filePath) => {
+      const relativePath = toAssetPath(path.relative(frontendDistDir, filePath));
+      return {
+        assetName: `frontend/${relativePath}`,
+        filePath,
+        relativePath,
+      };
+    });
+}
+
+function walkFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return walkFiles(entryPath);
+    return entry.isFile() ? [entryPath] : [];
+  });
+}
+
+function toAssetPath(value) {
+  return value.split(path.sep).join('/');
 }
 
 function createSqliteTemplateDatabase(sqliteNativeAddon) {

@@ -6,7 +6,7 @@ import { StorageSettings } from './storage-settings.dto';
 const storageSettingsKey = 'global';
 
 export const defaultStorageSettings: StorageSettings = {
-  distributedStorageEnabled: true,
+  distributedStorageEnabled: false,
   quotaBytes: null,
   endpoint: '',
   region: 'us-east-1',

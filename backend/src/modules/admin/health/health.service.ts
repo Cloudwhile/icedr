@@ -17,11 +17,7 @@ export class HealthService {
     const databaseReachable = await this.checkDatabase();
     const storageConfigured = await this.storage.configured();
     const queueProfile = this.queue.getProfile();
-    const production = Boolean(this.config.get<boolean>('app.production'));
-    const ok =
-      databaseReachable &&
-      storageConfigured &&
-      (!production || queueProfile.configured);
+    const ok = databaseReachable && storageConfigured;
 
     return {
       status: ok ? 'ok' : 'degraded',
