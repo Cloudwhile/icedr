@@ -11,8 +11,6 @@ type GitHubReleaseAsset = {
 
 type GitHubRelease = {
   assets: GitHubReleaseAsset[];
-  body: string | null;
-  body_html?: string | null;
   html_url: string;
   name: string | null;
   prerelease: boolean;
@@ -33,14 +31,14 @@ const loading = ref(true);
 const error = ref("");
 
 const latestRelease = computed(() => {
-  return [...releases.value].sort((left, right) => releaseTime(right) - releaseTime(left))[0] || null;
+  return timelineReleases.value[0] || null;
 });
 
 const timelineReleases = computed(() => {
   return [...releases.value].sort((left, right) => {
-    const timeDifference = releaseTime(left) - releaseTime(right);
+    const timeDifference = releaseTime(right) - releaseTime(left);
     if (timeDifference !== 0) return timeDifference;
-    return left.tag_name.localeCompare(right.tag_name);
+    return right.tag_name.localeCompare(left.tag_name);
   });
 });
 
@@ -105,207 +103,11 @@ function isLatest(release: GitHubRelease) {
   return release.tag_name === latestRelease.value?.tag_name;
 }
 
-function renderReleaseBody(release: GitHubRelease) {
-  if (release.body_html) return release.body_html;
-  return renderMarkdown(release.body || "");
-}
-
-function escapeHtml(value: string) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replace(/`/g, "&#96;");
-}
-
-function isSafeUrl(value: string) {
-  if (!value) return false;
-  if (value.startsWith("#") || value.startsWith("/")) return true;
-
-  try {
-    const url = new URL(value);
-    return ["http:", "https:", "mailto:"].includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-function renderInlineMarkdown(value: string) {
-  let html = escapeHtml(value);
-
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  html = html.replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_, label: string, href: string) => {
-    const normalizedHref = href.trim();
-    if (!isSafeUrl(normalizedHref)) return label;
-    return `<a href="${escapeAttribute(normalizedHref)}" target="_blank" rel="noreferrer">${label}</a>`;
-  });
-
-  return html;
-}
-
-function parseTableRow(line: string) {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim());
-}
-
-function isTableDivider(line: string) {
-  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
-}
-
-function renderTable(lines: string[]) {
-  const [headerLine, , ...bodyLines] = lines;
-  const headers = parseTableRow(headerLine);
-  const rows = bodyLines.map(parseTableRow);
-  const thead = headers.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join("");
-  const tbody = rows
-    .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`)
-    .join("");
-
-  return `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
-}
-
-function renderMarkdown(markdown: string) {
-  const lines = String(markdown || "").split(/\r?\n/);
-  const html: string[] = [];
-  let paragraph: string[] = [];
-  let listType: "ul" | "ol" | null = null;
-  let listItems: string[] = [];
-  let quoteLines: string[] = [];
-  let codeLines: string[] = [];
-  let inCodeBlock = false;
-
-  const flushParagraph = () => {
-    if (!paragraph.length) return;
-    html.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
-    paragraph = [];
-  };
-
-  const flushList = () => {
-    if (!listType) return;
-    html.push(`<${listType}>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</${listType}>`);
-    listType = null;
-    listItems = [];
-  };
-
-  const flushQuote = () => {
-    if (!quoteLines.length) return;
-    html.push(`<blockquote>${quoteLines.map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</blockquote>`);
-    quoteLines = [];
-  };
-
-  const flushCode = () => {
-    html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-    codeLines = [];
-  };
-
-  const flushBlocks = () => {
-    flushParagraph();
-    flushList();
-    flushQuote();
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const trimmed = line.trim();
-
-    if (/^```/.test(trimmed)) {
-      if (inCodeBlock) {
-        flushCode();
-        inCodeBlock = false;
-      } else {
-        flushBlocks();
-        inCodeBlock = true;
-      }
-      continue;
-    }
-
-    if (inCodeBlock) {
-      codeLines.push(line);
-      continue;
-    }
-
-    if (!trimmed) {
-      flushBlocks();
-      continue;
-    }
-
-    if (trimmed.includes("|") && lines[index + 1] && isTableDivider(lines[index + 1])) {
-      flushBlocks();
-      const tableLines = [line, lines[index + 1]];
-      index += 2;
-
-      while (index < lines.length && lines[index].trim().includes("|")) {
-        tableLines.push(lines[index]);
-        index += 1;
-      }
-
-      index -= 1;
-      html.push(renderTable(tableLines));
-      continue;
-    }
-
-    const heading = /^(#{1,6})\s+(.+)$/.exec(trimmed);
-    if (heading) {
-      flushBlocks();
-      const level = heading[1].length;
-      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
-      continue;
-    }
-
-    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
-      flushBlocks();
-      html.push("<hr>");
-      continue;
-    }
-
-    const unorderedItem = /^[-*+]\s+(.+)$/.exec(trimmed);
-    if (unorderedItem) {
-      flushParagraph();
-      flushQuote();
-      if (listType !== "ul") flushList();
-      listType = "ul";
-      listItems.push(unorderedItem[1]);
-      continue;
-    }
-
-    const orderedItem = /^\d+\.\s+(.+)$/.exec(trimmed);
-    if (orderedItem) {
-      flushParagraph();
-      flushQuote();
-      if (listType !== "ol") flushList();
-      listType = "ol";
-      listItems.push(orderedItem[1]);
-      continue;
-    }
-
-    const quote = /^>\s?(.*)$/.exec(trimmed);
-    if (quote) {
-      flushParagraph();
-      flushList();
-      quoteLines.push(quote[1]);
-      continue;
-    }
-
-    flushList();
-    flushQuote();
-    paragraph.push(trimmed);
-  }
-
-  if (inCodeBlock) flushCode();
-  flushBlocks();
-
-  return html.join("\n");
+function assetKind(asset: GitHubReleaseAsset) {
+  if (asset.name === "release-manifest.json") return "清单";
+  if (asset.name.endsWith(".sha256") || asset.name === "SHA256SUMS.txt") return "SHA256";
+  if (asset.name.endsWith(".md5") || asset.name === "MD5SUMS.txt") return "MD5";
+  return "文件";
 }
 </script>
 
@@ -348,26 +150,19 @@ function renderMarkdown(markdown: string) {
           </div>
 
           <section class="latest-release__section">
-            <h3>Release 改动</h3>
-            <div
-              v-if="renderReleaseBody(item)"
-              class="latest-release__notes"
-              v-html="renderReleaseBody(item)"
-            ></div>
-            <p v-else class="latest-release__muted">本次发布暂未填写改动说明。</p>
-          </section>
-
-          <section class="latest-release__section">
             <h3>Release Assets</h3>
             <ul v-if="item.assets.length" class="latest-release__assets">
               <li v-for="asset in item.assets" :key="asset.name">
                 <a :href="asset.browser_download_url" target="_blank" rel="noreferrer">
                   {{ asset.name }}
                 </a>
-                <span>{{ formatBytes(asset.size) }} · {{ asset.download_count }} 次下载</span>
+                <span>
+                  <b>{{ assetKind(asset) }}</b>
+                  {{ formatBytes(asset.size) }} · {{ asset.download_count }} 次下载
+                </span>
               </li>
             </ul>
-            <p v-else class="latest-release__muted">本次发布暂未附带文件。</p>
+            <p v-else class="latest-release__muted">本次发布暂无附带文件。</p>
           </section>
         </div>
       </details>
@@ -400,7 +195,7 @@ function renderMarkdown(markdown: string) {
   left: 8px;
   width: 2px;
   border-radius: 999px;
-  background: linear-gradient(to top, var(--vp-c-brand-1), var(--vp-c-divider));
+  background: linear-gradient(to bottom, var(--vp-c-brand-1), var(--vp-c-divider));
   content: "";
 }
 
@@ -502,7 +297,7 @@ function renderMarkdown(markdown: string) {
 
 .latest-release__subline span::before {
   color: var(--vp-c-divider);
-  content: "•";
+  content: "·";
   margin-right: 8px;
 }
 
@@ -549,66 +344,15 @@ function renderMarkdown(markdown: string) {
   font-size: 18px;
 }
 
-.latest-release__notes {
-  overflow-x: auto;
-}
-
-.latest-release__notes :deep(h1),
-.latest-release__notes :deep(h2),
-.latest-release__notes :deep(h3),
-.latest-release__notes :deep(h4),
-.latest-release__notes :deep(h5),
-.latest-release__notes :deep(h6) {
-  margin: 18px 0 8px;
-  border: 0;
-  padding: 0;
-}
-
-.latest-release__notes :deep(h1:first-child),
-.latest-release__notes :deep(h2:first-child),
-.latest-release__notes :deep(h3:first-child) {
-  margin-top: 0;
-}
-
-.latest-release__notes :deep(p),
-.latest-release__notes :deep(ul),
-.latest-release__notes :deep(ol),
-.latest-release__notes :deep(blockquote),
-.latest-release__notes :deep(table),
-.latest-release__notes :deep(pre) {
-  margin: 10px 0;
-}
-
-.latest-release__notes :deep(ul),
-.latest-release__notes :deep(ol) {
-  padding-left: 20px;
-}
-
-.latest-release__notes :deep(li + li) {
-  margin-top: 4px;
-}
-
-.latest-release__notes :deep(blockquote) {
-  padding-left: 14px;
-  border-left: 3px solid var(--vp-c-divider);
-  color: var(--vp-c-text-2);
-}
-
-.latest-release__notes :deep(pre) {
-  padding: 12px;
-  overflow: auto;
-  border-radius: 8px;
-  background: var(--vp-code-block-bg);
-}
-
-.latest-release__notes :deep(table) {
-  display: table;
-  width: 100%;
-}
-
 .latest-release__muted,
 .latest-release__assets span {
   color: var(--vp-c-text-2);
+}
+
+.latest-release__assets span b {
+  margin-right: 8px;
+  color: var(--vp-c-text-1);
+  font-weight: 700;
 }
 
 .latest-release__assets {

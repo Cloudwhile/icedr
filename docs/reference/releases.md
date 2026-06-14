@@ -6,7 +6,6 @@ ICEDR 的 GitHub Release 会同时提供：
 - `MD5SUMS.txt`
 - `SHA256SUMS.txt`
 - `release-manifest.json`
-- Release Notes
 
 Docker 镜像发布到 Docker Hub：
 
