@@ -41,7 +41,7 @@ Docker 镜像默认把前端和 API 放在同源下，浏览器访问 `/api` 即
 - SQLite 文件
 - `local-files` 目录
 - `database-source.json`
-- 如使用二进制，还可以保留 `native` 目录以减少下次启动写入
+- 如使用二进制，还可以保留 `assets/public` 和 `native` 目录以减少下次启动写入
 
 ## 数据库
 

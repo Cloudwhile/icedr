@@ -100,9 +100,9 @@ Configuration reference lives in the VitePress documentation under `docs/referen
 
 ## Published Builds
 
-The current pre-release is `v0.0.1-alpha.4`. Container images are published as `corecherry/icedr-po:<tag>` and `ghcr.io/cloudwhile/icedr-po:<tag>`. Use `0.0.1-alpha.4` as the Docker tag for this release.
+The current pre-release is `v0.0.1-alpha.5`. Container images are published as `corecherry/icedr-po:<tag>` and `ghcr.io/cloudwhile/icedr-po:<tag>`. Use `0.0.1-alpha.5` as the Docker tag for this release.
 
-Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.4`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
+Stable versions such as `v1.2.0` update the `latest` tag in both registries. Pre-release versions such as `v0.0.1-alpha.5`, `v1.2.0-alpha.1`, or `v1.2.0-beta.1` publish their own version tags but do not update `latest`.
 
 ### Minimal Docker Deployment
 
@@ -121,7 +121,7 @@ docker run -d \
   -e API_HOST=0.0.0.0 \
   -e API_PORT=13000 \
   -e SMTP_ENABLED=false \
-  corecherry/icedr-po:0.0.1-alpha.4
+  corecherry/icedr-po:0.0.1-alpha.5
 ```
 
 Open `http://localhost:13000`, or replace `localhost` with the server address. A fresh data directory opens the first-run setup page.
@@ -135,8 +135,8 @@ Linux x86_64 example:
 ```bash
 mkdir -p /opt/icedr
 cd /opt/icedr
-chmod +x ./icedr_0.0.1-alpha.4_linux-x86_64
-./icedr_0.0.1-alpha.4_linux-x86_64
+chmod +x ./icedr_0.0.1-alpha.5_linux-x86_64
+./icedr_0.0.1-alpha.5_linux-x86_64
 ```
 
 Binary builds create `data` beside the executable by default. Set `ICEDR_DATA_DIR` only when the data directory must live elsewhere.
@@ -154,7 +154,7 @@ Examples:
 
 ```text
 v1.2.0
-v0.0.1-alpha.4
+v0.0.1-alpha.5
 v1.2.0-alpha.1
 v1.2.0-beta.1
 ```

@@ -45,6 +45,7 @@ ICEDR 默认把运行数据放在 `data` 中：
 | --- | --- |
 | SQLite 数据库 | `data/icedr.sqlite` |
 | 本地上传文件 | `data/local-files` |
+| 二进制运行时前端资源 | `data/assets/public` |
 | 二进制运行时原生模块 | `data/native` |
 | 已保存的数据库切换信息 | `data/database-source.json` |
 

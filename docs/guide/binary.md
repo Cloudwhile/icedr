@@ -124,13 +124,15 @@ http://localhost:13000
 ```text
 icedr_VERSION_linux-x86_64
 data/
+  assets/
+    public/
   icedr.sqlite
   local-files/
   native/
   database-source.json
 ```
 
-二进制文件所在目录即默认数据目录的上级目录。升级时，将新二进制文件放到同一目录即可继续使用原来的 `data`。
+二进制文件所在目录即默认数据目录的上级目录。二进制首次启动会把内嵌前端资源释放到 `data/assets/public`，并自动作为静态资源目录。升级时，将新二进制文件放到同一目录即可继续使用原来的 `data`。
 
 如果要指定其他数据目录：
 

@@ -63,6 +63,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     await this.activeClient.$connect();
+    if (this.activeSource.provider === 'sqlite') {
+      await this.ensureSqliteRuntimeSchema();
+    }
   }
 
   async onModuleDestroy() {
@@ -294,6 +297,36 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async ensureSqliteRuntimeSchema() {
+    await this.ensureSqliteColumn(
+      'file_nodes',
+      'space_scope',
+      "TEXT NOT NULL DEFAULT 'workspace'",
+    );
+    await this.ensureSqliteColumn(
+      'upload_sessions',
+      'space_scope',
+      "TEXT NOT NULL DEFAULT 'workspace'",
+    );
+    await this.activeClient.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
+    );
+  }
+
+  private async ensureSqliteColumn(
+    tableName: string,
+    columnName: string,
+    definition: string,
+  ) {
+    const columns = await this.activeClient.$queryRawUnsafe(
+      `PRAGMA table_info("${tableName}")`,
+    );
+    if (sqliteColumnsInclude(columns, columnName)) return;
+    await this.activeClient.$executeRawUnsafe(
+      `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${definition}`,
+    );
+  }
+
   private deployPostgresMigrations(source: PostgresDatabaseSource) {
     const prismaPackage = require.resolve('prisma/package.json', {
       paths: [this.backendRoot],
@@ -347,4 +380,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       });
     }
   }
+}
+
+function sqliteColumnsInclude(columns: unknown, columnName: string) {
+  if (!Array.isArray(columns)) return false;
+  return columns.some((column) => {
+    if (!column || typeof column !== 'object') return false;
+    const record = column as Record<string, unknown>;
+    return record.name === columnName;
+  });
 }
