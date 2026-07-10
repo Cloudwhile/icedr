@@ -1,0 +1,200 @@
+.admin-system-status {
+  container-name: admin-system-status;
+  container-type: inline-size;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-system-status-summary {
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.admin-system-status-metric {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-height: 68px;
+  min-width: 0;
+  padding: 11px 14px;
+}
+
+.admin-system-status-metric + .admin-system-status-metric {
+  border-left: 1px solid #e7edf5;
+}
+
+.admin-system-status-metric[data-tone="success"] {
+  --admin-status-accent: #168a34;
+  --admin-status-soft: #eaf8ef;
+  --admin-status-border: #caead5;
+}
+
+.admin-system-status-metric[data-tone="warning"] {
+  --admin-status-accent: #c66b08;
+  --admin-status-soft: #fff5e8;
+  --admin-status-border: #f2d7b2;
+}
+
+.admin-system-status-metric[data-tone="primary"] {
+  --admin-status-accent: #345ecb;
+  --admin-status-soft: #eef3ff;
+  --admin-status-border: #d9e3ff;
+}
+
+.admin-system-status-metric[data-tone="storage"] {
+  --admin-status-accent: #087c77;
+  --admin-status-soft: #e9f8f6;
+  --admin-status-border: #cceae6;
+}
+
+.admin-system-status-metric[data-tone="neutral"] {
+  --admin-status-accent: #56657d;
+  --admin-status-soft: #f2f5f8;
+  --admin-status-border: #e0e6ed;
+}
+
+.admin-system-status-metric-icon {
+  align-items: center;
+  background: var(--admin-status-soft);
+  border: 1px solid var(--admin-status-border);
+  border-radius: 8px;
+  color: var(--admin-status-accent);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.admin-system-status-metric-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-system-status-metric-copy small {
+  color: #66758a;
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 15px;
+}
+
+.admin-system-status-metric-copy strong {
+  color: #172033;
+  font-size: 15px;
+  font-weight: 820;
+  line-height: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-system-status-sections {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.admin-system-status-section {
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-system-status-section > header {
+  align-items: center;
+  border-bottom: 1px solid #e7edf5;
+  color: #345ecb;
+  display: flex;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.admin-system-status-section h2 {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 810;
+  line-height: 20px;
+  margin: 0;
+}
+
+.admin-system-status-section dl {
+  margin: 0;
+  padding: 5px 14px 9px;
+}
+
+.admin-system-status-section dl > div {
+  align-items: baseline;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.1fr);
+  min-height: 38px;
+  padding: 9px 0;
+}
+
+.admin-system-status-section dl > div + div {
+  border-top: 1px solid #edf2f7;
+}
+
+.admin-system-status-section dt {
+  color: #66758a;
+  font-size: 12px;
+  font-weight: 680;
+  line-height: 18px;
+}
+
+.admin-system-status-section dd {
+  color: #172033;
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 18px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+@container admin-system-status (max-width: 820px) {
+  .admin-system-status-summary,
+  .admin-system-status-sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-system-status-metric:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid #e7edf5;
+  }
+
+  .admin-system-status-metric:nth-child(4) {
+    border-top: 1px solid #e7edf5;
+  }
+}
+
+@container admin-system-status (max-width: 560px) {
+  .admin-system-status-summary,
+  .admin-system-status-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-system-status-metric + .admin-system-status-metric {
+    border-left: 0;
+    border-top: 1px solid #e7edf5;
+  }
+
+  .admin-system-status-section dl > div {
+    gap: 4px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-system-status-section dd {
+    text-align: left;
+  }
+}

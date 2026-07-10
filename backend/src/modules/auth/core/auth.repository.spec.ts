@@ -6,6 +6,12 @@ type UserUpsertArgs = {
   };
 };
 
+type UserCreateArgs = {
+  data: {
+    email: string;
+  };
+};
+
 type UserIdentityUpsertArgs = {
   create: {
     emailSource: string;
@@ -36,6 +42,9 @@ function createPrismaMock(queryRows: unknown[] = []) {
     void args;
     return Promise.resolve(prismaUser);
   });
+  const userCreate = jest.fn((args: UserCreateArgs) =>
+    Promise.resolve({ ...prismaUser, email: args.data.email }),
+  );
   const userIdentityUpsert = jest.fn((args: UserIdentityUpsertArgs) => {
     void args;
     return Promise.resolve({});
@@ -43,6 +52,7 @@ function createPrismaMock(queryRows: unknown[] = []) {
   const tx = {
     user: {
       findUnique: jest.fn(() => Promise.resolve(prismaUser)),
+      create: userCreate,
       upsert: userUpsert,
     },
     userIdentity: {
@@ -117,10 +127,10 @@ describe('AuthRepository', () => {
       displayName: 'OAuth User',
     });
 
-    const userUpsertArg = prisma.tx.user.upsert.mock.calls[0]?.[0];
+    const userCreateArg = prisma.tx.user.create.mock.calls[0]?.[0];
     const identityUpsertArg = prisma.tx.userIdentity.upsert.mock.calls[0]?.[0];
 
-    expect(userUpsertArg?.create.email).toBe(
+    expect(userCreateArg?.data.email).toBe(
       'icetowne-blog-abcd1234+fallback123@identity.local',
     );
     expect(identityUpsertArg?.create).toEqual(

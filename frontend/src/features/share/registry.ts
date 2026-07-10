@@ -1,8 +1,10 @@
 import { findDriveItem, getChildItems, getItemKind, type DriveItem, type DriveItemKind } from "@/features/file/model";
 import {
+  createDriveApiResponseError,
   DriveApiError,
   getApiBaseUrl,
   getAuthHeaders,
+  readDriveApiError,
   type FilePreviewCapability,
   type ShareDownloadPolicy,
 } from "@/lib/drive-api";
@@ -131,11 +133,13 @@ async function requestShareApi<T>(path: string, init?: RequestInit): Promise<T> 
     });
 
     if (response.status === 404 || response.status === 410) return null as T;
-    if (!response.ok) throw new ShareApiUnavailableError();
+    if (!response.ok) {
+      throw createDriveApiResponseError(response, await readDriveApiError(response, apiUnavailableMessage));
+    }
     return (await response.json()) as T;
   } catch (error) {
-    if (error instanceof ShareApiUnavailableError) throw error;
-    throw new ShareApiUnavailableError();
+    if (error instanceof DriveApiError || error instanceof ShareApiUnavailableError) throw error;
+    throw new DriveApiError(apiUnavailableMessage, undefined, "DRIVE_API_UNAVAILABLE");
   }
 }
 

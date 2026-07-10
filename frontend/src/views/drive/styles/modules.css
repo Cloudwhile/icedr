@@ -29,8 +29,91 @@
   min-width: 0;
 }
 
-.drive-module-stat-grid-links {
-  grid-template-columns: 1.35fr repeat(3, minmax(0, 1fr));
+.drive-links-module {
+  gap: 16px;
+}
+
+.drive-links-summary {
+  border-bottom: 1px solid #e5ebf3;
+  border-top: 1px solid #e5ebf3;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.drive-links-summary-item {
+  align-items: center;
+  border-right: 1px solid #edf2f7;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-height: 60px;
+  min-width: 0;
+  padding: 8px 14px;
+}
+
+.drive-links-summary-item:last-child {
+  border-right: 0;
+}
+
+.drive-links-summary-icon {
+  align-items: center;
+  background: #f4f7fb;
+  border: 1px solid #e5ebf3;
+  border-radius: 7px;
+  color: var(--drive-ui-subtle);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.drive-links-summary-item[data-tone="blue"] .drive-links-summary-icon {
+  background: #eef3ff;
+  border-color: #dfe7ff;
+  color: var(--drive-ui-blue-600);
+}
+
+.drive-links-summary-item[data-tone="danger"] .drive-links-summary-icon {
+  background: #fff1f1;
+  border-color: #ffdcdc;
+  color: var(--drive-ui-danger);
+}
+
+.drive-links-summary-item[data-tone="warning"] .drive-links-summary-icon {
+  background: #fff7e8;
+  border-color: #ffe5b5;
+  color: var(--drive-ui-warning);
+}
+
+.drive-links-summary-item[data-tone="success"] .drive-links-summary-icon {
+  background: #eaf8ef;
+  border-color: #cfeeda;
+  color: var(--drive-ui-success);
+}
+
+.drive-links-summary-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.drive-links-summary-copy strong {
+  color: var(--drive-ui-ink);
+  font-size: 18px;
+  font-weight: 820;
+  line-height: 21px;
+}
+
+.drive-links-summary-copy span {
+  color: var(--drive-ui-muted);
+  font-size: 11px;
+  font-weight: 680;
+  line-height: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drive-module-stat-card,
@@ -104,16 +187,6 @@
   font-size: 13px;
   font-weight: 720;
   line-height: 18px;
-}
-
-.drive-module-stat-card-wide .drive-module-stat-copy span:first-child {
-  color: var(--drive-ui-ink);
-  font-size: 15px;
-  line-height: 20px;
-}
-
-.drive-module-stat-card-wide .drive-module-stat-copy span:last-child {
-  max-width: 280px;
 }
 
 .drive-module-stat-icon,
@@ -421,6 +494,10 @@
   gap: 16px;
   grid-template-columns: minmax(0, 1fr) 300px;
   min-width: 0;
+}
+
+.drive-links-board[data-has-risk="false"] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .drive-link-table .drive-module-table-head,

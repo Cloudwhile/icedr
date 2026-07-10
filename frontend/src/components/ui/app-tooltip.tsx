@@ -160,7 +160,14 @@ function TooltipTrigger({ children, onClose, onOpen, triggerRef }: TooltipChildP
     <span
       className="icedr-tooltip-trigger"
       onBlurCapture={onClose}
-      onFocusCapture={onOpen}
+      onFocusCapture={(event) => {
+        if (
+          event.target instanceof HTMLElement &&
+          event.target.matches(":focus-visible")
+        ) {
+          onOpen();
+        }
+      }}
       onPointerEnter={onOpen}
       onPointerLeave={onClose}
       ref={triggerRef}

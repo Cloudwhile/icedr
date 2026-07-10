@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -24,6 +25,7 @@ import {
   CreateUploadIntentDto,
   DownloadIntentResponse,
   FileNodeListState,
+  type FileNodeResponse,
   type FileNodeKind,
   type FileNodeSpaceScope,
   FilePolicyResponse,
@@ -36,6 +38,7 @@ import {
   UpdateFileNodeContentDto,
   UpdateFileNodeStateDto,
   UploadChunkResponse,
+  type UploadConflictStrategy,
   UploadIntentResponse,
   UploadPartIntentResponse,
 } from './file-nodes.dto';
@@ -50,6 +53,11 @@ import {
   type FilePreviewCapability,
 } from './file-preview-policy';
 import type { Readable } from 'stream';
+import {
+  getFileNameConflictKey,
+  maxFileNameLength,
+  normalizeFileName,
+} from '../../common/security/file-name-policy';
 
 const trashCleanupThrottleMs = 5 * 60 * 1000;
 const insufficientStorageMessage = 'Storage space is insufficient';
@@ -60,6 +68,11 @@ type FileAuditOptions = {
 };
 
 type FileDownloadAuditPurpose = 'download' | 'preview';
+type ResolvedUploadConflict = {
+  fileName: string;
+  strategy: UploadConflictStrategy;
+  target: FileNodeResponse | null;
+};
 
 @Injectable()
 export class FileNodesService {
@@ -136,13 +149,32 @@ export class FileNodesService {
     dto: CreateUploadIntentDto,
     options: { auditMetadata?: AuditMetadata; ownerUserId?: string } = {},
   ): Promise<UploadIntentResponse> {
+    const fileName = this.normalizeNodeName(dto.fileName);
+    const conflictStrategy = this.normalizeUploadConflictStrategy(
+      dto.conflictStrategy,
+    );
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
     const sizeBytes = Math.max(0, Math.trunc(dto.fileSizeBytes ?? 0));
     const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
+    const resolvedConflict = await this.resolveUploadConflict({
+      allowRename: true,
+      conflictStrategy,
+      explicitConflictStrategy: Boolean(dto.conflictStrategy),
+      fileName,
+      ownerUserId: options.ownerUserId,
+      parentNodeId: dto.parentNodeId ?? null,
+      spaceScope,
+      workspaceId: dto.workspaceId,
+    });
+    const quotaIncomingBytes =
+      resolvedConflict.strategy === 'overwrite' &&
+      resolvedConflict.target?.sizeBytes
+        ? Math.max(0, sizeBytes - resolvedConflict.target.sizeBytes)
+        : sizeBytes;
     await this.assertWithinWorkspaceQuota(
       dto.workspaceId,
-      sizeBytes,
+      quotaIncomingBytes,
       spaceScope,
       options.ownerUserId,
       options.auditMetadata,
@@ -156,7 +188,7 @@ export class FileNodesService {
         workspaceId: dto.workspaceId,
         spaceScope,
         resumeKey,
-        fileName: dto.fileName,
+        fileName: resolvedConflict.fileName,
         parentNodeId: dto.parentNodeId ?? null,
         sizeBytes,
       });
@@ -178,20 +210,24 @@ export class FileNodesService {
             status: 'running',
             progress: uploaded.progress,
           });
-          return this.toUploadIntent(reusable, parts);
+          return this.toUploadIntent(
+            reusable,
+            parts,
+            resolvedConflict.strategy,
+          );
         }
       }
     }
 
     const objectKey = this.createUploadObjectKey(
-      { ...dto, spaceScope },
+      { ...dto, fileName: resolvedConflict.fileName, spaceScope },
       distributedStorage,
     );
     const transfer = await this.transfersService.createUploadTransfer({
       auditMetadata: options.auditMetadata,
       workspaceId: dto.workspaceId,
       objectKey,
-      name: dto.fileName,
+      name: resolvedConflict.fileName,
     });
     const multipartUpload = distributedStorage
       ? await this.storageService.createMultipartUpload(
@@ -207,7 +243,7 @@ export class FileNodesService {
         objectKey,
         multipartUploadId: multipartUpload?.uploadId ?? null,
         resumeKey: resumeKey ?? null,
-        fileName: dto.fileName,
+        fileName: resolvedConflict.fileName,
         parentNodeId: dto.parentNodeId ?? null,
         mimeType: dto.mimeType ?? 'application/octet-stream',
         sizeBytes,
@@ -216,10 +252,18 @@ export class FileNodesService {
       await this.fileNodesRepository.recordAudit(
         'file.upload_intent_created',
         objectKey,
-        { metadata: options.auditMetadata },
+        {
+          metadata: {
+            ...options.auditMetadata,
+            conflictStrategy: resolvedConflict.strategy,
+            requestedFileName: fileName,
+            resolvedFileName: resolvedConflict.fileName,
+            targetNodeId: resolvedConflict.target?.id ?? null,
+          },
+        },
       );
 
-      return this.toUploadIntent(session, []);
+      return this.toUploadIntent(session, [], resolvedConflict.strategy);
     } catch (error) {
       if (multipartUpload?.uploadId) {
         await this.storageService
@@ -395,22 +439,25 @@ export class FileNodesService {
     dto: CompleteUploadDto,
     options: { auditMetadata?: AuditMetadata; ownerUserId?: string } = {},
   ) {
-    this.assertUploadObjectKey(dto);
+    const fileName = this.normalizeNodeName(dto.fileName);
+    const conflictStrategy = this.normalizeUploadConflictStrategy(
+      dto.conflictStrategy,
+    );
     const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
-    const existingUploadTarget = (
-      await this.fileNodesRepository.list(
-        dto.workspaceId,
-        dto.parentNodeId ?? null,
-        'active',
-        {
-          ownerUserId:
-            spaceScope === 'personal' ? options.ownerUserId : undefined,
-          spaceScope,
-        },
-      )
-    ).find((node) => node.name === dto.fileName && Boolean(node.objectKey));
+    const resolvedConflict = await this.resolveUploadConflict({
+      allowRename: false,
+      conflictStrategy,
+      explicitConflictStrategy: Boolean(dto.conflictStrategy),
+      fileName,
+      ownerUserId: options.ownerUserId,
+      parentNodeId: dto.parentNodeId ?? null,
+      spaceScope,
+      workspaceId: dto.workspaceId,
+    });
+    const normalizedDto = { ...dto, fileName: resolvedConflict.fileName };
+    this.assertUploadObjectKey(normalizedDto);
     const uploadSession = dto.uploadSessionId
-      ? await this.requireCompletableUploadSession(dto)
+      ? await this.requireCompletableUploadSession(normalizedDto)
       : null;
     if (uploadSession) {
       const parts = await this.uploadSessionsRepository.listParts(
@@ -439,9 +486,11 @@ export class FileNodesService {
         'completed',
       );
     }
-    await this.storageService.assertObjectExists(dto.objectKey);
+    await this.storageService.assertObjectExists(normalizedDto.objectKey);
     const node = await this.fileNodesRepository.completeUpload({
-      ...dto,
+      ...normalizedDto,
+      conflictStrategy: resolvedConflict.strategy,
+      conflictTargetNodeId: resolvedConflict.target?.id,
       owner: dto.owner?.trim() || undefined,
       ownerUserId: options.ownerUserId,
       spaceScope,
@@ -449,14 +498,35 @@ export class FileNodesService {
     await this.deleteStoredObjects(
       await this.fileNodesRepository.pruneVersions(node.id),
     );
+    if (
+      resolvedConflict.strategy === 'overwrite' &&
+      resolvedConflict.target?.objectKey
+    ) {
+      await this.deleteStoredObjects([resolvedConflict.target.objectKey]);
+    }
     await this.fileNodesRepository.recordAudit(
       'file.upload_completed',
       node.id,
-      { metadata: options.auditMetadata },
+      {
+        metadata: {
+          ...options.auditMetadata,
+          conflictStrategy: resolvedConflict.strategy,
+          requestedFileName: fileName,
+          resolvedFileName: resolvedConflict.fileName,
+          targetNodeId: resolvedConflict.target?.id ?? null,
+        },
+      },
     );
-    if (existingUploadTarget) {
+    if (resolvedConflict.target && resolvedConflict.strategy === 'version') {
       await this.fileNodesRepository.recordAudit(
         'file.version_created',
+        node.id,
+        { metadata: options.auditMetadata },
+      );
+    }
+    if (resolvedConflict.target && resolvedConflict.strategy === 'overwrite') {
+      await this.fileNodesRepository.recordAudit(
+        'file.upload_overwritten',
         node.id,
         { metadata: options.auditMetadata },
       );
@@ -485,6 +555,13 @@ export class FileNodesService {
       dto.parentNodeId ?? null,
       spaceScope,
     );
+    await this.assertNoSiblingNameConflict({
+      name,
+      ownerUserId: dto.ownerUserId,
+      parentNodeId: dto.parentNodeId ?? null,
+      spaceScope,
+      workspaceId: dto.workspaceId,
+    });
     const node = await this.fileNodesRepository.createFolder({
       ...dto,
       name,
@@ -506,6 +583,14 @@ export class FileNodesService {
     const source = await this.requireActiveNode(id);
     const name = this.normalizeNodeName(dto.name);
     if (source.name === name) return source;
+    await this.assertNoSiblingNameConflict({
+      excludeNodeId: source.id,
+      name,
+      ownerUserId: source.ownerUserId ?? undefined,
+      parentNodeId: source.parentNodeId,
+      spaceScope: source.spaceScope,
+      workspaceId: source.workspaceId,
+    });
     const node = await this.fileNodesRepository.rename(id, name);
     if (!node) throw new NotFoundException('File node not found');
     await this.fileNodesRepository.recordAudit('file.renamed', id, {
@@ -527,6 +612,14 @@ export class FileNodesService {
       source.spaceScope,
       source.id,
     );
+    await this.assertNoSiblingNameConflict({
+      excludeNodeId: source.id,
+      name: source.name,
+      ownerUserId: source.ownerUserId ?? undefined,
+      parentNodeId,
+      spaceScope: source.spaceScope,
+      workspaceId: source.workspaceId,
+    });
     const node = await this.fileNodesRepository.move(id, parentNodeId);
     if (!node) throw new NotFoundException('File node not found');
     await this.fileNodesRepository.recordAudit('file.moved', id, {
@@ -548,10 +641,18 @@ export class FileNodesService {
       source.spaceScope,
       source.id,
     );
+    const name = dto.name
+      ? this.normalizeNodeName(dto.name)
+      : this.createCopyName(source.name);
+    await this.assertNoSiblingNameConflict({
+      name,
+      ownerUserId: source.ownerUserId ?? undefined,
+      parentNodeId,
+      spaceScope: source.spaceScope,
+      workspaceId: source.workspaceId,
+    });
     const node = await this.fileNodesRepository.copyTree(source, {
-      name: dto.name
-        ? this.normalizeNodeName(dto.name)
-        : this.createCopyName(source.name),
+      name,
       parentNodeId,
     });
     if (!node) throw new NotFoundException('File node not found');
@@ -1230,10 +1331,13 @@ export class FileNodesService {
   private toUploadIntent(
     session: UploadSession,
     parts: UploadSessionPart[],
+    conflictStrategy: UploadConflictStrategy = 'version',
   ): UploadIntentResponse {
     const uploaded = this.getUploadedSessionState(session, parts);
     const objectMultipart = Boolean(session.multipartUploadId);
     return {
+      conflictStrategy,
+      fileName: session.fileName,
       objectKey: session.objectKey,
       transferId: session.transferId,
       uploadMethod: objectMultipart ? 'object-multipart' : 'chunked',
@@ -1401,18 +1505,190 @@ export class FileNodesService {
     return value === 'personal' ? 'personal' : 'workspace';
   }
 
-  private normalizeNodeName(value: string) {
-    const name = value.trim();
-    if (!name) throw new BadRequestException('File node name is required');
+  private normalizeUploadConflictStrategy(
+    value?: UploadConflictStrategy,
+  ): UploadConflictStrategy {
     if (
-      name.includes('/') ||
-      name.includes('\\') ||
-      name === '.' ||
-      name === '..'
+      value === 'overwrite' ||
+      value === 'rename' ||
+      value === 'skip' ||
+      value === 'version'
     ) {
-      throw new BadRequestException('File node name is not valid');
+      return value;
     }
-    return name;
+    return 'version';
+  }
+
+  private async resolveUploadConflict(input: {
+    allowRename: boolean;
+    conflictStrategy: UploadConflictStrategy;
+    explicitConflictStrategy: boolean;
+    fileName: string;
+    ownerUserId?: string;
+    parentNodeId: string | null;
+    spaceScope: FileNodeSpaceScope;
+    workspaceId: string;
+  }): Promise<ResolvedUploadConflict> {
+    const conflicts = await this.findSiblingNameConflicts({
+      name: input.fileName,
+      ownerUserId: input.ownerUserId,
+      parentNodeId: input.parentNodeId,
+      spaceScope: input.spaceScope,
+      workspaceId: input.workspaceId,
+    });
+    if (conflicts.length === 0) {
+      return {
+        fileName: input.fileName,
+        strategy: input.conflictStrategy,
+        target: null,
+      };
+    }
+
+    if (input.conflictStrategy === 'skip') {
+      throw new ConflictException(
+        'File upload skipped because a same-name item exists',
+      );
+    }
+
+    if (input.conflictStrategy === 'rename' && input.allowRename) {
+      const siblings = await this.listSiblingNodes(input);
+      return {
+        fileName: this.createAvailableSiblingFileName(input.fileName, siblings),
+        strategy: input.conflictStrategy,
+        target: null,
+      };
+    }
+
+    const target = conflicts.length === 1 ? conflicts[0] : null;
+    if (
+      target?.objectKey &&
+      (input.conflictStrategy === 'overwrite' ||
+        input.conflictStrategy === 'version') &&
+      (input.explicitConflictStrategy || target.name === input.fileName)
+    ) {
+      return {
+        fileName: input.fileName,
+        strategy: input.conflictStrategy,
+        target,
+      };
+    }
+
+    throw new BadRequestException(
+      'File node name conflicts with an existing item',
+    );
+  }
+
+  private async listSiblingNodes(input: {
+    ownerUserId?: string;
+    parentNodeId: string | null;
+    spaceScope: FileNodeSpaceScope;
+    workspaceId: string;
+  }) {
+    return this.fileNodesRepository.list(
+      input.workspaceId,
+      input.parentNodeId,
+      'active',
+      {
+        ownerUserId:
+          input.spaceScope === 'personal' ? input.ownerUserId : undefined,
+        spaceScope: input.spaceScope,
+      },
+    );
+  }
+
+  private createAvailableSiblingFileName(
+    fileName: string,
+    siblings: FileNodeResponse[],
+  ) {
+    const siblingKeys = new Set(
+      siblings.map((node) => getFileNameConflictKey(node.name)),
+    );
+    if (!siblingKeys.has(getFileNameConflictKey(fileName))) return fileName;
+
+    const { baseName, extension } = splitFileNameForDuplicate(fileName);
+    for (let index = 2; index < 10000; index += 1) {
+      const candidate = this.normalizeNodeName(
+        createDuplicateFileName(baseName, extension, index),
+      );
+      if (!siblingKeys.has(getFileNameConflictKey(candidate))) {
+        return candidate;
+      }
+    }
+    throw new BadRequestException('Unable to create a non-conflicting name');
+  }
+
+  private async assertUploadNameAvailable(input: {
+    allowExactFileOverwrite?: boolean;
+    fileName: string;
+    ownerUserId?: string;
+    parentNodeId: string | null;
+    spaceScope: FileNodeSpaceScope;
+    workspaceId: string;
+  }) {
+    const conflicts = await this.findSiblingNameConflicts({
+      name: input.fileName,
+      ownerUserId: input.ownerUserId,
+      parentNodeId: input.parentNodeId,
+      spaceScope: input.spaceScope,
+      workspaceId: input.workspaceId,
+    });
+    if (conflicts.length === 0) return null;
+    if (
+      input.allowExactFileOverwrite &&
+      conflicts.length === 1 &&
+      conflicts[0]?.name === input.fileName &&
+      Boolean(conflicts[0].objectKey)
+    ) {
+      return conflicts[0];
+    }
+    throw new BadRequestException(
+      'File node name conflicts with an existing item',
+    );
+  }
+
+  private async assertNoSiblingNameConflict(input: {
+    excludeNodeId?: string;
+    name: string;
+    ownerUserId?: string;
+    parentNodeId: string | null;
+    spaceScope: FileNodeSpaceScope;
+    workspaceId: string;
+  }) {
+    const conflicts = await this.findSiblingNameConflicts(input);
+    if (conflicts.length === 0) return;
+    throw new BadRequestException(
+      'File node name conflicts with an existing item',
+    );
+  }
+
+  private async findSiblingNameConflicts(input: {
+    excludeNodeId?: string;
+    name: string;
+    ownerUserId?: string;
+    parentNodeId: string | null;
+    spaceScope: FileNodeSpaceScope;
+    workspaceId: string;
+  }): Promise<FileNodeResponse[]> {
+    const targetKey = getFileNameConflictKey(input.name);
+    const siblings = await this.fileNodesRepository.list(
+      input.workspaceId,
+      input.parentNodeId,
+      'active',
+      {
+        ownerUserId:
+          input.spaceScope === 'personal' ? input.ownerUserId : undefined,
+        spaceScope: input.spaceScope,
+      },
+    );
+    return siblings.filter(
+      (node) =>
+        node.id !== input.excludeNodeId &&
+        getFileNameConflictKey(node.name) === targetKey,
+    );
+  }
+
+  private normalizeNodeName(value: string) {
+    return normalizeFileName(value);
   }
 
   private assertTextEditableNode(node: {
@@ -1547,6 +1823,31 @@ export class FileNodesService {
         return 'Preview is not supported for this file type';
     }
   }
+}
+
+function splitFileNameForDuplicate(name: string) {
+  const dotIndex = name.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex === name.length - 1) {
+    return { baseName: name, extension: '' };
+  }
+  return {
+    baseName: name.slice(0, dotIndex),
+    extension: name.slice(dotIndex),
+  };
+}
+
+function createDuplicateFileName(
+  baseName: string,
+  extension: string,
+  index: number,
+) {
+  const suffix = ` (${index})`;
+  const maxBaseLength = Math.max(
+    1,
+    maxFileNameLength - [...extension].length - [...suffix].length,
+  );
+  const base = [...baseName].slice(0, maxBaseLength).join('').trim() || 'file';
+  return `${base}${suffix}${extension}`;
 }
 
 function resolveEffectiveQuotaBytes(

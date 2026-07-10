@@ -5,9 +5,15 @@ import { useRouter } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MotionPresence } from "@/components/ui/motion";
-import { showAppToast, type AppToastTone } from "@/components/ui/app-toast-store";
+import {
+  showAppToast,
+  type AppToastTone,
+} from "@/components/ui/app-toast-store";
 import { palettes, type Palette, type ThemeMode } from "@/features/file/model";
-import { defaultExternalSharePolicy, policyFromWorkspaceSettings } from "@/features/share/policy";
+import {
+  defaultExternalSharePolicy,
+  policyFromWorkspaceSettings,
+} from "@/features/share/policy";
 import {
   fetchAuthSettings,
   fetchWorkspaceShareSettings,
@@ -31,14 +37,19 @@ import {
 } from "./external-share-admin-primitives";
 import {
   buildAnonymousPolicyExperience,
-  buildIcaPolicyExperience,
+  buildOAuthPolicyExperience,
   type AnonymousAccessPolicy,
 } from "./external-share-admin-policy";
 
-type WorkspaceShareForm = Omit<WorkspaceShareSettings, "workspaceId" | "updatedAt">;
+type WorkspaceShareForm = Omit<
+  WorkspaceShareSettings,
+  "workspaceId" | "updatedAt"
+>;
 type UndoActions = Record<string, () => void>;
 
-function workspaceSettingsToForm(settings: WorkspaceShareSettings): WorkspaceShareForm {
+function workspaceSettingsToForm(
+  settings: WorkspaceShareSettings,
+): WorkspaceShareForm {
   return {
     anonymousAccess: settings.anonymousAccess,
     emailRule: settings.emailRule,
@@ -79,7 +90,7 @@ export function ExternalShareAdminSettingsPage({
         }}
       >
         <div className="external-share-admin-embedded-inner">
-          <ExternalShareAdminSettingsPanel palette={palette} />
+          <ExternalShareAdminSettingsPanel compact palette={palette} />
         </div>
       </div>
     );
@@ -99,46 +110,71 @@ export function ExternalShareAdminSettingsPage({
     >
       <div
         className="icedr-r-padding-inline"
-        style={{
-          "--r-padding-inline-base": "12px",
-          "--r-padding-inline-md": "24px",
-          alignItems: "center",
-          borderBottomWidth: "1px",
-          borderColor: palette.hairline,
-          display: "flex",
-          height: "56px",
-          justifyContent: "space-between",
-        } as React.CSSProperties}
+        style={
+          {
+            "--r-padding-inline-base": "12px",
+            "--r-padding-inline-md": "24px",
+            alignItems: "center",
+            borderBottomWidth: "1px",
+            borderColor: palette.hairline,
+            display: "flex",
+            height: "56px",
+            justifyContent: "space-between",
+          } as React.CSSProperties
+        }
       >
-        <div style={{ alignItems: "center", display: "flex", gap: "12px", minWidth: "0px" }}>
-          <ToolButton label={t("app.up")} palette={palette} onClick={() => router.push("/")}>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: "12px",
+            minWidth: "0px",
+          }}
+        >
+          <ToolButton
+            label={t("app.up")}
+            palette={palette}
+            onClick={() => router.push("/")}
+          >
             <LocalIcon name="arrow_left" size={17} />
           </ToolButton>
           <LocalIcon name="link" size={18} color={palette.secure} />
           <div style={{ minWidth: "0px" }}>
-            <span className="icedr-truncate" style={{ color: palette.ink, fontWeight: "600" }}>
+            <span
+              className="icedr-truncate"
+              style={{ color: palette.ink, fontWeight: "600" }}
+            >
               {t("admin.externalLinkPolicy")}
             </span>
-            <span className="icedr-truncate" style={{ color: palette.subtle, fontSize: "12px" }}>
+            <span
+              className="icedr-truncate"
+              style={{ color: palette.subtle, fontSize: "12px" }}
+            >
               {t("admin.externalLinkPolicySubtitle")}
             </span>
           </div>
         </div>
-        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+        <ThemeActions
+          palette={palette}
+          setThemeMode={setThemeMode}
+          themeMode={themeMode}
+        />
       </div>
 
       <div
         className="icedr-r-padding-inline"
-        style={{
-          "--r-padding-inline-base": "12px",
-          "--r-padding-inline-md": "24px",
-          WebkitOverflowScrolling: "touch",
-          height: "calc(100dvh - 56px)",
-          minHeight: "0px",
-          overflowY: "auto",
-          overscrollBehaviorY: "contain",
-          paddingBlock: "20px",
-        } as React.CSSProperties}
+        style={
+          {
+            "--r-padding-inline-base": "12px",
+            "--r-padding-inline-md": "24px",
+            WebkitOverflowScrolling: "touch",
+            height: "calc(100dvh - 56px)",
+            minHeight: "0px",
+            overflowY: "auto",
+            overscrollBehaviorY: "contain",
+            paddingBlock: "20px",
+          } as React.CSSProperties
+        }
       >
         <div style={{ maxWidth: "1180px" }}>
           <ExternalShareAdminSettingsPanel palette={palette} />
@@ -148,9 +184,16 @@ export function ExternalShareAdminSettingsPage({
   );
 }
 
-export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette }) {
+export function ExternalShareAdminSettingsPanel({
+  compact = false,
+  palette,
+}: {
+  compact?: boolean;
+  palette: Palette;
+}) {
   const t = useTranslations();
-  const [anonymousPolicy, setAnonymousPolicy] = useState<AnonymousAccessPolicy>("email-required");
+  const [anonymousPolicy, setAnonymousPolicy] =
+    useState<AnonymousAccessPolicy>("email-required");
   const [emailRule, setEmailRule] = useState<"any" | "domains">("any");
   const [allowPermanent, setAllowPermanent] = useState(false);
   const [audit, setAudit] = useState({
@@ -167,25 +210,32 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
   const [saving, setSaving] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [undoActions, setUndoActions] = useState<UndoActions>({});
-  const [savedWorkspaceSnapshot, setSavedWorkspaceSnapshot] = useState<WorkspaceShareForm | null>(null);
+  const [savedWorkspaceSnapshot, setSavedWorkspaceSnapshot] =
+    useState<WorkspaceShareForm | null>(null);
   const savedWorkspaceRef = useRef<WorkspaceShareForm | null>(null);
 
-  const showToast = useCallback((message: string, tone: AppToastTone = "success") => {
-    showAppToast({ title: message, tone });
-  }, []);
+  const showToast = useCallback(
+    (message: string, tone: AppToastTone = "success") => {
+      showAppToast({ title: message, tone });
+    },
+    [],
+  );
 
-  const applyWorkspaceShareSettings = useCallback((settings: WorkspaceShareSettings) => {
-    const saved = workspaceSettingsToForm(settings);
-    savedWorkspaceRef.current = saved;
-    setSavedWorkspaceSnapshot(saved);
-    setAnonymousPolicy(settings.anonymousAccess);
-    setEmailRule(settings.emailRule);
-    setAllowPermanent(settings.allowPermanent);
-    setAudit(settings.audit);
-    setDefaultExpiresDays(String(settings.defaultExpiresDays));
-    setMaxExpiresDays(String(settings.maxExpiresDays));
-    setDomains(settings.allowedDomains.join("\n"));
-  }, []);
+  const applyWorkspaceShareSettings = useCallback(
+    (settings: WorkspaceShareSettings) => {
+      const saved = workspaceSettingsToForm(settings);
+      savedWorkspaceRef.current = saved;
+      setSavedWorkspaceSnapshot(saved);
+      setAnonymousPolicy(settings.anonymousAccess);
+      setEmailRule(settings.emailRule);
+      setAllowPermanent(settings.allowPermanent);
+      setAudit(settings.audit);
+      setDefaultExpiresDays(String(settings.defaultExpiresDays));
+      setMaxExpiresDays(String(settings.maxExpiresDays));
+      setDomains(settings.allowedDomains.join("\n"));
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -239,7 +289,9 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
     setDomains(settings.allowedDomains.join("\n"));
   };
 
-  const currentWorkspaceForm = (overrides: Partial<WorkspaceShareForm> = {}): WorkspaceShareForm => ({
+  const currentWorkspaceForm = (
+    overrides: Partial<WorkspaceShareForm> = {},
+  ): WorkspaceShareForm => ({
     anonymousAccess: anonymousPolicy,
     audit,
     allowPermanent,
@@ -265,7 +317,10 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
         savedWorkspaceRef.current = saved;
         setSavedWorkspaceSnapshot(saved);
         applyWorkspaceForm(saved);
-        if (recordUndo) setUndoAction(key, () => saveWorkspaceForm(key, previous, saved, false));
+        if (recordUndo)
+          setUndoAction(key, () =>
+            saveWorkspaceForm(key, previous, saved, false),
+          );
         else clearUndoAction(key);
         showToast(t("admin.saved"));
       })
@@ -276,7 +331,10 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
       .finally(() => setSaving(false));
   };
 
-  const commitWorkspaceForm = (key: string, overrides: Partial<WorkspaceShareForm> = {}) => {
+  const commitWorkspaceForm = (
+    key: string,
+    overrides: Partial<WorkspaceShareForm> = {},
+  ) => {
     const previous = savedWorkspaceRef.current ?? currentWorkspaceForm();
     const next = currentWorkspaceForm(overrides);
     saveWorkspaceForm(key, next, previous);
@@ -285,7 +343,8 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
   const savedWorkspace = savedWorkspaceSnapshot;
   const domainDirty = Boolean(
     savedWorkspace &&
-      (savedWorkspace.emailRule !== emailRule || settingChanged(savedWorkspace.allowedDomains, parseDomains())),
+    (savedWorkspace.emailRule !== emailRule ||
+      settingChanged(savedWorkspace.allowedDomains, parseDomains())),
   );
   const resetDomainDraft = () => {
     if (!savedWorkspaceSnapshot) return;
@@ -294,17 +353,33 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
   };
 
   return (
-    <div className="external-share-admin-settings-panel" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <div className="external-share-admin-kicker" style={{ alignItems: "center", color: palette.subtle, display: "flex", fontSize: "12px", gap: "8px" }}>
-        <LocalIcon name="link" size={14} color={palette.secure} />
-        <span>{t("admin.externalShareBreadcrumb")}</span>
-      </div>
+    <div
+      className="external-share-admin-settings-panel"
+      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+    >
+      {!compact ? (
+        <>
+          <div
+            className="external-share-admin-kicker"
+            style={{
+              alignItems: "center",
+              color: palette.subtle,
+              display: "flex",
+              fontSize: "12px",
+              gap: "8px",
+            }}
+          >
+            <LocalIcon name="link" size={14} color={palette.secure} />
+            <span>{t("admin.externalShareBreadcrumb")}</span>
+          </div>
 
-      <div className="external-share-admin-summary">
-        <SettingStatusLine icon="info" palette={palette} tone="neutral">
-          {t("admin.externalSharePolicySummary")}
-        </SettingStatusLine>
-      </div>
+          <div className="external-share-admin-summary">
+            <SettingStatusLine icon="info" palette={palette} tone="neutral">
+              {t("admin.externalSharePolicySummary")}
+            </SettingStatusLine>
+          </div>
+        </>
+      ) : null}
 
       <AdminSection
         className="external-share-section-anonymous"
@@ -313,30 +388,60 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
         palette={palette}
         title={t("admin.anonymousPolicy")}
       >
-        <SettingItem palette={palette} undoAction={anonymousPolicy === "blocked" ? undoActions.anonymousPolicy : undefined}>
+        <SettingItem
+          palette={palette}
+          undoAction={
+            anonymousPolicy === "blocked"
+              ? undoActions.anonymousPolicy
+              : undefined
+          }
+        >
           <RadioRow
             active={anonymousPolicy === "blocked"}
             label={t("admin.blockAnonymous")}
-            onClick={() => commitWorkspaceForm("anonymousPolicy", { anonymousAccess: "blocked" })}
+            onClick={() =>
+              commitWorkspaceForm("anonymousPolicy", {
+                anonymousAccess: "blocked",
+              })
+            }
             palette={palette}
           />
         </SettingItem>
         <SettingItem
           palette={palette}
-          undoAction={anonymousPolicy === "email-required" ? undoActions.anonymousPolicy : undefined}
+          undoAction={
+            anonymousPolicy === "email-required"
+              ? undoActions.anonymousPolicy
+              : undefined
+          }
         >
           <RadioRow
             active={anonymousPolicy === "email-required"}
             label={t("admin.emailRequiredAnonymous")}
-            onClick={() => commitWorkspaceForm("anonymousPolicy", { anonymousAccess: "email-required" })}
+            onClick={() =>
+              commitWorkspaceForm("anonymousPolicy", {
+                anonymousAccess: "email-required",
+              })
+            }
             palette={palette}
           />
         </SettingItem>
-        <SettingItem palette={palette} undoAction={anonymousPolicy === "public" ? undoActions.anonymousPolicy : undefined}>
+        <SettingItem
+          palette={palette}
+          undoAction={
+            anonymousPolicy === "public"
+              ? undoActions.anonymousPolicy
+              : undefined
+          }
+        >
           <RadioRow
             active={anonymousPolicy === "public"}
             label={t("admin.publicAnonymous")}
-            onClick={() => commitWorkspaceForm("anonymousPolicy", { anonymousAccess: "public" })}
+            onClick={() =>
+              commitWorkspaceForm("anonymousPolicy", {
+                anonymousAccess: "public",
+              })
+            }
             palette={palette}
             tone="risk"
           />
@@ -358,7 +463,9 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
               anonymousAccess: anonymousPolicy,
               emailRule,
               allowedDomains: parseDomains(),
-              defaultExpiresDays: Number(defaultExpiresDays) || defaultExternalSharePolicy.expiresValue,
+              defaultExpiresDays:
+                Number(defaultExpiresDays) ||
+                defaultExternalSharePolicy.expiresValue,
               maxExpiresDays: Number(maxExpiresDays) || 30,
               allowPermanent,
               audit,
@@ -368,7 +475,10 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           )}
           palette={palette}
         />
-        <IdentityPolicyRow experience={buildIcaPolicyExperience(authSettings, t)} palette={palette} />
+        <IdentityPolicyRow
+          experience={buildOAuthPolicyExperience(authSettings, t)}
+          palette={palette}
+        />
       </AdminSection>
 
       <AdminSection
@@ -378,15 +488,30 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
         palette={palette}
         title={t("admin.emailRules")}
       >
-        <SettingItem palette={palette} undoAction={emailRule === "any" ? undoActions.emailRule : undefined}>
+        <SettingItem
+          palette={palette}
+          undoAction={emailRule === "any" ? undoActions.emailRule : undefined}
+        >
           <RadioRow
             active={emailRule === "any"}
             label={t("admin.anyEmail")}
-            onClick={() => commitWorkspaceForm("emailRule", { allowedDomains: [], emailRule: "any" })}
+            onClick={() =>
+              commitWorkspaceForm("emailRule", {
+                allowedDomains: [],
+                emailRule: "any",
+              })
+            }
             palette={palette}
           />
         </SettingItem>
-        <SettingItem palette={palette} undoAction={emailRule === "domains" && !domainDirty ? undoActions.emailRule : undefined}>
+        <SettingItem
+          palette={palette}
+          undoAction={
+            emailRule === "domains" && !domainDirty
+              ? undoActions.emailRule
+              : undefined
+          }
+        >
           <RadioRow
             active={emailRule === "domains"}
             label={t("admin.specifiedDomains")}
@@ -401,22 +526,38 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
               className="icedr-has-focus"
               value={domains}
               onChange={(event) => setDomains(event.target.value)}
-              style={{
-                "--focus-border-color": palette.primary,
-                "--focus-box-shadow": `0 0 0 1px ${palette.focusRing}`,
-                background: "transparent",
-                borderColor: palette.hairline,
-                color: palette.ink,
-                minHeight: "84px",
-              } as React.CSSProperties}
+              style={
+                {
+                  "--focus-border-color": palette.primary,
+                  "--focus-box-shadow": `0 0 0 1px ${palette.focusRing}`,
+                  background: "transparent",
+                  borderColor: palette.hairline,
+                  color: palette.ink,
+                  minHeight: "84px",
+                } as React.CSSProperties
+              }
             />
             <SettingActionBar
-              canReset={domainDirty || Boolean(undoActions.emailRule || undoActions.allowedDomains)}
+              canReset={
+                domainDirty ||
+                Boolean(undoActions.emailRule || undoActions.allowedDomains)
+              }
               canSave={domainDirty}
-              onReset={domainDirty ? resetDomainDraft : undoActions.emailRule ?? undoActions.allowedDomains}
-              onSave={() => commitWorkspaceForm("emailRule", { allowedDomains: parseDomains(), emailRule: "domains" })}
+              onReset={
+                domainDirty
+                  ? resetDomainDraft
+                  : (undoActions.emailRule ?? undoActions.allowedDomains)
+              }
+              onSave={() =>
+                commitWorkspaceForm("emailRule", {
+                  allowedDomains: parseDomains(),
+                  emailRule: "domains",
+                })
+              }
               palette={palette}
-              resetLabel={domainDirty ? t("admin.revertChanges") : t("admin.undo")}
+              resetLabel={
+                domainDirty ? t("admin.revertChanges") : t("admin.undo")
+              }
               saveLabel={t("admin.save")}
               saving={saving}
             />
@@ -433,15 +574,22 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
       >
         <div
           className="icedr-r-grid-template-columns"
-          style={{
-            "--r-grid-template-columns-base": "1fr",
-            "--r-grid-template-columns-md": "160px 1fr",
-            display: "grid",
-            gap: "12px",
-          } as React.CSSProperties}
+          style={
+            {
+              "--r-grid-template-columns-base": "1fr",
+              "--r-grid-template-columns-md": "160px 1fr",
+              display: "grid",
+              gap: "12px",
+            } as React.CSSProperties
+          }
         >
-          <span style={{ color: palette.subtle }}>{t("admin.defaultExpiry")}</span>
-          <SettingItem palette={palette} undoAction={undoActions.defaultExpiresDays}>
+          <span style={{ color: palette.subtle }}>
+            {t("admin.defaultExpiry")}
+          </span>
+          <SettingItem
+            palette={palette}
+            undoAction={undoActions.defaultExpiresDays}
+          >
             <div style={{ alignItems: "center", display: "flex" }}>
               <PolicyInput
                 inputMode="numeric"
@@ -449,16 +597,28 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
                 value={defaultExpiresDays}
                 onBlur={() =>
                   commitWorkspaceForm("defaultExpiresDays", {
-                    defaultExpiresDays: Math.max(1, Number(defaultExpiresDays) || 1),
+                    defaultExpiresDays: Math.max(
+                      1,
+                      Number(defaultExpiresDays) || 1,
+                    ),
                   })
                 }
-                onChange={(event) => setDefaultExpiresDays(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) =>
+                  setDefaultExpiresDays(event.target.value.replace(/\D/g, ""))
+                }
               />
-              <span style={{ color: palette.muted }}>{t("share.units.days")}</span>
+              <span style={{ color: palette.muted }}>
+                {t("share.units.days")}
+              </span>
             </div>
           </SettingItem>
-          <span style={{ color: palette.subtle }}>{t("admin.maximumExpiry")}</span>
-          <SettingItem palette={palette} undoAction={undoActions.maxExpiresDays}>
+          <span style={{ color: palette.subtle }}>
+            {t("admin.maximumExpiry")}
+          </span>
+          <SettingItem
+            palette={palette}
+            undoAction={undoActions.maxExpiresDays}
+          >
             <div style={{ alignItems: "center", display: "flex" }}>
               <PolicyInput
                 inputMode="numeric"
@@ -469,9 +629,13 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
                     maxExpiresDays: Math.max(1, Number(maxExpiresDays) || 1),
                   })
                 }
-                onChange={(event) => setMaxExpiresDays(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) =>
+                  setMaxExpiresDays(event.target.value.replace(/\D/g, ""))
+                }
               />
-              <span style={{ color: palette.muted }}>{t("share.units.days")}</span>
+              <span style={{ color: palette.muted }}>
+                {t("share.units.days")}
+              </span>
             </div>
           </SettingItem>
         </div>
@@ -479,7 +643,11 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           <PolicyCheck
             checked={allowPermanent}
             label={t("admin.allowPermanent")}
-            onToggle={() => commitWorkspaceForm("allowPermanent", { allowPermanent: !allowPermanent })}
+            onToggle={() =>
+              commitWorkspaceForm("allowPermanent", {
+                allowPermanent: !allowPermanent,
+              })
+            }
             palette={palette}
           />
         </SettingItem>
@@ -496,7 +664,11 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           <PolicyCheck
             checked={audit.ip}
             label={t("admin.recordIp")}
-            onToggle={() => commitWorkspaceForm("auditIp", { audit: { ...audit, ip: !audit.ip } })}
+            onToggle={() =>
+              commitWorkspaceForm("auditIp", {
+                audit: { ...audit, ip: !audit.ip },
+              })
+            }
             palette={palette}
           />
         </SettingItem>
@@ -504,7 +676,11 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           <PolicyCheck
             checked={audit.userAgent}
             label={t("admin.recordUserAgent")}
-            onToggle={() => commitWorkspaceForm("auditUserAgent", { audit: { ...audit, userAgent: !audit.userAgent } })}
+            onToggle={() =>
+              commitWorkspaceForm("auditUserAgent", {
+                audit: { ...audit, userAgent: !audit.userAgent },
+              })
+            }
             palette={palette}
           />
         </SettingItem>
@@ -512,7 +688,11 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           <PolicyCheck
             checked={audit.downloads}
             label={t("admin.recordDownloads")}
-            onToggle={() => commitWorkspaceForm("auditDownloads", { audit: { ...audit, downloads: !audit.downloads } })}
+            onToggle={() =>
+              commitWorkspaceForm("auditDownloads", {
+                audit: { ...audit, downloads: !audit.downloads },
+              })
+            }
             palette={palette}
           />
         </SettingItem>
@@ -520,7 +700,11 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           <PolicyCheck
             checked={audit.anomaly}
             label={t("admin.anomalyDetection")}
-            onToggle={() => commitWorkspaceForm("auditAnomaly", { audit: { ...audit, anomaly: !audit.anomaly } })}
+            onToggle={() =>
+              commitWorkspaceForm("auditAnomaly", {
+                audit: { ...audit, anomaly: !audit.anomaly },
+              })
+            }
             palette={palette}
           />
         </SettingItem>
@@ -528,7 +712,11 @@ export function ExternalShareAdminSettingsPanel({ palette }: { palette: Palette 
           <PolicyCheck
             checked={audit.alerts}
             label={t("admin.riskAlerts")}
-            onToggle={() => commitWorkspaceForm("auditAlerts", { audit: { ...audit, alerts: !audit.alerts } })}
+            onToggle={() =>
+              commitWorkspaceForm("auditAlerts", {
+                audit: { ...audit, alerts: !audit.alerts },
+              })
+            }
             palette={palette}
           />
         </SettingItem>

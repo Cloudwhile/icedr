@@ -1,68 +1,132 @@
 # 快速开始
 
-本页面面向首次部署 ICEDR 的场景。默认流程无需预先理解数据库、对象存储或构建流程；选择运行方式后，按初始化向导完成设置即可。
+本页使用已发布的 Docker 镜像启动 ICEDR，并完成首次初始化和部署成功验证。需要 Compose、二进制或生产域名时，转到对应部署文档。
 
-## 选择运行方式
+::: warning 使用固定的预发布版本
+当前最新发布是 `v0.0.1-alpha.5`。预发布版本不会更新 Docker `latest` 标签，示例因此固定使用 `0.0.1-alpha.5`。
+:::
 
-| 目标 | 推荐文档 | 适合场景 |
-| --- | --- | --- |
-| 使用已发布的 Docker 镜像 | [Docker 部署](/guide/docker) | 服务器已有 Docker，需要最少命令启动 |
-| 使用已发布的二进制文件 | [二进制部署](/guide/binary) | 不运行容器，直接执行一个文件 |
-| 从源码构建 | README | 开发、调试、二次开发 |
+## 启动 ICEDR
 
-多数部署建议优先选择 Docker。Docker 镜像已经包含前端页面和后端 API，无需额外准备 Nginx，也无需分开部署前端和后端。
+先创建持久化目录：
 
-## 首次启动后做什么
+```bash
+sudo mkdir -p /opt/icedr/data
+sudo chown -R "$USER":"$USER" /opt/icedr
+```
 
-启动成功后，打开：
+生成并保存生产环境安全密钥：
+
+```bash
+umask 077
+printf 'AUTH_SECURITY_SECRET=%s\n' "$(openssl rand -hex 32)" > /opt/icedr/icedr.env
+printf 'SMTP_ENABLED=false\n' >> /opt/icedr/icedr.env
+```
+
+`AUTH_SECURITY_SECRET` 必须长期保留。重新生成会使已有登录会话失效。
+
+启动容器：
+
+```bash
+docker run -d \
+  --name icedr \
+  --restart unless-stopped \
+  -p 13000:13000 \
+  -v /opt/icedr/data:/workspace/backend/data \
+  --env-file /opt/icedr/icedr.env \
+  -e NODE_ENV=production \
+  -e APP_ENV=production \
+  -e API_HOST=0.0.0.0 \
+  -e API_PORT=13000 \
+  corecherry/icedr-po:0.0.1-alpha.5
+```
+
+确认容器处于运行状态：
+
+```bash
+docker ps --filter name=icedr
+docker logs --tail 100 icedr
+```
+
+浏览器打开：
 
 ```text
 http://服务器地址:13000
 ```
 
-如果是在本机运行，可以打开：
+在本机部署时使用 `http://localhost:13000`。
 
-```text
-http://localhost:13000
+## 完成初始化向导
+
+全新数据目录会进入初始化向导。首次试用可采用以下选择：
+
+1. 数据库选择 SQLite。
+2. 创建管理员账号，并保存恢复所需的信息。
+3. 保留本地账号登录；OAuth 和 Passkey 可以稍后配置。
+4. 暂不启用 SMTP。
+5. 文件存储选择本地存储。
+6. 设置站点名称并完成初始化。
+
+每一步的生产选择见 [初始化向导](/guide/setup-wizard)。
+
+## 部署成功验证流程
+
+不要只以“首页能打开”作为部署成功标准。按下面顺序完成一次最小闭环：
+
+### 1. 验证登录和系统状态
+
+- 使用刚创建的管理员账号登录。
+- 打开“管理面板 → 系统状态”。
+- 确认运行状态正常，并能看到版本、内存和存储信息。
+- 如果存储容量显示未知，先确认数据目录挂载和宿主机权限；对象存储容量指标属于可选配置。
+
+### 2. 验证文件读写
+
+- 创建一个测试文件夹。
+- 上传一个小型文本或图片文件。
+- 刷新页面，确认文件仍存在。
+- 打开预览；不支持预览的格式应能正常下载。
+- 重命名文件，再将其移入回收站并恢复。
+
+### 3. 验证外链
+
+- 为测试文件创建一个允许预览的外链。
+- 在无痕窗口中打开链接，确认访问方式与管理员策略一致。
+- 如果启用了下载，再完成一次下载。
+- 撤销链接，确认原链接不再可用。
+
+### 4. 验证审计记录
+
+打开“管理面板 → 审计日志”，确认能找到上传、预览、分享、访问、下载或撤销等刚刚执行的事件。事件可能因页面刷新和服务写入有短暂延迟。
+
+### 5. 验证持久化
+
+重启容器：
+
+```bash
+docker restart icedr
 ```
 
-第一次访问会进入初始化向导。向导包含：
+重新登录后确认：
 
-1. 确认数据库。默认使用本地 SQLite；需要 PostgreSQL 时再切换。
-2. 创建管理员账号。
-3. 选择登录方式。常规部署可以先保留本地账号登录。
-4. 选择是否启用邮件。SMTP 可以先关闭，之后在管理员设置中配置。
-5. 选择文件存储。默认使用本地文件存储；启用 S3 / MinIO 前需要先填写对象存储参数。
-6. 设置站点名称和登录页标识。
+- 初始化向导没有再次出现。
+- 管理员账号仍可登录。
+- 测试文件、外链状态和审计记录仍存在。
 
-完成后，系统会自动登录管理员账号。
+如果重新进入初始化向导，通常是数据目录没有正确挂载。检查容器是否仍使用 `/opt/icedr/data:/workspace/backend/data`。
 
-## 数据保存在哪里
+## 上线前必须补齐
 
-ICEDR 默认把运行数据放在 `data` 中：
+- 配置 [反向代理](/deployment/reverse-proxy) 和 [HTTPS](/deployment/https)。
+- 使用真实域名更新公开地址、OAuth 回调和 Passkey Origin。
+- 按需求配置 [SMTP](/guide/admin/mail-settings)、[PostgreSQL](/deployment/postgresql) 或 [MinIO / S3](/deployment/minio-s3)。
+- 完成一次 [备份与恢复](/deployment/backup-restore) 演练。
+- 阅读 [安全部署建议](/reference/security)。
 
-| 数据 | 默认位置 |
+## 其他部署方式
+
+| 场景 | 文档 |
 | --- | --- |
-| SQLite 数据库 | `data/icedr.sqlite` |
-| 本地上传文件 | `data/local-files` |
-| 二进制运行时前端资源 | `data/assets/public` |
-| 二进制运行时原生模块 | `data/native` |
-| 已保存的数据库切换信息 | `data/database-source.json` |
-
-Docker 部署时，这些路径位于容器内 `/workspace/backend/data`。推荐用 `docker run -v /opt/icedr/data:/workspace/backend/data` 映射到宿主机本地目录。
-
-二进制部署时，默认会在可执行文件所在目录创建 `data` 目录。例如可执行文件放在 `/opt/icedr/icedr_VERSION_linux-x86_64`，数据会写入 `/opt/icedr/data`。
-
-## 什么时候需要额外配置
-
-试用阶段可以不配置 PostgreSQL、对象存储、Redis、SMTP 或 OAuth。
-
-生产使用时，建议按需要补齐：
-
-- 公网访问地址：用于外链、回调地址和反向代理。
-- 邮件 SMTP：用于邮箱验证、外链身份确认和通知。
-- PostgreSQL：适合多人、长期运行和更完整的备份策略。
-- S3 / MinIO：适合把文件放到对象存储，而不是服务器本地磁盘。
-- OIDC：适合接入组织已有账号系统。
-
-完整变量说明见 [配置说明](/reference/configuration)。
+| 使用 Compose 文件和 `.env` 管理配置 | [Docker Compose 部署](/deployment/docker-compose) |
+| 不使用容器 | [二进制部署](/guide/binary) |
+| 比较不同部署方式 | [部署方式对比](/guide/deployment) |

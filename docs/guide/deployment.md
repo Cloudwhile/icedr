@@ -1,96 +1,67 @@
 # 部署方式对比
 
-ICEDR 面向自托管发布两类可直接使用的产物：
+ICEDR 提供 Docker 镜像和平台二进制。两种产物都包含网页与服务端，不需要把前端、文件服务和管理面板拆开部署。
 
-- Docker 镜像：`corecherry/icedr-po` 或 `ghcr.io/cloudwhile/icedr-po`
-- 平台二进制文件：`icedr_VERSION_PLATFORM`
+::: warning 当前发布状态
+当前最新版本是 `v0.0.1-alpha.5`，属于预发布版本。生产评估应固定版本、准备维护窗口，并在升级前验证备份可恢复。
+:::
 
-这两种方式均无需从源码构建。源码构建主要用于开发、调试和二次开发。
+## 选择建议
 
-## 推荐选择
+| 维度 | Docker | Docker Compose | 二进制 |
+| --- | --- | --- | --- |
+| 适合场景 | 单容器、NAS、VPS | 配置项较多、需要声明式管理 | 禁止容器或希望直接运行文件 |
+| 运行依赖 | Docker Engine | Docker Engine 与 Compose | 对应平台操作系统 |
+| 数据持久化 | 绑定目录或 volume | 绑定目录或 volume | 可执行文件旁的 `data` 或指定目录 |
+| 升级方式 | 替换镜像标签并重建容器 | 修改版本后 `pull`、`up -d` | 替换二进制并保留数据目录 |
+| 回滚准备 | 旧镜像加升级前备份 | 旧 Compose 配置加升级前备份 | 旧二进制加升级前备份 |
+| 推荐程度 | 简单部署首选 | 正式自托管首选 | 无容器环境使用 |
 
-| 场景 | 推荐方式 | 原因 |
-| --- | --- | --- |
-| 有 Docker 或容器平台 | Docker | 镜像包含运行环境，升级和回滚更清晰 |
-| 家用服务器、NAS、单台 VPS | Docker | `docker run` 可以固定端口和本地持久化目录 |
-| 不允许使用容器 | 二进制 | 只需要一个可执行文件和数据目录 |
-| Windows 桌面测试 | 二进制 | 下载 `.exe` 后即可启动 |
-| 需要二次开发 | 源码 | 可以运行测试、修改前后端代码 |
+## 推荐路径
 
-## Docker 的边界
+### 单机快速开始
 
-ICEDR 的 Docker 镜像只打包本项目：
+使用 [Docker 部署](/guide/docker)。它最容易确认端口、数据目录和当前版本。
 
-- 前端页面
-- 后端 API
-- Prisma 客户端和运行依赖
-- 本地 SQLite 默认路径
-- 本地文件存储默认路径
+### 长期自托管
 
-镜像不会内置 PostgreSQL、Redis、MinIO 或 SMTP 服务。这些服务通常已有独立的备份、权限和运维策略，因此不随应用镜像内置。
+使用 [Docker Compose 部署](/deployment/docker-compose)，把 `compose.yaml`、`.env` 和数据目录纳入受控备份。公网访问再接入 [反向代理](/deployment/reverse-proxy) 与 [HTTPS](/deployment/https)。
 
-试用或小规模部署无需准备这些外部服务。默认 SQLite 和本地文件存储已经可以完成初始化。
+### 不允许容器
 
-## 二进制的边界
+使用 [二进制部署](/guide/binary)，并交给 systemd、Windows 服务或其他进程管理器守护。
 
-二进制文件把 ICEDR 后端和已构建的前端一起封装为一个可执行程序。它会在可执行文件所在目录创建 `data`，默认使用：
+## 默认与可选依赖
 
-- `data/icedr.sqlite`
-- `data/local-files`
+ICEDR 默认可以只运行一个应用实例：
 
-它适合简单服务器和单机部署。仍可通过环境变量接入 PostgreSQL、S3 / MinIO 和 SMTP。
+- 数据库使用 SQLite。
+- 文件使用本地存储。
+- SMTP 可以关闭。
+- Redis 为可选配置。
 
-## 推荐 Docker 启动方式
+需要更成熟的运维能力时，再按需接入：
 
-常规部署优先使用 `docker run`，并把容器内 `/workspace/backend/data` 映射到宿主机固定目录：
+- [PostgreSQL](/deployment/postgresql)。
+- [MinIO / S3](/deployment/minio-s3)。
+- SMTP 邮件服务。
+- OAuth / OIDC 身份提供方。
 
-```bash
-mkdir -p /opt/icedr/data
+这些外部服务不包含在 ICEDR 应用镜像内，应分别配置权限、监控和备份。
 
-docker run -d \
-  --name icedr \
-  --restart unless-stopped \
-  -p 13000:13000 \
-  -v /opt/icedr/data:/workspace/backend/data \
-  -e NODE_ENV=production \
-  -e APP_ENV=production \
-  -e API_HOST=0.0.0.0 \
-  -e API_PORT=13000 \
-  -e SMTP_ENABLED=false \
-  corecherry/icedr-po:latest
-```
+## 上线共同要求
 
-仓库内的 `deploy/docker-compose.yml` 仍然保留给开发者和需要 Compose 的场景，但文档主流程以已发布镜像的 `docker run` 为准。
+无论选择哪种方式，都应完成：
 
-## 初始化向导如何工作
+1. 持久化 `data` 目录或配置外部数据库与对象存储。
+2. 设置长期稳定的 `AUTH_SECURITY_SECRET`。
+3. 固定发布版本，不在重要数据环境盲目跟随浮动标签。
+4. 使用 HTTPS 域名并让页面与服务保持同源。
+5. 完成上传、下载、分享、审计和重启验证。
+6. 完成数据库与文件对象同一恢复点的备份演练。
 
-无论 Docker 还是二进制，使用全新的数据目录首次访问时都会进入初始化向导。
+## 不建议的方式
 
-初始化向导会先完成能安全启动系统的最小配置：
-
-1. 数据库：默认 SQLite，可切换 PostgreSQL。
-2. 管理员账号：创建第一个管理员。
-3. 登录方式：本地账号、OIDC、Passkey 可按需启用。
-4. 邮件：可关闭，也可填写 SMTP 并测试。
-5. 文件存储：默认本地；勾选对象存储后才显示 S3 / MinIO 字段。
-6. 品牌信息：站点名称和登录页标识。
-
-这意味着“需要配置才能启用”的功能不会在未启用时打断初始化流程。
-
-## 生产部署检查清单
-
-上线前建议确认：
-
-- 已备份 `data` 目录或 Docker volume。
-- 使用明确版本标签，例如 `1.2.0-alpha.1`，避免在生产环境直接跟随 `latest`。
-- 如果通过域名访问，已设置 `PUBLIC_SHARE_BASE_URL`、`API_PUBLIC_BASE_URL` 和 `API_CORS_ORIGIN`。
-- 如果需要邮箱验证，SMTP 已测试通过。
-- 如果使用对象存储，桶权限和访问密钥只授予 ICEDR 所需范围。
-- 如果使用 PostgreSQL，数据库有备份和恢复方案。
-- 反向代理允许上传文件所需的请求体大小和超时时间。
-
-## 下一步
-
-- 按 [Docker 部署](/guide/docker) 使用已发布镜像。
-- 按 [二进制部署](/guide/binary) 使用平台可执行文件。
-- 按 [配置说明](/reference/configuration) 补齐生产变量。
+- 不要把容器可写层当作持久化存储。
+- 不要让多个 ICEDR 实例同时写入同一个 SQLite 文件。
+- 不要直接公开数据库、MinIO 管理控制台或应用上游端口。

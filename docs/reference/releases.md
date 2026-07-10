@@ -1,151 +1,104 @@
 # 发布与校验
 
-ICEDR 的 GitHub Release 会同时提供：
-
-- 平台二进制文件
-- `MD5SUMS.txt`
-- `SHA256SUMS.txt`
-- `release-manifest.json`
-
-Docker 镜像发布到 Docker Hub：
-
-```text
-corecherry/icedr-po
-```
-
-同时发布到 GitHub Container Registry：
-
-```text
-ghcr.io/cloudwhile/icedr-po
-```
-
 ## 最新发布
+
+::: warning v0.0.1-alpha.5 · Alpha 预发布
+当前最新版本是 [v0.0.1-alpha.5](https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.5)，发布于 2026 年 6 月 15 日。它不是稳定版，不会更新 Docker `latest` 标签。部署时使用镜像标签 `0.0.1-alpha.5`。
+:::
+
+```bash
+docker pull corecherry/icedr-po:0.0.1-alpha.5
+```
 
 <ClientOnly>
   <LatestRelease />
 </ClientOnly>
 
-## 版本标签
+## 发布渠道
 
-稳定版本示例：
-
-```text
-v1.2.0
-```
-
-预发布版本示例：
+Docker Hub：
 
 ```text
-v1.2.0-alpha.1
-v1.2.0-beta.1
+corecherry/icedr-po
 ```
 
-带 `-alpha.*`、`-beta.*` 等预发布标记的版本会作为 GitHub prerelease 处理。预发布版本会发布对应 Docker 标签，但不会更新 `latest`。
-
-Docker 镜像使用不带 `v` 的版本号：
-
-```bash
-docker pull corecherry/icedr-po:VERSION
-```
-
-例如 GitHub Release 标签 `v1.2.0-alpha.1` 对应 Docker 镜像标签 `1.2.0-alpha.1`。
-
-GitHub Release 标签仍然使用：
+GitHub Container Registry：
 
 ```text
-v1.2.0-alpha.1
+ghcr.io/cloudwhile/icedr-po
 ```
 
-## Release 文件选择
+二进制、校验文件和发布清单位于：
 
-二进制文件名规则：
+```text
+https://github.com/Cloudwhile/icedr/releases
+```
+
+## 版本规则
+
+| 类型 | 示例 | GitHub Release | Docker `latest` |
+| --- | --- | --- | --- |
+| 稳定版 | `v1.2.0` | 正式发布 | 更新 |
+| Alpha | `v1.2.0-alpha.1` | 预发布 | 不更新 |
+| Beta | `v1.2.0-beta.1` | 预发布 | 不更新 |
+
+Docker 标签去掉前导 `v`。例如 `v0.0.1-alpha.5` 对应 `0.0.1-alpha.5`。
+
+## 二进制文件选择
+
+文件名格式：
 
 ```text
 icedr_VERSION_PLATFORM
 ```
 
-`VERSION` 不包含 `v` 前缀，`PLATFORM` 表示系统和 CPU 架构。
-
-示例：
-
-| 系统 | 下载文件 |
+| 平台 | 后缀 |
 | --- | --- |
-| Linux x86_64 | `icedr_VERSION_linux-x86_64` |
-| Linux ARM64 | `icedr_VERSION_linux-arm64` |
-| Windows x86_64 | `icedr_VERSION_windows-x86_64.exe` |
-| Windows ARM64 | `icedr_VERSION_windows-arm64.exe` |
-| macOS x86_64 | `icedr_VERSION_macos-x86_64` |
-| macOS ARM64 | `icedr_VERSION_macos-arm64` |
+| Linux x86_64 | `linux-x86_64` |
+| Linux ARM64 | `linux-arm64` |
+| Windows x86_64 | `windows-x86_64.exe` |
+| Windows ARM64 | `windows-arm64.exe` |
+| macOS Intel | `macos-x86_64` |
+| macOS Apple Silicon | `macos-arm64` |
 
-平台选择参考：
+## SHA256 校验
 
-- 普通 Intel / AMD Linux 服务器：通常选 `linux-x86_64`。
-- ARM 云服务器或树莓派 64 位系统：通常选 `linux-arm64`。
-- Intel Mac：选 `macos-x86_64`。
-- Apple Silicon Mac：选 `macos-arm64`。
-- 现代 Windows PC：通常选 `windows-x86_64.exe`。
-
-## 校验文件完整性
-
-推荐使用 SHA256。MD5 主要用于兼容旧工具或快速比对。
+SHA256 是主要完整性校验。MD5 只用于兼容旧工具，不用于判断文件是否可信。
 
 Linux / macOS：
 
 ```bash
-sha256sum ./icedr_VERSION_linux-x86_64
-grep icedr_VERSION_linux-x86_64 SHA256SUMS.txt
+sha256sum ./icedr_0.0.1-alpha.5_linux-x86_64
+grep icedr_0.0.1-alpha.5_linux-x86_64 SHA256SUMS.txt
 ```
 
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm SHA256
+Get-FileHash .\icedr_0.0.1-alpha.5_windows-x86_64.exe -Algorithm SHA256
 ```
 
-如果得到的哈希值和 `SHA256SUMS.txt` 中对应文件一致，说明文件下载完整。
+校验值不一致时立即删除文件并从 GitHub Release 重新下载，不要尝试运行。
 
-MD5 示例：
+## 发布清单
 
-```powershell
-Get-FileHash .\icedr_VERSION_windows-x86_64.exe -Algorithm MD5
-```
+每个 Release 会包含：
 
-## release-manifest.json
+- 平台二进制。
+- 每个文件的 `.sha256` 和 `.md5`。
+- 汇总的 `SHA256SUMS.txt` 与 `MD5SUMS.txt`。
+- `release-manifest.json`。
 
-`release-manifest.json` 适合自动化脚本读取。它记录发布文件、大小、哈希和下载地址。专业用户可以用它做自动更新、镜像同步或资产审计。
+发布清单用于核对文件名、大小、哈希和下载来源。
 
-## Docker latest 规则
+## 升级决策
 
-| 版本类型 | 示例 | 是否更新 `latest` |
-| --- | --- | --- |
-| 稳定版本 | `v1.2.0` | 是 |
-| Alpha | `v1.2.0-alpha.1` | 否 |
-| Beta | `v1.2.0-beta.1` | 否 |
+升级前检查：
 
-生产环境建议固定版本号以获得更可控的部署结果：
+1. 当前版本与目标版本。
+2. Release 是否为预发布。
+3. 已知问题和配置变更。
+4. 数据库迁移与回滚要求。
+5. 当前备份是否已完成恢复演练。
 
-```bash
-docker pull corecherry/icedr-po:VERSION
-```
-
-## 更新检查
-
-ICEDR 系统状态页会显示当前版本，并可检查是否有新版本。
-
-规则：
-
-- 当前是稳定版本时，默认只把新的稳定版本视为可更新版本。
-- 当前是预发布版本时，可以识别新的预发布版本和稳定版本。
-- 使用自定义发布源时，可以设置 `ICEDR_UPDATE_CHECK_URL`。
-- 如果稳定版本也希望检查预发布版本，可以设置 `ICEDR_UPDATE_INCLUDE_PRERELEASES=true`。
-
-## Release 文件缺失处理
-
-可能原因：
-
-- 当前 Release 仍在构建中。
-- 当前打开的是源码标签页，不是 Release 页面。
-- 该平台暂未发布二进制文件。
-- 预发布版本没有 `latest` Docker 标签，需要使用具体版本号。
-
-建议先刷新 Release 页面，再查看页面中的资产列表和 `release-manifest.json`。
+操作步骤见 [升级迁移](/deployment/upgrade-migration)。

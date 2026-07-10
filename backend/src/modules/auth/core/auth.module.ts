@@ -5,11 +5,13 @@ import { AuthCoreModule } from './auth-core.module';
 import { AuthAuditService } from './auth-audit.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PasskeyRepository } from './passkey.repository';
+import { PasskeyService } from './passkey.service';
 
 @Module({
   imports: [AuthCoreModule, SettingsModule, MailModule],
   controllers: [AuthController],
-  providers: [AuthService, AuthAuditService],
-  exports: [AuthService],
+  providers: [AuthService, AuthAuditService, PasskeyRepository, PasskeyService],
+  exports: [AuthService, PasskeyService],
 })
 export class AuthModule {}

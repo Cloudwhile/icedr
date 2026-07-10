@@ -6,11 +6,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
 import { StorageService } from '../../storage/storage.service';
+import { AuthRepository } from '../../auth/core/auth.repository';
 import {
   AdminSettingsResponse,
   DatabaseProfile,
+  JsonRecord,
   MailSettings,
   MailSettingsResponse,
+  OAuthProviderListResponse,
   OAuthSettings,
   OAuthSettingsResponse,
   PasskeySettings,
@@ -24,6 +27,22 @@ import {
   UpsertTranslationBundleDto,
   VerifyDatabaseDto,
 } from './settings.dto';
+import {
+  applyOAuthProviderActivationRule,
+  createOAuthProviderId,
+  defaultOAuthDisplayName,
+  defaultOAuthProfileForProviderKey,
+  defaultOAuthProviderKeyForProfile,
+  defaultOAuthSecurityPolicy,
+  mergeOAuthProviderSettings,
+  normalizeOAuthProviderKey,
+  normalizeOAuthProviderProfile,
+  normalizeOAuthProviderSettings,
+  normalizeOAuthStore,
+  oauthProviderMode,
+  oauthProviderReady,
+  selectPrimaryOAuthProvider,
+} from './settings-oauth.helpers';
 import {
   bootstrapMeta,
   databaseMeta,
@@ -53,15 +72,23 @@ export class SettingsService {
     private readonly prisma: PrismaService,
     private readonly repository: SettingsRepository,
     private readonly storageService: StorageService,
+    private readonly authRepository: AuthRepository,
   ) {}
 
   async getSetupStatus(): Promise<SetupStatusResponse> {
     const databaseAvailable = await this.databaseReachable();
     const bootstrapCompleted = await this.bootstrapCompleted();
+    if (bootstrapCompleted) {
+      return {
+        databaseAvailable,
+        needsSetup: false,
+        bootstrapCompleted: true,
+      };
+    }
     return {
       databaseAvailable,
-      needsSetup: !bootstrapCompleted,
-      bootstrapCompleted,
+      needsSetup: true,
+      bootstrapCompleted: false,
       databaseProfile: await this.getDatabaseProfile(),
       site: await this.getPublicSiteSettings(),
       oauth: this.toOAuthResponse(await this.getOAuthSettings()),
@@ -196,62 +223,157 @@ export class SettingsService {
     return nextBundle;
   }
 
-  async getOAuthSettings(): Promise<OAuthSettings> {
-    const stored = await this.repository.get<OAuthSettings>(
+  async getOAuthSettings(providerId?: string): Promise<OAuthSettings> {
+    const providers = await this.getOAuthProviderSettings();
+    if (providerId) {
+      return (
+        providers.find((provider) => provider.id === providerId) ??
+        this.defaultOAuthSettings({ id: providerId })
+      );
+    }
+    return selectPrimaryOAuthProvider(providers) ?? this.defaultOAuthSettings();
+  }
+
+  async getOAuthProviderSettings(): Promise<OAuthSettings[]> {
+    const stored = await this.repository.get<JsonRecord>(
       settingsParentMeta,
       oauthMeta,
-      this.defaultOAuthSettings(),
+      {},
     );
+    return normalizeOAuthStore(stored, (options) =>
+      this.defaultOAuthSettings(options),
+    ).providers;
+  }
+
+  async listOAuthProviders(): Promise<OAuthProviderListResponse> {
+    const providers = await this.getOAuthProviderSettings();
+    const responses = providers.map((provider) =>
+      this.toOAuthResponse(provider),
+    );
+    const activeProvider = selectPrimaryOAuthProvider(providers);
     return {
-      ...this.defaultOAuthSettings(),
-      ...stored,
-      enabled: Boolean(stored.enabled),
-      providerProfile: ['oidc', 'icetowne-blog'].includes(
-        String(stored.providerProfile),
-      )
-        ? stored.providerProfile
-        : this.defaultOAuthSettings().providerProfile,
-      issuerUrl: String(stored.issuerUrl ?? ''),
-      clientId: String(stored.clientId ?? ''),
-      clientSecret: stored.clientSecret ? String(stored.clientSecret) : '',
-      audience: String(stored.audience ?? ''),
-      scopes: String(stored.scopes ?? 'openid email profile'),
-      redirectUri: String(stored.redirectUri ?? ''),
+      activeProvider: activeProvider
+        ? this.toOAuthResponse(activeProvider)
+        : null,
+      configured: responses.some(
+        (provider) => provider.enabled && provider.configured,
+      ),
+      providers: responses,
     };
   }
 
-  async updateOAuthSettings(dto: UpdateOAuthSettingsDto) {
-    const current = await this.getOAuthSettings();
-    const next: OAuthSettings = {
-      ...current,
+  async testOAuthProvider(dto: UpdateOAuthSettingsDto) {
+    const { testOAuthProviderConnection } =
+      await import('../../../extensions/oauth/oauth-provider-adapters.js');
+    const providers = await this.getOAuthProviderSettings();
+    const providerKey = normalizeOAuthProviderKey(
+      dto.providerKey ?? defaultOAuthProviderKeyForProfile(dto.providerProfile),
+    );
+    const providerProfile = normalizeOAuthProviderProfile(
+      dto.providerProfile ?? defaultOAuthProfileForProviderKey(providerKey),
+    );
+    const current =
+      providers.find((provider) => provider.id === dto.id) ??
+      this.defaultOAuthSettings({ providerKey, providerProfile });
+    const candidate = mergeOAuthProviderSettings(current, {
       ...dto,
-      enabled: dto.enabled ?? current.enabled,
-      providerProfile: dto.providerProfile ?? current.providerProfile,
-      issuerUrl: (dto.issuerUrl ?? current.issuerUrl).trim(),
-      clientId: (dto.clientId ?? current.clientId).trim(),
-      clientSecret:
-        dto.clientSecret === undefined
-          ? current.clientSecret
-          : dto.clientSecret.trim(),
-      audience: (dto.audience ?? current.audience).trim(),
-      scopes: (dto.scopes ?? current.scopes).trim() || 'openid email profile',
-      redirectUri: (dto.redirectUri ?? current.redirectUri).trim(),
-    };
-    if (next.enabled && (!next.issuerUrl || !next.clientId)) {
-      throw new BadRequestException(
-        'OAuth issuer URL and client ID are required when OAuth is enabled',
-      );
+      enabled: true,
+    });
+    this.assertOAuthSettingsValid(candidate);
+    return testOAuthProviderConnection(candidate, {
+      production: Boolean(this.config.get<boolean>('app.production')),
+    });
+  }
+  async createOAuthProvider(dto: UpdateOAuthSettingsDto) {
+    const providerKey = normalizeOAuthProviderKey(
+      dto.providerKey ?? defaultOAuthProviderKeyForProfile(dto.providerProfile),
+    );
+    const profile = normalizeOAuthProviderProfile(
+      dto.providerProfile ?? defaultOAuthProfileForProviderKey(providerKey),
+    );
+    const now = new Date().toISOString();
+    const provider = normalizeOAuthProviderSettings(
+      {
+        ...this.defaultOAuthSettings({
+          providerKey,
+          providerProfile: profile,
+        }),
+        ...dto,
+        id: dto.id?.trim() || createOAuthProviderId(),
+        createdAt: now,
+        updatedAt: now,
+      },
+      this.defaultOAuthSettings({
+        providerKey,
+        providerProfile: profile,
+      }),
+    );
+    const providers = await this.getOAuthProviderSettings();
+    if (providers.some((item) => item.id === provider.id)) {
+      throw new BadRequestException('OAuth provider ID already exists');
     }
-    if (
-      next.enabled &&
-      next.providerProfile === 'icetowne-blog' &&
-      !next.clientSecret
-    ) {
-      throw new BadRequestException(
-        'OAuth client secret is required for ICETOWNE BLOG OAuth',
-      );
+    this.assertOAuthSettingsValid(provider);
+    const nextProviders = applyOAuthProviderActivationRule(
+      [...providers, provider],
+      provider.enabled ? provider.id : undefined,
+    );
+    await this.saveOAuthProviders(nextProviders);
+    return this.toOAuthResponse(provider);
+  }
+
+  async updateOAuthProvider(id: string, dto: UpdateOAuthSettingsDto) {
+    const providerId = id.trim();
+    if (!providerId)
+      throw new BadRequestException('OAuth provider ID is required');
+    const providers = await this.getOAuthProviderSettings();
+    const current = providers.find((provider) => provider.id === providerId);
+    if (!current) throw new BadRequestException('OAuth provider was not found');
+    const next = mergeOAuthProviderSettings(current, dto);
+    this.assertOAuthSettingsValid(next);
+    const nextProviders = applyOAuthProviderActivationRule(
+      providers.map((provider) =>
+        provider.id === providerId ? next : provider,
+      ),
+      next.enabled ? next.id : undefined,
+    );
+    await this.assertOAuthProviderRemovalSafe(providers, nextProviders);
+    await this.saveOAuthProviders(nextProviders);
+    return this.toOAuthResponse(next);
+  }
+
+  async deleteOAuthProvider(id: string) {
+    const providerId = id.trim();
+    if (!providerId)
+      throw new BadRequestException('OAuth provider ID is required');
+    const providers = await this.getOAuthProviderSettings();
+    const nextProviders = providers.filter(
+      (provider) => provider.id !== providerId,
+    );
+    if (nextProviders.length === providers.length) {
+      throw new BadRequestException('OAuth provider was not found');
     }
-    await this.repository.set(settingsParentMeta, oauthMeta, next);
+    await this.assertOAuthProviderRemovalSafe(providers, nextProviders);
+    await this.saveOAuthProviders(nextProviders);
+    return { ok: true };
+  }
+
+  async updateOAuthSettings(dto: UpdateOAuthSettingsDto) {
+    const providers = await this.getOAuthProviderSettings();
+    const current =
+      providers.find((provider) => provider.id === dto.id) ??
+      selectPrimaryOAuthProvider(providers) ??
+      providers[0] ??
+      this.defaultOAuthSettings({ id: dto.id?.trim() || 'default' });
+    const next = mergeOAuthProviderSettings(current, dto);
+    this.assertOAuthSettingsValid(next);
+    const remainingProviders = providers.filter(
+      (provider) => provider.id !== current.id,
+    );
+    const nextProviders = applyOAuthProviderActivationRule(
+      [...remainingProviders, next],
+      next.enabled ? next.id : undefined,
+    );
+    await this.saveOAuthProviders(nextProviders);
     return this.toOAuthResponse(next);
   }
 
@@ -264,7 +386,6 @@ export class SettingsService {
     return {
       ...this.defaultPasskeySettings(),
       ...stored,
-      enabled: Boolean(stored.enabled),
       rpName: String(stored.rpName ?? this.defaultPasskeySettings().rpName),
       rpId: String(stored.rpId ?? this.defaultPasskeySettings().rpId),
       origin: String(stored.origin ?? this.defaultPasskeySettings().origin),
@@ -276,12 +397,11 @@ export class SettingsService {
     const next: PasskeySettings = {
       ...current,
       ...dto,
-      enabled: dto.enabled ?? current.enabled,
       rpName: (dto.rpName ?? current.rpName).trim() || 'ICEDR',
       rpId: (dto.rpId ?? current.rpId).trim(),
       origin: (dto.origin ?? current.origin).trim(),
     };
-    if (next.enabled) this.assertPasskeyOrigin(next.origin);
+    if (next.rpId || next.origin) this.assertPasskeySettings(next);
     return this.repository.set(settingsParentMeta, passkeyMeta, next);
   }
 
@@ -348,37 +468,37 @@ export class SettingsService {
 
   toOAuthResponse(settings: OAuthSettings): OAuthSettingsResponse {
     return {
+      id: settings.id,
       enabled: settings.enabled,
+      providerKey: settings.providerKey,
+      displayName: settings.displayName,
       providerProfile: settings.providerProfile,
-      providerMode: this.oauthProviderMode(settings.providerProfile),
+      providerMode: oauthProviderMode(settings.providerProfile),
       issuerUrl: settings.issuerUrl,
+      authorizationUrl: settings.authorizationUrl,
+      tokenUrl: settings.tokenUrl,
+      userinfoUrl: settings.userinfoUrl,
       clientId: settings.clientId,
       audience: settings.audience,
       scopes: settings.scopes,
       redirectUri: settings.redirectUri,
+      allowSignup: settings.allowSignup,
+      linkByVerifiedEmail: settings.linkByVerifiedEmail,
+      requireVerifiedEmail: settings.requireVerifiedEmail,
+      allowedEmailDomains: settings.allowedEmailDomains,
+      createdAt: settings.createdAt,
+      updatedAt: settings.updatedAt,
       clientSecretConfigured: Boolean(settings.clientSecret),
+      configured: oauthProviderReady(settings),
     };
   }
 
-  private oauthProviderMode(providerProfile: OAuthSettings['providerProfile']) {
-    return providerProfile === 'icetowne-blog'
-      ? ('compatibility' as const)
-      : ('standard' as const);
-  }
-
   oauthConfigured(settings: OAuthSettings) {
-    return Boolean(
-      settings.enabled &&
-      settings.issuerUrl &&
-      settings.clientId &&
-      (settings.providerProfile !== 'icetowne-blog' || settings.clientSecret),
-    );
+    return Boolean(settings.enabled && oauthProviderReady(settings));
   }
 
   passkeyConfigured(settings: PasskeySettings) {
-    return Boolean(
-      settings.enabled && settings.rpName && settings.rpId && settings.origin,
-    );
+    return Boolean(settings.rpName && settings.rpId && settings.origin);
   }
 
   toMailResponse(settings: MailSettings): MailSettingsResponse {
@@ -499,16 +619,36 @@ export class SettingsService {
     };
   }
 
-  private defaultOAuthSettings(): OAuthSettings {
+  private defaultOAuthSettings(
+    options: Partial<OAuthSettings> = {},
+  ): OAuthSettings {
     const redirectBase =
       this.config.get<string>('api.corsOrigin') ?? 'http://localhost:13000';
-    return {
-      enabled: false,
-      providerProfile:
+    const providerProfile =
+      options.providerProfile ??
+      normalizeOAuthProviderProfile(
         this.config.get<OAuthSettings['providerProfile']>(
           'identity.providerProfile',
         ) ?? 'oidc',
+      );
+    const timestamp = new Date(0).toISOString();
+    return {
+      id: options.id ?? 'default',
+      enabled: false,
+      providerKey:
+        options.providerKey ??
+        defaultOAuthProviderKeyForProfile(providerProfile),
+      displayName:
+        options.displayName ??
+        defaultOAuthDisplayName(
+          options.providerKey ??
+            defaultOAuthProviderKeyForProfile(providerProfile),
+        ),
+      providerProfile,
       issuerUrl: this.config.get<string>('identity.issuerUrl') ?? '',
+      authorizationUrl: options.authorizationUrl ?? '',
+      tokenUrl: options.tokenUrl ?? '',
+      userinfoUrl: options.userinfoUrl ?? '',
       clientId: this.config.get<string>('identity.clientId') ?? '',
       clientSecret: process.env.ICA_OAUTH_CLIENT_SECRET ?? '',
       audience: this.config.get<string>('identity.audience') ?? 'icedr-api',
@@ -517,7 +657,82 @@ export class SettingsService {
       redirectUri:
         this.config.get<string>('identity.redirectUri') ??
         `${redirectBase.replace(/\/$/, '')}/callback`,
+      ...defaultOAuthSecurityPolicy(
+        options.providerKey ??
+          defaultOAuthProviderKeyForProfile(providerProfile),
+      ),
+      ...(options.allowSignup !== undefined
+        ? { allowSignup: options.allowSignup }
+        : {}),
+      ...(options.linkByVerifiedEmail !== undefined
+        ? { linkByVerifiedEmail: options.linkByVerifiedEmail }
+        : {}),
+      ...(options.requireVerifiedEmail !== undefined
+        ? { requireVerifiedEmail: options.requireVerifiedEmail }
+        : {}),
+      ...(options.allowedEmailDomains
+        ? { allowedEmailDomains: options.allowedEmailDomains }
+        : {}),
+      createdAt: options.createdAt ?? timestamp,
+      updatedAt: options.updatedAt ?? timestamp,
     };
+  }
+
+  private async saveOAuthProviders(providers: OAuthSettings[]) {
+    await this.repository.set<JsonRecord>(settingsParentMeta, oauthMeta, {
+      providers,
+    });
+  }
+
+  private async assertOAuthProviderRemovalSafe(
+    currentProviders: OAuthSettings[],
+    nextProviders: OAuthSettings[],
+  ) {
+    const currentReady = currentProviders.some(
+      (provider) => provider.enabled && oauthProviderReady(provider),
+    );
+    const nextReady = nextProviders.some(
+      (provider) => provider.enabled && oauthProviderReady(provider),
+    );
+    if (!currentReady || nextReady) return;
+    const auth = await this.authRepository.getSettings();
+    if (auth.oauthEnabled && !auth.localEnabled && !auth.passkeyEnabled) {
+      throw new BadRequestException({
+        code: 'AUTH_LAST_LOGIN_METHOD',
+        message:
+          'The last active OAuth provider cannot be removed while OAuth is the only enabled login method',
+      });
+    }
+  }
+
+  private assertOAuthSettingsValid(settings: OAuthSettings) {
+    if (!settings.enabled) return;
+    if (
+      !settings.clientId ||
+      (settings.providerProfile !== 'oauth2' && !settings.issuerUrl)
+    ) {
+      throw new BadRequestException(
+        'OAuth issuer URL and client ID are required when OAuth is enabled',
+      );
+    }
+    if (
+      settings.providerProfile === 'oauth2' &&
+      (!settings.authorizationUrl ||
+        !settings.tokenUrl ||
+        !settings.userinfoUrl)
+    ) {
+      throw new BadRequestException(
+        'OAuth authorization, token, and userinfo URLs are required when OAuth2 is enabled',
+      );
+    }
+    if (
+      settings.providerProfile === 'icetowne-blog' &&
+      !settings.clientSecret
+    ) {
+      throw new BadRequestException(
+        'OAuth client secret is required for ICETOWNE BLOG OAuth',
+      );
+    }
   }
 
   private defaultPasskeySettings(): PasskeySettings {
@@ -530,7 +745,6 @@ export class SettingsService {
       rpId = 'localhost';
     }
     return {
-      enabled: false,
       rpName: process.env.SITE_NAME ?? 'ICEDR',
       rpId,
       origin,
@@ -617,17 +831,54 @@ export class SettingsService {
     return match[1].trim();
   }
 
-  private assertPasskeyOrigin(origin: string) {
+  private assertPasskeySettings(settings: PasskeySettings) {
+    if (!settings.rpId || !settings.origin) {
+      throw new BadRequestException('Passkey RP ID and origin are required');
+    }
     let url: URL;
     try {
-      url = new URL(origin);
+      url = new URL(settings.origin);
     } catch {
       throw new BadRequestException('Passkey origin must be a valid URL');
     }
-    const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+    if (
+      url.username ||
+      url.password ||
+      (url.pathname && url.pathname !== '/') ||
+      url.search ||
+      url.hash
+    ) {
+      throw new BadRequestException(
+        'Passkey origin must contain only scheme, hostname, and optional port',
+      );
+    }
+    const hostname = url.hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.$/, '');
+    const local =
+      hostname === 'localhost' ||
+      /^127(?:\.\d{1,3}){3}$/.test(hostname) ||
+      hostname === '::1' ||
+      hostname === '0:0:0:0:0:0:0:1';
     if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
       throw new BadRequestException(
         'Passkey origin must use HTTPS outside local development',
+      );
+    }
+    const rpId = settings.rpId
+      .toLowerCase()
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.$/, '');
+    if (
+      !rpId ||
+      /\s/.test(rpId) ||
+      rpId.includes('/') ||
+      (rpId.includes(':') && !local) ||
+      hostname !== rpId
+    ) {
+      throw new BadRequestException(
+        'Passkey RP ID must exactly match the origin hostname',
       );
     }
   }

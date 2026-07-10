@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { LocalIcon } from "./app-icon";
 import {
   closeAppToast,
@@ -9,51 +9,22 @@ import {
   type AppToastSnapshot,
   type AppToastTone,
 } from "./app-toast-store";
-import { LiquidGlassFilter } from "./liquid-glass-filter";
 import "./app-toast.css";
 
 const toastEnterDurationMs = 280;
 const toastExitDurationMs = 160;
 const toastMinimumLifetimeMs = 900;
-const defaultToastFilterBox = {
-  height: 56,
-  radius: 8,
-  width: 360,
-};
-
-type ToastFilterBox = typeof defaultToastFilterBox;
-
 export function AppToastProvider() {
   const toast = useSyncExternalStore(subscribeAppToast, getAppToastSnapshot, getAppToastSnapshot);
-  const [filterBox, setFilterBox] = useState<ToastFilterBox>(defaultToastFilterBox);
-
-  const handleToastMeasure = useCallback((nextBox: ToastFilterBox) => {
-    setFilterBox((currentBox) => {
-      const sizeChanged =
-        Math.abs(currentBox.height - nextBox.height) > 1 ||
-        Math.abs(currentBox.radius - nextBox.radius) > 1 ||
-        Math.abs(currentBox.width - nextBox.width) > 1;
-      return sizeChanged ? nextBox : currentBox;
-    });
-  }, []);
 
   return (
-    <>
-      <LiquidGlassFilter height={filterBox.height} radius={filterBox.radius} width={filterBox.width} />
-      <div className="icedr-toast-region">
-        {toast ? <GlassToast key={toast.id} onMeasure={handleToastMeasure} toast={toast} /> : null}
-      </div>
-    </>
+    <div className="icedr-toast-region">
+      {toast ? <AppToast key={toast.id} toast={toast} /> : null}
+    </div>
   );
 }
 
-function GlassToast({
-  onMeasure,
-  toast,
-}: {
-  onMeasure: (box: ToastFilterBox) => void;
-  toast: AppToastSnapshot;
-}) {
+function AppToast({ toast }: { toast: AppToastSnapshot }) {
   const toastRef = useRef<HTMLDivElement | null>(null);
   const countdownRef = useRef<HTMLSpanElement | null>(null);
   const animationFrameRef = useRef(0);
@@ -81,26 +52,6 @@ function GlassToast({
     countdownNode.style.transform = `scaleX(${nextProgress.toFixed(4)})`;
     countdownNode.style.setProperty("--icedr-toast-progress", nextProgress.toFixed(4));
   }, []);
-
-  useLayoutEffect(() => {
-    const toastNode = toastRef.current;
-    if (!toastNode) return;
-
-    const measureToast = () => {
-      const rect = toastNode.getBoundingClientRect();
-      const style = window.getComputedStyle(toastNode);
-      onMeasure({
-        height: Math.round(rect.height),
-        radius: Number.parseFloat(style.borderTopLeftRadius) || defaultToastFilterBox.radius,
-        width: Math.round(rect.width),
-      });
-    };
-
-    measureToast();
-    const resizeObserver = new ResizeObserver(measureToast);
-    resizeObserver.observe(toastNode);
-    return () => resizeObserver.disconnect();
-  }, [onMeasure]);
 
   const finishToast = useCallback(() => {
     stopCountdown();
@@ -181,26 +132,25 @@ function GlassToast({
     <div
       ref={toastRef}
       aria-label={typeof toast.title === "string" ? toast.title : undefined}
-      className="icedr-glass-toast"
-      data-icedr-surface="glass-toast"
+      className="icedr-app-toast"
       data-phase="entering"
       data-variant={getToastVariant(toast.tone)}
       role={toast.tone === "error" || toast.tone === "warning" ? "alert" : "status"}
       style={{ viewTransitionName: "none" }}
     >
-      <span ref={countdownRef} className="icedr-glass-toast-countdown" aria-hidden="true" data-countdown="waiting" />
-      <div className="icedr-glass-toast-content">
-        <span className="icedr-glass-toast-indicator" aria-hidden="true">
+      <span ref={countdownRef} className="icedr-app-toast-countdown" aria-hidden="true" data-countdown="waiting" />
+      <div className="icedr-app-toast-content">
+        <span className="icedr-app-toast-indicator" aria-hidden="true">
           <LocalIcon name={getToastIconName(toast.tone)} size={15} />
         </span>
-        <span className="icedr-glass-toast-copy">
-          <span className="icedr-glass-toast-title">{toast.title}</span>
-          {toast.description ? <span className="icedr-glass-toast-description">{toast.description}</span> : null}
+        <span className="icedr-app-toast-copy">
+          <span className="icedr-app-toast-title">{toast.title}</span>
+          {toast.description ? <span className="icedr-app-toast-description">{toast.description}</span> : null}
         </span>
         <button
           type="button"
           aria-label="Close"
-          className="icedr-glass-toast-close"
+          className="icedr-app-toast-close"
           onClick={closeToast}
         >
           <LocalIcon name="cross" size={13} />
@@ -233,7 +183,7 @@ function getToastEnterDuration(node: HTMLElement | null) {
   if (!node) return toastEnterDurationMs;
   const style = window.getComputedStyle(node);
   const animationNames = style.animationName.split(",");
-  const animationIndex = Math.max(0, animationNames.findIndex((name) => name.trim() === "icedr-glass-toast-enter"));
+  const animationIndex = Math.max(0, animationNames.findIndex((name) => name.trim() === "icedr-app-toast-enter"));
   const duration = parseCssTimeList(style.animationDuration)[animationIndex] ?? 0;
   const delay = parseCssTimeList(style.animationDelay)[animationIndex] ?? 0;
   const total = duration + delay;

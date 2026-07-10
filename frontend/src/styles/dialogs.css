@@ -18,3 +18,110 @@
 .directory-picker-body {
   min-height: 280px;
 }
+.icedr-confirmation-frame {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.icedr-confirmation-header {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.icedr-confirmation-icon {
+  align-items: center;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  color: #dc2626;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.icedr-confirmation-header h2 {
+  color: inherit;
+  font-size: 17px;
+  font-weight: 820;
+  line-height: 23px;
+  margin: 0;
+}
+
+.icedr-confirmation-header p {
+  color: var(--app-subtle, #64748b);
+  font-size: 13px;
+  font-weight: 620;
+  line-height: 19px;
+  margin: 5px 0 0;
+}
+
+.icedr-confirmation-field {
+  display: grid;
+  gap: 7px;
+}
+
+.icedr-confirmation-field > span {
+  color: var(--app-subtle, #64748b);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.icedr-confirmation-actions {
+  border-top: 1px solid var(--dialog-border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+
+.icedr-confirmation-actions button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--dialog-border);
+  border-radius: 7px;
+  color: inherit;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 760;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.icedr-confirmation-actions button:hover:not(:disabled) {
+  background: rgba(100, 116, 139, 0.08);
+}
+
+.icedr-confirmation-actions button[data-tone="danger"] {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.icedr-confirmation-actions button[data-tone="danger"]:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.icedr-confirmation-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 520px) {
+  .icedr-confirmation-frame {
+    padding: 17px;
+  }
+
+  .icedr-confirmation-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .icedr-confirmation-actions button {
+    justify-content: center;
+  }
+}

@@ -1,0 +1,157 @@
+.drive-oauth-provider-mark {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #0f172a;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 28px;
+  justify-content: center;
+  min-width: 28px;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  width: 28px;
+}
+
+.drive-oauth-provider-mark-md {
+  height: 28px;
+  min-width: 28px;
+  width: 28px;
+}
+
+.drive-oauth-provider-mark-lg {
+  height: 42px;
+  min-width: 42px;
+  width: 42px;
+}
+
+.drive-oauth-google-mark {
+  color: #4285f4;
+  font-size: 24px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.drive-oauth-provider-mark-lg .drive-oauth-google-mark {
+  font-size: 40px;
+}
+
+.drive-oauth-github-mark {
+  background: #111827;
+  border-radius: 999px;
+  height: 24px;
+  position: relative;
+  width: 24px;
+}
+
+.drive-oauth-provider-mark-lg .drive-oauth-github-mark {
+  height: 38px;
+  width: 38px;
+}
+
+.drive-oauth-github-mark::before,
+.drive-oauth-github-mark::after {
+  background: #111827;
+  content: "";
+  position: absolute;
+}
+
+.drive-oauth-github-mark::before {
+  border-radius: 4px 4px 0 0;
+  height: 8px;
+  left: 5px;
+  top: -2px;
+  transform: rotate(-18deg);
+  width: 6px;
+}
+
+.drive-oauth-github-mark::after {
+  border-radius: 4px 4px 0 0;
+  height: 8px;
+  right: 5px;
+  top: -2px;
+  transform: rotate(18deg);
+  width: 6px;
+}
+
+.drive-oauth-microsoft-mark {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(2, 1fr);
+  height: 24px;
+  width: 24px;
+}
+
+.drive-oauth-provider-mark-lg .drive-oauth-microsoft-mark {
+  gap: 3px;
+  height: 36px;
+  width: 36px;
+}
+
+.drive-oauth-microsoft-mark span:nth-child(1) {
+  background: #f25022;
+}
+
+.drive-oauth-microsoft-mark span:nth-child(2) {
+  background: #7fba00;
+}
+
+.drive-oauth-microsoft-mark span:nth-child(3) {
+  background: #00a4ef;
+}
+
+.drive-oauth-microsoft-mark span:nth-child(4) {
+  background: #ffb900;
+}
+
+.drive-oauth-gitlab-mark {
+  height: 26px;
+  position: relative;
+  width: 30px;
+}
+
+.drive-oauth-provider-mark-lg .drive-oauth-gitlab-mark {
+  height: 36px;
+  width: 42px;
+}
+
+.drive-oauth-gitlab-mark span {
+  bottom: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  position: absolute;
+}
+
+.drive-oauth-gitlab-mark span:nth-child(1) {
+  background: #fc6d26;
+  height: 24px;
+  left: 3px;
+  width: 14px;
+}
+
+.drive-oauth-gitlab-mark span:nth-child(2) {
+  background: #e24329;
+  height: 24px;
+  right: 3px;
+  width: 14px;
+}
+
+.drive-oauth-gitlab-mark span:nth-child(3) {
+  background: #fca326;
+  height: 18px;
+  left: 8px;
+  width: 14px;
+}
+
+.drive-oauth-provider-mark-lg .drive-oauth-gitlab-mark span:nth-child(1),
+.drive-oauth-provider-mark-lg .drive-oauth-gitlab-mark span:nth-child(2) {
+  height: 34px;
+  width: 20px;
+}
+
+.drive-oauth-provider-mark-lg .drive-oauth-gitlab-mark span:nth-child(3) {
+  height: 25px;
+  left: 11px;
+  width: 20px;
+}

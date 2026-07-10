@@ -1,4 +1,941 @@
 {
-  "generated_at": null,
-  "release": null
+  "generated_at": "2026-07-10T12:13:45.848Z",
+  "release": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-arm64",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_linux-arm64",
+        "size": 147065984,
+        "updated_at": "2026-06-15T14:33:14Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-arm64.md5",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_linux-arm64.md5",
+        "size": 66,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-arm64.sha256",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_linux-arm64.sha256",
+        "size": 98,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-x86_64",
+        "download_count": 1,
+        "name": "icedr_0.0.1-alpha.5_linux-x86_64",
+        "size": 149294272,
+        "updated_at": "2026-06-15T14:33:18Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-x86_64.md5",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_linux-x86_64.md5",
+        "size": 67,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-x86_64.sha256",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_linux-x86_64.sha256",
+        "size": 99,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-arm64",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_macos-arm64",
+        "size": 146131792,
+        "updated_at": "2026-06-15T14:33:15Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-arm64.md5",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_macos-arm64.md5",
+        "size": 66,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-arm64.sha256",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_macos-arm64.sha256",
+        "size": 98,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-x86_64",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_macos-x86_64",
+        "size": 148456960,
+        "updated_at": "2026-06-15T14:33:18Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-x86_64.md5",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_macos-x86_64.md5",
+        "size": 67,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-x86_64.sha256",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_macos-x86_64.sha256",
+        "size": 99,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-arm64.exe",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_windows-arm64.exe",
+        "size": 107053056,
+        "updated_at": "2026-06-15T14:33:11Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-arm64.exe.md5",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_windows-arm64.exe.md5",
+        "size": 72,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-arm64.exe.sha256",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_windows-arm64.exe.sha256",
+        "size": 104,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-x86_64.exe",
+        "download_count": 2,
+        "name": "icedr_0.0.1-alpha.5_windows-x86_64.exe",
+        "size": 118417408,
+        "updated_at": "2026-06-15T14:33:15Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-x86_64.exe.md5",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_windows-x86_64.exe.md5",
+        "size": 73,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-x86_64.exe.sha256",
+        "download_count": 0,
+        "name": "icedr_0.0.1-alpha.5_windows-x86_64.exe.sha256",
+        "size": 105,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/MD5SUMS.txt",
+        "download_count": 0,
+        "name": "MD5SUMS.txt",
+        "size": 411,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/release-manifest.json",
+        "download_count": 1,
+        "name": "release-manifest.json",
+        "size": 1804,
+        "updated_at": "2026-06-15T14:33:05Z"
+      },
+      {
+        "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/SHA256SUMS.txt",
+        "download_count": 0,
+        "name": "SHA256SUMS.txt",
+        "size": 603,
+        "updated_at": "2026-06-15T14:33:05Z"
+      }
+    ],
+    "html_url": "https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.5",
+    "name": "v0.0.1-alpha.5",
+    "prerelease": true,
+    "published_at": "2026-06-15T14:33:04Z",
+    "tag_name": "v0.0.1-alpha.5"
+  },
+  "releases": [
+    {
+      "assets": [
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_linux-arm64",
+          "size": 147065984,
+          "updated_at": "2026-06-15T14:33:14Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_linux-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_linux-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-x86_64",
+          "download_count": 1,
+          "name": "icedr_0.0.1-alpha.5_linux-x86_64",
+          "size": 149294272,
+          "updated_at": "2026-06-15T14:33:18Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_linux-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_linux-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_linux-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_macos-arm64",
+          "size": 146131792,
+          "updated_at": "2026-06-15T14:33:15Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_macos-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_macos-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_macos-x86_64",
+          "size": 148456960,
+          "updated_at": "2026-06-15T14:33:18Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_macos-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_macos-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_macos-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-arm64.exe",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_windows-arm64.exe",
+          "size": 107053056,
+          "updated_at": "2026-06-15T14:33:11Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-arm64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_windows-arm64.exe.md5",
+          "size": 72,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-arm64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_windows-arm64.exe.sha256",
+          "size": 104,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-x86_64.exe",
+          "download_count": 2,
+          "name": "icedr_0.0.1-alpha.5_windows-x86_64.exe",
+          "size": 118417408,
+          "updated_at": "2026-06-15T14:33:15Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-x86_64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_windows-x86_64.exe.md5",
+          "size": 73,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/icedr_0.0.1-alpha.5_windows-x86_64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.5_windows-x86_64.exe.sha256",
+          "size": 105,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/MD5SUMS.txt",
+          "download_count": 0,
+          "name": "MD5SUMS.txt",
+          "size": 411,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/release-manifest.json",
+          "download_count": 1,
+          "name": "release-manifest.json",
+          "size": 1804,
+          "updated_at": "2026-06-15T14:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.5/SHA256SUMS.txt",
+          "download_count": 0,
+          "name": "SHA256SUMS.txt",
+          "size": 603,
+          "updated_at": "2026-06-15T14:33:05Z"
+        }
+      ],
+      "html_url": "https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.5",
+      "name": "v0.0.1-alpha.5",
+      "prerelease": true,
+      "published_at": "2026-06-15T14:33:04Z",
+      "tag_name": "v0.0.1-alpha.5"
+    },
+    {
+      "assets": [
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_linux-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_linux-arm64",
+          "size": 147065984,
+          "updated_at": "2026-06-13T16:37:06Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_linux-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_linux-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_linux-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_linux-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_linux-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_linux-x86_64",
+          "size": 149294272,
+          "updated_at": "2026-06-13T16:37:02Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_linux-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_linux-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_linux-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_linux-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_macos-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_macos-arm64",
+          "size": 146131792,
+          "updated_at": "2026-06-13T16:37:02Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_macos-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_macos-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_macos-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_macos-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_macos-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_macos-x86_64",
+          "size": 148456960,
+          "updated_at": "2026-06-13T16:37:02Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_macos-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_macos-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_macos-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_macos-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_windows-arm64.exe",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_windows-arm64.exe",
+          "size": 107052032,
+          "updated_at": "2026-06-13T16:37:00Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_windows-arm64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_windows-arm64.exe.md5",
+          "size": 72,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_windows-arm64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_windows-arm64.exe.sha256",
+          "size": 104,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_windows-x86_64.exe",
+          "download_count": 3,
+          "name": "icedr_0.0.1-alpha.4_windows-x86_64.exe",
+          "size": 118416384,
+          "updated_at": "2026-06-13T16:37:00Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_windows-x86_64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_windows-x86_64.exe.md5",
+          "size": 73,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/icedr_0.0.1-alpha.4_windows-x86_64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.4_windows-x86_64.exe.sha256",
+          "size": 105,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/MD5SUMS.txt",
+          "download_count": 0,
+          "name": "MD5SUMS.txt",
+          "size": 411,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/release-manifest.json",
+          "download_count": 0,
+          "name": "release-manifest.json",
+          "size": 1804,
+          "updated_at": "2026-06-13T16:36:54Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.4/SHA256SUMS.txt",
+          "download_count": 0,
+          "name": "SHA256SUMS.txt",
+          "size": 603,
+          "updated_at": "2026-06-13T16:36:54Z"
+        }
+      ],
+      "html_url": "https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.4",
+      "name": "v0.0.1-alpha.4",
+      "prerelease": true,
+      "published_at": "2026-06-13T16:36:53Z",
+      "tag_name": "v0.0.1-alpha.4"
+    },
+    {
+      "assets": [
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_linux-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_linux-arm64",
+          "size": 143658112,
+          "updated_at": "2026-06-13T05:33:14Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_linux-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_linux-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_linux-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_linux-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_linux-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_linux-x86_64",
+          "size": 145886400,
+          "updated_at": "2026-06-13T05:33:13Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_linux-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_linux-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_linux-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_linux-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_macos-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_macos-arm64",
+          "size": 142697296,
+          "updated_at": "2026-06-13T05:33:13Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_macos-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_macos-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_macos-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_macos-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_macos-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_macos-x86_64",
+          "size": 145014208,
+          "updated_at": "2026-06-13T05:33:13Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_macos-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_macos-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_macos-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_macos-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_windows-arm64.exe",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_windows-arm64.exe",
+          "size": 103632896,
+          "updated_at": "2026-06-13T05:33:10Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_windows-arm64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_windows-arm64.exe.md5",
+          "size": 72,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_windows-arm64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_windows-arm64.exe.sha256",
+          "size": 104,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_windows-x86_64.exe",
+          "download_count": 3,
+          "name": "icedr_0.0.1-alpha.3_windows-x86_64.exe",
+          "size": 114997248,
+          "updated_at": "2026-06-13T05:33:12Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_windows-x86_64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_windows-x86_64.exe.md5",
+          "size": 73,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/icedr_0.0.1-alpha.3_windows-x86_64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.3_windows-x86_64.exe.sha256",
+          "size": 105,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/MD5SUMS.txt",
+          "download_count": 0,
+          "name": "MD5SUMS.txt",
+          "size": 411,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/release-manifest.json",
+          "download_count": 0,
+          "name": "release-manifest.json",
+          "size": 1804,
+          "updated_at": "2026-06-13T05:33:05Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.3/SHA256SUMS.txt",
+          "download_count": 0,
+          "name": "SHA256SUMS.txt",
+          "size": 603,
+          "updated_at": "2026-06-13T05:33:05Z"
+        }
+      ],
+      "html_url": "https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.3",
+      "name": "v0.0.1-alpha.3",
+      "prerelease": true,
+      "published_at": "2026-06-13T05:33:04Z",
+      "tag_name": "v0.0.1-alpha.3"
+    },
+    {
+      "assets": [
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_linux-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_linux-arm64",
+          "size": 143658112,
+          "updated_at": "2026-06-12T16:52:14Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_linux-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_linux-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_linux-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_linux-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_linux-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_linux-x86_64",
+          "size": 145886400,
+          "updated_at": "2026-06-12T16:52:15Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_linux-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_linux-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_linux-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_linux-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_macos-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_macos-arm64",
+          "size": 142697296,
+          "updated_at": "2026-06-12T16:52:15Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_macos-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_macos-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_macos-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_macos-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_macos-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_macos-x86_64",
+          "size": 145014208,
+          "updated_at": "2026-06-12T16:52:14Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_macos-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_macos-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_macos-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_macos-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_windows-arm64.exe",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_windows-arm64.exe",
+          "size": 103632896,
+          "updated_at": "2026-06-12T16:52:13Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_windows-arm64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_windows-arm64.exe.md5",
+          "size": 72,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_windows-arm64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_windows-arm64.exe.sha256",
+          "size": 104,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_windows-x86_64.exe",
+          "download_count": 2,
+          "name": "icedr_0.0.1-alpha.2_windows-x86_64.exe",
+          "size": 114997248,
+          "updated_at": "2026-06-12T16:52:13Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_windows-x86_64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_windows-x86_64.exe.md5",
+          "size": 73,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/icedr_0.0.1-alpha.2_windows-x86_64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.2_windows-x86_64.exe.sha256",
+          "size": 105,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/MD5SUMS.txt",
+          "download_count": 0,
+          "name": "MD5SUMS.txt",
+          "size": 411,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/release-manifest.json",
+          "download_count": 1,
+          "name": "release-manifest.json",
+          "size": 1804,
+          "updated_at": "2026-06-12T16:52:07Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.2/SHA256SUMS.txt",
+          "download_count": 0,
+          "name": "SHA256SUMS.txt",
+          "size": 603,
+          "updated_at": "2026-06-12T16:52:07Z"
+        }
+      ],
+      "html_url": "https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.2",
+      "name": "v0.0.1-alpha.2",
+      "prerelease": true,
+      "published_at": "2026-06-12T16:52:05Z",
+      "tag_name": "v0.0.1-alpha.2"
+    },
+    {
+      "assets": [
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_linux-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_linux-arm64",
+          "size": 141364352,
+          "updated_at": "2026-06-12T03:08:39Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_linux-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_linux-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_linux-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_linux-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_linux-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_linux-x86_64",
+          "size": 143461568,
+          "updated_at": "2026-06-12T03:08:40Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_linux-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_linux-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_linux-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_linux-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_macos-arm64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_macos-arm64",
+          "size": 140435152,
+          "updated_at": "2026-06-12T03:08:39Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_macos-arm64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_macos-arm64.md5",
+          "size": 66,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_macos-arm64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_macos-arm64.sha256",
+          "size": 98,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_macos-x86_64",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_macos-x86_64",
+          "size": 142760320,
+          "updated_at": "2026-06-12T03:08:39Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_macos-x86_64.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_macos-x86_64.md5",
+          "size": 67,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_macos-x86_64.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_macos-x86_64.sha256",
+          "size": 99,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_windows-arm64.exe",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_windows-arm64.exe",
+          "size": 101516800,
+          "updated_at": "2026-06-12T03:08:37Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_windows-arm64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_windows-arm64.exe.md5",
+          "size": 72,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_windows-arm64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_windows-arm64.exe.sha256",
+          "size": 104,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_windows-x86_64.exe",
+          "download_count": 2,
+          "name": "icedr_0.0.1-alpha.1_windows-x86_64.exe",
+          "size": 112770048,
+          "updated_at": "2026-06-12T03:08:37Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_windows-x86_64.exe.md5",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_windows-x86_64.exe.md5",
+          "size": 73,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/icedr_0.0.1-alpha.1_windows-x86_64.exe.sha256",
+          "download_count": 0,
+          "name": "icedr_0.0.1-alpha.1_windows-x86_64.exe.sha256",
+          "size": 105,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/MD5SUMS.txt",
+          "download_count": 1,
+          "name": "MD5SUMS.txt",
+          "size": 411,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/release-manifest.json",
+          "download_count": 1,
+          "name": "release-manifest.json",
+          "size": 1804,
+          "updated_at": "2026-06-12T03:08:30Z"
+        },
+        {
+          "browser_download_url": "https://github.com/Cloudwhile/icedr/releases/download/v0.0.1-alpha.1/SHA256SUMS.txt",
+          "download_count": 2,
+          "name": "SHA256SUMS.txt",
+          "size": 603,
+          "updated_at": "2026-06-12T03:08:30Z"
+        }
+      ],
+      "html_url": "https://github.com/Cloudwhile/icedr/releases/tag/v0.0.1-alpha.1",
+      "name": "v0.0.1-alpha.1",
+      "prerelease": true,
+      "published_at": "2026-06-12T03:08:29Z",
+      "tag_name": "v0.0.1-alpha.1"
+    }
+  ]
 }

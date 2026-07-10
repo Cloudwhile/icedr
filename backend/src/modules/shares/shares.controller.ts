@@ -18,11 +18,8 @@ import {
   createVisitorAuditMetadata,
 } from '../../common/security/audit-metadata';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
-import { AuthService } from '../auth/core/auth.service';
-import {
-  SendShareEmailCodeDto,
-  VerifyShareEmailCodeDto,
-} from './share-access.dto';
+import { createAttachmentContentDisposition } from '../../common/security/file-name-policy';
+import type { AuthUserResponse } from '../auth/core/auth.dto';
 import { CreateShareDto } from './shares.dto';
 import { SharesService } from './shares.service';
 
@@ -31,7 +28,6 @@ import { SharesService } from './shares.service';
 export class SharesController {
   constructor(
     private readonly sharesService: SharesService,
-    private readonly authService: AuthService,
     private readonly adminGuard: AdminGuardService,
   ) {}
 
@@ -86,32 +82,6 @@ export class SharesController {
     );
   }
 
-  @Post(':token/access-sessions/email-code')
-  sendEmailAccessCode(
-    @Param('token') token: string,
-    @Body() dto: SendShareEmailCodeDto,
-    @Req() request: Request,
-  ) {
-    return this.sharesService.sendEmailAccessCode(
-      token,
-      dto,
-      createVisitorAuditMetadata(request),
-    );
-  }
-
-  @Post(':token/access-sessions/verify-email')
-  verifyEmailAccessCode(
-    @Param('token') token: string,
-    @Body() dto: VerifyShareEmailCodeDto,
-    @Req() request: Request,
-  ) {
-    return this.sharesService.verifyEmailAccessCode(
-      token,
-      dto,
-      createVisitorAuditMetadata(request),
-    );
-  }
-
   @Post(':token/access-sessions/account')
   async createAccountAccessSession(
     @Param('token') token: string,
@@ -124,51 +94,6 @@ export class SharesController {
       session.user,
       createRequestAuditMetadata(session, request),
     );
-  }
-
-  @Post(':token/access-sessions/oauth')
-  async createOAuthAccessSession(
-    @Param('token') token: string,
-    @Req() request: Request,
-  ) {
-    await this.sharesService.getShare(
-      token,
-      createVisitorAuditMetadata(request),
-    );
-    return this.authService.startOAuthShareAccess(token);
-  }
-
-  @Get(':token/oauth/start')
-  async startOAuthAccess(
-    @Param('token') token: string,
-    @Req() request: Request,
-  ) {
-    await this.sharesService.getShare(
-      token,
-      createVisitorAuditMetadata(request),
-    );
-    return this.authService.startOAuthShareAccess(token);
-  }
-
-  @Get('oauth/callback')
-  async oauthCallback(@Req() request: Request, @Res() response: Response) {
-    const result = await this.authService.handleOAuthCallback(
-      `${request.protocol}://${request.get('host')}${request.originalUrl}`,
-    );
-    if (result.flow !== 'share' || !result.shareToken) {
-      response.redirect(302, '/');
-      return;
-    }
-    const session = await this.sharesService.createVerifiedOAuthAccessSession(
-      result.shareToken,
-      result.user,
-      createRequestAuditMetadata({ user: result.user }, request),
-    );
-    const redirectTarget = this.authService.buildShareOAuthFrontendCallbackUrl(
-      result.shareToken,
-      session.sessionId,
-    );
-    response.redirect(302, redirectTarget);
   }
 
   @Post(':token/items/:nodeId/download-intents')
@@ -185,6 +110,7 @@ export class SharesController {
       nodeId,
       accessSessionId,
       audit.metadata,
+      audit.user,
     );
   }
 
@@ -212,7 +138,7 @@ export class SharesController {
     response.setHeader('Content-Type', download.contentType);
     response.setHeader(
       'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(download.filename)}"`,
+      createAttachmentContentDisposition(download.filename),
     );
     return download.content;
   }
@@ -231,6 +157,7 @@ export class SharesController {
       nodeId,
       accessSessionId,
       audit.metadata,
+      audit.user,
     );
   }
 
@@ -246,7 +173,11 @@ export class SharesController {
   private async resolveShareRequestAudit(
     authorization: string | undefined,
     request?: Request,
-  ): Promise<{ actor: AuditActor; metadata: Record<string, unknown> }> {
+  ): Promise<{
+    actor: AuditActor;
+    metadata: Record<string, unknown>;
+    user?: AuthUserResponse;
+  }> {
     if (!authorization) {
       return {
         actor: 'visitor',
@@ -259,6 +190,7 @@ export class SharesController {
       return {
         actor: 'account',
         metadata: createRequestAuditMetadata(session, request),
+        user: session.user,
       };
     } catch {
       return {

@@ -6,7 +6,8 @@ import { AuthSettings, AuthUserResponse } from './auth.dto';
 import type {
   OAuthEmailSource,
   OAuthProviderSnapshot,
-} from './oauth-provider-adapters';
+} from '../../../extensions/oauth/oauth-provider-adapters';
+import { buildAuthenticationMethodStatus } from './authentication-method-status';
 
 const authSettingsKey = 'global';
 const localIdentityProvider = 'local';
@@ -15,6 +16,7 @@ export const defaultAuthSettings: AuthSettings = {
   localEnabled: true,
   oauthEnabled: false,
   passkeyEnabled: false,
+  minimumAuthenticationMethods: 1,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -23,6 +25,7 @@ type AuthSettingsRow = {
   local_enabled: boolean;
   oauth_enabled: boolean;
   passkey_enabled: boolean;
+  minimum_authentication_methods: number | string;
   updated_at: Date | string;
 };
 
@@ -103,36 +106,13 @@ export type StoredPasswordReset = {
   createdAt: string;
 };
 
-export type StoredPasskey = {
-  id: string;
-  userId: string;
-  credentialId: string;
-  publicKey: string;
-  counter: number;
-  transports: string[];
-  deviceType: 'singleDevice' | 'multiDevice';
-  backedUp: boolean;
-  name: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-};
-
-export type StoredAuthChallenge = {
-  id: string;
-  flow: 'passkey-registration' | 'passkey-authentication';
-  challenge: string;
-  userId: string | null;
-  email: string | null;
-  expiresAt: string;
-  usedAt: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-};
-
 export type StoredOAuthState = {
   state: string;
-  flow: 'login' | 'share';
+  flow: 'login' | 'share' | 'step-up';
   shareToken: string | null;
+  userId: string | null;
+  sessionTokenHash: string | null;
+  purpose: string | null;
   codeVerifier: string;
   redirectUri: string;
   providerSnapshot: OAuthProviderSnapshot | null;
@@ -144,41 +124,21 @@ export type StoredOAuthState = {
 export type StoredOAuthExchangeCode = {
   codeHash: string;
   userId: string;
+  flow: 'login' | 'step-up';
+  sessionTokenHash: string | null;
+  purpose: string | null;
   expiresAt: string;
   usedAt: string | null;
   createdAt: string;
-};
-
-type PasskeyRow = {
-  id: string;
-  user_id: string;
-  credential_id: string;
-  public_key: string;
-  counter: string | number;
-  transports: string[] | string;
-  device_type: 'singleDevice' | 'multiDevice';
-  backed_up: boolean;
-  name: string;
-  created_at: Date | string;
-  last_used_at: Date | string | null;
-};
-
-type AuthChallengeRow = {
-  id: string;
-  flow: StoredAuthChallenge['flow'];
-  challenge: string;
-  user_id: string | null;
-  email: string | null;
-  expires_at: Date | string;
-  used_at: Date | string | null;
-  metadata: Record<string, unknown> | string;
-  created_at: Date | string;
 };
 
 type OAuthStateRow = {
   state: string;
   flow: StoredOAuthState['flow'];
   share_token: string | null;
+  user_id: string | null;
+  session_token_hash: string | null;
+  purpose: string | null;
   code_verifier: string;
   redirect_uri: string;
   provider_snapshot: Record<string, unknown> | string | null;
@@ -190,6 +150,9 @@ type OAuthStateRow = {
 type OAuthExchangeCodeRow = {
   code_hash: string;
   user_id: string;
+  flow: StoredOAuthExchangeCode['flow'];
+  session_token_hash: string | null;
+  purpose: string | null;
   expires_at: Date | string;
   used_at: Date | string | null;
   created_at: Date | string;
@@ -213,6 +176,8 @@ export class AuthRepository implements OnModuleInit {
         localEnabled: defaultAuthSettings.localEnabled,
         oauthEnabled: defaultAuthSettings.oauthEnabled,
         passkeyEnabled: defaultAuthSettings.passkeyEnabled,
+        minimumAuthenticationMethods:
+          defaultAuthSettings.minimumAuthenticationMethods,
       },
     });
   }
@@ -235,13 +200,15 @@ export class AuthRepository implements OnModuleInit {
           local_enabled,
           oauth_enabled,
           passkey_enabled,
+          minimum_authentication_methods,
           updated_at
         )
-        values ($1, $2, $3, $4, now())
+        values ($1, $2, $3, $4, $5, now())
         on conflict (setting_key) do update set
           local_enabled = excluded.local_enabled,
           oauth_enabled = excluded.oauth_enabled,
           passkey_enabled = excluded.passkey_enabled,
+          minimum_authentication_methods = excluded.minimum_authentication_methods,
           updated_at = excluded.updated_at
         returning *
       `,
@@ -250,6 +217,7 @@ export class AuthRepository implements OnModuleInit {
         settings.localEnabled,
         settings.oauthEnabled,
         settings.passkeyEnabled,
+        settings.minimumAuthenticationMethods,
       ],
     );
 
@@ -386,6 +354,37 @@ export class AuthRepository implements OnModuleInit {
     return result.rows[0] ? this.mapUserRow(result.rows[0]) : null;
   }
 
+  async getAuthenticationMethodStatus(userId: string) {
+    const [settings, passwordCount, oauthCount, passkeyCount, recoveryCount] =
+      await Promise.all([
+        this.prisma.authSetting.findUnique({
+          where: { settingKey: authSettingsKey },
+        }),
+        this.prisma.userIdentity.count({
+          where: {
+            userId,
+            provider: localIdentityProvider,
+            passwordHash: { not: null },
+          },
+        }),
+        this.prisma.userIdentity.count({
+          where: { userId, provider: { not: localIdentityProvider } },
+        }),
+        this.prisma.authPasskey.count({ where: { userId } }),
+        this.prisma.authRecoveryCode.count({ where: { userId, usedAt: null } }),
+      ]);
+    const methods = {
+      password: Boolean(settings?.localEnabled) && passwordCount > 0,
+      oauth: Boolean(settings?.oauthEnabled) && oauthCount > 0,
+      passkey: Boolean(settings?.passkeyEnabled) && passkeyCount > 0,
+      recoveryCodes: recoveryCount,
+    };
+    return buildAuthenticationMethodStatus(
+      methods,
+      settings?.minimumAuthenticationMethods,
+    );
+  }
+
   async updateUserProfile(
     userId: string,
     input: {
@@ -465,6 +464,39 @@ export class AuthRepository implements OnModuleInit {
     return result.rows[0] ? this.mapOAuthUserRow(result.rows[0]) : null;
   }
 
+  async linkOAuthIdentity(input: {
+    userId: string;
+    provider: string;
+    subject: string;
+    emailSource: OAuthEmailSource;
+  }): Promise<StoredOAuthUser> {
+    const now = new Date();
+    await this.prisma.userIdentity.upsert({
+      where: {
+        provider_providerSubject: {
+          provider: input.provider,
+          providerSubject: input.subject,
+        },
+      },
+      update: {
+        emailSource: input.emailSource,
+        updatedAt: now,
+        userId: input.userId,
+      },
+      create: {
+        id: `identity_${randomBytes(12).toString('base64url')}`,
+        userId: input.userId,
+        provider: input.provider,
+        providerSubject: input.subject,
+        emailSource: input.emailSource,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    const user = await this.findUserById(input.userId);
+    if (!user) throw new Error('OAuth user is unavailable');
+    return { ...user, emailSource: input.emailSource };
+  }
   async createOAuthUser(input: {
     provider: string;
     subject: string;
@@ -475,10 +507,8 @@ export class AuthRepository implements OnModuleInit {
     const id = `user_${randomBytes(12).toString('base64url')}`;
     const now = new Date();
     const user = await this.prisma.$transaction(async (tx) => {
-      const createdUser = await tx.user.upsert({
-        where: { email: input.email },
-        update: { updatedAt: now },
-        create: {
+      const createdUser = await tx.user.create({
+        data: {
           id,
           email: input.email,
           displayName: input.displayName,
@@ -757,122 +787,13 @@ export class AuthRepository implements OnModuleInit {
     return this.mapPrismaUserWithPassword(user, passwordHash);
   }
 
-  async createPasskey(input: {
-    userId: string;
-    credentialId: string;
-    publicKey: string;
-    counter: number;
-    transports: string[];
-    deviceType: 'singleDevice' | 'multiDevice';
-    backedUp: boolean;
-    name: string;
-  }) {
-    const id = `passkey_${randomBytes(12).toString('base64url')}`;
-    const row = await this.prisma.authPasskey.create({
-      data: {
-        id,
-        userId: input.userId,
-        credentialId: input.credentialId,
-        publicKey: input.publicKey,
-        counter: BigInt(input.counter),
-        transports: input.transports,
-        deviceType: input.deviceType,
-        backedUp: input.backedUp,
-        name: input.name,
-      },
-    });
-    return this.mapPrismaPasskey(row);
-  }
-
-  async listPasskeysForUser(userId: string) {
-    const result = await this.query<PasskeyRow>(
-      'select * from auth_passkeys where user_id = $1 order by created_at desc',
-      [userId],
-    );
-    return result.rows.map((row) => this.mapPasskeyRow(row));
-  }
-
-  async findPasskeyByCredentialId(credentialId: string) {
-    const result = await this.query<PasskeyRow>(
-      'select * from auth_passkeys where credential_id = $1 limit 1',
-      [credentialId],
-    );
-    return result.rows[0] ? this.mapPasskeyRow(result.rows[0]) : null;
-  }
-
-  async updatePasskeyCounter(id: string, counter: number) {
-    const row = await this.prisma.authPasskey
-      .update({
-        where: { id },
-        data: { counter: BigInt(counter), lastUsedAt: new Date() },
-      })
-      .catch(() => null);
-    return row ? this.mapPrismaPasskey(row) : null;
-  }
-
-  async deletePasskey(userId: string, id: string) {
-    await this.query(
-      'delete from auth_passkeys where user_id = $1 and id = $2',
-      [userId, id],
-    );
-  }
-
-  async createChallenge(input: {
-    flow: StoredAuthChallenge['flow'];
-    challenge: string;
-    userId?: string | null;
-    email?: string | null;
-    expiresAt: string;
-    metadata?: Record<string, unknown>;
-  }) {
-    const id = `challenge_${randomBytes(12).toString('base64url')}`;
-    const row = await this.prisma.authChallenge.create({
-      data: {
-        id,
-        flow: input.flow,
-        challenge: input.challenge,
-        userId: input.userId ?? null,
-        email: input.email ?? null,
-        expiresAt: new Date(input.expiresAt),
-        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-      },
-    });
-    return this.mapPrismaChallenge(row);
-  }
-
-  async findActiveChallenge(input: {
-    flow: StoredAuthChallenge['flow'];
-    userId?: string | null;
-    email?: string | null;
-  }) {
-    const row = await this.prisma.authChallenge.findFirst({
-      where: {
-        email: input.email ?? undefined,
-        expiresAt: { gt: new Date() },
-        flow: input.flow,
-        usedAt: null,
-        userId: input.userId ?? undefined,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return row ? this.mapPrismaChallenge(row) : null;
-  }
-
-  async markChallengeUsed(id: string) {
-    const existing = await this.prisma.authChallenge.findUnique({
-      where: { id },
-    });
-    if (!existing || existing.usedAt) return;
-    await this.prisma.authChallenge.update({
-      where: { id },
-      data: { usedAt: new Date() },
-    });
-  }
-
   async createOAuthState(input: {
     state: string;
     flow: StoredOAuthState['flow'];
     shareToken?: string | null;
+    userId?: string | null;
+    sessionTokenHash?: string | null;
+    purpose?: string | null;
     codeVerifier: string;
     redirectUri: string;
     providerSnapshot: OAuthProviderSnapshot;
@@ -883,6 +804,9 @@ export class AuthRepository implements OnModuleInit {
         state: input.state,
         flow: input.flow,
         shareToken: input.shareToken ?? null,
+        userId: input.userId ?? null,
+        sessionTokenHash: input.sessionTokenHash ?? null,
+        purpose: input.purpose ?? null,
         codeVerifier: input.codeVerifier,
         redirectUri: input.redirectUri,
         providerSnapshot: input.providerSnapshot,
@@ -900,25 +824,28 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async markOAuthStateUsed(state: string) {
-    const existing = await this.prisma.authOAuthState.findUnique({
-      where: { state },
-    });
-    if (!existing || existing.usedAt) return;
-    await this.prisma.authOAuthState.update({
-      where: { state },
+    const updated = await this.prisma.authOAuthState.updateMany({
+      where: { state, usedAt: null, expiresAt: { gt: new Date() } },
       data: { usedAt: new Date() },
     });
+    return updated.count === 1;
   }
 
   async createOAuthExchangeCode(input: {
     codeHash: string;
     userId: string;
+    flow?: StoredOAuthExchangeCode['flow'];
+    sessionTokenHash?: string | null;
+    purpose?: string | null;
     expiresAt: string;
   }) {
     const row = await this.prisma.authOAuthExchangeCode.create({
       data: {
         codeHash: input.codeHash,
         userId: input.userId,
+        flow: input.flow ?? 'login',
+        sessionTokenHash: input.sessionTokenHash ?? null,
+        purpose: input.purpose ?? null,
         expiresAt: new Date(input.expiresAt),
       },
     });
@@ -940,6 +867,47 @@ export class AuthRepository implements OnModuleInit {
     await this.prisma.authOAuthExchangeCode.update({
       where: { codeHash },
       data: { usedAt: new Date() },
+    });
+  }
+
+  async consumeOAuthStepUpExchangeCode(input: {
+    codeHash: string;
+    userId: string;
+    sessionTokenHash: string;
+    stepUpTokenHash: string;
+    stepUpExpiresAt: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const code = await tx.authOAuthExchangeCode.findUnique({
+        where: { codeHash: input.codeHash },
+      });
+      if (
+        !code ||
+        code.flow !== 'step-up' ||
+        code.userId !== input.userId ||
+        code.sessionTokenHash !== input.sessionTokenHash ||
+        code.purpose !== 'manage-authenticators' ||
+        code.usedAt ||
+        code.expiresAt.getTime() <= Date.now()
+      ) {
+        return false;
+      }
+      const consumed = await tx.authOAuthExchangeCode.updateMany({
+        where: { codeHash: input.codeHash, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      if (consumed.count !== 1) return false;
+      await tx.authStepUpToken.create({
+        data: {
+          tokenHash: input.stepUpTokenHash,
+          userId: input.userId,
+          sessionTokenHash: input.sessionTokenHash,
+          method: 'oauth',
+          purpose: 'manage-authenticators',
+          expiresAt: new Date(input.stepUpExpiresAt),
+        },
+      });
+      return true;
     });
   }
 
@@ -1008,6 +976,10 @@ export class AuthRepository implements OnModuleInit {
       localEnabled: row.local_enabled,
       oauthEnabled: row.oauth_enabled,
       passkeyEnabled: row.passkey_enabled,
+      minimumAuthenticationMethods: Math.max(
+        1,
+        Math.min(2, Number(row.minimum_authentication_methods ?? 1)),
+      ),
       updatedAt: this.toIsoString(row.updated_at),
     };
   }
@@ -1108,78 +1080,14 @@ export class AuthRepository implements OnModuleInit {
     return value === 'derived' ? 'derived' : 'provider';
   }
 
-  private mapPasskeyRow(row: PasskeyRow): StoredPasskey {
-    return {
-      id: row.id,
-      userId: row.user_id,
-      credentialId: row.credential_id,
-      publicKey: row.public_key,
-      counter: Number(row.counter),
-      transports: this.parseStringArray(row.transports),
-      deviceType: row.device_type,
-      backedUp: row.backed_up,
-      name: row.name,
-      createdAt: this.toIsoString(row.created_at),
-      lastUsedAt: row.last_used_at ? this.toIsoString(row.last_used_at) : null,
-    };
-  }
-
-  private mapPrismaPasskey(
-    row: Prisma.AuthPasskeyGetPayload<Record<string, never>>,
-  ): StoredPasskey {
-    return {
-      id: row.id,
-      userId: row.userId,
-      credentialId: row.credentialId,
-      publicKey: row.publicKey,
-      counter: Number(row.counter),
-      transports: this.parseStringArray(row.transports),
-      deviceType: row.deviceType as 'singleDevice' | 'multiDevice',
-      backedUp: row.backedUp,
-      name: row.name,
-      createdAt: this.toIsoString(row.createdAt),
-      lastUsedAt: row.lastUsedAt ? this.toIsoString(row.lastUsedAt) : null,
-    };
-  }
-
-  private mapChallengeRow(row: AuthChallengeRow): StoredAuthChallenge {
-    return {
-      id: row.id,
-      flow: row.flow,
-      challenge: row.challenge,
-      userId: row.user_id,
-      email: row.email,
-      expiresAt: this.toIsoString(row.expires_at),
-      usedAt: row.used_at ? this.toIsoString(row.used_at) : null,
-      metadata:
-        typeof row.metadata === 'string'
-          ? (JSON.parse(row.metadata) as Record<string, unknown>)
-          : row.metadata,
-      createdAt: this.toIsoString(row.created_at),
-    };
-  }
-
-  private mapPrismaChallenge(
-    row: Prisma.AuthChallengeGetPayload<Record<string, never>>,
-  ): StoredAuthChallenge {
-    return {
-      id: row.id,
-      flow: row.flow as StoredAuthChallenge['flow'],
-      challenge: row.challenge,
-      userId: row.userId,
-      email: row.email,
-      expiresAt: this.toIsoString(row.expiresAt),
-      usedAt: row.usedAt ? this.toIsoString(row.usedAt) : null,
-      metadata: this.parseJsonRecord(row.metadata),
-      createdAt: this.toIsoString(row.createdAt),
-    };
-  }
-
   private mapOAuthStateRow(row: OAuthStateRow): StoredOAuthState {
     return {
       state: row.state,
       flow: row.flow,
       shareToken: row.share_token,
+      userId: row.user_id,
+      sessionTokenHash: row.session_token_hash,
+      purpose: row.purpose,
       codeVerifier: row.code_verifier,
       redirectUri: row.redirect_uri,
       providerSnapshot: this.parseOAuthProviderSnapshot(row.provider_snapshot),
@@ -1196,6 +1104,9 @@ export class AuthRepository implements OnModuleInit {
       state: row.state,
       flow: row.flow as StoredOAuthState['flow'],
       shareToken: row.shareToken,
+      userId: row.userId,
+      sessionTokenHash: row.sessionTokenHash,
+      purpose: row.purpose,
       codeVerifier: row.codeVerifier,
       redirectUri: row.redirectUri,
       providerSnapshot: this.parseOAuthProviderSnapshot(row.providerSnapshot),
@@ -1211,6 +1122,9 @@ export class AuthRepository implements OnModuleInit {
     return {
       codeHash: row.code_hash,
       userId: row.user_id,
+      flow: row.flow,
+      sessionTokenHash: row.session_token_hash,
+      purpose: row.purpose,
       expiresAt: this.toIsoString(row.expires_at),
       usedAt: row.used_at ? this.toIsoString(row.used_at) : null,
       createdAt: this.toIsoString(row.created_at),
@@ -1223,6 +1137,9 @@ export class AuthRepository implements OnModuleInit {
     return {
       codeHash: row.codeHash,
       userId: row.userId,
+      flow: row.flow as StoredOAuthExchangeCode['flow'],
+      sessionTokenHash: row.sessionTokenHash,
+      purpose: row.purpose,
       expiresAt: this.toIsoString(row.expiresAt),
       usedAt: row.usedAt ? this.toIsoString(row.usedAt) : null,
       createdAt: this.toIsoString(row.createdAt),
@@ -1277,17 +1194,6 @@ export class AuthRepository implements OnModuleInit {
     return typeof this.prisma.isSqlite === 'function' && this.prisma.isSqlite();
   }
 
-  private parseStringArray(value: unknown) {
-    if (Array.isArray(value)) {
-      return value.filter((item): item is string => typeof item === 'string');
-    }
-    if (typeof value !== 'string') return [];
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string')
-      : [];
-  }
-
   private parseJsonRecord(value: unknown) {
     if (typeof value === 'string') {
       try {
@@ -1321,16 +1227,31 @@ export class AuthRepository implements OnModuleInit {
     }
     if (!parsed || typeof parsed !== 'object') return null;
     const providerProfile = parsed.providerProfile;
-    if (providerProfile !== 'oidc' && providerProfile !== 'icetowne-blog') {
+    if (
+      providerProfile !== 'oidc' &&
+      providerProfile !== 'oauth2' &&
+      providerProfile !== 'icetowne-blog'
+    ) {
       return null;
     }
     const issuerUrl = this.readStringSnapshotField(parsed, 'issuerUrl');
     const clientId = this.readStringSnapshotField(parsed, 'clientId');
-    if (!issuerUrl || !clientId) return null;
+    if (!clientId || (providerProfile !== 'oauth2' && !issuerUrl)) return null;
     return {
+      id: this.readStringSnapshotField(parsed, 'id') || undefined,
       enabled: Boolean(parsed.enabled),
+      providerKey:
+        this.readOAuthProviderKeySnapshotField(parsed) ||
+        (providerProfile === 'icetowne-blog' ? 'icetowne-blog' : 'oidc'),
+      displayName: this.readStringSnapshotField(parsed, 'displayName'),
       providerProfile,
       issuerUrl,
+      authorizationUrl: this.readStringSnapshotField(
+        parsed,
+        'authorizationUrl',
+      ),
+      tokenUrl: this.readStringSnapshotField(parsed, 'tokenUrl'),
+      userinfoUrl: this.readStringSnapshotField(parsed, 'userinfoUrl'),
       clientId,
       audience: this.readStringSnapshotField(parsed, 'audience'),
       scopes:
@@ -1346,5 +1267,20 @@ export class AuthRepository implements OnModuleInit {
   ) {
     const value = source[key];
     return typeof value === 'string' ? value : '';
+  }
+
+  private readOAuthProviderKeySnapshotField(source: Record<string, unknown>) {
+    const value = source.providerKey;
+    if (
+      value === 'google' ||
+      value === 'github' ||
+      value === 'microsoft' ||
+      value === 'gitlab' ||
+      value === 'oidc' ||
+      value === 'icetowne-blog'
+    ) {
+      return value;
+    }
+    return '';
   }
 }

@@ -1,12 +1,17 @@
 import type { DriveItem } from "@/features/file/model";
 import {
+  getDefaultDriveFileNameErrorMessage,
+  validateDriveFileName,
+} from "@/features/file/file-name-policy";
+import {
   buildApiUrl,
   createBatchFileDownloadIntents,
   createFileDownloadIntent,
   createFileVersionDownloadIntent,
-  DriveApiError,
+  createDriveApiResponseError,
   getApiBaseUrl,
   getAuthHeaders,
+  readDriveApiError,
   updateTransfer,
   type DriveSpaceScope,
   type FileNodeResponse,
@@ -26,6 +31,8 @@ type DownloadIntentResponse = {
 };
 
 type UploadIntentResponse = {
+  conflictStrategy: UploadConflictStrategy;
+  fileName: string;
   objectKey: string;
   transferId: string;
   uploadMethod: "presigned-url" | "backend-local" | "chunked" | "object-multipart";
@@ -38,6 +45,8 @@ type UploadIntentResponse = {
   uploadedBytes?: number;
   uploadedPartIndexes?: number[];
 };
+
+export type UploadConflictStrategy = "overwrite" | "rename" | "skip" | "version";
 
 type UploadChunkResponse = {
   sessionId: string;
@@ -57,32 +66,7 @@ type UploadPartIntentResponse = {
 };
 
 async function createDriveFetchError(response: Response, fallback: string) {
-  if (!response.headers.get("content-type")?.includes("application/json")) {
-    return new DriveApiError(fallback, response.status);
-  }
-
-  try {
-    const body = (await response.json()) as unknown;
-    if (!body || typeof body !== "object") {
-      return new DriveApiError(fallback, response.status);
-    }
-
-    const message = (body as { message?: unknown }).message;
-    const code = (body as { code?: unknown }).code;
-    const resolvedMessage = Array.isArray(message)
-      ? message.filter((item): item is string => typeof item === "string").join("; ")
-      : typeof message === "string"
-        ? message
-        : fallback;
-
-    return new DriveApiError(
-      resolvedMessage || fallback,
-      response.status,
-      typeof code === "string" ? code : undefined,
-    );
-  } catch {
-    return new DriveApiError(fallback, response.status);
-  }
+  return createDriveApiResponseError(response, await readDriveApiError(response, fallback));
 }
 
 export type UploadDriveFileProgress = {
@@ -191,7 +175,7 @@ export async function downloadSharedDriveItem(token: string, item: DriveItem, ac
     method: "POST",
     headers,
   });
-  if (!intentResponse.ok) throw new Error("Download intent failed");
+  if (!intentResponse.ok) throw await createDriveFetchError(intentResponse, "Download intent failed");
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
   openDownloadUrl(buildApiUrl(intent.downloadUrl));
@@ -204,13 +188,13 @@ export async function createSharedDriveItemBlobUrl(token: string, item: DriveIte
     method: "POST",
     headers,
   });
-  if (!intentResponse.ok) throw new Error("Download intent failed");
+  if (!intentResponse.ok) throw await createDriveFetchError(intentResponse, "Download intent failed");
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
   const response = await fetch(buildPreviewDownloadUrl(intent.downloadUrl), {
     redirect: "follow",
   });
-  if (!response.ok) throw new Error("Download failed");
+  if (!response.ok) throw await createDriveFetchError(response, "Download failed");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
@@ -237,7 +221,7 @@ export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspace
   const response = await fetch(downloadUrl, {
     redirect: "follow",
   });
-  if (!response.ok) throw new Error("Download failed");
+  if (!response.ok) throw await createDriveFetchError(response, "Download failed");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
@@ -248,6 +232,7 @@ export async function createWorkspaceDriveItemSourceUrl(item: DriveItem, workspa
 }
 
 export function createUploadDriveFileTask({
+  conflictStrategy = "version",
   file,
   onProgress,
   parentNodeId,
@@ -255,6 +240,7 @@ export function createUploadDriveFileTask({
   workspaceActor,
   workspaceId,
 }: {
+  conflictStrategy?: UploadConflictStrategy;
   file: File;
   onProgress?: (progress: UploadDriveFileProgress) => void;
   parentNodeId?: string | null;
@@ -262,6 +248,9 @@ export function createUploadDriveFileTask({
   workspaceActor?: string;
   workspaceId: string;
 }): UploadDriveFileTask {
+  const fileNameValidation = validateDriveFileName(file.name);
+  if (!fileNameValidation.ok) throw new Error(getDefaultDriveFileNameErrorMessage(fileNameValidation));
+
   let activeCompletionAbort: AbortController | null = null;
   let activePromise: Promise<FileNodeResponse> | null = null;
   let activeRequest: XMLHttpRequest | null = null;
@@ -339,6 +328,7 @@ export function createUploadDriveFileTask({
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         workspaceId,
+        conflictStrategy,
         fileName: file.name,
         fileSizeBytes: file.size,
         parentNodeId: parentNodeId ?? undefined,
@@ -420,7 +410,8 @@ export function createUploadDriveFileTask({
         signal: activeCompletionAbort.signal,
         body: JSON.stringify({
           workspaceId,
-          fileName: file.name,
+          conflictStrategy: currentIntent.conflictStrategy,
+          fileName: currentIntent.fileName,
           objectKey: currentIntent.objectKey,
           sizeBytes: file.size,
           parentNodeId: parentNodeId ?? undefined,

@@ -1,216 +1,163 @@
 # 配置说明
 
-ICEDR 可以通过环境变量和管理员设置面板配置。首次部署可以先按默认值完成初始化；生产部署可用本页核对运行变量。
+ICEDR 使用环境变量、初始化向导和管理员设置共同完成配置。环境变量负责实例启动和外部基础设施，向导负责首次引导，管理员设置负责运行后的产品策略。
 
-## 配置优先级
+## 配置层次
 
-一般规则：
-
-1. 环境变量用于启动前必须确定的配置，例如监听端口、生产模式、数据库连接。
-2. 初始化向导用于首次配置管理员账号、数据库、认证方式、SMTP、对象存储和站点信息。
-3. 管理员设置面板用于运行后调整站点、认证、外链策略、文件存储和邮件。
-
-如果没有设置 PostgreSQL，ICEDR 使用 SQLite。如果没有启用对象存储，ICEDR 使用本地文件存储。
-
-## 基础服务
-
-| 变量 | 说明 | 默认值 | 何时需要 |
-| --- | --- | --- | --- |
-| `NODE_ENV` | Node.js 运行环境 | `development` | 生产环境设为 `production` |
-| `APP_ENV` | ICEDR 应用环境 | 跟随 `NODE_ENV` | 生产环境设为 `production` |
-| `API_HOST` | 服务监听地址 | `0.0.0.0` 或本地开发值 | 容器内通常保持 `0.0.0.0` |
-| `API_PORT` | 服务监听端口 | `13000` 或 `13001` | 改端口时设置 |
-| `PORT` | 兼容平台端口变量 | 空 | PaaS 平台只提供 `PORT` 时使用 |
-| `API_CORS_ORIGIN` | 允许访问 API 的浏览器来源 | 空 | 前端和 API 不同源时必须设置 |
-| `API_PUBLIC_BASE_URL` | API 对外访问地址 | 空 | 域名、OAuth 回调、外部链接需要 |
-| `VITE_API_BASE_URL` | 浏览器 API 地址 | `/api` | 只有分离前后端构建时需要 |
-| `DEFAULT_WORKSPACE_ACTOR` | 默认工作区主体显示名 | `Workspace User` | 想改审计显示名称时设置 |
-
-Docker 镜像默认把前端和 API 放在同源下，浏览器访问 `/api` 即可，不需要把 `VITE_API_BASE_URL` 指向本机地址。
-
-## 数据目录
-
-| 变量 | 说明 | 默认值 |
+| 层次 | 适合内容 | 示例 |
 | --- | --- | --- |
-| `ICEDR_DATA_DIR` | 二进制或后端运行数据目录 | 源码运行时为项目 `data`，二进制运行时为可执行文件旁的 `data` |
-| `SQLITE_DATABASE_PATH` | SQLite 数据库文件路径 | `data/icedr.sqlite` |
-| `LOCAL_STORAGE_ROOT` | 本地文件存储目录 | `data/local-files` |
+| 环境变量 | 启动前必须确定、凭据或基础设施地址 | 监听端口、安全密钥、数据库、对象存储 |
+| 初始化向导 | 首次建立可用实例 | 管理员、数据库验证、登录方式、邮件、存储、站点名称 |
+| 管理员设置 | 运行中的产品策略 | OAuth Provider、Passkey、配额、生命周期、外链规则 |
 
-备份时至少保留：
+管理员设置保存到数据库。迁移或恢复实例时，数据库与环境文件必须一起保护。
 
-- SQLite 文件
-- `local-files` 目录
-- `database-source.json`
-- 如使用二进制，还可以保留 `assets/public` 和 `native` 目录以减少下次启动写入
+## 生产 `.env` 模板
+
+下面模板适合 Docker `--env-file` 或二进制服务环境文件。尖括号为必填占位符，启动前需要替换为真实值。
+
+```dotenv
+# 运行模式
+NODE_ENV=production
+APP_ENV=production
+API_HOST=0.0.0.0
+API_PORT=13000
+
+# 必填：使用 openssl rand -hex 32 生成并长期保存
+AUTH_SECURITY_SECRET=<生成至少32字符的随机值>
+
+# 正式访问地址
+API_CORS_ORIGIN=https://drive.your-domain.tld
+API_PUBLIC_BASE_URL=https://drive.your-domain.tld/api
+PUBLIC_SHARE_BASE_URL=https://drive.your-domain.tld/share/s
+
+# 数据目录与本地文件
+ICEDR_DATA_DIR=/workspace/backend/data
+SQLITE_DATABASE_PATH=/workspace/backend/data/icedr.sqlite
+LOCAL_STORAGE_ROOT=/workspace/backend/data/local-files
+
+# 邮件暂时关闭；启用时填写后面的 SMTP 项
+SMTP_ENABLED=false
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_NAME=ICEDR
+SMTP_FROM_EMAIL=
+SMTP_REPLY_TO=
+
+# PostgreSQL，可选；五项完整时启用
+DATABASE_HOST=
+DATABASE_PORT=5432
+DATABASE_DBNAME=
+DATABASE_USER=
+DATABASE_PASSWORD=
+
+# S3 / MinIO，可选
+S3_ENDPOINT=
+S3_PUBLIC_ENDPOINT=
+S3_REGION=us-east-1
+S3_BUCKET=icedr-drive
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_FORCE_PATH_STYLE=true
+
+# Redis，可选
+REDIS_HOST=
+REDIS_PORT=6379
+REDIS_DBNAME=0
+REDIS_USER=
+REDIS_PASSWORD=
+```
+
+`.env` 文件不一定会执行命令替换。先单独运行 `openssl rand -hex 32`，再把结果粘贴为实际值。文件权限建议为 `0600`。
+
+## 最小生产配置
+
+生产模式至少需要：
+
+- `NODE_ENV=production` 和 `APP_ENV=production`。
+- 有效的 `API_HOST` 与 `API_PORT`。
+- 至少 32 字符的 `AUTH_SECURITY_SECRET`。
+- 持久化数据目录。
+- SMTP 关闭或提供完整有效的 SMTP 配置。
+
+使用公网域名时，再设置 CORS、公开服务地址和外链地址。使用 SQLite 与本地存储时，不需要配置 PostgreSQL、Redis 或 S3。
+
+## 安全密钥
+
+`AUTH_SECURITY_SECRET` 用于认证安全状态，必须：
+
+- 使用密码学安全随机值。
+- 在所有同一实例进程中保持一致。
+- 随备份恢复，不在升级时重新生成。
+- 不写入镜像、代码仓库、工单或公开日志。
+
+更换该值会使已有认证会话失效。需要轮换时，应安排用户重新登录并保留回滚方案。
+
+`SHARE_VISITOR_HASH_SECRET` 可用于外链访客标识保护。正式开放匿名分享时建议单独设置随机值，不与认证密钥复用。
 
 ## 数据库
 
-不配置数据库变量时，ICEDR 使用 SQLite。SQLite 适合试用、小规模和单机部署。
+没有完整 PostgreSQL 配置时，ICEDR 使用 SQLite。
 
-要使用 PostgreSQL：
+SQLite 相关变量：
 
-| 变量 | 说明 |
+| 变量 | 默认或用途 |
 | --- | --- |
-| `DATABASE_HOST` | PostgreSQL 主机 |
-| `DATABASE_PORT` | PostgreSQL 端口，通常为 `5432` |
-| `DATABASE_DBNAME` | 数据库名 |
-| `DATABASE_USER` | 用户名 |
-| `DATABASE_PASSWORD` | 密码 |
+| `ICEDR_DATA_DIR` | 二进制或后端数据根目录 |
+| `SQLITE_DATABASE_PATH` | SQLite 文件位置，默认位于数据目录 |
 
-Docker run 示例：
-
-```bash
-docker run -d \
-  --name icedr \
-  --restart unless-stopped \
-  -p 13000:13000 \
-  -v /opt/icedr/data:/workspace/backend/data \
-  -e DATABASE_HOST=postgres.example.internal \
-  -e DATABASE_PORT=5432 \
-  -e DATABASE_DBNAME=icedr \
-  -e DATABASE_USER=icedr_app \
-  -e DATABASE_PASSWORD=strong-password \
-  corecherry/icedr-po:latest
-```
-
-二进制示例：
-
-```bash
-DATABASE_HOST=postgres.example.internal DATABASE_PORT=5432 DATABASE_DBNAME=icedr DATABASE_USER=icedr_app DATABASE_PASSWORD=strong-password ./icedr_VERSION_linux-x86_64
-```
-
-也可以在首次初始化向导中选择 PostgreSQL。系统会保存已验证的数据库来源。
-
-## Redis
-
-Redis 是可选项。需要队列、缓存或后续扩展能力时再配置。
-
-| 变量 | 说明 |
-| --- | --- |
-| `REDIS_HOST` | Redis 主机 |
-| `REDIS_PORT` | Redis 端口，通常为 `6379` |
-| `REDIS_DBNAME` | Redis DB 编号 |
-| `REDIS_USER` | 用户名，可为空 |
-| `REDIS_PASSWORD` | 密码，可为空 |
+PostgreSQL 需要同时提供主机、端口、数据库名、用户和密码。具体创建与恢复流程见 [PostgreSQL 配置](/deployment/postgresql)。
 
 ## 文件存储
 
-默认本地文件存储：
+没有对象存储配置时，文件写入 `LOCAL_STORAGE_ROOT`。
 
-```text
-data/local-files
+S3 / MinIO 需要 Endpoint、Region、Bucket、Access Key 和 Secret Key。MinIO 通常启用 `S3_FORCE_PATH_STYLE=true`。配置与权限建议见 [MinIO / S3 配置](/deployment/minio-s3)。
+
+存储后端也可以在管理面板中配置。切换只影响新上传文件，不会自动迁移旧对象。
+
+## 邮件
+
+设置 `SMTP_ENABLED=false` 可以在不配置邮件的情况下完成初始化。启用后需要完整填写主机、端口、TLS、凭据和发件邮箱，并在管理面板发送测试邮件。
+
+生产环境不能使用仅写日志的开发邮件方式。详细说明见 [邮件设置](/guide/admin/mail-settings)。
+
+## OAuth 与 Passkey
+
+OAuth Provider 和 Passkey 站点身份优先通过管理员界面配置和测试。环境变量中的 OIDC 配置可以作为启动来源。
+
+Passkey 在正式域名下需要 HTTPS，并要求 RP ID 与 Origin 和真实访问地址一致。
+
+## 外链策略
+
+外链公开地址、邮箱提供方式、访客哈希和限流可以通过环境变量设置。运行后的匿名访问、邮箱域名、下载、预览、有效期和审计策略在管理员界面中管理。
+
+调整限流前先观察真实访问量。过低会影响多人共享，过高会削弱验证码和下载保护。
+
+## Docker Compose 变量
+
+Compose 的 `.env` 首先用于变量插值，只有在 `compose.yaml` 的 `environment` 或 `env_file` 中引用后才会传入容器。修改后用以下命令检查：
+
+```bash
+docker compose config
+docker compose up -d
 ```
 
-使用 S3 / MinIO / 兼容对象存储时：
+避免把包含密钥的 `docker compose config` 完整输出复制到公开问题中。
 
-| 变量 | 说明 | 建议 |
-| --- | --- | --- |
-| `S3_ENDPOINT` | 对象存储 API 地址 | MinIO 示例：`https://minio.example.com` |
-| `S3_PUBLIC_ENDPOINT` | 对外访问地址 | 需要和内部 endpoint 分离时设置 |
-| `S3_REGION` | 区域 | MinIO 常用 `us-east-1` |
-| `S3_BUCKET` | 桶名 | 例如 `icedr-drive` |
-| `S3_ACCESS_KEY_ID` | Access Key | 使用专用账号 |
-| `S3_SECRET_ACCESS_KEY` | Secret Key | 使用专用密钥 |
-| `S3_FORCE_PATH_STYLE` | 是否使用 path-style 请求 | MinIO 通常为 `true` |
-| `STORAGE_QUOTA_BYTES` | 物理存储配额上限 | 可选 |
-| `MINIO_METRICS_ENDPOINT` | MinIO 指标接口 | 可选，用于容量状态 |
-| `MINIO_METRICS_BEARER_TOKEN` | MinIO 指标令牌 | 可选 |
+## 生产启动校验
 
-初始化向导中，只有勾选对象存储后才会显示这些配置项。未启用对象存储时，本地文件存储继续工作。
+ICEDR 会拒绝：
 
-## 外链与公网地址
+- 缺失或长度不足的认证安全密钥。
+- `replace-me`、`example.com`、尖括号等常见占位值。
+- 公开地址指向 `localhost` 或回环地址。
+- 无效端口、URL 或邮箱。
+- 生产环境启用开发数据、内存存储或开发邮件日志。
 
-| 变量 | 说明 | 示例 |
-| --- | --- | --- |
-| `PUBLIC_SHARE_BASE_URL` | 外链分享基础地址 | `https://drive.example.com/share/s` |
-| `API_PUBLIC_BASE_URL` | API 对外地址 | `https://drive.example.com/api` |
-| `API_CORS_ORIGIN` | 允许访问来源 | `https://drive.example.com` |
-| `SHARE_EMAIL_PROVIDER` | 外链邮件提供方式 | `smtp` |
-| `SHARE_VISITOR_HASH_SECRET` | 访客身份哈希密钥 | 长随机字符串 |
+启动失败时，日志会列出变量名。只公开变量名和脱敏后的结构，不要公开密码、Secret、验证码或完整连接串。
 
-使用反向代理时，建议让页面和 API 同域：
-
-```text
-https://drive.example.com
-https://drive.example.com/api
-```
-
-这样浏览器端不需要跨域，配置也更简单。
-
-## 邮件 SMTP
-
-SMTP 可以关闭。关闭时，系统仍可初始化和管理文件；需要邮箱验证、外链身份确认或邮件通知时再启用。
-
-| 变量 | 说明 |
-| --- | --- |
-| `SMTP_ENABLED` | 是否启用 SMTP，`true` 或 `false` |
-| `SMTP_HOST` | SMTP 主机 |
-| `SMTP_PORT` | SMTP 端口 |
-| `SMTP_SECURE` | 是否使用 TLS |
-| `SMTP_USERNAME` | 用户名 |
-| `SMTP_PASSWORD` | 密码 |
-| `SMTP_FROM_NAME` | 发件人名称 |
-| `SMTP_FROM_EMAIL` | 发件人邮箱 |
-| `SMTP_REPLY_TO` | 回复邮箱，可为空 |
-
-常见组合：
-
-| 邮件服务类型 | `SMTP_PORT` | `SMTP_SECURE` |
-| --- | --- | --- |
-| STARTTLS | `587` | `false` |
-| TLS | `465` | `true` |
-
-## 登录与 OAuth
-
-本地账号登录默认可用。需要接入统一身份认证时，使用 OIDC：
-
-| 变量 | 说明 |
-| --- | --- |
-| `ICA_OAUTH_PROVIDER_PROFILE` | 提供方类型，标准 OIDC 使用 `oidc` |
-| `ICA_OAUTH_ISSUER_URL` | Issuer 地址 |
-| `ICA_OAUTH_CLIENT_ID` | Client ID |
-| `ICA_OAUTH_CLIENT_SECRET` | Client Secret |
-| `ICA_OAUTH_AUDIENCE` | Audience |
-| `ICA_OAUTH_SCOPES` | Scope 列表 |
-| `ICA_OAUTH_REDIRECT_URI` | 回调地址 |
-
-普通 OIDC 提供方使用 `oidc`。兼容旧形态的 `icetowne-blog` 只适合对应旧接口，不建议作为通用 OAuth 配置。
-
-## 更新检查
-
-| 变量 | 说明 |
-| --- | --- |
-| `APP_VERSION` | 当前版本，发布产物通常自动写入 |
-| `ICEDR_UPDATE_CHECK_URL` | 自定义更新检查地址 |
-| `ICEDR_UPDATE_INCLUDE_PRERELEASES` | 是否在更新检查中包含预发布版本 |
-
-稳定版本默认只把稳定版本视为更新。预发布版本可以识别新的预发布和稳定版本。
-
-## Docker 变量
-
-使用 `docker run` 时，直接用本页列出的原始环境变量传入容器。
-
-示例：
-
-| docker run 参数 | 作用 |
-| --- | --- |
-| `-p 13000:13000` | 把宿主机 `13000` 映射到容器内 `13000` |
-| `-v /opt/icedr/data:/workspace/backend/data` | 把持久化数据保存到宿主机目录 |
-| `-e API_PUBLIC_BASE_URL=https://drive.example.com/api` | 设置 API 对外地址 |
-| `-e PUBLIC_SHARE_BASE_URL=https://drive.example.com/share/s` | 设置外链对外地址 |
-| `-e SMTP_ENABLED=false` | 关闭 SMTP，之后可在管理员设置中配置 |
-
-仓库内的 `deploy/docker-compose.yml` 仍然保留给需要 Compose 的场景。使用该文件时，它会为了避免误读本地 `.env` 而采用 `ICEDR_DOCKER_*` 前缀；常规 Docker 部署优先使用 [Docker 部署](/guide/docker) 中的 `docker run` 命令。
-
-## 生产环境校验
-
-生产模式下，ICEDR 会拒绝常见错误配置：
-
-- 使用 `replace-me`、`example.com`、`password` 这类占位值。
-- 公开 URL 指向 `localhost` 或 `127.0.0.1`。
-- 端口不是合法 TCP 端口。
-- 邮箱格式不正确。
-- 生产环境仍启用开发邮件模式。
-- 生产环境启用开发数据或内存存储。
-
-启动失败时，日志会列出具体变量名。按日志逐项修正即可。
+完整列表见 [环境变量速查表](/reference/environment-variables)。

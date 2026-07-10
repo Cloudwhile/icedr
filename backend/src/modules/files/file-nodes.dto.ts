@@ -47,6 +47,17 @@ export type FileNodePreviewStatus =
   | 'unsupported'
   | 'failed';
 export type FileNodePreviewType = FileNodeKind | 'metadata' | PreviewRenderMode;
+export type UploadConflictStrategy =
+  | 'overwrite'
+  | 'rename'
+  | 'skip'
+  | 'version';
+export const uploadConflictStrategies: UploadConflictStrategy[] = [
+  'overwrite',
+  'rename',
+  'skip',
+  'version',
+];
 
 export class CreateUploadIntentDto {
   @IsString()
@@ -83,6 +94,10 @@ export class CreateUploadIntentDto {
   @Max(32 * 1024 * 1024)
   @IsOptional()
   chunkSizeBytes?: number;
+
+  @IsIn(uploadConflictStrategies)
+  @IsOptional()
+  conflictStrategy?: UploadConflictStrategy;
 }
 
 export class CompleteUploadDto {
@@ -125,6 +140,10 @@ export class CompleteUploadDto {
   @IsString()
   @IsOptional()
   uploadSessionId?: string;
+
+  @IsIn(uploadConflictStrategies)
+  @IsOptional()
+  conflictStrategy?: UploadConflictStrategy;
 }
 
 export class UploadChunkParamsDto {
@@ -458,6 +477,8 @@ export type BatchDownloadIntentResponse = {
 };
 
 export type UploadIntentResponse = {
+  conflictStrategy: UploadConflictStrategy;
+  fileName: string;
   objectKey: string;
   transferId: string;
   uploadMethod:

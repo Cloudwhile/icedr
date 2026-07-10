@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as oidc from 'openid-client';
-import type { OAuthSettings } from '../../admin/settings/settings.dto';
+import type { OAuthSettings } from '../../modules/admin/settings/settings.dto';
 
 type OAuthTokenResponse = Record<string, unknown> & {
   access_token?: string;
@@ -18,13 +18,20 @@ const oauthProviderRequestTimeoutMs = 10_000;
 export type OAuthProviderSnapshot = Pick<
   OAuthSettings,
   | 'enabled'
+  | 'providerKey'
+  | 'displayName'
   | 'providerProfile'
   | 'issuerUrl'
+  | 'authorizationUrl'
+  | 'tokenUrl'
+  | 'userinfoUrl'
   | 'clientId'
   | 'audience'
   | 'scopes'
   | 'redirectUri'
->;
+> & {
+  id?: string;
+};
 
 export type MappedOAuthUser = {
   provider: string;
@@ -32,6 +39,7 @@ export type MappedOAuthUser = {
   subject: string;
   email: string;
   emailSource: OAuthEmailSource;
+  emailVerified: boolean;
   displayName: string;
 };
 
@@ -67,6 +75,21 @@ export type OAuthProviderAdapter = {
   exchangeCode(input: OAuthCodeExchangeInput): Promise<MappedOAuthUser>;
 };
 
+export type OAuthConnectionCheck = {
+  key: 'authorization' | 'discovery' | 'issuer' | 'token' | 'userinfo';
+  ok: boolean;
+  status?: number;
+};
+
+export type OAuthConnectionTestResult = {
+  ok: boolean;
+  checks: OAuthConnectionCheck[];
+  testedAt: string;
+};
+type OAuthProviderAdapterInput =
+  | OAuthProviderProfile
+  | Pick<OAuthSettings, 'providerKey' | 'providerProfile'>;
+
 export async function createOAuthRequestState(): Promise<OAuthRequestState> {
   const codeVerifier = oidc.randomPKCECodeVerifier();
   return {
@@ -77,29 +100,75 @@ export async function createOAuthRequestState(): Promise<OAuthRequestState> {
 }
 
 export function createOAuthProviderAdapter(
-  providerProfile: OAuthProviderProfile,
+  providerInput: OAuthProviderAdapterInput,
   options: OAuthAdapterOptions,
 ): OAuthProviderAdapter {
+  const providerProfile =
+    typeof providerInput === 'string'
+      ? providerInput
+      : providerInput.providerProfile;
   if (providerProfile === 'icetowne-blog') {
     return new IcetowneBlogOAuthAdapter(options);
+  }
+  if (providerProfile === 'oauth2') {
+    return new OAuth2OAuthAdapter(options);
   }
   return new OidcOAuthAdapter(options);
 }
 
+export async function testOAuthProviderConnection(
+  oauth: OAuthSettings,
+  options: OAuthAdapterOptions,
+): Promise<OAuthConnectionTestResult> {
+  let checks: OAuthConnectionCheck[];
+  if (oauth.providerProfile === 'oidc') {
+    try {
+      await new OidcOAuthAdapter(options).buildAuthorizationUrl({
+        oauth,
+        redirectUri: oauth.redirectUri,
+        state: 'connection-test',
+        codeChallenge: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      });
+      checks = [{ key: 'discovery', ok: true }];
+    } catch (error) {
+      if (!(error instanceof ServiceUnavailableException)) throw error;
+      checks = [{ key: 'discovery', ok: false }];
+    }
+  } else if (oauth.providerProfile === 'oauth2') {
+    checks = await Promise.all([
+      probeOAuthEndpoint(oauth.authorizationUrl, 'authorization', options),
+      probeOAuthEndpoint(oauth.tokenUrl, 'token', options),
+      probeOAuthEndpoint(oauth.userinfoUrl, 'userinfo', options),
+    ]);
+  } else {
+    checks = [await probeOAuthEndpoint(oauth.issuerUrl, 'issuer', options)];
+  }
+  return {
+    ok: checks.every((check) => check.ok),
+    checks,
+    testedAt: new Date().toISOString(),
+  };
+}
 export function mapOidcUserProfile(input: {
+  providerKey?: unknown;
+  providerLabel?: unknown;
   issuerUrl?: unknown;
   subject?: unknown;
   email?: unknown;
+  emailVerified?: unknown;
   displayName?: unknown;
 }): MappedOAuthUser {
-  const providerScope = createOAuthProviderScope('oidc', input.issuerUrl);
+  const providerKey = readStringValue(input.providerKey) || 'oidc';
+  const providerScope = createOAuthProviderScope(providerKey, input.issuerUrl);
+  const providerLabel = readStringValue(input.providerLabel) || 'OAuth';
   return normalizeOAuthUserProfile({
     provider: providerScope,
     providerScope,
-    providerLabel: 'OAuth',
+    providerLabel,
     providerProfile: 'oidc',
     subject: input.subject,
     email: input.email,
+    emailVerified: input.emailVerified,
     displayName: input.displayName,
   });
 }
@@ -117,6 +186,9 @@ export function mapIcetowneBlogUserProfile(
   const email =
     firstStringField(userInfo, ['email', 'user_email']) ||
     firstStringField(nestedUser, ['email', 'user_email']);
+  const emailVerified =
+    firstBooleanField(userInfo, ['email_verified', 'verified']) ||
+    firstBooleanField(nestedUser, ['email_verified', 'verified']);
   const displayName =
     firstStringField(userInfo, [
       'name',
@@ -145,6 +217,72 @@ export function mapIcetowneBlogUserProfile(
     providerProfile: 'icetowne-blog',
     subject,
     email,
+    emailVerified,
+    displayName,
+  });
+}
+
+export function mapOAuth2UserProfile(
+  userInfo: Record<string, unknown>,
+  tokenResponse: OAuthTokenResponse,
+  oauth: Pick<
+    OAuthSettings,
+    | 'providerKey'
+    | 'displayName'
+    | 'authorizationUrl'
+    | 'tokenUrl'
+    | 'userinfoUrl'
+    | 'issuerUrl'
+  >,
+): MappedOAuthUser {
+  const subject =
+    firstStringField(userInfo, [
+      'sub',
+      'id',
+      'node_id',
+      'user_id',
+      'userId',
+      'account_id',
+      'login',
+      'username',
+    ]) || firstStringField(tokenResponse, ['sub', 'user_id', 'userId']);
+  const email = firstStringField(userInfo, [
+    'email',
+    'mail',
+    'user_email',
+    'preferred_username',
+  ]);
+  const emailVerified = firstBooleanField(userInfo, [
+    'email_verified',
+    'verified',
+  ]);
+  const displayName =
+    firstStringField(userInfo, [
+      'name',
+      'display_name',
+      'displayName',
+      'nickname',
+      'login',
+      'username',
+    ]) || email;
+  const providerKey = readStringValue(oauth.providerKey) || 'oauth2';
+  const providerScope = createOAuthProviderScope(
+    providerKey,
+    oauth.userinfoUrl ||
+      oauth.tokenUrl ||
+      oauth.authorizationUrl ||
+      oauth.issuerUrl,
+  );
+  const providerLabel = readStringValue(oauth.displayName) || 'OAuth2';
+
+  return normalizeOAuthUserProfile({
+    provider: providerScope,
+    providerScope,
+    providerLabel,
+    providerProfile: 'oauth2',
+    subject,
+    email,
+    emailVerified,
     displayName,
   });
 }
@@ -164,7 +302,12 @@ export function createDerivedOAuthEmail(
     .digest('base64url')
     .slice(0, 24)
     .toLowerCase();
-  const prefix = providerProfile === 'icetowne-blog' ? 'icetowne-blog' : 'oidc';
+  const prefix =
+    providerProfile === 'icetowne-blog'
+      ? 'icetowne-blog'
+      : providerProfile === 'oauth2'
+        ? 'oauth2'
+        : 'oidc';
   return `${prefix}-${scopeDigest}+${digest}@identity.local`;
 }
 
@@ -211,6 +354,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       const subject = readStringField(claims, 'sub');
       const accessToken = tokens.access_token;
       let email = readStringField(claims, 'email');
+      let emailVerified = readBooleanValue(claims.email_verified);
       let displayName =
         firstStringField(claims, ['name', 'preferred_username', 'nickname']) ||
         email;
@@ -222,6 +366,8 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
           subject || oidc.skipSubjectCheck,
         )) as Record<string, unknown>;
         if (!email) email = readStringField(userInfo, 'email');
+        if (!emailVerified)
+          emailVerified = readBooleanValue(userInfo.email_verified);
         if (!displayName) {
           displayName = firstStringField(userInfo, [
             'name',
@@ -232,9 +378,12 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       }
 
       return mapOidcUserProfile({
+        providerKey: input.oauth.providerKey,
+        providerLabel: input.oauth.displayName,
         issuerUrl: input.oauth.issuerUrl,
         subject,
         email,
+        emailVerified,
         displayName,
       });
     } catch (error) {
@@ -284,6 +433,76 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       rethrowKnownOAuthException(error);
       throw toOAuthServiceUnavailableException('OIDC discovery failed', error);
     }
+  }
+}
+
+class OAuth2OAuthAdapter implements OAuthProviderAdapter {
+  readonly providerKey = 'oauth2';
+  readonly providerProfile = 'oauth2';
+
+  constructor(private readonly options: OAuthAdapterOptions) {}
+
+  buildAuthorizationUrl(input: OAuthAuthorizationInput) {
+    try {
+      const authorizationUrl = parseOAuthIssuer(
+        input.oauth.authorizationUrl,
+        'OAuth authorization URL',
+      );
+      assertOAuthIssuerTransport(authorizationUrl, this.options, 'OAuth2');
+      authorizationUrl.searchParams.set('response_type', 'code');
+      authorizationUrl.searchParams.set('client_id', input.oauth.clientId);
+      authorizationUrl.searchParams.set('redirect_uri', input.redirectUri);
+      authorizationUrl.searchParams.set('state', input.state);
+      authorizationUrl.searchParams.set('code_challenge', input.codeChallenge);
+      authorizationUrl.searchParams.set('code_challenge_method', 'S256');
+      if (input.oauth.scopes.trim()) {
+        authorizationUrl.searchParams.set('scope', input.oauth.scopes.trim());
+      }
+      if (input.oauth.audience.trim()) {
+        authorizationUrl.searchParams.set(
+          'audience',
+          input.oauth.audience.trim(),
+        );
+      }
+      return Promise.resolve(authorizationUrl);
+    } catch (error) {
+      rethrowKnownOAuthException(error);
+      throw toOAuthServiceUnavailableException(
+        'OAuth2 authorization URL generation failed',
+        error,
+      );
+    }
+  }
+
+  async exchangeCode(input: OAuthCodeExchangeInput) {
+    throwOAuthCallbackError(input.url);
+    const code = input.url.searchParams.get('code');
+    if (!code) throw new UnauthorizedException('OAuth code is required');
+    const tokenUrl = parseOAuthIssuer(input.oauth.tokenUrl, 'OAuth token URL');
+    const userinfoUrl = parseOAuthIssuer(
+      input.oauth.userinfoUrl,
+      'OAuth userinfo URL',
+    );
+    assertOAuthIssuerTransport(tokenUrl, this.options, 'OAuth2');
+    assertOAuthIssuerTransport(userinfoUrl, this.options, 'OAuth2');
+    const tokenResponse = await postOAuthForm(tokenUrl.toString(), {
+      grant_type: 'authorization_code',
+      code,
+      client_id: input.oauth.clientId,
+      ...(input.oauth.clientSecret
+        ? { client_secret: input.oauth.clientSecret }
+        : {}),
+      redirect_uri: input.redirectUri,
+      code_verifier: input.codeVerifier,
+    });
+    const accessToken = readStringField(tokenResponse, 'access_token');
+    if (!accessToken) {
+      throw new UnauthorizedException('OAuth2 access token is missing');
+    }
+    const userInfo = await fetchOAuthJson(userinfoUrl.toString(), {
+      Authorization: `Bearer ${accessToken}`,
+    });
+    return mapOAuth2UserProfile(userInfo, tokenResponse, input.oauth);
   }
 }
 
@@ -363,6 +582,7 @@ function normalizeOAuthUserProfile(input: {
   providerProfile: OAuthProviderProfile;
   subject?: unknown;
   email?: unknown;
+  emailVerified?: unknown;
   displayName?: unknown;
 }): MappedOAuthUser {
   const subject = readStringValue(input.subject);
@@ -390,6 +610,7 @@ function normalizeOAuthUserProfile(input: {
     subject,
     email,
     emailSource: rawEmail ? 'provider' : 'derived',
+    emailVerified: Boolean(rawEmail && readBooleanValue(input.emailVerified)),
     displayName,
   };
 }
@@ -402,6 +623,25 @@ function normalizeProviderEmail(email: string, providerLabel: string) {
   return normalized;
 }
 
+async function probeOAuthEndpoint(
+  target: string,
+  key: OAuthConnectionCheck['key'],
+  options: OAuthAdapterOptions,
+): Promise<OAuthConnectionCheck> {
+  const url = parseOAuthIssuer(target, `OAuth ${key} URL`);
+  assertOAuthIssuerTransport(url, options, `OAuth ${key}`);
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(oauthProviderRequestTimeoutMs),
+    });
+    return { key, ok: response.status < 500, status: response.status };
+  } catch (error) {
+    void error;
+    return { key, ok: false };
+  }
+}
 async function postOAuthForm(
   targetUrl: string,
   fields: Record<string, string>,
@@ -480,13 +720,13 @@ function ensureOpenIdScope(scopes?: string) {
   return Array.from(new Set(tokens)).join(' ');
 }
 
-function createOAuthProviderScope(
-  providerProfile: OAuthProviderProfile,
-  issuerUrl: unknown,
-) {
+function createOAuthProviderScope(providerProfile: string, issuerUrl: unknown) {
   const issuerScope = normalizeOAuthIssuerScope(issuerUrl);
-  const prefix =
-    providerProfile === 'icetowne-blog' ? 'icetowne-blog' : 'oauth';
+  const prefix = (() => {
+    if (providerProfile === 'icetowne-blog') return 'icetowne-blog';
+    if (providerProfile === 'oidc') return 'oauth';
+    return `oauth:${providerProfile}`;
+  })();
   return `${prefix}:${issuerScope}`;
 }
 
@@ -605,6 +845,14 @@ function firstStringField(source: Record<string, unknown>, keys: string[]) {
 
 function readStringField(source: Record<string, unknown>, key: string) {
   return readStringValue(source[key]);
+}
+
+function firstBooleanField(source: Record<string, unknown>, keys: string[]) {
+  return keys.some((key) => readBooleanValue(source[key]));
+}
+
+function readBooleanValue(value: unknown) {
+  return value === true || value === 1 || value === '1' || value === 'true';
 }
 
 function readStringValue(value: unknown) {

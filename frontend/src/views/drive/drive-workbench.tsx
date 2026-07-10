@@ -11,12 +11,14 @@ import { WorkspaceNotificationStack } from "@/components/ui/workspace-notificati
 import { DriveFilePreviewDialog } from "@/components/ui/drive-file-preview-dialog";
 import { FileOpenWithDialog } from "@/components/ui/file-open-with-dialog";
 import { DriveUploadHud } from "@/components/ui/drive-upload-hud";
+import { UploadConflictDialog } from "@/components/ui/upload-conflict-dialog";
 import { AppLoading, LdrsLoadingState, WorkspaceSkeleton } from "@/components/common/ui/loading-state";
 import { findDriveItem, getChildItems, getFolderPath, getItemKind, type DriveItem, type DriveUserNav, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
-import { copyTextToClipboard, createPreviewUrl, createShareUrl, createUploadDriveFileTask, downloadWorkspaceDriveItem, downloadWorkspaceDriveItems, isUploadDriveFileControlError, type UploadDriveFileProgress, type UploadDriveFileTask } from "@/features/file/actions";
+import { copyTextToClipboard, createPreviewUrl, createShareUrl, createUploadDriveFileTask, downloadWorkspaceDriveItem, downloadWorkspaceDriveItems, isUploadDriveFileControlError, type UploadConflictStrategy, type UploadDriveFileProgress, type UploadDriveFileTask } from "@/features/file/actions";
+import { getDriveFileNameConflictKey, getDriveFileNameErrorMessageKey, validateDriveFileName } from "@/features/file/file-name-policy";
 import { createGeneratedFileTemplate, type GeneratedFileKind } from "@/features/file/generated-files";
 import { canOpenFilePreview, getDefaultFileOpenWith, getFileOpenWithOptions, getFileOpenWithStorageKey, type FileOpenWithApp } from "@/features/file/open-with";
-import { batchArchiveFileNodes, batchMoveFileNodes, batchRestoreFileNodes, clearStoredAuthToken, copyFileNode, createFolderNode, defaultPublicSiteSettings, deleteTransfer, DriveApiError, fetchFileNode, fetchFileNodesByState, fetchPublicSiteSettings, fetchStorageUsage, fetchTransfers, fetchWorkspaces, fetchWorkspaceShareSettings, logoutLocalUser, moveFileNode, permanentlyDeleteFileNode, renameFileNode, resolvePublicSiteName, restoreFileNode, searchFileNodes, updateFileNodeState, type AuthUser, type DriveSpaceScope, type FileNodeResponse, type PublicSiteSettings, type StorageUsage, type WorkspaceResponse, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { batchArchiveFileNodes, batchMoveFileNodes, batchRestoreFileNodes, clearStoredAuthToken, copyFileNode, createFolderNode, defaultPublicSiteSettings, deleteTransfer, DriveApiError, fetchFileNode, fetchFileNodesByState, fetchPublicSiteSettings, fetchStorageUsage, fetchTransfers, fetchWorkspaces, fetchWorkspaceShareSettings, getDriveApiErrorMessage, isAuthExpiredApiError, logoutLocalUser, moveFileNode, permanentlyDeleteFileNode, renameFileNode, resolvePublicSiteName, restoreFileNode, searchFileNodes, updateFileNodeState, type AuthUser, type DriveSpaceScope, type FileNodeResponse, type PublicSiteSettings, type StorageUsage, type WorkspaceResponse, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
 import { DriveShareDialog } from "./drive-share-dialog";
 import { LegalFooter } from "./legal-footer";
@@ -105,6 +107,10 @@ function splitNameForDuplicate(name: string) {
 type UploadTaskMeta = {
   onCompleted: (createdNode: FileNodeResponse) => void;
   onFailed?: (error: unknown) => void;
+};
+type UploadConflictPromptState = {
+  conflictCount: number;
+  fileNames: string[];
 };
 
 function getNameExtension(name: string) {
@@ -282,7 +288,9 @@ export function DriveWorkbench({
   const [shareSettingsError, setShareSettingsError] = useState<string | null>(null);
   const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
+  const [uploadConflictPrompt, setUploadConflictPrompt] = useState<UploadConflictPromptState | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadConflictResolverRef = useRef<((strategy: UploadConflictStrategy | null) => void) | null>(null);
   const uploadDraftCounterRef = useRef(0);
   const unmountedRef = useRef(false);
   const uploadTaskMetaRef = useRef(new Map<string, UploadTaskMeta>());
@@ -361,6 +369,14 @@ export function DriveWorkbench({
     const searchIds = new Set(searchItems.map((item) => item.id));
     return [...searchItems, ...allKnownItems.filter((item) => !searchIds.has(item.id))];
   }, [allKnownItems, searchItems, serverSearchActive]);
+  const getApiFeedback = useCallback((
+    error: unknown,
+    fallbackKey = "errors.unknown",
+    scope: "form" | "global" | "share" = "global",
+  ) => {
+    if (isAuthExpiredApiError(error)) clearStoredAuthToken();
+    return getDriveApiErrorMessage(error, t, { fallbackKey, scope });
+  }, [t]);
 
   useEffect(() => {
     if (!activeUserId) return;
@@ -439,10 +455,10 @@ export function DriveWorkbench({
         });
         setSearchTotal(result.total);
         setFilesError(null);
-      }).catch(() => {
+      }).catch((error) => {
         if (cancelled) return;
         if (searchOffset === 0) setSearchItems([]);
-        setFilesError(t("files.loadFailed"));
+        setFilesError(getApiFeedback(error, "files.loadFailed"));
       }).finally(() => {
         if (!cancelled) setSearchLoading(false);
       });
@@ -452,12 +468,14 @@ export function DriveWorkbench({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeNavForView, query, searchContextParentNodeId, searchFilters, searchOffset, serverSearchActive, spaceScope, t, workspaceId]);
+  }, [activeNavForView, getApiFeedback, query, searchContextParentNodeId, searchFilters, searchOffset, serverSearchActive, spaceScope, workspaceId]);
   useEffect(() => {
     const uploadTasks = uploadTasksRef.current;
     const uploadTaskMeta = uploadTaskMetaRef.current;
     return () => {
       unmountedRef.current = true;
+      uploadConflictResolverRef.current?.(null);
+      uploadConflictResolverRef.current = null;
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
       uploadTasks.forEach(task => task.cancel());
       uploadTasks.clear();
@@ -560,12 +578,12 @@ export function DriveWorkbench({
       setDriveItems(withShareFlags(activeNodes.map(mapFileNodeToDriveItem), shares));
       setArchivedItems(withShareFlags(archivedNodes.map(mapFileNodeToDriveItem), shares));
       setFilesError(null);
-    } catch {
+    } catch (error) {
       setDriveItems([]);
       setArchivedItems([]);
-      setFilesError(t("files.loadFailed"));
+      setFilesError(getApiFeedback(error, "files.loadFailed"));
     }
-  }, [t]);
+  }, [getApiFeedback]);
   const refreshShares = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return [] as RegisteredShare[];
     try {
@@ -576,24 +594,24 @@ export function DriveWorkbench({
       setDriveItems(current => withShareFlags(current, shares));
       setArchivedItems(current => withShareFlags(current, shares));
       return shares;
-    } catch {
+    } catch (error) {
       registeredSharesRef.current = [];
       setRegisteredShares([]);
-      setLinksError(t("share.apiUnavailable"));
+      setLinksError(getApiFeedback(error, "share.apiUnavailable"));
       return [] as RegisteredShare[];
     }
-  }, [t]);
+  }, [getApiFeedback]);
   const refreshShareSettings = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return;
     try {
       const settings = await fetchWorkspaceShareSettings(targetWorkspaceId);
       setShareSettings(settings);
       setShareSettingsError(null);
-    } catch {
+    } catch (error) {
       setShareSettings(null);
-      setShareSettingsError(t("admin.loadFailed"));
+      setShareSettingsError(getApiFeedback(error, "admin.loadFailed"));
     }
-  }, [t]);
+  }, [getApiFeedback]);
   const refreshTransfers = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return;
     try {
@@ -683,6 +701,26 @@ export function DriveWorkbench({
       tone: "error",
     });
   }, [t]);
+  const requestUploadConflictStrategy = useCallback((conflictingFiles: File[]) => {
+    uploadConflictResolverRef.current?.(null);
+    return new Promise<UploadConflictStrategy | null>((resolve) => {
+      uploadConflictResolverRef.current = resolve;
+      setUploadConflictPrompt({
+        conflictCount: conflictingFiles.length,
+        fileNames: [...new Set(conflictingFiles.map((file) => file.name))],
+      });
+    });
+  }, []);
+  const resolveUploadConflictPrompt = useCallback((strategy: UploadConflictStrategy | null) => {
+    const resolver = uploadConflictResolverRef.current;
+    uploadConflictResolverRef.current = null;
+    setUploadConflictPrompt(null);
+    resolver?.(strategy);
+  }, []);
+  const getConflictingUploadFiles = useCallback((files: File[]) => {
+    const siblingKeys = new Set(currentDirectoryItems.map((item) => getDriveFileNameConflictKey(item.name)));
+    return files.filter((file) => siblingKeys.has(getDriveFileNameConflictKey(file.name)));
+  }, [currentDirectoryItems]);
   const showBatchResult = useCallback((
     summary: { failed: number; requested: number; succeeded: number },
     failed: Array<{ id: string; message: string }> = [],
@@ -718,12 +756,12 @@ export function DriveWorkbench({
     if (actionItems.length > 1) {
       void downloadWorkspaceDriveItems(actionItems).then((result) => {
         showBatchResult(result.summary, result.failed);
-      }).catch(() => showFeedback(t("share.downloadFailed"), "error"));
+      }).catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
       return;
     }
     void downloadWorkspaceDriveItem(actionItems[0], workspaceId ?? undefined).then(() => {
       showFeedback(t("app.downloaded"));
-    }).catch(() => showFeedback(t("share.downloadFailed"), "error"));
+    }).catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
   };
   const archiveItems = (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
@@ -745,7 +783,7 @@ export function DriveWorkbench({
       } else {
         showBatchResult(result.summary, result.failed);
       }
-    }).catch(() => showFeedback(t("app.uploadFailed"), "error"));
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
   };
   const restoreItems = (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
@@ -764,7 +802,7 @@ export function DriveWorkbench({
       setSelected(current => current.filter(id => !result.succeeded.some(item => item.id === id)));
       if (actionItems.length === 1) showFeedback(t("app.refreshed"));
       else showBatchResult(result.summary, result.failed);
-    }).catch(() => showFeedback(t("app.uploadFailed"), "error"));
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
   };
   const deletePermanentlyItems = (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
@@ -794,7 +832,7 @@ export function DriveWorkbench({
         setSelected(current => current.filter(id => !result.succeededIds.includes(id)));
         showBatchResult(result, result.failedItems);
       })
-      .catch(() => showFeedback(t("app.uploadFailed"), "error"));
+      .catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
   };
   const refreshWorkspace = () => {
     if (bootLoading) return;
@@ -866,9 +904,10 @@ export function DriveWorkbench({
     setSidebarOpen(false);
   };
   const closeShareLink = (id: string) => {
-    void revokeRegisteredShare(id).then(() => refreshShares()).then(() => showFeedback(t("links.linkClosed"))).catch(() => {
-      setLinksError(t("links.closeFailed"));
-      showFeedback(t("links.closeFailed"));
+    void revokeRegisteredShare(id).then(() => refreshShares()).then(() => showFeedback(t("links.linkClosed"))).catch((error) => {
+      const message = getApiFeedback(error, "links.closeFailed");
+      setLinksError(message);
+      showFeedback(message, "error");
     });
   };
   const copyShareLink = async (id: string) => {
@@ -894,7 +933,7 @@ export function DriveWorkbench({
       const updatedItem = mapFileNodeToDriveItem(updatedNode);
       setDriveItems(current => withShareFlags(current.map(candidate => candidate.id === id ? updatedItem : candidate), registeredShares));
       setArchivedItems(current => withShareFlags(current.map(candidate => candidate.id === id ? updatedItem : candidate), registeredShares));
-    }).catch(() => showFeedback(t("app.uploadFailed"), "error"));
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
   };
   const createFolder = () => {
     if (!workspaceId) {
@@ -915,7 +954,7 @@ export function DriveWorkbench({
       setFocusedItemId(null);
       setRenamingItemId(createdNode.id);
       showFeedback(t("app.folderCreated"));
-    }).catch(() => showFeedback(t("app.uploadFailed"), "error")).finally(() => {
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error")).finally(() => {
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
       workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);
     });
@@ -951,6 +990,7 @@ export function DriveWorkbench({
         objectKey: null,
         name: progress.fileName,
         type: "upload",
+        errorMessage: null,
         progress: progress.progress,
         status: progress.status,
         createdAt: previous?.createdAt ?? updatedAt,
@@ -963,7 +1003,7 @@ export function DriveWorkbench({
       return next;
     });
   };
-  const markUploadTelemetryStatus = (id: string, status: UploadTelemetry["status"]) => {
+  const markUploadTelemetryStatus = (id: string, status: UploadTelemetry["status"], errorMessage?: string | null) => {
     const updatedAt = new Date().toISOString();
     setUploadTelemetry(current => {
       const row = current[id];
@@ -974,6 +1014,7 @@ export function DriveWorkbench({
           ...row,
           status,
           updatedAt,
+          errorMessage: errorMessage ?? (status === "failed" ? row.errorMessage ?? null : null),
           speedBytesPerSecond: null,
           remainingSeconds: null
         }
@@ -1008,6 +1049,7 @@ export function DriveWorkbench({
         objectKey: null,
         name: file.name,
         type: "upload",
+        errorMessage: null,
         progress: 0,
         status: "queued",
         createdAt,
@@ -1043,10 +1085,13 @@ export function DriveWorkbench({
         meta.onFailed?.(error);
         return;
       }
-      unregisterUploadTask(state.transferId);
+      if (state.transferId) {
+        if (draftId) unregisterUploadTask(draftId);
+        registerUploadTask(state.transferId, task, meta);
+        markUploadTelemetryStatus(state.transferId, "failed", getApiFeedback(error, "app.uploadFailed", "form"));
+      }
       if (draftId) {
-        unregisterUploadTask(draftId);
-        if (!state.transferId) markUploadTelemetryStatus(draftId, "failed");
+        if (!state.transferId) markUploadTelemetryStatus(draftId, "failed", getApiFeedback(error, "app.uploadFailed", "form"));
       }
       void refreshTransfers();
       meta.onFailed?.(error);
@@ -1057,6 +1102,7 @@ export function DriveWorkbench({
     meta: UploadTaskMeta,
     targetNav: "drive" | "transfers" = "transfers",
     preflightUsage: StorageUsage | null = storageUsage,
+    conflictStrategy: UploadConflictStrategy = "version",
   ) => {
     if (!workspaceId) {
       showFeedback(t("app.uploadFailed"), "error");
@@ -1081,6 +1127,7 @@ export function DriveWorkbench({
     }
     let task: UploadDriveFileTask | null = null;
     task = createUploadDriveFileTask({
+      conflictStrategy,
       file,
       onProgress: progress => {
         if (task) {
@@ -1105,9 +1152,19 @@ export function DriveWorkbench({
     if (!task || task.getState().status === "running") return;
     const meta = uploadTaskMetaRef.current.get(id) ?? {
       onCompleted: () => showFeedback(t("app.uploaded")),
-      onFailed: () => showFeedback(t("app.uploadFailed"), "error")
+      onFailed: (error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error")
     };
     attachUploadPromise(task.resume(), task, meta);
+  };
+  const retryUploadTransfer = (id: string) => {
+    const task = uploadTasksRef.current.get(id);
+    if (!task || task.getState().status === "running") return;
+    const meta = uploadTaskMetaRef.current.get(id) ?? {
+      onCompleted: () => showFeedback(t("app.uploaded")),
+      onFailed: (error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error")
+    };
+    markUploadTelemetryStatus(id, "queued");
+    attachUploadPromise(task.start(), task, meta);
   };
   const cancelUploadTransfer = (id: string) => {
     const task = uploadTasksRef.current.get(id);
@@ -1136,9 +1193,9 @@ export function DriveWorkbench({
     }
     void deleteTransfer(id).then(() => {
       showFeedback(t("transfers.deleted"));
-    }).catch(() => {
+    }).catch((error) => {
       void refreshTransfers();
-      showFeedback(t("app.uploadFailed"), "error");
+      showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
     });
   };
   const uploadGeneratedFile = (fileName: string, content: BlobPart[], mimeType: string) => {
@@ -1162,7 +1219,7 @@ export function DriveWorkbench({
           void refreshStorageUsage();
           return;
         }
-        showFeedback(t("app.uploadFailed"), "error");
+        showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
       }
     }, "drive");
   };
@@ -1185,6 +1242,11 @@ export function DriveWorkbench({
       setRenamingItemId(null);
       return true;
     }
+    const nameValidation = validateDriveFileName(name);
+    if (!nameValidation.ok) {
+      showFeedback(t(getDriveFileNameErrorMessageKey(nameValidation.code), nameValidation.values), "error");
+      return false;
+    }
 
     if (item.objectKey) {
       const previousExtension = getNameExtension(item.name);
@@ -1205,8 +1267,8 @@ export function DriveWorkbench({
       setRenamingItemId(null);
       showFeedback(t("app.renamed"));
       return true;
-    } catch {
-      showFeedback(t("app.uploadFailed"), "error");
+    } catch (error) {
+      showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
       return false;
     }
   };
@@ -1300,7 +1362,7 @@ export function DriveWorkbench({
         return;
       }
       showBatchResult(result.summary, result.failed);
-    }).catch(() => showFeedback(t("app.uploadFailed"), "error")).finally(() => {
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error")).finally(() => {
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
       workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);
     });
@@ -1427,6 +1489,15 @@ export function DriveWorkbench({
     const input = event.currentTarget;
     const selectedFiles = Array.from(event.target.files ?? []);
     if (selectedFiles.length > 0 && workspaceId) {
+      const invalidFile = selectedFiles.find(file => !validateDriveFileName(file.name).ok);
+      if (invalidFile) {
+        const validation = validateDriveFileName(invalidFile.name);
+        if (!validation.ok) {
+          showFeedback(t(getDriveFileNameErrorMessageKey(validation.code), validation.values), "error");
+        }
+        input.value = "";
+        return;
+      }
       const latestUsage = await fetchLatestStorageUsage(workspaceId);
       const selectedBytes = selectedFiles.reduce((total, file) => total + file.size, 0);
       const pendingUploadBytes = getPendingUploadBytes(Object.values(uploadTelemetry), spaceScopeRef.current);
@@ -1435,7 +1506,23 @@ export function DriveWorkbench({
         input.value = "";
         return;
       }
-      selectedFiles.forEach(file => {
+      const conflictingFiles = getConflictingUploadFiles(selectedFiles);
+      let conflictStrategy: UploadConflictStrategy = "version";
+      let uploadFiles = selectedFiles;
+      if (conflictingFiles.length > 0) {
+        const selectedStrategy = await requestUploadConflictStrategy(conflictingFiles);
+        if (!selectedStrategy) {
+          input.value = "";
+          return;
+        }
+        conflictStrategy = selectedStrategy;
+        if (selectedStrategy === "skip") {
+          const conflictingKeys = new Set(conflictingFiles.map((file) => getDriveFileNameConflictKey(file.name)));
+          uploadFiles = selectedFiles.filter((file) => !conflictingKeys.has(getDriveFileNameConflictKey(file.name)));
+          showFeedback(t("upload.conflictSkipped", { count: selectedFiles.length - uploadFiles.length }), "neutral");
+        }
+      }
+      uploadFiles.forEach(file => {
         startUploadFile(file, {
           onCompleted: () => showFeedback(t("app.uploaded")),
           onFailed: error => {
@@ -1444,9 +1531,9 @@ export function DriveWorkbench({
               void refreshStorageUsage();
               return;
             }
-            showFeedback(t("app.uploadFailed"), "error");
+            showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
           }
-        }, "transfers", latestUsage);
+        }, "transfers", latestUsage, conflictStrategy);
       });
     }
     input.value = "";
@@ -1585,7 +1672,7 @@ export function DriveWorkbench({
                 setShareOpen(true);
               }} onShowDetailsItem={showItemDetails} onSecurityItem={openItemSecurity} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} sortBy={searchFilters.sortBy} sortDirection={searchFilters.sortDirection} onSortChange={applyDriveSort} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}
                     {activeModule === "links" ? <LinksModule error={linksError} links={linkRows} onCloseLink={closeShareLink} onCopyLink={copyShareLink} palette={palette} sourceItems={allKnownItems} /> : null}
-                    {activeModule === "transfers" ? <TransfersModule controllableTransferIds={controllableTransferIds} onCancelTransfer={cancelUploadTransfer} onDeleteTransfer={deleteTransferRow} onPauseTransfer={pauseUploadTransfer} onResumeTransfer={resumeUploadTransfer} palette={palette} rows={visibleTransferRows} /> : null}
+                    {activeModule === "transfers" ? <TransfersModule controllableTransferIds={controllableTransferIds} onCancelTransfer={cancelUploadTransfer} onDeleteTransfer={deleteTransferRow} onPauseTransfer={pauseUploadTransfer} onResumeTransfer={resumeUploadTransfer} onRetryTransfer={retryUploadTransfer} palette={palette} rows={visibleTransferRows} /> : null}
                     {activeModule === "settings" ? (
                       <DriveSettingsWorkspace
                         currentUser={activeUser}
@@ -1619,6 +1706,14 @@ export function DriveWorkbench({
       </div>
 
       <HiddenFileInput inputRef={uploadInputRef} onChange={handleUploadFiles} />
+      <UploadConflictDialog
+        conflictCount={uploadConflictPrompt?.conflictCount ?? 0}
+        fileNames={uploadConflictPrompt?.fileNames ?? []}
+        onClose={() => resolveUploadConflictPrompt(null)}
+        onSelect={resolveUploadConflictPrompt}
+        open={Boolean(uploadConflictPrompt)}
+        palette={palette}
+      />
       <DriveShareDialog currentDirectoryItems={currentDirectoryItems} currentFolder={currentFolder} onClose={() => setShareOpen(false)} onShareCreated={share => {
       setRegisteredShares(current => [share, ...current.filter(item => item.token !== share.token)]);
       setLinksError(null);

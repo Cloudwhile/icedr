@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Readable } from 'stream';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -244,7 +248,38 @@ describe('FileNodesService', () => {
         Promise.resolve(nodes.find((node) => node.id === id) ?? null),
       ),
       completeUpload: jest.fn(
-        (dto: CompleteUploadDto & { ownerUserId?: string }) => {
+        (
+          dto: CompleteUploadDto & {
+            conflictTargetNodeId?: string;
+            ownerUserId?: string;
+          },
+        ) => {
+          const targetIndex = dto.conflictTargetNodeId
+            ? nodes.findIndex((node) => node.id === dto.conflictTargetNodeId)
+            : nodes.findIndex(
+                (node) =>
+                  !node.archivedAt &&
+                  node.workspaceId === dto.workspaceId &&
+                  node.parentNodeId === (dto.parentNodeId ?? null) &&
+                  node.spaceScope === (dto.spaceScope ?? 'workspace') &&
+                  node.name === dto.fileName,
+              );
+          if (targetIndex >= 0 && nodes[targetIndex].objectKey) {
+            const existing = nodes[targetIndex];
+            const node = createNode({
+              ...existing,
+              name: dto.fileName,
+              kind: 'doc',
+              mimeType: dto.mimeType ?? 'application/octet-stream',
+              sizeBytes: dto.sizeBytes,
+              objectKey: dto.objectKey,
+              owner: dto.owner ?? existing.owner,
+              ownerUserId: dto.ownerUserId ?? existing.ownerUserId,
+              updatedAt: new Date().toISOString(),
+            });
+            nodes[targetIndex] = node;
+            return Promise.resolve(node);
+          }
           const node = createNode({
             id: `node_${nodes.length + 1}`,
             workspaceId: dto.workspaceId,
@@ -636,6 +671,128 @@ describe('FileNodesService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('rejects upload intents with case-insensitive sibling conflicts', async () => {
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'icedr roadmap.docx',
+        mimeType: docxMimeType,
+        fileSizeBytes: 4096,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('skips upload intents when the conflict strategy is skip', async () => {
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'ICEDR Roadmap.docx',
+        conflictStrategy: 'skip',
+        mimeType: docxMimeType,
+        fileSizeBytes: 4096,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('renames upload intents when the conflict strategy is rename', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'icedr roadmap.docx',
+      conflictStrategy: 'rename',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+    });
+
+    expect(intent.fileName).toBe('icedr roadmap (2).docx');
+    expect(intent.conflictStrategy).toBe('rename');
+    expect(transfers.createUploadTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'icedr roadmap (2).docx',
+      }),
+    );
+  });
+
+  it('allows exact-name uploads to continue as file versions', async () => {
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'ICEDR Roadmap.docx',
+        mimeType: docxMimeType,
+        fileSizeBytes: 4096,
+      }),
+    ).resolves.toMatchObject({
+      transferId: 'transfer-test',
+    });
+    expect(transfers.createUploadTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows explicit version uploads for case-insensitive file conflicts', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'icedr roadmap.docx',
+      conflictStrategy: 'version',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+    });
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+    const node = await service.completeUpload({
+      workspaceId: 'workspace-default',
+      fileName: intent.fileName,
+      conflictStrategy: 'version',
+      objectKey: intent.objectKey,
+      sizeBytes: 4096,
+      mimeType: docxMimeType,
+      transferId: intent.transferId,
+      uploadSessionId: intent.sessionId,
+    });
+
+    expect(node.id).toBe('roadmap');
+    expect(node.name).toBe('icedr roadmap.docx');
+    await expect(
+      repository.countAuditEvents('file.version_created'),
+    ).resolves.toBe(1);
+  });
+
+  it('overwrites file conflicts without keeping the previous object', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'ICEDR Roadmap.docx',
+      conflictStrategy: 'overwrite',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+    });
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+    const node = await service.completeUpload({
+      workspaceId: 'workspace-default',
+      fileName: intent.fileName,
+      conflictStrategy: 'overwrite',
+      objectKey: intent.objectKey,
+      sizeBytes: 4096,
+      mimeType: docxMimeType,
+      transferId: intent.transferId,
+      uploadSessionId: intent.sessionId,
+    });
+
+    expect(node.id).toBe('roadmap');
+    expect(storage.deleteObject).toHaveBeenCalledWith(
+      'uploads/workspace-default/root/seed-roadmap.docx',
+    );
+    await expect(
+      repository.countAuditEvents('file.upload_overwritten'),
+    ).resolves.toBe(1);
+    await expect(
+      repository.countAuditEvents('file.version_created'),
+    ).resolves.toBe(0);
   });
 
   it('rejects upload intents that exceed configured storage quota', async () => {

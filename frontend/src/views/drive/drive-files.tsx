@@ -18,7 +18,8 @@ import {
   type Palette,
 } from "@/features/file/model";
 import { isTextEditableFile } from "@/features/file/open-with";
-import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
+import { preventDriveEntryTextSelection } from "@/features/file/drive-entry-events";
+import { AnimatedCheckMark, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 import type { DriveSortBy, DriveSortDirection } from "./drive-search-model";
 
 const buttonTypeAttr: { type?: "button" } = {
@@ -755,7 +756,11 @@ function FileTable({
         data-selected={checked ? "" : undefined}
         onClick={(event) => onSelectItem(event, item)}
         onContextMenu={(event) => openContextMenu(event, item)}
-        onDoubleClick={() => openItemSurface(item, openFolder, openPreview)}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          openItemSurface(item, openFolder, openPreview);
+        }}
+        onMouseDown={preventDriveEntryTextSelection}
       >
         <td>
           <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
@@ -858,7 +863,7 @@ function FileTable({
           </thead>
           <tbody>
             {currentFolderId ? (
-              <tr data-drive-entry data-motion-row onDoubleClick={goUp} onContextMenu={(event) => event.preventDefault()}>
+              <tr data-drive-entry data-motion-row onDoubleClick={(event) => { event.preventDefault(); goUp(); }} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
                 <td />
                 <td>
                   <span className="drive-file-name-button drive-parent-row-label">
@@ -989,40 +994,49 @@ function FileGrid({
         className="drive-file-card icedr-select-parent"
         onClick={(event) => onSelectItem(event, item)}
         onContextMenu={(event) => openContextMenu(event, item)}
-        onDoubleClick={() => openItemSurface(item, openFolder, openPreview)}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          openItemSurface(item, openFolder, openPreview);
+        }}
+        onMouseDown={preventDriveEntryTextSelection}
       >
-        <div className="drive-card-title">
-          <span className="drive-file-name-button" data-renaming={isRenaming ? "" : undefined}>
-            <ItemIcon item={item} palette={palette} />
-            {isRenaming ? (
-              <InlineRenameInput
-                ariaLabel={t("actions.rename")}
-                onCancel={onCancelRenameItem}
-                onCommit={(name) => onCommitRenameItem(item, name)}
-                palette={palette}
-                selectBaseName={Boolean(item.objectKey)}
-                value={item.name}
-              />
-            ) : (
-              <>
-                <span className="drive-file-name-text icedr-truncate">{item.name}</span>
-                {pathHint ? <span className="drive-file-path-text icedr-truncate">{pathHint}</span> : null}
-              </>
-            )}
-          </span>
-          <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
+        <div className="drive-card-visual">
+          <DriveItemPreview className="drive-card-preview" iconSize={48} item={item} palette={palette} />
+          <div className="drive-card-select">
+            <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
+          </div>
         </div>
-        <DriveItemPreview className="drive-card-preview" iconSize={44} item={item} palette={palette} />
-        <div className="drive-card-meta">
-          <span className="icedr-truncate">{itemSize}</span>
-          <div className="drive-card-actions" onClick={(event) => event.stopPropagation()}>
-            <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
-              <LocalIcon name="star" size={16} color={item.starred ? palette.primaryHover : palette.subtle} />
-            </ToolButton>
-            <MoreActionsMenu
-              actionItems={actionItems}
-              palette={palette}
-            />
+        <div className="drive-card-body">
+          <div className="drive-card-title">
+            <span className="drive-card-name-block" data-renaming={isRenaming ? "" : undefined}>
+              {isRenaming ? (
+                <InlineRenameInput
+                  ariaLabel={t("actions.rename")}
+                  onCancel={onCancelRenameItem}
+                  onCommit={(name) => onCommitRenameItem(item, name)}
+                  palette={palette}
+                  selectBaseName={Boolean(item.objectKey)}
+                  value={item.name}
+                />
+              ) : (
+                <>
+                  <span className="drive-card-file-name" title={item.name}>{item.name}</span>
+                  {pathHint ? <span className="drive-card-path icedr-truncate" title={pathHint}>{pathHint}</span> : null}
+                </>
+              )}
+            </span>
+          </div>
+          <div className="drive-card-meta">
+            <span className="drive-card-size icedr-truncate">{itemSize}</span>
+            <div className="drive-card-actions" onClick={(event) => event.stopPropagation()}>
+              <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
+                <LocalIcon name="star" size={16} color={item.starred ? palette.primaryHover : palette.subtle} />
+              </ToolButton>
+              <MoreActionsMenu
+                actionItems={actionItems}
+                palette={palette}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1033,18 +1047,19 @@ function FileGrid({
     <>
       <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid">
         {currentFolderId ? (
-          <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onDoubleClick={goUp} onContextMenu={(event) => event.preventDefault()}>
-            <div className="drive-card-title">
-              <span className="drive-file-name-button drive-parent-row-label">
-                <LocalIcon name="arrow_up" size={18} color={palette.primary} />
-                <span className="icedr-truncate">{t("files.parentDirectory")}</span>
-              </span>
+          <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onDoubleClick={(event) => { event.preventDefault(); goUp(); }} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
+            <div className="drive-card-visual">
+              <div className="drive-card-preview drive-parent-card-preview">
+                <LocalIcon name="arrow_up" size={48} color={palette.primary} />
+              </div>
             </div>
-            <div className="drive-card-preview">
-              <LocalIcon name="arrow_up" size={44} color={palette.primary} />
-            </div>
-            <div className="drive-card-meta">
-              <span>{t("files.kind.folder")}</span>
+            <div className="drive-card-body">
+              <div className="drive-card-title">
+                <span className="drive-card-file-name drive-parent-row-label">{t("files.parentDirectory")}</span>
+              </div>
+              <div className="drive-card-meta drive-parent-card-meta">
+                <span>{t("files.kind.folder")}</span>
+              </div>
             </div>
           </button>
         ) : null}

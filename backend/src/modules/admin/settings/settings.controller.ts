@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Headers, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AdminGuardService } from '../../../common/security/admin-guard.service';
 import {
@@ -89,6 +98,57 @@ export class OAuthSettingsController {
     return this.settingsService.toOAuthResponse(
       await this.settingsService.getOAuthSettings(),
     );
+  }
+
+  @Get('providers')
+  async listProviders(@Headers('authorization') authorization?: string) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.listOAuthProviders();
+  }
+
+  @Post('providers/test')
+  async testProvider(
+    @Body() dto: UpdateOAuthSettingsDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.testOAuthProvider(dto);
+  }
+  @Post('providers')
+  async createProvider(
+    @Body() dto: UpdateOAuthSettingsDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.createOAuthProvider(dto);
+  }
+
+  @Patch('providers/:id')
+  async updateProvider(
+    @Param('id') id: string,
+    @Body() dto: UpdateOAuthSettingsDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.updateOAuthProvider(id, dto);
+  }
+
+  @Post('providers/:id/activate')
+  async activateProvider(
+    @Param('id') id: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.updateOAuthProvider(id, { enabled: true });
+  }
+
+  @Delete('providers/:id')
+  async deleteProvider(
+    @Param('id') id: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.deleteOAuthProvider(id);
   }
 
   @Patch()

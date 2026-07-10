@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -189,6 +190,29 @@ describe('StorageService', () => {
     });
   });
 
+  it('uses opaque expiring tickets for local download urls', async () => {
+    const { service, signer } = createService();
+
+    const intent = await service.createPresignedDownload(
+      'local/workspace-default/root/file.pdf',
+      'file.pdf',
+    );
+
+    expect(intent).toMatchObject({
+      bucket: 'local',
+      expiresInSeconds: 300,
+      key: 'local/workspace-default/root/file.pdf',
+      method: 'GET',
+    });
+    expect(intent.url).toMatch(/^\/api\/storage\/local-files\?ticket=/);
+    expect(intent.url).not.toContain('workspace-default');
+    expect(intent.url).not.toContain('file.pdf');
+    expect(signer).not.toHaveBeenCalled();
+    await expect(
+      service.getLocalDownload('invalid-ticket'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('rewrites presigned object urls to the public storage endpoint', async () => {
     const { service } = createService(
       {
@@ -248,7 +272,7 @@ describe('StorageService', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('purges local file records when switching to distributed storage', async () => {
+  it('preserves local file records when switching new uploads to distributed storage', async () => {
     const { deleteMany, service, settingsRepository } = createService();
     jest.spyOn(settingsRepository, 'get').mockResolvedValueOnce({
       ...baseSettings(),
@@ -257,9 +281,7 @@ describe('StorageService', () => {
 
     await service.updateSettings({ distributedStorageEnabled: true });
 
-    expect(deleteMany).toHaveBeenCalledWith({
-      where: { objectKey: { startsWith: 'local/' } },
-    });
+    expect(deleteMany).not.toHaveBeenCalled();
   });
 
   it('returns resolved object storage settings without exposing the secret', async () => {

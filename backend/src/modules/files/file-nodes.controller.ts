@@ -15,6 +15,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
+import { createAttachmentContentDisposition } from '../../common/security/file-name-policy';
 import {
   createRequestAuditMetadata,
   createVisitorAuditMetadata,
@@ -482,7 +483,7 @@ export class FileNodesController {
     response.setHeader('Content-Type', download.contentType);
     response.setHeader(
       'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(download.filename)}"`,
+      createAttachmentContentDisposition(download.filename),
     );
     return download.content;
   }

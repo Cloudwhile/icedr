@@ -1,8 +1,10 @@
 import {
   ForbiddenException,
   GoneException,
+  HttpException,
   NotFoundException,
 } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import type { FileNodeResponse } from '../files/file-nodes.dto';
 import { FileNodesService } from '../files/file-nodes.service';
 import { resolveFilePreviewCapability } from '../files/file-preview-policy';
@@ -76,6 +78,7 @@ class SharesRepositorySpecDouble {
   >();
   readonly auditEvents: Array<{
     action: string;
+    createdAt: string;
     target: string;
     metadata: Record<string, unknown>;
   }> = [];
@@ -126,7 +129,12 @@ class SharesRepositorySpecDouble {
     target: string,
     metadata: Record<string, unknown> = {},
   ) {
-    this.auditEvents.push({ action, target, metadata });
+    this.auditEvents.push({
+      action,
+      createdAt: new Date().toISOString(),
+      target,
+      metadata,
+    });
   }
 
   recordDownloadStarted(
@@ -172,6 +180,7 @@ class SharesRepositorySpecDouble {
     }
     this.auditEvents.push({
       action: 'share.download_started',
+      createdAt: new Date().toISOString(),
       target: token,
       metadata,
     });
@@ -195,6 +204,27 @@ class SharesRepositorySpecDouble {
       this.auditEvents.filter(
         (event) => event.target === token && event.action === action,
       ).length,
+    );
+  }
+
+  listRecentShareAuditEvents(token: string, since: Date) {
+    return Promise.resolve(
+      this.auditEvents
+        .filter(
+          (event) =>
+            event.target === token &&
+            new Date(event.createdAt).getTime() >= since.getTime(),
+        )
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() -
+            new Date(left.createdAt).getTime(),
+        )
+        .map((event) => ({
+          action: event.action,
+          createdAt: event.createdAt,
+          metadata: event.metadata,
+        })),
     );
   }
 
@@ -291,10 +321,13 @@ describe('SharesService', () => {
   let mailService: Pick<MailService, 'sendShareAccessCode'>;
   let storageService: Pick<StorageService, 'createPresignedDownload'>;
   let workspacesService: Pick<WorkspacesService, 'getShareSettings'>;
+  let configService: Pick<ConfigService, 'get'>;
+  let configValues: Record<string, unknown>;
   let sentCodes: Map<string, string>;
 
   beforeEach(() => {
     sentCodes = new Map<string, string>();
+    configValues = {};
     repository =
       new SharesRepositorySpecDouble() as unknown as SharesRepository;
     fileNodesService = {
@@ -445,12 +478,16 @@ describe('SharesService', () => {
         }),
       ),
     };
+    configService = {
+      get: jest.fn((key: string) => configValues[key]),
+    };
     service = new SharesService(
       repository,
       fileNodesService as FileNodesService,
       storageService as StorageService,
       workspacesService as WorkspacesService,
       mailService as MailService,
+      configService as ConfigService,
     );
   });
 
@@ -513,6 +550,28 @@ describe('SharesService', () => {
     await expect(repository.countAuditEvents('share.created')).resolves.toBe(1);
     await expect(repository.countAuditEvents('share.viewed')).resolves.toBe(1);
     await expect(repository.countAuditEvents('share.revoked')).resolves.toBe(1);
+  });
+
+  it('rate limits repeated share views and records abnormal access', async () => {
+    configValues['share.rateLimit.viewMax'] = 1;
+    configValues['share.rateLimit.viewWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.10', userAgent: 'Spec Browser' };
+
+    await service.getShare(created.token, visitor);
+    await expectRateLimited(service.getShare(created.token, visitor));
+
+    const rateLimitedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.rate_limited');
+    expect(rateLimitedAudit?.metadata).toMatchObject({
+      ip: '203.0.113.10',
+      rateLimit: {
+        limit: 1,
+        scope: 'view',
+        windowSeconds: 60,
+      },
+    });
   });
 
   it('creates download intents and returns presigned object redirects for files', async () => {
@@ -688,7 +747,7 @@ describe('SharesService', () => {
 
   it('uses account access sessions to bypass visitor wait and speed limits', async () => {
     const created = await service.createShare(createDto());
-    const session = await service.createVerifiedOAuthAccessSession(
+    const session = await service.createVerifiedAccountAccessSession(
       created.token,
       {
         id: 'user_ica',
@@ -727,6 +786,65 @@ describe('SharesService', () => {
       actorUserId: 'user_ica',
       identityType: 'ica',
     });
+  });
+
+  it('uses the main account session directly for gated share downloads', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, waitValue: 15 },
+    });
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      undefined,
+      { actorUserId: 'user_main' },
+      {
+        id: 'user_main',
+        avatarUrl: null,
+        displayName: 'Main User',
+        email: 'main@example.test',
+      },
+    );
+
+    expect(intent.policyDecision).toMatchObject({
+      identityType: 'ica',
+      waitSeconds: 0,
+      speedLimit: null,
+      bypassWait: true,
+      bypassSpeedLimit: true,
+    });
+    const audit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents
+      .filter((event) => event.action === 'share.download_intent_created')
+      .at(-1);
+    expect(audit?.metadata).toMatchObject({
+      actorUserId: 'user_main',
+      identityType: 'ica',
+      email: 'main@example.test',
+    });
+  });
+
+  it('enforces share email rules for main account access', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, allowedDomain: 'company.example' },
+    });
+
+    await expect(
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        undefined,
+        {},
+        {
+          id: 'user_main',
+          avatarUrl: null,
+          displayName: 'Main User',
+          email: 'main@example.test',
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('returns backend manifest downloads for folders without object keys', async () => {
@@ -820,6 +938,99 @@ describe('SharesService', () => {
     ).resolves.toBe(1);
   });
 
+  it('rate limits email access code requests before delivery', async () => {
+    configValues['share.rateLimit.emailCodeMax'] = 1;
+    configValues['share.rateLimit.emailCodeWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.11', userAgent: 'Spec Browser' };
+
+    await service.sendEmailAccessCode(
+      created.token,
+      { email: 'reviewer@example.com' },
+      visitor,
+    );
+    await expectRateLimited(
+      service.sendEmailAccessCode(
+        created.token,
+        { email: 'reviewer@example.com' },
+        visitor,
+      ),
+    );
+
+    expect(mailService.sendShareAccessCode).toHaveBeenCalledTimes(1);
+    const rateLimitedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.rate_limited');
+    expect(rateLimitedAudit?.metadata).toMatchObject({
+      visitorEmail: 'reviewer@example.com',
+      rateLimit: {
+        limit: 1,
+        scope: 'email-code',
+      },
+    });
+  });
+
+  it('temporarily locks email code verification after repeated failures', async () => {
+    configValues['share.rateLimit.emailVerifyMax'] = 1;
+    configValues['share.rateLimit.emailVerifyWindowSeconds'] = 60;
+    configValues['share.rateLimit.emailVerifyLockSeconds'] = 300;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.12', userAgent: 'Spec Browser' };
+    const email = 'reviewer@example.com';
+    await service.sendEmailAccessCode(created.token, { email }, visitor);
+
+    await expect(
+      service.verifyEmailAccessCode(
+        created.token,
+        { email, code: '000000' },
+        visitor,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expectRateLimited(
+      service.verifyEmailAccessCode(
+        created.token,
+        { email, code: '111111' },
+        visitor,
+      ),
+    );
+
+    await expect(
+      repository.countAuditEvents('share.access_code_failed'),
+    ).resolves.toBe(1);
+    await expect(
+      repository.countAuditEvents('share.access_code_locked'),
+    ).resolves.toBe(1);
+  });
+
+  it('rate limits repeated download intent creation', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+
+    await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    await expectRateLimited(
+      service.createDownloadIntent(created.token, 'roadmap', session.sessionId),
+    );
+
+    const rateLimitedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.rate_limited');
+    expect(rateLimitedAudit?.metadata).toMatchObject({
+      identityType: 'email',
+      nodeId: 'roadmap',
+      visitorEmail: 'reviewer@example.com',
+      rateLimit: {
+        limit: 1,
+        scope: 'download-intent',
+      },
+    });
+  });
+
   it('keeps email sessions and download intents usable across service instances', async () => {
     const created = await service.createShare(createDto());
     const email = 'reviewer@example.com';
@@ -833,6 +1044,7 @@ describe('SharesService', () => {
       storageService as StorageService,
       workspacesService as WorkspacesService,
       mailService as MailService,
+      configService as ConfigService,
     );
     const session = await restartedService.verifyEmailAccessCode(
       created.token,
@@ -996,5 +1208,16 @@ describe('SharesService', () => {
     const code = sentCodes.get(email);
     expect(code).toBeDefined();
     return service.verifyEmailAccessCode(token, { email, code: code! });
+  }
+
+  async function expectRateLimited(promise: Promise<unknown>) {
+    let caught: unknown;
+    try {
+      await promise;
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).getStatus()).toBe(429);
   }
 });

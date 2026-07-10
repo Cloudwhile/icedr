@@ -10,10 +10,12 @@ export type TransferMetrics = {
 };
 
 export type TransferRow = Omit<TransferResponse, "status"> & {
+  errorMessage?: string | null;
   status: TransferStatus;
 } & Partial<TransferMetrics>;
 
 export type UploadTelemetry = Omit<TransferResponse, "status"> & {
+  errorMessage?: string | null;
   spaceScope?: DriveSpaceScope;
   status: TransferStatus;
 } & TransferMetrics;

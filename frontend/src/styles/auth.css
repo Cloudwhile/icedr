@@ -317,16 +317,17 @@
 
 .icedr-auth-form-slot {
   align-self: center;
+  box-sizing: border-box;
   justify-self: center;
   max-height: 100%;
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px 0;
+  padding: 4px;
   scrollbar-gutter: stable;
   transform: translateY(-8px);
-  width: min(420px, 100%);
+  width: min(428px, 100%);
 }
 
 .icedr-auth-page[data-auth-mode="register"] .icedr-auth-form-slot {
@@ -637,6 +638,12 @@
   gap: 12px;
 }
 
+.icedr-auth-code-error {
+  color: var(--auth-danger);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .icedr-auth-code-recipient {
   align-items: center;
   color: var(--auth-code-muted);
@@ -746,4 +753,18 @@
   .icedr-auth-form-heading h1 {
     font-size: 22px;
   }
+}
+
+.icedr-auth-provider-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 9px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.icedr-auth-provider-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -3,6 +3,8 @@ node_modules
 dist
 build
 coverage
+output/
+.playwright-cli/
 docs/.vitepress/.temp/
 docs/.vitepress/cache/
 .env

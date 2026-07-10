@@ -23,6 +23,7 @@ import {
   FileVersionResponse,
   PreviewIntentResponse,
   SearchFileNodesQueryDto,
+  type UploadConflictStrategy,
 } from './file-nodes.dto';
 import {
   resolveFilePreviewCapability,
@@ -37,6 +38,7 @@ export type FileAuditAction =
   | 'file.content_updated'
   | 'file.upload_intent_created'
   | 'file.upload_completed'
+  | 'file.upload_overwritten'
   | 'file.version_created'
   | 'file.version_downloaded'
   | 'file.version_restored'
@@ -493,31 +495,44 @@ export class FileNodesRepository {
     return row ? this.mapPreviewArtifact(row) : null;
   }
 
-  async completeUpload(dto: CompleteUploadDto & { ownerUserId?: string }) {
+  async completeUpload(
+    dto: CompleteUploadDto & {
+      conflictStrategy?: UploadConflictStrategy;
+      conflictTargetNodeId?: string;
+      ownerUserId?: string;
+    },
+  ) {
     const now = new Date();
     const parentNodeId = dto.parentNodeId ?? null;
     const spaceScope = dto.spaceScope ?? 'workspace';
     const row = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.fileNode.findFirst({
-        where: {
-          archivedAt: null,
-          name: dto.fileName,
-          parentNodeId,
-          spaceScope,
-          workspaceId: dto.workspaceId,
-        },
-      });
+      const existing = dto.conflictTargetNodeId
+        ? await tx.fileNode.findUnique({
+            where: { id: dto.conflictTargetNodeId },
+          })
+        : await tx.fileNode.findFirst({
+            where: {
+              archivedAt: null,
+              name: dto.fileName,
+              parentNodeId,
+              spaceScope,
+              workspaceId: dto.workspaceId,
+            },
+          });
 
       if (existing?.objectKey) {
-        await this.createVersionForNode(tx, existing, {
-          remark: 'Replaced by upload',
-          uploadedBy: dto.owner ?? existing.ownerName,
-        });
+        if (dto.conflictStrategy !== 'overwrite') {
+          await this.createVersionForNode(tx, existing, {
+            remark: 'Replaced by upload',
+            uploadedBy: dto.owner ?? existing.ownerName,
+          });
+        }
         return tx.fileNode.update({
           where: { id: existing.id },
           data: {
             kind: this.getKind(dto.fileName, dto.mimeType),
             mimeType: dto.mimeType ?? 'application/octet-stream',
+            name: dto.fileName,
             objectKey: dto.objectKey,
             ownerUserId: dto.ownerUserId ?? existing.ownerUserId,
             ownerName: dto.owner ?? existing.ownerName,

@@ -43,7 +43,16 @@ export type ShareAuditAction =
   | 'share.download_started'
   | 'share.preview_requested'
   | 'share.access_code_sent'
-  | 'share.access_session_created';
+  | 'share.access_session_created'
+  | 'share.access_code_failed'
+  | 'share.access_code_locked'
+  | 'share.rate_limited';
+
+export type ShareAuditEventSummary = {
+  action: ShareAuditAction;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+};
 
 export type ShareVisitorFingerprint = {
   ip?: string;
@@ -316,6 +325,30 @@ export class SharesRepository {
         shareToken,
       },
     });
+  }
+
+  async listRecentShareAuditEvents(
+    shareToken: string,
+    since: Date,
+  ): Promise<ShareAuditEventSummary[]> {
+    const rows = await this.prisma.auditEvent.findMany({
+      where: {
+        shareToken,
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        action: true,
+        createdAt: true,
+        metadata: true,
+      },
+    });
+
+    return rows.map((row) => ({
+      action: row.action as ShareAuditAction,
+      createdAt: row.createdAt.toISOString(),
+      metadata: this.parseAuditMetadata(row.metadata),
+    }));
   }
 
   private resolveShareAuditActor(
@@ -799,6 +832,20 @@ export class SharesRepository {
     return typeof value === 'string'
       ? (JSON.parse(value) as ShareResponse['policy'])
       : (value as ShareResponse['policy']);
+  }
+
+  private parseAuditMetadata(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    }
+    return {};
   }
 
   private toPolicyJson(policy: ShareResponse['policy']): Prisma.InputJsonValue {

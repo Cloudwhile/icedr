@@ -28,6 +28,9 @@ const copyModels = [
   'authPasswordReset',
   'authPasskey',
   'authChallenge',
+  'authRateLimit',
+  'authStepUpToken',
+  'authRecoveryCode',
   'authOAuthState',
   'authOAuthExchangeCode',
   'setting',
@@ -144,6 +147,19 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   get authChallenge(): PrismaClient['authChallenge'] {
     return this.activeClient.authChallenge as PrismaClient['authChallenge'];
+  }
+
+  get authRateLimit(): PrismaClient['authRateLimit'] {
+    return this.activeClient.authRateLimit as PrismaClient['authRateLimit'];
+  }
+
+  get authStepUpToken(): PrismaClient['authStepUpToken'] {
+    return this.activeClient.authStepUpToken as PrismaClient['authStepUpToken'];
+  }
+
+  get authRecoveryCode(): PrismaClient['authRecoveryCode'] {
+    return this.activeClient
+      .authRecoveryCode as PrismaClient['authRecoveryCode'];
   }
 
   get authOAuthState(): PrismaClient['authOAuthState'] {
@@ -299,6 +315,58 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   private async ensureSqliteRuntimeSchema() {
     await this.ensureSqliteColumn(
+      'auth_settings',
+      'minimum_authentication_methods',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await this.ensureSqliteColumn('auth_passkeys', 'aaguid', 'TEXT');
+    await this.ensureSqliteColumn(
+      'auth_passkeys',
+      'created_user_agent',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn('auth_passkeys', 'created_ip_hash', 'TEXT');
+    await this.ensureSqliteColumn(
+      'auth_passkeys',
+      'last_used_user_agent',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn('auth_passkeys', 'last_used_ip_hash', 'TEXT');
+    await this.ensureSqliteColumn(
+      'auth_challenges',
+      'attempt_count',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await this.ensureSqliteColumn('auth_challenges', 'claimed_at', 'TEXT');
+    await this.ensureSqliteColumn(
+      'auth_challenges',
+      'claim_token_hash',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn('auth_oauth_states', 'user_id', 'TEXT');
+    await this.ensureSqliteColumn(
+      'auth_oauth_states',
+      'session_token_hash',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn('auth_oauth_states', 'purpose', 'TEXT');
+    await this.ensureSqliteColumn(
+      'auth_oauth_exchange_codes',
+      'flow',
+      "TEXT NOT NULL DEFAULT 'login'",
+    );
+    await this.ensureSqliteColumn(
+      'auth_oauth_exchange_codes',
+      'session_token_hash',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn(
+      'auth_oauth_exchange_codes',
+      'purpose',
+      'TEXT',
+    );
+    await this.ensureSqlitePasskeySecurityTables();
+    await this.ensureSqliteColumn(
       'file_nodes',
       'space_scope',
       "TEXT NOT NULL DEFAULT 'workspace'",
@@ -311,6 +379,25 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     await this.activeClient.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
     );
+    await this.activeClient.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "auth_challenges_flow_expires_at_used_at_idx" ON "auth_challenges"("flow", "expires_at", "used_at")',
+    );
+  }
+
+  private async ensureSqlitePasskeySecurityTables() {
+    const statements = [
+      'CREATE TABLE IF NOT EXISTS "auth_rate_limits" ("id" TEXT NOT NULL PRIMARY KEY, "action" TEXT NOT NULL, "scope_hash" TEXT NOT NULL, "window_started_at" TEXT NOT NULL, "count" INTEGER NOT NULL DEFAULT 1, "updated_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS "auth_rate_limits_action_scope_hash_key" ON "auth_rate_limits"("action", "scope_hash")',
+      'CREATE INDEX IF NOT EXISTS "auth_rate_limits_updated_at_idx" ON "auth_rate_limits"("updated_at")',
+      'CREATE TABLE IF NOT EXISTS "auth_step_up_tokens" ("token_hash" TEXT NOT NULL PRIMARY KEY, "user_id" TEXT NOT NULL, "session_token_hash" TEXT NOT NULL, "method" TEXT NOT NULL, "purpose" TEXT NOT NULL, "expires_at" TEXT NOT NULL, "used_at" TEXT, "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "auth_step_up_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE)',
+      'CREATE INDEX IF NOT EXISTS "auth_step_up_tokens_user_id_purpose_expires_at_idx" ON "auth_step_up_tokens"("user_id", "purpose", "expires_at")',
+      'CREATE TABLE IF NOT EXISTS "auth_recovery_codes" ("id" TEXT NOT NULL PRIMARY KEY, "user_id" TEXT NOT NULL, "batch_id" TEXT NOT NULL, "code_hash" TEXT NOT NULL, "used_at" TEXT, "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "auth_recovery_codes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS "auth_recovery_codes_code_hash_key" ON "auth_recovery_codes"("code_hash")',
+      'CREATE INDEX IF NOT EXISTS "auth_recovery_codes_user_id_used_at_idx" ON "auth_recovery_codes"("user_id", "used_at")',
+    ];
+    for (const statement of statements) {
+      await this.activeClient.$executeRawUnsafe(statement);
+    }
   }
 
   private async ensureSqliteColumn(

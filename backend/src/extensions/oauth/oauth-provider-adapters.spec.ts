@@ -56,6 +56,7 @@ describe('OAuth provider adapters', () => {
       subject: 'oidc-subject-1',
       email: 'user@example.com',
       emailSource: 'provider',
+      emailVerified: false,
       displayName: 'OIDC User',
     });
   });
@@ -166,6 +167,7 @@ describe('OAuth provider adapters', () => {
       subject: '42',
       email: 'blogger@example.com',
       emailSource: 'provider',
+      emailVerified: false,
       displayName: 'ice-blogger',
     });
   });

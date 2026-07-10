@@ -88,6 +88,27 @@ export class MailService {
     });
   }
 
+  async sendSecurityNotification(input: {
+    email: string;
+    event: 'login' | 'passkey-added' | 'passkey-removed';
+    locale: 'en' | 'zh';
+    occurredAt: string;
+    deviceName: string;
+    ipAddress: string;
+  }) {
+    const siteName = await this.resolveSiteName();
+    const content = this.buildSecurityNotificationMessage({
+      ...input,
+      siteName,
+    });
+    await this.sendMail({
+      to: input.email,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+    });
+  }
+
   async sendMail(message: {
     to: string;
     subject: string;
@@ -236,6 +257,58 @@ export class MailService {
         ],
         footer: input.footer,
       }),
+    };
+  }
+
+  private buildSecurityNotificationMessage(input: {
+    siteName: string;
+    event: 'login' | 'passkey-added' | 'passkey-removed';
+    locale: 'en' | 'zh';
+    occurredAt: string;
+    deviceName: string;
+    ipAddress: string;
+  }) {
+    const zhTitles = {
+      login: '账号刚刚完成登录',
+      'passkey-added': '账号添加了新的 Passkey',
+      'passkey-removed': '账号移除了 Passkey',
+    } as const;
+    const enTitles = {
+      login: 'A sign-in just completed',
+      'passkey-added': 'A new Passkey was added',
+      'passkey-removed': 'A Passkey was removed',
+    } as const;
+    const title =
+      input.locale === 'zh' ? zhTitles[input.event] : enTitles[input.event];
+    const labels =
+      input.locale === 'zh'
+        ? {
+            device: '设备',
+            ip: 'IP 地址',
+            time: '时间',
+            note: '如果这不是你的操作，请立即检查账号安全设置并撤销未知认证方式。',
+          }
+        : {
+            device: 'Device',
+            ip: 'IP address',
+            time: 'Time',
+            note: 'If this was not you, review account security and remove unknown authentication methods immediately.',
+          };
+    const rows = [
+      `${labels.device}: ${input.deviceName}`,
+      `${labels.ip}: ${input.ipAddress}`,
+      `${labels.time}: ${input.occurredAt}`,
+    ];
+    return {
+      subject: `${input.siteName}: ${title}`,
+      text: [title, ...rows, labels.note].join('\n'),
+      html: [
+        `<h1 style="font-size:20px;line-height:1.4">${this.escapeHtml(title)}</h1>`,
+        `<p>${this.escapeHtml(rows[0])}</p>`,
+        `<p>${this.escapeHtml(rows[1])}</p>`,
+        `<p>${this.escapeHtml(rows[2])}</p>`,
+        `<p>${this.escapeHtml(labels.note)}</p>`,
+      ].join(''),
     };
   }
 

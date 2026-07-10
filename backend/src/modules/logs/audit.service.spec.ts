@@ -1,5 +1,6 @@
 import { AuditService } from './audit.service';
 import { PrismaService } from '../../database/prisma.service';
+import { auditedActivityActions } from './audit-events';
 
 type AuditFindManyInput = {
   where?: {
@@ -94,11 +95,9 @@ describe('AuditService', () => {
       { workspaceId: 'workspace-default' },
       {
         action: {
-          in: [
-            'auth.login',
-            'auth.registered',
-            'auth.password_reset_completed',
-          ],
+          in: auditedActivityActions.filter((action) =>
+            action.startsWith('auth.'),
+          ),
         },
       },
     ]);
@@ -106,16 +105,28 @@ describe('AuditService', () => {
     expect(actionFilter).toEqual(
       expect.arrayContaining([
         'auth.login',
+        'auth.login_failed',
+        'auth.method_policy_blocked',
+        'auth.passkey_added',
+        'auth.passkey_removed',
+        'auth.passkey_renamed',
+        'auth.reauthentication_failed',
+        'auth.reauthentication_succeeded',
+        'auth.recovery_code_used',
+        'auth.recovery_codes_generated',
         'file.download_started',
         'file.preview_requested',
         'file.quota_updated',
         'file.renamed',
         'file.search_performed',
         'file.upload_completed',
+        'share.access_code_failed',
+        'share.access_code_locked',
         'share.access_code_sent',
         'share.access_session_created',
         'share.download_started',
         'share.preview_requested',
+        'share.rate_limited',
         'share.viewed',
         'transfer.created',
         'transfer.paused',

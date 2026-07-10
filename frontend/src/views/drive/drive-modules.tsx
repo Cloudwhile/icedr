@@ -25,35 +25,26 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const timeZone = useTimeZone();
+  const activeLinks = links.filter((link) => (link.status ?? (link.revokedAt ? "revoked" : "active")) === "active");
   const riskLinks = links.filter((link) => link.riskLevel === "high");
   const expiredLinks = links.filter((link) => link.status === "expired");
   const protectedLinks = links.filter((link) => Boolean(link.policy.allowedDomain || link.policy.waitValue > 0));
   const protectedTokens = new Set(protectedLinks.map((link) => link.token));
+  const totalVisits = links.reduce((sum, link) => sum + (link.visitCount ?? 0), 0);
+  const totalDownloads = links.reduce((sum, link) => sum + (link.downloadCount ?? 0), 0);
 
   return (
     <div className="drive-module-stack drive-links-module">
-      <div className="drive-module-console-strip">
-        <MetaIcon icon="link">{t("links.memberScope")}</MetaIcon>
-        <MetaIcon icon="visible">{t("links.visitsValue", { count: String(links.reduce((sum, link) => sum + (link.visitCount ?? 0), 0)) })}</MetaIcon>
-        <MetaIcon icon="download">{t("links.downloadsValue", { count: String(links.reduce((sum, link) => sum + (link.downloadCount ?? 0), 0)) })}</MetaIcon>
+      <div className="drive-links-summary" role="list" aria-label={t("links.summary")}>
+        <LinkSummaryMetric icon="link" label={t("links.active")} tone="blue" value={String(activeLinks.length)} />
+        <LinkSummaryMetric icon="visible" label={t("links.visits")} value={String(totalVisits)} />
+        <LinkSummaryMetric icon="download" label={t("links.downloads")} value={String(totalDownloads)} />
+        <LinkSummaryMetric icon="exclamation" label={t("links.highRisk")} tone={riskLinks.length > 0 ? "danger" : "neutral"} value={String(riskLinks.length)} />
+        <LinkSummaryMetric icon="clock" label={t("links.expiringSoon")} tone={expiredLinks.length > 0 ? "warning" : "neutral"} value={String(expiredLinks.length)} />
+        <LinkSummaryMetric icon="shield" label={t("links.protected")} tone={protectedLinks.length > 0 ? "success" : "neutral"} value={String(protectedLinks.length)} />
       </div>
 
-      <div className="drive-module-stat-grid drive-module-stat-grid-links">
-        <section className="drive-module-stat-card drive-module-stat-card-wide">
-          <div className="drive-module-stat-copy">
-            <span>{t("links.overviewTitle")}</span>
-            <span>{t("links.overviewHint")}</span>
-          </div>
-          <span className="drive-module-stat-icon" data-tone="blue">
-            <LocalIcon name="link" size={22} />
-          </span>
-        </section>
-        <MetricCard icon="exclamation" label={t("links.highRisk")} tone="danger" value={String(riskLinks.length)} />
-        <MetricCard icon="clock" label={t("links.expiringSoon")} tone="warning" value={String(expiredLinks.length)} />
-        <MetricCard icon="shield" label={t("links.protected")} tone="success" value={String(protectedLinks.length)} />
-      </div>
-
-      <section className="drive-links-board">
+      <section className="drive-links-board" data-has-risk={riskLinks.length > 0 ? "true" : "false"}>
         <div className="drive-module-panel">
           <ModulePanelHeader icon="link" title={t("links.title")} trailing={<StatusPill palette={palette}>{links.length}</StatusPill>} />
 
@@ -130,17 +121,8 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
           </MotionList>
         </div>
 
-        <aside className="drive-module-side-stack drive-links-side-stack">
-          <section className="drive-module-side-card">
-            <ModulePanelHeader icon="shield" title={t("links.protected")} compact />
-            <div className="drive-module-side-list">
-              <InfoRow label={t("links.active")} value={String(links.filter((link) => (link.status ?? "active") === "active").length)} />
-              <InfoRow label={t("links.highRisk")} value={String(riskLinks.length)} />
-              <InfoRow label={t("links.expiringSoon")} value={String(expiredLinks.length)} />
-              <InfoRow label={t("links.visits")} value={String(links.reduce((sum, link) => sum + (link.visitCount ?? 0), 0))} />
-            </div>
-          </section>
-          {riskLinks.length > 0 ? (
+        {riskLinks.length > 0 ? (
+          <aside className="drive-module-side-stack drive-links-side-stack">
             <MotionList key={riskLinks.map((link) => link.token).join("|")} className="drive-risk-grid">
               {riskLinks.slice(0, 2).map((link) => {
                 const item = findDriveItem(link.rootItemIds[0] ?? "", sourceItems);
@@ -168,8 +150,8 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
                 );
               })}
             </MotionList>
-          ) : null}
-        </aside>
+          </aside>
+        ) : null}
       </section>
     </div>
   );
@@ -479,27 +461,27 @@ export function AuditModule({
   );
 }
 
-function MetricCard({
+function LinkSummaryMetric({
   icon,
   label,
-  tone = "blue",
+  tone = "neutral",
   value,
 }: {
   icon: LocalIconName;
   label: string;
-  tone?: "blue" | "danger" | "purple" | "success" | "warning";
+  tone?: "blue" | "danger" | "neutral" | "success" | "warning";
   value: string;
 }) {
   return (
-    <section className="drive-module-stat-card">
-      <div className="drive-module-stat-copy">
-        <span>{value}</span>
-        <span>{label}</span>
-      </div>
-      <span className="drive-module-stat-icon" data-tone={tone}>
-        <LocalIcon name={icon} size={22} />
+    <div className="drive-links-summary-item" data-tone={tone} role="listitem">
+      <span className="drive-links-summary-icon" aria-hidden="true">
+        <LocalIcon name={icon} size={16} />
       </span>
-    </section>
+      <span className="drive-links-summary-copy">
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </span>
+    </div>
   );
 }
 
@@ -531,15 +513,6 @@ function MetaIcon({ children, icon }: { children: ReactNode; icon: LocalIconName
       <LocalIcon name={icon} size={13} />
       <span className="icedr-truncate">{children}</span>
     </span>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="drive-module-info-row">
-      <span>{label}</span>
-      <span className="icedr-truncate">{value || "--"}</span>
-    </div>
   );
 }
 
@@ -605,10 +578,19 @@ function getAuditObjectLabel(row: AuditEventResponse, t: ReturnType<typeof useTr
 
 function getAuditActivityName(row: AuditEventResponse, t: ReturnType<typeof useTranslations>) {
   if (row.action === "auth.login") return getAuditLoginMethodLabel(row, t);
+  if (row.action === "auth.login_failed") return t("audit.names.loginFailed");
   if (row.action === "auth.registered") {
     return readAuditString(row.metadata, "authMethod") === "setup" ? t("audit.names.setupRegister") : t("audit.names.register");
   }
   if (row.action === "auth.password_reset_completed") return t("audit.names.passwordReset");
+  if (row.action === "auth.passkey_added") return t("audit.names.passkeyAdded");
+  if (row.action === "auth.passkey_removed") return t("audit.names.passkeyRemoved");
+  if (row.action === "auth.passkey_renamed") return t("audit.names.passkeyRenamed");
+  if (row.action === "auth.reauthentication_succeeded") return t("audit.names.reauthenticationSucceeded");
+  if (row.action === "auth.reauthentication_failed") return t("audit.names.reauthenticationFailed");
+  if (row.action === "auth.recovery_codes_generated") return t("audit.names.recoveryCodesGenerated");
+  if (row.action === "auth.recovery_code_used") return t("audit.names.recoveryCodeUsed");
+  if (row.action === "auth.method_policy_blocked") return t("audit.names.methodPolicyBlocked");
   if (row.action === "file.upload_completed" || row.action === "transfer.completed") return t("audit.names.upload");
   if (row.action === "transfer.failed") return t("audit.names.upload");
   if (row.action === "file.download_started" || row.action === "share.download_started") return t("audit.names.download");

@@ -8,10 +8,24 @@ import type { AuthUserResponse } from './auth.dto';
 
 export type AuthAuditAction =
   | 'auth.login'
+  | 'auth.login_failed'
   | 'auth.registered'
-  | 'auth.password_reset_completed';
+  | 'auth.password_reset_completed'
+  | 'auth.passkey_added'
+  | 'auth.passkey_removed'
+  | 'auth.passkey_renamed'
+  | 'auth.reauthentication_succeeded'
+  | 'auth.reauthentication_failed'
+  | 'auth.recovery_codes_generated'
+  | 'auth.recovery_code_used'
+  | 'auth.method_policy_blocked';
 
-export type AuthAuditMethod = 'local' | 'oauth' | 'passkey' | 'setup';
+export type AuthAuditMethod =
+  | 'local'
+  | 'oauth'
+  | 'passkey'
+  | 'recovery'
+  | 'setup';
 
 @Injectable()
 export class AuthAuditService {
@@ -25,15 +39,33 @@ export class AuthAuditService {
       request?: Request;
     },
   ) {
+    return this.record(action, user, {
+      ...options,
+      result: 'success',
+    });
+  }
+
+  async record(
+    action: AuthAuditAction,
+    user: AuthUserResponse | null,
+    options: {
+      method: AuthAuditMethod;
+      result: 'failure' | 'success';
+      request?: Request;
+      metadata?: Record<string, unknown>;
+      target?: string;
+    },
+  ) {
     const event = createAuditEvent({
       action,
-      actor: 'account',
-      target: 'account',
+      actor: user ? 'account' : 'visitor',
+      target: options.target ?? 'account',
       metadata: {
-        ...createRequestAuditMetadata({ user }, options.request),
+        ...createRequestAuditMetadata(user ? { user } : null, options.request),
         authMethod: options.method,
-        result: 'success',
+        result: options.result,
         source: 'auth-service',
+        ...(options.metadata ?? {}),
       },
     });
 

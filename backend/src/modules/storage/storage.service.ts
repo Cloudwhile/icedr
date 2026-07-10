@@ -17,10 +17,12 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  NotFoundException,
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
 import { createReadStream, createWriteStream, type Dirent } from 'fs';
 import {
   mkdir,
@@ -36,6 +38,7 @@ import type { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
+import { createAttachmentContentDisposition } from '../../common/security/file-name-policy';
 import { createAuditEvent } from '../logs/audit-events';
 import {
   StorageSettings,
@@ -80,8 +83,18 @@ type StoragePhysicalCapacity = {
 type StorageUsageScope = 'workspace' | 'personal';
 type StorageUsageQuotaSource = StorageUsageResponse['quotaSource'];
 
+type LocalDownloadTicket = {
+  expiresAt: number;
+  filename: string;
+  objectKey: string;
+};
+
 @Injectable()
 export class StorageService {
+  private readonly localDownloadTickets = new Map<
+    string,
+    LocalDownloadTicket
+  >();
   private readonly signer: Signer;
 
   constructor(
@@ -141,9 +154,6 @@ export class StorageService {
       enableConfiguredObjectStorage: false,
     });
     const nextDraft = this.applySettingsUpdate(current, dto);
-    const switchingToDistributed =
-      current.distributedStorageEnabled === false &&
-      nextDraft.distributedStorageEnabled === true;
     if (nextDraft.distributedStorageEnabled && !this.isConfigured(nextDraft)) {
       throw new ServiceUnavailableException(
         'Object storage must be configured before enabling distributed storage',
@@ -151,11 +161,6 @@ export class StorageService {
     }
     await this.assertStoragePolicyQuotaWithinCapacity(nextDraft);
     const next = await this.settingsRepository.update(nextDraft);
-
-    if (switchingToDistributed) {
-      await this.purgeLocalStorage();
-    }
-
     return this.withProfileState(next, await this.getPhysicalCapacity(next));
   }
 
@@ -701,13 +706,19 @@ export class StorageService {
 
   async createPresignedDownload(key: string, filename: string) {
     if (this.isLocalObjectKey(key)) {
+      const expiresInSeconds = 300;
+      const ticket = this.createLocalDownloadTicket(
+        key,
+        filename,
+        expiresInSeconds,
+      );
       return {
         key,
         bucket: 'local',
         method: 'GET' as const,
-        url: `/api/storage/local-files?objectKey=${encodeURIComponent(key)}&filename=${encodeURIComponent(filename)}`,
-        expiresInSeconds: 300,
-        expiresAt: new Date(Date.now() + 300000).toISOString(),
+        url: `/api/storage/local-files?ticket=${encodeURIComponent(ticket)}`,
+        expiresInSeconds,
+        expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
       };
     }
 
@@ -717,7 +728,7 @@ export class StorageService {
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      ResponseContentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+      ResponseContentDisposition: createAttachmentContentDisposition(filename),
     });
     const signedUrl = await this.signer(this.createClient(settings), command, {
       expiresIn: expiresInSeconds,
@@ -1015,7 +1026,13 @@ export class StorageService {
     return this.reconcileRepository.listTasks(limit);
   }
 
-  async getLocalDownload(objectKey: string, filename: string) {
+  async getLocalDownload(ticket: string) {
+    const download = this.localDownloadTickets.get(ticket);
+    if (!download || download.expiresAt < Date.now()) {
+      this.localDownloadTickets.delete(ticket);
+      throw new NotFoundException('Local download ticket not found');
+    }
+    const { filename, objectKey } = download;
     if (!this.isLocalObjectKey(objectKey)) {
       throw new BadRequestException('Local object key is invalid');
     }
@@ -1026,6 +1043,24 @@ export class StorageService {
       contentType: 'application/octet-stream',
       stream: createReadStream(filePath),
     };
+  }
+
+  private createLocalDownloadTicket(
+    objectKey: string,
+    filename: string,
+    expiresInSeconds: number,
+  ) {
+    const now = Date.now();
+    for (const [ticket, download] of this.localDownloadTickets) {
+      if (download.expiresAt < now) this.localDownloadTickets.delete(ticket);
+    }
+    const ticket = randomBytes(32).toString('base64url');
+    this.localDownloadTickets.set(ticket, {
+      expiresAt: now + expiresInSeconds * 1000,
+      filename,
+      objectKey,
+    });
+    return ticket;
   }
 
   async readObjectText(objectKey: string, maxBytes = 1024 * 1024) {
@@ -1617,16 +1652,6 @@ export class StorageService {
     } catch {
       throw new BadRequestException('Uploaded local file was not found');
     }
-  }
-
-  private async purgeLocalStorage() {
-    await this.prisma.fileNode.deleteMany({
-      where: { objectKey: { startsWith: 'local/' } },
-    });
-    await rm(resolve(this.getLocalRoot()), {
-      recursive: true,
-      force: true,
-    });
   }
 
   private addStorageBucket(

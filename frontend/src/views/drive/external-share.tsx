@@ -1,18 +1,16 @@
 ﻿"use client";
 
 import { Modal } from "@heroui/react";
-import { useRouter, useSearchParams } from "@/compat/navigation";
+import { useRouter } from "@/compat/navigation";
 import { useTimeZone, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MotionPresence, useMotionStagger } from "@/components/ui/motion";
+import { useMotionStagger } from "@/components/ui/motion";
 import { showAppToast } from "@/components/ui/app-toast-store";
-import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
 import { canOpenFilePreview } from "@/features/file/open-with";
-import { createShareAccountAccessSession, fetchCurrentUser, fetchIdentityConfig, resolvePublicSiteName, sendShareEmailCode, startShareOAuth, verifyShareEmailCode, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
-import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice } from "./auth-form-primitives";
+import { createShareAccountAccessSession, fetchCurrentUser, getDriveApiErrorMessage, isAuthExpiredApiError, resolvePublicSiteName, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
 import { ThemeActions } from "./drive-shell";
 import { ItemIcon, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
 import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
@@ -22,16 +20,15 @@ import { AppImage } from "@/components/ui/app-image";
 import { ReadOnlyFilePreview } from "@/components/ui/read-only-file-preview";
 import { ExternalShareHeroCard } from "./external-share-hero-card";
 import { ExternalShareSidePanel } from "./external-share-side-panel";
+import { ShareAuthDialog } from "./external-share-auth-dialog";
 const buttonTypeAttr: {
   type?: "button";
 } = {
   type: "button"
 };
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type ShareMode = "single-file" | "multi-file" | "folder";
-type VisitorStage = "choose" | "email" | "code" | "verified" | "waiting" | "download";
+type VisitorStage = "choose" | "verified" | "waiting" | "download";
 type VisitorAccessAction = "download" | "preview";
-type AuthMethod = "account" | "email";
 type VisitorLevel = "anonymous" | "email" | "ica";
 type DriveTranslator = ReturnType<typeof useTranslations>;
 type IdentityExperience = {
@@ -78,24 +75,6 @@ function getShareAccessRequired(share: RegisteredShare) {
 function formatDownloadLimitLabel(maxDownloads: number, downloadLimit: string, t: DriveTranslator) {
   if (maxDownloads > 0) return t("share.downloadLimitValue", { count: maxDownloads });
   return downloadLimit || t("share.noDownloadLimit");
-}
-function createAccountPolicyDecision(share: RegisteredShare) {
-  const rule = share.downloadPolicy?.rules.ica ?? {
-    identityType: "ica" as const,
-    waitSeconds: 0,
-    speedLimit: null,
-    bypassWait: true,
-    bypassSpeedLimit: true
-  };
-  const maxDownloads = share.downloadPolicy?.maxDownloads ?? 0;
-  return {
-    ...rule,
-    downloadLimit: share.downloadPolicy?.downloadLimit ?? share.policy.downloadLimit,
-    maxDownloads,
-    remainingDownloads: maxDownloads > 0 ? maxDownloads : null,
-    requiresAccessSession: share.downloadPolicy?.requiresAccessSession ?? getShareAccessRequired(share),
-    requiresEmailVerification: share.downloadPolicy?.requiresEmailVerification ?? Boolean(share.policy.allowedDomain)
-  };
 }
 type ShareCollection = {
   title: string;
@@ -163,6 +142,7 @@ export function ExternalShareStandalone({
     token: initialShare?.token === token ? token : "",
     share: initialShare?.token === token ? initialShare : null
   }));
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sourceItems, setSourceItems] = useState<DriveItem[]>(() => initialShare?.token === token ? initialShare.items?.map(mapRegisteredShareItemToDriveItem) ?? [] : []);
   const previewLoading = resolvedShare.token !== token;
   const registeredShare = previewLoading ? null : resolvedShare.share;
@@ -184,14 +164,16 @@ export function ExternalShareStandalone({
         const share = await fetchRegisteredShare(token);
         if (!cancelled) {
           setSourceItems(share?.items?.map(mapRegisteredShareItemToDriveItem) ?? []);
+          setLoadError(share ? null : t("errors.shareUnavailable"));
           setResolvedShare({
             token,
             share: share ?? null
           });
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setSourceItems([]);
+          setLoadError(getDriveApiErrorMessage(error, t, { fallbackKey: "share.unavailable", scope: "share" }));
           setResolvedShare({
             token,
             share: null
@@ -203,7 +185,7 @@ export function ExternalShareStandalone({
     return () => {
       cancelled = true;
     };
-  }, [initialShare?.token, resolvedShare.token, token]);
+  }, [initialShare?.token, resolvedShare.token, t, token]);
   return <div className="external-share-root" style={{
     minHeight: "100vh",
     background: "transparent",
@@ -211,8 +193,45 @@ export function ExternalShareStandalone({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      {previewLoading || !registeredShare || !collection ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
+      {previewLoading ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : !registeredShare || !collection ? <ExternalShareErrorState message={loadError ?? t("errors.shareUnavailable")} palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
     </div>;
+}
+
+function ExternalShareErrorState({
+  message,
+  palette,
+}: {
+  message: string;
+  palette: Palette;
+}) {
+  return (
+    <div
+      style={{
+        alignItems: "center",
+        background: palette.canvas,
+        color: palette.ink,
+        display: "flex",
+        justifyContent: "center",
+        minHeight: "100vh",
+        paddingBlock: "32px",
+        paddingInline: "18px",
+      }}
+    >
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          maxWidth: "360px",
+          textAlign: "center",
+        }}
+      >
+        <LocalIcon name="shield" size={28} />
+        <div style={{ fontSize: "15px", fontWeight: 700, letterSpacing: "0px" }}>{message}</div>
+      </div>
+    </div>
+  );
 }
 
 function ExternalSharePreview({
@@ -240,23 +259,18 @@ function ExternalSharePreview({
 }) {
   const t = useTranslations();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [stage, setStage] = useState<VisitorStage>("choose");
   const [visitorLevel, setVisitorLevel] = useState<VisitorLevel>("anonymous");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [remaining, setRemaining] = useState(0);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [accessItem, setAccessItem] = useState<DriveItem | null>(null);
   const [accessAction, setAccessAction] = useState<VisitorAccessAction>("download");
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMethod, setAuthMethod] = useState<AuthMethod>("email");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [accessSessionId, setAccessSessionId] = useState<string | null>(null);
   const [accessSession, setAccessSession] = useState<ShareAccessSession | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
-  const [icaConfigured, setIcaConfigured] = useState(false);
   const [preview, setPreview] = useState<{
     item: DriveItem;
     intent: PreviewIntentResponse | null;
@@ -290,9 +304,6 @@ function ExternalSharePreview({
     return () => window.clearTimeout(timer);
   }, [feedback]);
   useEffect(() => {
-    void fetchIdentityConfig().then(config => setIcaConfigured(config.configured)).catch(() => setIcaConfigured(false));
-  }, []);
-  useEffect(() => {
     let cancelled = false;
     void fetchCurrentUser().then(user => {
       if (!cancelled) setCurrentUser(user);
@@ -304,33 +315,6 @@ function ExternalSharePreview({
     };
   }, []);
   useEffect(() => {
-    const sessionId = searchParams.get("shareAccessSession");
-    if (!sessionId) return;
-    let cancelled = false;
-    window.queueMicrotask(() => {
-      if (cancelled) return;
-      const session: ShareAccessSession = {
-        sessionId,
-        shareToken: registeredShare.token,
-        identityType: "ica",
-        availableAt: new Date().toISOString(),
-        waitSeconds: 0,
-        downloadLimit: registeredShare.downloadPolicy?.downloadLimit ?? registeredShare.policy.downloadLimit,
-        speedLimit: null,
-        policyDecision: createAccountPolicyDecision(registeredShare),
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
-      };
-      setAccessSessionId(sessionId);
-      setAccessSession(session);
-      setVisitorLevel("ica");
-      setRemaining(0);
-      setStage("download");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [registeredShare, registeredShare.token, searchParams]);
-  useEffect(() => {
     if (!currentUser || accessSessionId || accessSession?.identityType === "ica") return;
     let cancelled = false;
     void createShareAccountAccessSession(registeredShare.token).then(session => {
@@ -338,7 +322,6 @@ function ExternalSharePreview({
       setAccessSessionId(session.sessionId);
       setAccessSession(session);
       setVisitorLevel("ica");
-      setEmail(currentUser.email);
       setRemaining(session.waitSeconds);
       setStage(session.waitSeconds > 0 ? "verified" : "download");
     }).catch(() => {
@@ -348,26 +331,10 @@ function ExternalSharePreview({
       cancelled = true;
     };
   }, [accessSession?.identityType, accessSessionId, currentUser, registeredShare.token]);
-  const sendCode = () => {
-    if (!accessItem || !emailPattern.test(email)) return;
-    setAuthBusy(true);
-    void sendShareEmailCode(registeredShare.token, email).then(() => {
-      setStage("code");
-      setFeedback(t("share.codeSent"));
-    }).catch(() => setFeedback(t("share.codeSendFailed"))).finally(() => setAuthBusy(false));
-  };
-  const verifyCode = () => {
-    if (!accessItem || code.length !== 6) return;
-    setAuthBusy(true);
-    void verifyShareEmailCode(registeredShare.token, email, code).then(session => {
-      setAccessSessionId(session.sessionId);
-      setAccessSession(session);
-      setVisitorLevel("email");
-      setRemaining(session.waitSeconds);
-      setStage("verified");
-    }).catch(() => setFeedback(t("share.codeVerifyFailed"))).finally(() => setAuthBusy(false));
-  };
   const goUp = () => setFolderId(getRegisteredShareParent(registeredShare, folderId, sourceItems));
+  const redirectToLogin = () => {
+    router.push(`/login?next=${encodeURIComponent(`/share/s/${registeredShare.token}`)}`);
+  };
   const requestVisitorAction = (item: DriveItem, action: VisitorAccessAction) => {
     if (action === "download" && !registeredShare.allowDownload) {
       setFeedback(t("share.downloadBlocked"));
@@ -391,47 +358,46 @@ function ExternalSharePreview({
     }
     setAccessItem(item);
     setAccessAction(action);
-    setAuthOpen(true);
-    if (stage === "download") return;
-    setCode("");
+    if (stage === "download") {
+      setAuthOpen(true);
+      return;
+    }
     if (!accessSessionRequired) {
+      setAuthOpen(true);
       setVisitorLevel("anonymous");
       setRemaining(0);
       setStage("download");
       return;
     }
-    if (!accessSessionId) setAccessSession(null);
-    setRemaining(experience.waitSeconds);
-    setAuthMethod(currentUser ? "account" : "email");
-    setStage(currentUser ? "choose" : "email");
-  };
-  const authenticateAccount = (level: VisitorLevel = "ica") => {
-    if (!accessItem) return;
-    if (currentUser && level === "ica") {
-      setAuthBusy(true);
-      void createShareAccountAccessSession(registeredShare.token).then(session => {
-        setAccessSessionId(session.sessionId);
-        setAccessSession(session);
-        setVisitorLevel("ica");
-        setEmail(currentUser.email);
-        setRemaining(session.waitSeconds);
-        setStage(session.waitSeconds > 0 ? "verified" : "download");
-      }).catch(() => setFeedback(t("share.icaUnavailable"))).finally(() => setAuthBusy(false));
+    if (!currentUser) {
+      redirectToLogin();
       return;
     }
-    if (!icaConfigured || level !== "ica") {
-      setFeedback(t("share.icaUnavailable"));
+    setAuthOpen(true);
+    if (!accessSessionId) setAccessSession(null);
+    setRemaining(experience.waitSeconds);
+    setStage("choose");
+  };
+  const authenticateAccount = () => {
+    if (!accessItem) return;
+    if (!currentUser) {
+      redirectToLogin();
       return;
     }
     setAuthBusy(true);
-    void startShareOAuth(registeredShare.token).then(response => {
-      window.location.href = response.authorizationUrl;
-    }).catch(() => setFeedback(t("share.icaUnavailable"))).finally(() => setAuthBusy(false));
-  };
-  const selectAuthMethod = (method: AuthMethod) => {
-    setAuthMethod(method);
-    if (stage === "download") return;
-    setStage(method === "email" ? "email" : "choose");
+    void createShareAccountAccessSession(registeredShare.token).then(session => {
+      setAccessSessionId(session.sessionId);
+      setAccessSession(session);
+      setVisitorLevel("ica");
+      setRemaining(session.waitSeconds);
+      setStage(session.waitSeconds > 0 ? "verified" : "download");
+    }).catch((error) => {
+      if (isAuthExpiredApiError(error)) {
+        redirectToLogin();
+        return;
+      }
+      setFeedback(getDriveApiErrorMessage(error, t, { fallbackKey: "share.icaUnavailable", scope: "share" }));
+    }).finally(() => setAuthBusy(false));
   };
   const continueToDownload = () => {
     const currentWait = remaining;
@@ -465,8 +431,11 @@ function ExternalSharePreview({
         intent
       });
     });
-    void actionPromise.then(() => setAuthOpen(false)).catch(() => {
-      setFeedback(accessAction === "download" ? t("share.downloadFailed") : t("preview.notConfigured"));
+    void actionPromise.then(() => setAuthOpen(false)).catch((error) => {
+      setFeedback(getDriveApiErrorMessage(error, t, {
+        fallbackKey: accessAction === "download" ? "share.downloadFailed" : "preview.notConfigured",
+        scope: "share",
+      }));
     });
   };
   return <div className="external-share-preview" style={{
@@ -530,14 +499,14 @@ function ExternalSharePreview({
           expiresLabel={expiresLabel}
           onStartAccess={primaryAccessItem && primaryAccessAction ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction) : undefined}
           registeredShare={registeredShare}
-          selectedEmail={email}
+          selectedEmail={currentUser?.email ?? ""}
           totalItems={shareContentCount}
           totalSize={totalSize}
           verified={verified}
         />
       </div>
 
-      <ShareAuthDialog action={accessAction} accessExperience={experience} authMethod={authMethod} code={code} accessItem={accessItem} email={email} locale={locale} accountConfigured={Boolean(currentUser) || icaConfigured} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onEmailChange={setEmail} onMethodChange={selectAuthMethod} onSendCode={sendCode} onVerifyCode={verifyCode} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} setCode={setCode} sourceItems={sourceItems} stage={stage} />
+      <ShareAuthDialog action={accessAction} accessExperience={experience} accessItem={accessItem} locale={locale} accountConfigured={Boolean(currentUser)} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} sourceItems={sourceItems} stage={stage} />
       <SharePreviewDialog accessSessionId={accessSessionId} onClose={() => setPreview(null)} open={Boolean(preview)} palette={palette} preview={preview} locale={locale} shareToken={registeredShare.token} />
       {feedback ? <div className="icedr-r-right external-share-feedback" style={{
       display: "flex",
@@ -911,276 +880,6 @@ function SharePreviewDialog({
             "--r-padding-md": "24px"
           } as React.CSSProperties}>
               <ReadOnlyFilePreview key={item?.id ?? "empty"} item={item} loadBlobUrl={loadBlobUrl} locale={locale} palette={palette} statusLabel={statusLabel} t={t} />
-            </Modal.Body>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>;
-}
-function ShareAuthDialog({
-  accessExperience,
-  accessItem,
-  action,
-  accountConfigured,
-  authMethod,
-  busy,
-  code,
-  email,
-  locale,
-  onAccountAuth,
-  onClose,
-  onComplete,
-  onContinue,
-  onEmailChange,
-  onMethodChange,
-  onSendCode,
-  onVerifyCode,
-  open,
-  palette,
-  remaining,
-  setCode,
-  sourceItems,
-  stage
-}: {
-  accessExperience: AccessPolicyExperience;
-  accessItem: DriveItem | null;
-  action: VisitorAccessAction;
-  accountConfigured: boolean;
-  authMethod: AuthMethod;
-  busy: boolean;
-  code: string;
-  email: string;
-  locale: Locale;
-  onAccountAuth: (level?: VisitorLevel) => void;
-  onClose: () => void;
-  onComplete: () => void;
-  onContinue: () => void;
-  onEmailChange: (value: string) => void;
-  onMethodChange: (method: AuthMethod) => void;
-  onSendCode: () => void;
-  onVerifyCode: () => void;
-  open: boolean;
-  palette: Palette;
-  remaining: number;
-  setCode: (value: string) => void;
-  sourceItems: DriveItem[];
-  stage: VisitorStage;
-}) {
-  const t = useTranslations();
-  const experience: AccessPolicyExperience = {
-    ...accessExperience,
-    waitSeconds: remaining
-  };
-  const canSendCode = Boolean(accessItem) && emailPattern.test(email) && !busy;
-  const canVerifyCode = Boolean(accessItem) && code.length === 6 && !busy;
-  const actionLabel = action === "download" ? t("actions.download") : t("share.openPreview");
-  return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && onClose()} style={{
-        background: "rgba(0, 0, 0, 0.48)"
-      }}>
-        <Modal.Container placement="center">
-          <Modal.Dialog style={{
-          background: palette.canvas,
-          color: palette.ink,
-          borderWidth: "1px",
-          borderColor: palette.hairlineStrong,
-          borderRadius: "8px",
-          maxWidth: "420px",
-          overflow: "hidden",
-          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.48)"
-        }}>
-            <Modal.Header style={{
-            borderBottomWidth: "1px",
-            borderColor: palette.hairline,
-            paddingInline: "16px",
-            paddingBlock: "12px"
-          }}>
-              <div style={{
-              alignItems: "center",
-              display: "flex",
-              justifyContent: "space-between",
-              gap: "12px",
-              width: "100%"
-            }}>
-                <div style={{
-                alignItems: "center",
-                display: "flex",
-                gap: "12px",
-                minWidth: "0px"
-              }}>
-                  {accessItem ? <ItemIcon item={accessItem} palette={palette} size={18} /> : <LocalIcon name={action === "download" ? "download" : "visible"} size={18} color={palette.primaryHover} />}
-                  <div style={{
-                  minWidth: "0px"
-                }}>
-                    <Modal.Heading className="icedr-truncate" style={{
-                      fontWeight: "600"
-                    }}>
-                        {accessItem?.name ?? actionLabel}
-                    </Modal.Heading>
-                    <span style={{
-                    color: palette.subtle,
-                    fontSize: "12px",
-                    marginTop: "4px"
-                  }}>
-                      {accessItem ? formatFileSize(sumDriveItemSizes([accessItem], sourceItems), locale) : actionLabel}
-                    </span>
-                  </div>
-                </div>
-                <ToolButton label={t("app.close")} palette={palette} onClick={onClose}>
-                  <LocalIcon name="cross" size={17} />
-                </ToolButton>
-              </div>
-            </Modal.Header>
-
-            <Modal.Body style={{
-            padding: "16px"
-          }}>
-              <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px"
-            }}>
-                <div style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                  <span style={{
-                  color: palette.ink,
-                  fontWeight: "650"
-                }}>{t("share.visitorAccessTitle")}</span>
-                  <AuthStatusNotice palette={palette} status={{
-                  message: t("share.visitorAccessHint"),
-                  tone: "info"
-                }} />
-                </div>
-                <SegmentedToolGroup
-                  ariaLabel={`${t("share.accountLogin")} / ${t("share.temporaryEmail")}`}
-                  onChange={onMethodChange}
-                  options={[{
-                    icon: <LocalIcon name="import" size={17} />,
-                    label: t("share.accountLogin"),
-                    value: "account"
-                  }, {
-                    icon: <LocalIcon name="mail" size={17} />,
-                    label: t("share.temporaryEmail"),
-                    value: "email"
-                  }]}
-                  palette={palette}
-                  value={authMethod}
-                />
-
-                <MotionPresence show={authMethod === "account" && stage === "choose"} preset="surface">
-                  <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px"
-                }}>
-                    <AuthStatusNotice palette={palette} status={{
-                    message: accountConfigured ? t("share.icaConfigured") : t("share.icaUnavailable"),
-                    tone: accountConfigured ? "success" : "error"
-                  }} />
-                    <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr",
-                    gap: "8px"
-                  }}>
-                      <AuthPrimaryButton icon="key" palette={palette} disabled={!accountConfigured || busy} busy={busy} onClick={() => onAccountAuth("ica")}>
-                        {t("share.useIcaIdentity")}
-                      </AuthPrimaryButton>
-                    </div>
-                  </div>
-                </MotionPresence>
-
-                <MotionPresence show={authMethod === "email" && stage === "email"} preset="surface">
-                  <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px"
-                }}>
-                    <AuthField label={t("share.emailPrompt")} palette={palette} required>
-                      <AuthInput value={email} onChange={event => onEmailChange(event.target.value)} placeholder={t("share.emailPlaceholder")} type="email" palette={palette} autoComplete="email" />
-                    </AuthField>
-                    <AuthPrimaryButton icon="mail" palette={palette} disabled={!canSendCode} busy={busy} onClick={onSendCode}>
-                      {busy ? t("auth.working") : t("share.sendCode")}
-                    </AuthPrimaryButton>
-                  </div>
-                </MotionPresence>
-
-                <MotionPresence show={authMethod === "email" && stage === "code"} preset="surface">
-                  <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px"
-                }}>
-                    <AuthField label={t("share.codePrompt")} palette={palette} required>
-                      <AuthInput value={code} onChange={event => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" inputMode="numeric" palette={palette} autoComplete="one-time-code" />
-                    </AuthField>
-                    <AuthPrimaryButton icon="key" palette={palette} disabled={!canVerifyCode} busy={busy} onClick={onVerifyCode}>
-                      {busy ? t("auth.working") : t("share.verifyCode")}
-                    </AuthPrimaryButton>
-                  </div>
-                </MotionPresence>
-
-                <MotionPresence show={stage === "verified"} preset="surface">
-                  <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px"
-                }}>
-                    <AuthStatusNotice palette={palette} status={{
-                    message: t("share.verificationSucceeded", {
-                      identity: experience.label
-                    }),
-                    tone: "success"
-                  }} />
-                    <span style={{
-                    color: palette.subtle,
-                    fontSize: "12px"
-                  }}>
-                      {experience.waitSeconds > 0 ? t("share.nextWait", {
-                      seconds: experience.waitSeconds
-                    }) : t("share.ready")}
-                    </span>
-                    <span style={{
-                    color: palette.subtle,
-                    fontSize: "12px"
-                  }}>
-                      {t("share.speedValue", {
-                      speed: experience.speedLabel
-                    })} / {experience.sessionLabel}
-                    </span>
-                    <AuthPrimaryButton icon="download" palette={palette} onClick={onContinue}>
-                      {t("share.continue")}
-                    </AuthPrimaryButton>
-                  </div>
-                </MotionPresence>
-
-                <MotionPresence show={stage === "waiting"} preset="surface">
-                  <AuthStatusNotice palette={palette} status={{
-                  message: t("share.preparing", {
-                    seconds: remaining
-                  }),
-                  tone: "info"
-                }} />
-                </MotionPresence>
-
-                <MotionPresence show={stage === "download"} preset="surface">
-                  <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px"
-                }}>
-                    <AuthStatusNotice palette={palette} status={{
-                    message: !experience.hasSpeedLimit ? t("share.ready") : t("share.speedValue", {
-                      speed: experience.speedLabel
-                    }),
-                    tone: "success"
-                  }} />
-                    <AuthPrimaryButton icon={action === "download" ? "download" : "visible"} palette={palette} onClick={onComplete}>
-                      {actionLabel}
-                    </AuthPrimaryButton>
-                  </div>
-                </MotionPresence>
-              </div>
             </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>

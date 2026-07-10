@@ -150,7 +150,7 @@ function assetKind(asset: GitHubReleaseAsset) {
           </div>
 
           <section class="latest-release__section">
-            <h3>Release Assets</h3>
+            <h3>发布文件</h3>
             <ul v-if="item.assets.length" class="latest-release__assets">
               <li v-for="asset in item.assets" :key="asset.name">
                 <a :href="asset.browser_download_url" target="_blank" rel="noreferrer">
@@ -185,6 +185,8 @@ function assetKind(asset: GitHubReleaseAsset) {
   position: relative;
   display: grid;
   gap: 16px;
+  min-width: 0;
+  max-width: 100%;
   padding-left: 28px;
 }
 
@@ -201,6 +203,8 @@ function assetKind(asset: GitHubReleaseAsset) {
 
 .latest-release__item {
   position: relative;
+  width: 100%;
+  min-width: 0;
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   background: var(--vp-c-bg);
@@ -216,6 +220,7 @@ function assetKind(asset: GitHubReleaseAsset) {
   display: flex;
   gap: 14px;
   align-items: center;
+  min-width: 0;
   min-height: 72px;
   padding: 14px 16px;
   cursor: pointer;
@@ -317,6 +322,7 @@ function assetKind(asset: GitHubReleaseAsset) {
 .latest-release__panel {
   display: grid;
   gap: 22px;
+  min-width: 0;
   padding: 0 16px 18px;
 }
 
@@ -325,6 +331,7 @@ function assetKind(asset: GitHubReleaseAsset) {
   gap: 12px;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
@@ -333,6 +340,7 @@ function assetKind(asset: GitHubReleaseAsset) {
 
 .latest-release__release-links code {
   overflow: auto;
+  min-width: 0;
   max-width: 100%;
   white-space: nowrap;
 }
@@ -342,6 +350,10 @@ function assetKind(asset: GitHubReleaseAsset) {
   border: 0;
   padding: 0;
   font-size: 18px;
+}
+
+.latest-release__section {
+  min-width: 0;
 }
 
 .latest-release__muted,
@@ -355,9 +367,15 @@ function assetKind(asset: GitHubReleaseAsset) {
   font-weight: 700;
 }
 
+.latest-release__assets span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .latest-release__assets {
   display: grid;
   gap: 10px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -368,8 +386,14 @@ function assetKind(asset: GitHubReleaseAsset) {
   gap: 12px;
   align-items: baseline;
   justify-content: space-between;
+  min-width: 0;
   padding: 10px 0;
   border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.latest-release__assets a {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .latest-release__assets li:last-child {
@@ -385,6 +409,10 @@ function assetKind(asset: GitHubReleaseAsset) {
 
   .latest-release__summary {
     padding-right: 14px;
+  }
+
+  .latest-release__release-links code {
+    width: 100%;
   }
 }
 

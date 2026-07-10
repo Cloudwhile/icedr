@@ -1,7 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
-import { AuthService } from '../auth/core/auth.service';
 import { SharesController } from './shares.controller';
 import { SharesService } from './shares.service';
 
@@ -41,7 +40,6 @@ describe('SharesController', () => {
       createVerifiedAccountAccessSession,
       revokeShare,
     } as unknown as SharesService;
-    const authService = {} as unknown as AuthService;
     const adminGuard = {
       requireAdminSession,
       requirePermission,
@@ -50,7 +48,7 @@ describe('SharesController', () => {
 
     return {
       accountUser,
-      controller: new SharesController(sharesService, authService, adminGuard),
+      controller: new SharesController(sharesService, adminGuard),
       createVerifiedAccountAccessSession,
       requireAdminSession,
       requirePermission,

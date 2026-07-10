@@ -388,6 +388,15 @@
   line-height: 18px;
 }
 
+.drive-transfers-module .drive-transfer-row-error {
+  color: var(--drive-ui-danger);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  min-width: 0;
+}
+
 .drive-transfers-module .drive-transfer-file-icon {
   align-items: center;
   background: #fbfdff;
