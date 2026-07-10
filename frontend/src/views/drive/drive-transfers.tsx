@@ -528,7 +528,7 @@ function createTransferDriveItem(row: TransferRow): DriveItem {
     id: row.nodeId ?? row.id,
     modifiedAt: row.updatedAt ?? row.createdAt,
     name: row.name,
-    objectKey: row.objectKey,
+    hasContent: row.hasContent,
     owner: "",
     parentId: null,
     shared: false,

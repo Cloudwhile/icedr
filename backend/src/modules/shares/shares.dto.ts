@@ -13,7 +13,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import type { FileNodeResponse } from '../files/file-nodes.dto';
+import type {
+  DownloadIntentPurpose,
+  FileNodeResponse,
+} from '../files/file-nodes.dto';
 import type { ShareDownloadPolicy } from './share-download-policy';
 
 export type ShareMode = 'single-file' | 'multi-file' | 'folder';
@@ -124,6 +127,12 @@ export class CreateShareDto {
   policy!: SharePolicyDto;
 }
 
+export class CreateShareDownloadIntentDto {
+  @IsIn(['download', 'preview'])
+  @IsOptional()
+  purpose?: DownloadIntentPurpose;
+}
+
 export type ShareResponse = {
   token: string;
   url: string;
@@ -144,7 +153,9 @@ export type ShareResponse = {
   revokedAt: string | null;
 };
 
-export type ShareFileNodeResponse = Omit<FileNodeResponse, 'objectKey'>;
+export type ShareFileNodeResponse = Omit<FileNodeResponse, 'objectKey'> & {
+  hasContent: boolean;
+};
 
 export type ShareDetailResponse = ShareResponse & {
   items: ShareFileNodeResponse[];

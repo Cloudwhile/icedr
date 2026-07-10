@@ -11,7 +11,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { FileNodesService } from '../files/file-nodes.service';
 import { MailService } from '../admin/mail/mail.service';
-import { FileNodeResponse } from '../files/file-nodes.dto';
+import {
+  FileNodeResponse,
+  type DownloadIntentPurpose,
+} from '../files/file-nodes.dto';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import type { AuditActor } from '../logs/audit-events';
@@ -54,6 +57,10 @@ type AccountAuditUser = Pick<
   AuthUserResponse,
   'avatarUrl' | 'displayName' | 'email' | 'id'
 >;
+type ShareCreatorAccess = {
+  actorRole?: string;
+  actorUserId?: string;
+};
 type RateLimitMetadataKey =
   | 'actorUserId'
   | 'identityType'
@@ -73,16 +80,24 @@ export class SharesService {
     private readonly configService: ConfigService,
   ) {}
 
-  async createShare(dto: CreateShareDto, auditMetadata: AuditMetadata = {}) {
+  async createShare(
+    dto: CreateShareDto,
+    auditMetadata: AuditMetadata = {},
+    access: ShareCreatorAccess = {},
+  ) {
     const normalizedDto = await this.applyWorkspaceSharePolicy(dto);
-    const share = await this.sharesRepository.create(normalizedDto);
+    await this.assertShareScope(normalizedDto, access);
+    const share = await this.sharesRepository.create(
+      normalizedDto,
+      access.actorUserId,
+    );
     await this.sharesRepository.recordAudit(
       'share.created',
       share.token,
       auditMetadata,
       { actor: 'workspace' },
     );
-    return share;
+    return this.toPublicShare(share);
   }
 
   async sendEmailAccessCode(
@@ -208,8 +223,13 @@ export class SharesService {
     return session;
   }
 
-  listShares(workspaceId?: string) {
-    return this.sharesRepository.list(workspaceId);
+  listShares(workspaceId: string | undefined, access: ShareCreatorAccess) {
+    return this.sharesRepository.list(
+      workspaceId,
+      access.actorRole === 'admin' || access.actorRole === 'owner'
+        ? undefined
+        : access.actorUserId,
+    );
   }
 
   async getShare(
@@ -254,12 +274,12 @@ export class SharesService {
     accessSessionId?: string,
     visitor: VisitorAuditMetadata = {},
     accountUser?: AccountAuditUser,
+    purpose: DownloadIntentPurpose = 'download',
   ) {
-    const { share, node } = await this.requireShareNode(
-      token,
-      nodeId,
-      'download',
-    );
+    const { share, node } = await this.requireShareNode(token, nodeId, purpose);
+    if (purpose === 'preview' && !node.previewCapability.supported) {
+      throw new BadRequestException('File type is not available for preview');
+    }
     const accessSession = await this.resolveShareAccessIdentity(
       share,
       accessSessionId,
@@ -272,6 +292,7 @@ export class SharesService {
       nodeId,
       identityType,
       email: accessSession?.email,
+      purpose,
       ...visitor,
     };
     await this.assertShareRateLimit({
@@ -296,7 +317,7 @@ export class SharesService {
     const downloadId = `dl_${randomBytes(12).toString('base64url')}`;
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    const method = node.objectKey ? 'presigned-url' : 'backend-manifest';
+    const method = node.objectKey ? 'stream' : 'manifest';
     await this.sharesRepository.createShareDownloadIntent({
       downloadId,
       token,
@@ -304,6 +325,7 @@ export class SharesService {
       filename: node.name,
       expiresAt,
       method,
+      purpose,
       identityType,
       email: accessSession?.email,
       visitor,
@@ -320,6 +342,7 @@ export class SharesService {
     return {
       downloadId,
       method,
+      purpose,
       filename: node.name,
       availableAt: new Date().toISOString(),
       expiresAt,
@@ -333,12 +356,13 @@ export class SharesService {
     nodeId: string,
     downloadId: string,
     visitor: VisitorAuditMetadata = {},
-    options: { auditPurpose?: 'download' | 'preview' } = {},
+    options: { range?: string } = {},
   ) {
-    const intent = await this.sharesRepository.consumeShareDownloadIntent({
+    const intent = await this.sharesRepository.openShareDownloadIntent({
       downloadId,
       token,
       nodeId,
+      visitor,
     });
     if (!intent) {
       throw new NotFoundException('Download intent not found');
@@ -347,9 +371,12 @@ export class SharesService {
     const { share, node } = await this.requireShareNode(
       token,
       nodeId,
-      'download',
+      intent.purpose,
     );
-    if (options.auditPurpose !== 'preview') {
+    if (intent.purpose === 'preview' && !node.previewCapability.supported) {
+      throw new BadRequestException('File type is not available for preview');
+    }
+    if (intent.purpose === 'download') {
       const rateLimitProfile = this.getShareRateLimitProfile(share);
       const auditMetadata = {
         ...this.getShareIdentityAuditMetadata(intent),
@@ -404,23 +431,26 @@ export class SharesService {
       }
     }
 
-    if (intent.method === 'presigned-url' && node.objectKey) {
-      const signed = await this.storageService.createPresignedDownload(
-        node.objectKey,
-        node.name,
-      );
+    if (intent.method === 'stream' && node.objectKey) {
+      const object = await this.storageService.openObjectStream({
+        objectKey: node.objectKey,
+        range: options.range,
+      });
       return {
-        method: 'presigned-url' as const,
+        ...object,
+        contentType: node.mimeType || object.contentType,
+        method: 'stream' as const,
         filename: node.name,
-        redirectUrl: signed.url,
+        purpose: intent.purpose,
       };
     }
 
     return {
-      method: 'backend-manifest' as const,
+      method: 'manifest' as const,
       filename: `${node.name}.txt`,
       contentType: 'text/plain; charset=utf-8',
       content: this.buildDownloadManifest(node),
+      purpose: intent.purpose,
     };
   }
 
@@ -454,7 +484,9 @@ export class SharesService {
 
   async getPreviewStatus(token: string, nodeId: string, previewId: string) {
     await this.requireShareNode(token, nodeId, 'preview');
-    return this.fileNodesService.getPreviewStatus(nodeId, previewId);
+    return this.fileNodesService.getPreviewStatus(nodeId, previewId, {
+      actorRole: 'admin',
+    });
   }
 
   private async requireActiveShare(token: string) {
@@ -465,6 +497,134 @@ export class SharesService {
       throw new GoneException('Share link is expired');
     }
     return share;
+  }
+
+  private async assertShareScope(
+    dto: CreateShareDto,
+    access: ShareCreatorAccess,
+  ) {
+    const workspaceId = dto.workspaceId ?? 'workspace-default';
+    const rootIds = new Set(dto.rootItemIds);
+    const allowedIds = new Set(dto.allowedItemIds);
+    if (
+      rootIds.size !== dto.rootItemIds.length ||
+      allowedIds.size !== dto.allowedItemIds.length
+    ) {
+      throw new BadRequestException('Share node ids must be unique');
+    }
+    for (const rootId of rootIds) {
+      if (!allowedIds.has(rootId)) {
+        throw new BadRequestException(
+          'Share roots must be included in the allowed item scope',
+        );
+      }
+    }
+
+    const nodes = new Map<string, FileNodeResponse>();
+    for (const nodeId of allowedIds) {
+      const node = await this.fileNodesService.getFileNode(nodeId, access);
+      if (!node) throw new NotFoundException('File node not found');
+      this.assertShareCreatorNodeAccess(node, access);
+      if (node.archivedAt) {
+        throw new BadRequestException('Archived file nodes cannot be shared');
+      }
+      if (node.workspaceId !== workspaceId) {
+        throw new BadRequestException('File node belongs to another workspace');
+      }
+      nodes.set(nodeId, node);
+    }
+
+    const roots = [...rootIds].map((rootId) => nodes.get(rootId)!);
+    if (dto.mode === 'single-file') {
+      if (roots.length !== 1 || roots[0].kind === 'folder') {
+        throw new BadRequestException(
+          'Single-file shares require exactly one file root',
+        );
+      }
+    }
+    if (dto.mode === 'folder') {
+      if (
+        roots.length !== 1 ||
+        roots[0].kind !== 'folder' ||
+        dto.dynamicRootId !== roots[0].id
+      ) {
+        throw new BadRequestException(
+          'Folder shares require one matching folder root',
+        );
+      }
+    } else if (dto.dynamicRootId) {
+      throw new BadRequestException(
+        'Dynamic root is only available for folder shares',
+      );
+    }
+
+    for (const node of nodes.values()) {
+      if (rootIds.has(node.id)) continue;
+      if (
+        !(await this.isWithinShareRoots(
+          node,
+          rootIds,
+          nodes,
+          workspaceId,
+          access,
+        ))
+      ) {
+        throw new BadRequestException(
+          'File node is outside the selected share roots',
+        );
+      }
+    }
+  }
+
+  private async isWithinShareRoots(
+    node: FileNodeResponse,
+    rootIds: Set<string>,
+    nodes: Map<string, FileNodeResponse>,
+    workspaceId: string,
+    access: ShareCreatorAccess,
+  ) {
+    const visited = new Set([node.id]);
+    let parentId = node.parentNodeId;
+    while (parentId) {
+      if (rootIds.has(parentId)) return true;
+      if (visited.has(parentId)) {
+        throw new BadRequestException('File node hierarchy contains a cycle');
+      }
+      visited.add(parentId);
+      let parent = nodes.get(parentId);
+      if (!parent) {
+        const resolvedParent = await this.fileNodesService.getFileNode(
+          parentId,
+          access,
+        );
+        if (!resolvedParent) throw new NotFoundException('File node not found');
+        parent = resolvedParent;
+        this.assertShareCreatorNodeAccess(parent, access);
+        if (parent.archivedAt || parent.workspaceId !== workspaceId) {
+          throw new BadRequestException(
+            'File node hierarchy is outside the share workspace',
+          );
+        }
+        nodes.set(parent.id, parent);
+      }
+      parentId = parent.parentNodeId;
+    }
+    return false;
+  }
+
+  private assertShareCreatorNodeAccess(
+    node: FileNodeResponse,
+    access: ShareCreatorAccess,
+  ) {
+    if (
+      node.spaceScope !== 'personal' ||
+      !access.actorUserId ||
+      access.actorRole === 'admin' ||
+      node.ownerUserId === access.actorUserId
+    ) {
+      return;
+    }
+    throw new NotFoundException('File node not found');
   }
 
   private isExpiredShare(share: ShareResponse) {
@@ -486,14 +646,24 @@ export class SharesService {
       .filter((node) => shareItemIds.has(node.id))
       .map((node): ShareFileNodeResponse => {
         const { objectKey, ...safeNode } = node;
-        void objectKey;
-        return safeNode;
+        return {
+          ...safeNode,
+          hasContent: Boolean(objectKey),
+        };
       });
 
     return {
-      ...share,
+      ...this.toPublicShare(share),
       items,
     };
+  }
+
+  private toPublicShare<T extends ShareResponse>(share: T): ShareResponse {
+    const { creatorUserId, ...publicShare } = share as T & {
+      creatorUserId?: string | null;
+    };
+    void creatorUserId;
+    return publicShare;
   }
 
   private async requireShareNode(
@@ -980,7 +1150,6 @@ export class SharesService {
       ['kind', node.kind],
       ['mimeType', node.mimeType],
       ['sizeBytes', node.sizeBytes ?? 'folder'],
-      ['objectKey', node.objectKey ?? 'folder'],
     ]
       .map((row) => row.join('\t'))
       .join('\n');

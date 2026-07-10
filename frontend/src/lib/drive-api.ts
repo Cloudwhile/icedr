@@ -581,7 +581,7 @@ export type FileNodeResponse = {
   kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
   mimeType: string;
   sizeBytes: number | null;
-  objectKey: string | null;
+  hasContent: boolean;
   owner: string;
   ownerUserId: string | null;
   spaceScope: DriveSpaceScope;
@@ -641,7 +641,7 @@ export type TransferResponse = {
   id: string;
   workspaceId: string;
   nodeId: string | null;
-  objectKey: string | null;
+  hasContent: boolean;
   name: string;
   type: "upload";
   progress: number;
@@ -654,7 +654,8 @@ export type DownloadIntentResponse = {
   downloadId: string;
   nodeId: string;
   filename: string;
-  method: "presigned-url" | "backend-manifest";
+  method: "stream" | "manifest";
+  purpose: "download" | "preview";
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
@@ -665,7 +666,6 @@ export type FileVersionResponse = {
   nodeId: string;
   versionNumber: number;
   sizeBytes: number;
-  objectKey: string;
   mimeType: string;
   uploadedBy: string;
   remark: string;
@@ -1006,12 +1006,16 @@ export function updateFileNodeContent(id: string, content: string) {
   );
 }
 
-export function createFileDownloadIntent(id: string, workspaceId?: string) {
+export function createFileDownloadIntent(
+  id: string,
+  workspaceId?: string,
+  purpose: "download" | "preview" = "download",
+) {
   return requestDriveApi<DownloadIntentResponse>(
     `/file-nodes/${encodeURIComponent(id)}/download-intents`,
     {
       method: "POST",
-      body: JSON.stringify({ workspaceId }),
+      body: JSON.stringify({ purpose, workspaceId }),
     },
   );
 }

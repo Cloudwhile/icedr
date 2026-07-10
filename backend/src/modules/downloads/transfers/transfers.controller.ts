@@ -13,7 +13,11 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { createRequestAuditMetadata } from '../../../common/security/audit-metadata';
 import { AdminGuardService } from '../../../common/security/admin-guard.service';
-import { UpdateTransferDto } from './transfers.dto';
+import {
+  type PublicTransferResponse,
+  type TransferResponse,
+  UpdateTransferDto,
+} from './transfers.dto';
 import { TransfersService } from './transfers.service';
 
 @ApiTags('transfers')
@@ -30,11 +34,19 @@ export class TransfersController {
     @Query('workspaceId') workspaceId?: string,
     @Query('limit') limit?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'transfer', 'read');
-    return this.transfersService.listTransfers({
-      workspaceId,
-      limit: parseLimit(limit),
-    });
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'transfer',
+      'read',
+    );
+    const transfers = await this.transfersService.listTransfers(
+      {
+        workspaceId,
+        limit: parseLimit(limit),
+      },
+      this.getTransferAccess(session),
+    );
+    return transfers.map(toPublicTransfer);
   }
 
   @Patch(':id')
@@ -49,10 +61,16 @@ export class TransfersController {
       'transfer',
       'write',
     );
-    return this.transfersService.updateTransfer(id, {
-      ...dto,
-      auditMetadata: createRequestAuditMetadata(session, request),
-    });
+    return toPublicTransfer(
+      await this.transfersService.updateTransfer(
+        id,
+        {
+          ...dto,
+          auditMetadata: createRequestAuditMetadata(session, request),
+        },
+        this.getTransferAccess(session),
+      ),
+    );
   }
 
   @Delete(':id')
@@ -69,8 +87,27 @@ export class TransfersController {
     return this.transfersService.deleteTransfer(
       id,
       createRequestAuditMetadata(session, request),
+      this.getTransferAccess(session),
     );
   }
+
+  private getTransferAccess(
+    session: Awaited<ReturnType<AdminGuardService['requireSession']>>,
+  ) {
+    return {
+      actorRole: session.user.role,
+      actorUserId: session.user.id,
+    };
+  }
+}
+
+function toPublicTransfer(transfer: TransferResponse): PublicTransferResponse {
+  const { objectKey, ownerUserId, ...publicTransfer } = transfer;
+  void ownerUserId;
+  return {
+    ...publicTransfer,
+    hasContent: Boolean(objectKey),
+  };
 }
 
 function parseLimit(limit?: string) {

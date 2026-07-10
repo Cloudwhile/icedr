@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
+import { validateOAuthHttpUrl } from '../../../extensions/oauth/oauth-url-policy';
 import { StorageService } from '../../storage/storage.service';
 import { AuthRepository } from '../../auth/core/auth.repository';
 import {
@@ -732,6 +733,28 @@ export class SettingsService {
       throw new BadRequestException(
         'OAuth client secret is required for ICETOWNE BLOG OAuth',
       );
+    }
+    const production = Boolean(this.config.get<boolean>('app.production'));
+    const endpoints = [
+      ...(settings.providerProfile === 'oauth2'
+        ? [
+            ['OAuth authorization URL', settings.authorizationUrl],
+            ['OAuth token URL', settings.tokenUrl],
+            ['OAuth userinfo URL', settings.userinfoUrl],
+          ]
+        : [['OAuth issuer URL', settings.issuerUrl]]),
+      ...(settings.redirectUri
+        ? [['OAuth redirect URI', settings.redirectUri]]
+        : []),
+    ] as const;
+    for (const [label, endpoint] of endpoints) {
+      try {
+        validateOAuthHttpUrl(endpoint, { label, production });
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : `${label} is invalid`,
+        );
+      }
     }
   }
 

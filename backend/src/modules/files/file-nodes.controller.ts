@@ -3,7 +3,10 @@ import {
   Controller,
   Delete,
   Get,
+  Head,
   Headers,
+  HttpException,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -15,7 +18,10 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
-import { createAttachmentContentDisposition } from '../../common/security/file-name-policy';
+import {
+  applyDownloadErrorHeaders,
+  writeDownloadResponse,
+} from '../../common/http/download-response';
 import {
   createRequestAuditMetadata,
   createVisitorAuditMetadata,
@@ -37,6 +43,7 @@ import {
   UpdateFileNodeContentDto,
   UpdateFileNodeStateDto,
 } from './file-nodes.dto';
+import { toPublicFileNode } from './file-node-public-response';
 import { FileNodesService } from './file-nodes.service';
 
 @ApiTags('file-nodes')
@@ -53,6 +60,15 @@ export class FileNodesController {
     return session.user.displayName || session.user.email || session.user.id;
   }
 
+  private getFileAccess(
+    session: Awaited<ReturnType<AdminGuardService['requireSession']>>,
+  ) {
+    return {
+      actorRole: session.user.role,
+      actorUserId: session.user.id,
+    };
+  }
+
   @Get()
   async listFileNodes(
     @Headers('authorization') authorization?: string,
@@ -66,11 +82,16 @@ export class FileNodesController {
       'file',
       'read',
     );
-    return this.fileNodesService.listFileNodes(workspaceId, parentNodeId, {
-      ownerUserId: spaceScope === 'personal' ? session.user.id : undefined,
-      spaceScope,
-      state,
-    });
+    const nodes = await this.fileNodesService.listFileNodes(
+      workspaceId,
+      parentNodeId,
+      {
+        ownerUserId: spaceScope === 'personal' ? session.user.id : undefined,
+        spaceScope,
+        state,
+      },
+    );
+    return nodes.map(toPublicFileNode);
   }
 
   @Get('search')
@@ -84,11 +105,15 @@ export class FileNodesController {
       'file',
       'read',
     );
-    return this.fileNodesService.searchFileNodes(query, {
+    const result = await this.fileNodesService.searchFileNodes(query, {
       auditMetadata: createRequestAuditMetadata(session, request),
       ownerUserId:
         query.spaceScope === 'personal' ? session.user.id : undefined,
     });
+    return {
+      ...result,
+      items: result.items.map(toPublicFileNode),
+    };
   }
 
   @Get('trash-policy')
@@ -131,10 +156,15 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.batchArchive(dto, {
+    const result = await this.fileNodesService.batchArchive(dto, {
+      ...this.getFileAccess(session),
       actor: this.getSessionActor(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return {
+      ...result,
+      succeeded: result.succeeded.map(toPublicFileNode),
+    };
   }
 
   @Post('batch/restore')
@@ -148,9 +178,14 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.batchRestore(dto, {
+    const result = await this.fileNodesService.batchRestore(dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return {
+      ...result,
+      succeeded: result.succeeded.map(toPublicFileNode),
+    };
   }
 
   @Post('batch/move')
@@ -164,9 +199,14 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.batchMove(dto, {
+    const result = await this.fileNodesService.batchMove(dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return {
+      ...result,
+      succeeded: result.succeeded.map(toPublicFileNode),
+    };
   }
 
   @Post('batch/download-intents')
@@ -181,6 +221,7 @@ export class FileNodesController {
       'download',
     );
     return this.fileNodesService.createBatchDownloadIntents(dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
   }
@@ -190,8 +231,16 @@ export class FileNodesController {
     @Param('id') id: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'read');
-    return this.fileNodesService.getFileNode(id);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'read',
+    );
+    const node = await this.fileNodesService.getFileNode(
+      id,
+      this.getFileAccess(session),
+    );
+    return node ? toPublicFileNode(node) : null;
   }
 
   @Post('upload-intents')
@@ -206,6 +255,7 @@ export class FileNodesController {
       'write',
     );
     return this.fileNodesService.createUploadIntent(dto, {
+      actorRole: session.user.role,
       auditMetadata: createRequestAuditMetadata(session, request),
       ownerUserId: session.user.id,
     });
@@ -223,16 +273,18 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.completeUpload(
+    const node = await this.fileNodesService.completeUpload(
       {
         ...dto,
         owner: dto.owner ?? workspaceActor,
       },
       {
+        actorRole: session.user.role,
         auditMetadata: createRequestAuditMetadata(session, request),
         ownerUserId: session.user.id,
       },
     );
+    return toPublicFileNode(node);
   }
 
   @Post('upload-sessions/:sessionId/parts/:partIndex/upload-intents')
@@ -241,10 +293,15 @@ export class FileNodesController {
     @Param('partIndex') partIndex: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
     return this.fileNodesService.createUploadPartIntent(
       sessionId,
       Number(partIndex),
+      session.user.id,
     );
   }
 
@@ -255,11 +312,16 @@ export class FileNodesController {
     @Body() dto: CompleteUploadPartDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
     return this.fileNodesService.completeUploadPart(
       sessionId,
       Number(partIndex),
       dto,
+      session.user.id,
     );
   }
 
@@ -270,11 +332,16 @@ export class FileNodesController {
     @Req() request: Request,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'write');
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'write',
+    );
     return this.fileNodesService.uploadChunk(
       sessionId,
       Number(partIndex),
       request,
+      session.user.id,
     );
   }
 
@@ -291,6 +358,7 @@ export class FileNodesController {
     );
     return this.fileNodesService.cancelUploadSession(sessionId, {
       auditMetadata: createRequestAuditMetadata(session, request),
+      ownerUserId: session.user.id,
     });
   }
 
@@ -306,12 +374,14 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.createFolder({
+    const node = await this.fileNodesService.createFolder({
       ...dto,
+      ...this.getFileAccess(session),
       owner: dto.owner ?? workspaceActor,
       auditMetadata: createRequestAuditMetadata(session, request),
       ownerUserId: session.user.id,
     });
+    return toPublicFileNode(node);
   }
 
   @Patch(':id')
@@ -326,9 +396,11 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.renameFileNode(id, dto, {
+    const node = await this.fileNodesService.renameFileNode(id, dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return toPublicFileNode(node);
   }
 
   @Post(':id/move')
@@ -343,9 +415,11 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.moveFileNode(id, dto, {
+    const node = await this.fileNodesService.moveFileNode(id, dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return toPublicFileNode(node);
   }
 
   @Post(':id/copy')
@@ -360,9 +434,11 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.copyFileNode(id, dto, {
+    const node = await this.fileNodesService.copyFileNode(id, dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return toPublicFileNode(node);
   }
 
   @Get(':id/content')
@@ -370,8 +446,15 @@ export class FileNodesController {
     @Param('id') id: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'read');
-    return this.fileNodesService.getFileNodeContent(id);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'read',
+    );
+    return this.fileNodesService.getFileNodeContent(
+      id,
+      this.getFileAccess(session),
+    );
   }
 
   @Patch(':id/content')
@@ -387,6 +470,7 @@ export class FileNodesController {
       'write',
     );
     return this.fileNodesService.updateFileNodeContent(id, dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
   }
@@ -403,10 +487,12 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.updateFileNodeState(id, dto, {
+    const node = await this.fileNodesService.updateFileNodeState(id, dto, {
+      ...this.getFileAccess(session),
       actor: this.getSessionActor(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return toPublicFileNode(node);
   }
 
   @Post(':id/restore')
@@ -421,9 +507,11 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.restoreFileNode(id, dto, {
+    const node = await this.fileNodesService.restoreFileNode(id, dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return toPublicFileNode(node);
   }
 
   @Delete(':id')
@@ -438,6 +526,7 @@ export class FileNodesController {
       'write',
     );
     return this.fileNodesService.permanentlyDeleteFileNode(id, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
   }
@@ -455,6 +544,7 @@ export class FileNodesController {
       'download',
     );
     return this.fileNodesService.createDownloadIntent(id, dto, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
   }
@@ -463,29 +553,33 @@ export class FileNodesController {
   async downloadFileNode(
     @Param('id') id: string,
     @Query('downloadId') downloadId: string,
-    @Query('purpose') purpose: string | undefined,
+    @Headers('range') range: string | undefined,
     @Res({ passthrough: true }) response: Response,
-    @Req() request?: Request,
+    @Req() request: Request,
   ) {
-    const download = await this.fileNodesService.downloadFileNode(
-      id,
-      downloadId,
-      {
-        auditMetadata: createVisitorAuditMetadata(request),
-        auditPurpose: purpose === 'preview' ? 'preview' : 'download',
-      },
-    );
-    if (download.method === 'presigned-url') {
-      response.redirect(302, download.redirectUrl);
-      return;
+    try {
+      const download = await this.fileNodesService.downloadFileNode(
+        id,
+        downloadId,
+        {
+          auditMetadata: createVisitorAuditMetadata(request),
+          range,
+        },
+      );
+      return writeDownloadResponse(download, request, response);
+    } catch (error) {
+      applyDownloadErrorHeaders(error, response);
+      throw error;
     }
+  }
 
-    response.setHeader('Content-Type', download.contentType);
-    response.setHeader(
-      'Content-Disposition',
-      createAttachmentContentDisposition(download.filename),
+  @Head(':id/download')
+  rejectDownloadHead(@Res({ passthrough: true }) response: Response) {
+    response.setHeader('Allow', 'GET');
+    throw new HttpException(
+      'HEAD is not supported for download capabilities',
+      HttpStatus.METHOD_NOT_ALLOWED,
     );
-    return download.content;
   }
 
   @Post(':id/preview-intents')
@@ -500,16 +594,27 @@ export class FileNodesController {
       'read',
     );
     return this.fileNodesService.createPreviewIntent(id, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
   }
 
   @Get(':id/preview/status')
-  getPreviewStatus(
+  async getPreviewStatus(
     @Param('id') id: string,
     @Query('previewId') previewId: string,
+    @Headers('authorization') authorization?: string,
   ) {
-    return this.fileNodesService.getPreviewStatus(id, previewId);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'read',
+    );
+    return this.fileNodesService.getPreviewStatus(
+      id,
+      previewId,
+      this.getFileAccess(session),
+    );
   }
 
   @Get(':id/versions')
@@ -517,8 +622,15 @@ export class FileNodesController {
     @Param('id') id: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'file', 'read');
-    return this.fileNodesService.listFileVersions(id);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'read',
+    );
+    return this.fileNodesService.listFileVersions(
+      id,
+      this.getFileAccess(session),
+    );
   }
 
   @Post(':id/versions/:versionId/download-intents')
@@ -534,8 +646,44 @@ export class FileNodesController {
       'download',
     );
     return this.fileNodesService.createVersionDownloadIntent(id, versionId, {
+      ...this.getFileAccess(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+  }
+
+  @Get(':id/versions/:versionId/download')
+  async downloadFileVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Query('downloadId') downloadId: string,
+    @Headers('range') range: string | undefined,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const download = await this.fileNodesService.downloadFileVersion(
+        id,
+        versionId,
+        downloadId,
+        {
+          auditMetadata: createVisitorAuditMetadata(request),
+          range,
+        },
+      );
+      return writeDownloadResponse(download, request, response);
+    } catch (error) {
+      applyDownloadErrorHeaders(error, response);
+      throw error;
+    }
+  }
+
+  @Head(':id/versions/:versionId/download')
+  rejectVersionDownloadHead(@Res({ passthrough: true }) response: Response) {
+    response.setHeader('Allow', 'GET');
+    throw new HttpException(
+      'HEAD is not supported for download capabilities',
+      HttpStatus.METHOD_NOT_ALLOWED,
+    );
   }
 
   @Post(':id/versions/:versionId/restore')
@@ -550,9 +698,11 @@ export class FileNodesController {
       'file',
       'write',
     );
-    return this.fileNodesService.restoreFileVersion(id, versionId, {
+    const node = await this.fileNodesService.restoreFileVersion(id, versionId, {
+      ...this.getFileAccess(session),
       actor: this.getSessionActor(session),
       auditMetadata: createRequestAuditMetadata(session, request),
     });
+    return toPublicFileNode(node);
   }
 }

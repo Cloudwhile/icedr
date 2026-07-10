@@ -83,6 +83,7 @@ export default () => {
     api: {
       port: apiPort,
       host: apiHost,
+      trustProxy: readBoolean(process.env.API_TRUST_PROXY, false),
       corsOrigin: readString(
         process.env.API_CORS_ORIGIN,
         'http://localhost:13000',

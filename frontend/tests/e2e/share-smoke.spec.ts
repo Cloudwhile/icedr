@@ -48,7 +48,9 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   );
   await page.getByRole("button", { name: "Download" }).last().click();
   const downloadResponse = await downloadResponsePromise;
+  expect(new URL(downloadResponse.url()).origin).toBe("http://127.0.0.1:13000");
   expect(downloadResponse.headers()["content-disposition"]).toContain(fileName);
+  expect(state.downloadIntentPurpose).toBe("download");
   expect(state.downloaded).toBe(true);
 
   await page.goto("/");
@@ -72,6 +74,7 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
 
 async function mockIcedrApi(page: Page) {
   const state = {
+    downloadIntentPurpose: "",
     downloaded: false,
     shareCreated: false,
   };
@@ -202,13 +205,16 @@ async function mockIcedrApi(page: Page) {
     }
 
     if (method === "POST" && path === `/shares/${shareToken}/items/${fileId}/download-intents`) {
+      const requestBody = request.postDataJSON() as { purpose?: string };
+      state.downloadIntentPurpose = requestBody.purpose ?? "";
       await fulfillJson(route, {
         availableAt: now,
         downloadId: "download-smoke",
         downloadUrl: `/api/shares/${shareToken}/items/${fileId}/download?downloadId=download-smoke`,
         expiresAt: new Date(Date.now() + 60 * 1000).toISOString(),
         filename: fileName,
-        method: "backend-manifest",
+        method: "manifest",
+        purpose: "download",
         nodeId: fileId,
       });
       return;
@@ -291,11 +297,11 @@ function fileNode() {
   return {
     archivedAt: null,
     createdAt: now,
+    hasContent: true,
     id: fileId,
     kind: "doc",
     mimeType: "text/plain",
     name: fileName,
-    objectKey: "objects/smoke-roadmap.txt",
     owner: "Mina",
     parentNodeId: null,
     sizeBytes: 42,
@@ -306,8 +312,7 @@ function fileNode() {
 }
 
 function shareFileNode() {
-  const { objectKey: _objectKey, ...node } = fileNode();
-  return node;
+  return fileNode();
 }
 
 function registeredShare() {

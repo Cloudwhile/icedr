@@ -39,6 +39,7 @@ export type RegisteredShareItem = {
   kind: DriveItemKind;
   mimeType: string;
   sizeBytes: number | null;
+  hasContent: boolean;
   owner: string;
   starred: boolean;
   archivedAt: string | null;

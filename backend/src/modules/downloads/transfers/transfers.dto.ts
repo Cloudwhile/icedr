@@ -42,6 +42,7 @@ export class UpdateTransferDto {
 export type TransferResponse = {
   id: string;
   workspaceId: string;
+  ownerUserId: string | null;
   nodeId: string | null;
   objectKey: string | null;
   name: string;
@@ -50,4 +51,11 @@ export type TransferResponse = {
   status: TransferStatus;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PublicTransferResponse = Omit<
+  TransferResponse,
+  'objectKey' | 'ownerUserId'
+> & {
+  hasContent: boolean;
 };

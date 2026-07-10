@@ -3,11 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  Head,
   Param,
   Post,
   Query,
   Res,
   Headers,
+  HttpException,
+  HttpStatus,
   Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -18,9 +21,12 @@ import {
   createVisitorAuditMetadata,
 } from '../../common/security/audit-metadata';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
-import { createAttachmentContentDisposition } from '../../common/security/file-name-policy';
+import {
+  applyDownloadErrorHeaders,
+  writeDownloadResponse,
+} from '../../common/http/download-response';
 import type { AuthUserResponse } from '../auth/core/auth.dto';
-import { CreateShareDto } from './shares.dto';
+import { CreateShareDownloadIntentDto, CreateShareDto } from './shares.dto';
 import { SharesService } from './shares.service';
 
 @ApiTags('shares')
@@ -45,6 +51,10 @@ export class SharesController {
     return this.sharesService.createShare(
       dto,
       createRequestAuditMetadata(session, request),
+      {
+        actorRole: session.user.role,
+        actorUserId: session.user.id,
+      },
     );
   }
 
@@ -53,8 +63,15 @@ export class SharesController {
     @Query('workspaceId') workspaceId?: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'share', 'read');
-    return this.sharesService.listShares(workspaceId);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'share',
+      'read',
+    );
+    return this.sharesService.listShares(workspaceId, {
+      actorRole: session.user.role,
+      actorUserId: session.user.id,
+    });
   }
 
   @Get(':token')
@@ -100,6 +117,7 @@ export class SharesController {
   async createDownloadIntent(
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
+    @Body() dto: CreateShareDownloadIntentDto,
     @Headers('x-share-access-session') accessSessionId?: string,
     @Headers('authorization') authorization?: string,
     @Req() request?: Request,
@@ -111,6 +129,7 @@ export class SharesController {
       accessSessionId,
       audit.metadata,
       audit.user,
+      dto.purpose ?? 'download',
     );
   }
 
@@ -119,28 +138,32 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Query('downloadId') downloadId: string,
-    @Query('purpose') purpose: string | undefined,
+    @Headers('range') range: string | undefined,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const download = await this.sharesService.downloadSharedNode(
-      token,
-      nodeId,
-      downloadId,
-      createVisitorAuditMetadata(request),
-      { auditPurpose: purpose === 'preview' ? 'preview' : 'download' },
-    );
-    if (download.method === 'presigned-url') {
-      response.redirect(302, download.redirectUrl);
-      return;
+    try {
+      const download = await this.sharesService.downloadSharedNode(
+        token,
+        nodeId,
+        downloadId,
+        createVisitorAuditMetadata(request),
+        { range },
+      );
+      return writeDownloadResponse(download, request, response);
+    } catch (error) {
+      applyDownloadErrorHeaders(error, response);
+      throw error;
     }
+  }
 
-    response.setHeader('Content-Type', download.contentType);
-    response.setHeader(
-      'Content-Disposition',
-      createAttachmentContentDisposition(download.filename),
+  @Head(':token/items/:nodeId/download')
+  rejectDownloadHead(@Res({ passthrough: true }) response: Response) {
+    response.setHeader('Allow', 'GET');
+    throw new HttpException(
+      'HEAD is not supported for download capabilities',
+      HttpStatus.METHOD_NOT_ALLOWED,
     );
-    return download.content;
   }
 
   @Post(':token/items/:nodeId/preview-intents')

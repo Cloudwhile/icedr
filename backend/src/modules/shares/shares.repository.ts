@@ -15,12 +15,15 @@ import {
   ShareAccessIdentityType,
   ShareAccessSession,
 } from './share-access.dto';
+import type { DownloadIntentPurpose } from '../files/file-nodes.dto';
 import {
   resolveShareDownloadPolicy,
   type ShareDownloadPolicyDecision,
 } from './share-download-policy';
 
-type StoredShare = ShareResponse;
+type StoredShare = ShareResponse & {
+  creatorUserId: string | null;
+};
 type DownloadStartedMetadataFactory = (
   downloadCount: number,
 ) => Record<string, unknown> | null;
@@ -65,10 +68,12 @@ export type ShareDownloadIntentRecord = {
   nodeId: string;
   filename: string;
   expiresAt: string;
-  method: 'presigned-url' | 'backend-manifest';
+  method: 'stream' | 'manifest';
+  purpose: DownloadIntentPurpose;
   identityType: ShareAccessIdentityType;
   email?: string;
   consumedAt: string | null;
+  useCount: number;
 };
 
 type CreateEmailCodeInput = {
@@ -100,6 +105,7 @@ type CreateDownloadIntentInput = {
   filename: string;
   expiresAt: string;
   method: ShareDownloadIntentRecord['method'];
+  purpose: DownloadIntentPurpose;
   identityType: ShareAccessIdentityType;
   email?: string;
   visitor?: ShareVisitorFingerprint;
@@ -114,11 +120,15 @@ export class SharesRepository {
     private readonly config: ConfigService,
   ) {}
 
-  async create(dto: CreateShareDto): Promise<StoredShare> {
+  async create(
+    dto: CreateShareDto,
+    creatorUserId?: string,
+  ): Promise<StoredShare> {
     const share: StoredShare = {
       token: await this.createUniqueToken(),
       url: '',
       workspaceId: dto.workspaceId ?? 'workspace-default',
+      creatorUserId: creatorUserId?.trim() || null,
       title: dto.title,
       mode: dto.mode,
       owner: dto.owner,
@@ -140,6 +150,7 @@ export class SharesRepository {
       data: {
         token: share.token,
         workspaceId: share.workspaceId,
+        creatorUserId: share.creatorUserId,
         title: share.title,
         mode: share.mode,
         ownerName: share.owner,
@@ -159,9 +170,18 @@ export class SharesRepository {
     return this.mapRow(row);
   }
 
-  async list(workspaceId?: string): Promise<ShareManagementResponse[]> {
+  async list(
+    workspaceId?: string,
+    creatorUserId?: string,
+  ): Promise<ShareManagementResponse[]> {
     const rows = await this.prisma.shareLink.findMany({
-      where: workspaceId ? { workspaceId } : undefined,
+      where:
+        workspaceId || creatorUserId
+          ? {
+              ...(workspaceId ? { workspaceId } : {}),
+              ...(creatorUserId ? { creatorUserId } : {}),
+            }
+          : undefined,
       orderBy: { createdAt: 'desc' },
     });
     const shares = rows.map((row) => this.mapRow(row));
@@ -481,6 +501,7 @@ export class SharesRepository {
         nodeId: input.nodeId,
         filename: input.filename,
         method: input.method,
+        purpose: input.purpose,
         identityType: input.identityType,
         email: input.email ? this.normalizeEmail(input.email) : null,
         expiresAt: new Date(input.expiresAt),
@@ -491,10 +512,11 @@ export class SharesRepository {
     return this.mapDownloadIntent(row);
   }
 
-  async consumeShareDownloadIntent(input: {
+  async openShareDownloadIntent(input: {
     downloadId: string;
     token: string;
     nodeId: string;
+    visitor?: ShareVisitorFingerprint;
   }) {
     const row = await this.prisma.shareDownloadIntent.findUnique({
       where: { id: input.downloadId },
@@ -503,19 +525,33 @@ export class SharesRepository {
       !row ||
       row.shareToken !== input.token ||
       row.nodeId !== input.nodeId ||
-      row.consumedAt ||
-      row.expiresAt.getTime() < Date.now()
+      row.expiresAt.getTime() < Date.now() ||
+      (row.purpose === 'download' && row.consumedAt) ||
+      (row.purpose !== 'download' && row.purpose !== 'preview') ||
+      row.useCount >= this.getDownloadIntentUseLimit(row.purpose) ||
+      !this.matchesVisitorFingerprint(row, input.visitor)
     ) {
       return null;
     }
 
-    const consumedAt = new Date();
+    const consumedAt = row.purpose === 'download' ? new Date() : null;
     const result = await this.prisma.shareDownloadIntent.updateMany({
-      where: { id: row.id, consumedAt: null },
-      data: { consumedAt },
+      where: {
+        id: row.id,
+        consumedAt: null,
+        useCount: { lt: this.getDownloadIntentUseLimit(row.purpose) },
+      },
+      data: {
+        consumedAt: consumedAt ?? undefined,
+        useCount: { increment: 1 },
+      },
     });
     if (result.count !== 1) return null;
-    return this.mapDownloadIntent({ ...row, consumedAt });
+    return this.mapDownloadIntent({
+      ...row,
+      consumedAt,
+      useCount: row.useCount + 1,
+    });
   }
 
   async pruneExpiredTransientShareState(now = new Date()) {
@@ -562,6 +598,7 @@ export class SharesRepository {
       token: row.token,
       url: this.buildShareUrl(row.token),
       workspaceId: row.workspaceId,
+      creatorUserId: row.creatorUserId,
       title: row.title,
       mode: row.mode as ShareResponse['mode'],
       owner: row.ownerName,
@@ -598,6 +635,8 @@ export class SharesRepository {
     share: StoredShare,
     events: Array<{ action: string; createdAt: string }>,
   ): ShareManagementResponse {
+    const { creatorUserId, ...publicShare } = share;
+    void creatorUserId;
     const viewEvents = events.filter(
       (event) => event.action === 'share.viewed',
     );
@@ -615,7 +654,7 @@ export class SharesRepository {
       )?.createdAt ?? null;
 
     return {
-      ...share,
+      ...publicShare,
       status: this.getShareStatus(share),
       visitCount: viewEvents.length,
       downloadCount: downloadEvents.length,
@@ -684,11 +723,29 @@ export class SharesRepository {
       nodeId: row.nodeId,
       filename: row.filename,
       method: row.method as ShareDownloadIntentRecord['method'],
+      purpose: row.purpose as DownloadIntentPurpose,
       identityType: row.identityType as ShareAccessIdentityType,
       ...(row.email ? { email: row.email } : {}),
       expiresAt: row.expiresAt.toISOString(),
       consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
+      useCount: row.useCount,
     };
+  }
+
+  private getDownloadIntentUseLimit(purpose: string) {
+    return purpose === 'preview' ? 64 : 1;
+  }
+
+  private matchesVisitorFingerprint(
+    row: Pick<ShareDownloadIntent, 'requestIpHash' | 'userAgentHash'>,
+    visitor?: ShareVisitorFingerprint,
+  ) {
+    const requestIpHash = this.hashVisitorValue(visitor?.ip);
+    const userAgentHash = this.hashVisitorValue(visitor?.userAgent);
+    return (
+      (!row.requestIpHash || row.requestIpHash === requestIpHash) &&
+      (!row.userAgentHash || row.userAgentHash === userAgentHash)
+    );
   }
 
   private parseSpeedLimit(value: Prisma.JsonValue) {

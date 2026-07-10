@@ -1,5 +1,6 @@
-import { randomBytes } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createAuditEvent, type AuditActor } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
 import {
@@ -14,6 +15,7 @@ import {
   CompleteUploadDto,
   CreateFolderDto,
   DownloadIntentResponse,
+  DownloadIntentPurpose,
   FileNodeSearchResultResponse,
   FileNodeListState,
   FileNodeKind,
@@ -64,10 +66,16 @@ type FileNodeSpaceFilter = {
   ownerUserId?: string;
   spaceScope?: FileNodeSpaceScope;
 };
+export type StoredFileVersionResponse = FileVersionResponse & {
+  objectKey: string;
+};
 
 @Injectable()
 export class FileNodesRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async list(
     workspaceId?: string,
@@ -355,7 +363,9 @@ export class FileNodesRepository {
 
   async listTreeForDeletion(id: string) {
     const source = await this.prisma.fileNode.findUnique({ where: { id } });
-    if (!source) return { nodes: [], versions: [] as FileVersionResponse[] };
+    if (!source) {
+      return { nodes: [], versions: [] as StoredFileVersionResponse[] };
+    }
     const rows = [source, ...(await this.collectDescendantRows(source.id))];
     const ids = rows.map((row) => row.id);
     const versions = await this.prisma.fileVersion.findMany({
@@ -385,7 +395,7 @@ export class FileNodesRepository {
       orderBy: { archivedAt: 'asc' },
     });
     const deletedNodes: FileNodeResponse[] = [];
-    const deletedVersions: FileVersionResponse[] = [];
+    const deletedVersions: StoredFileVersionResponse[] = [];
     const visited = new Set<string>();
     for (const root of roots) {
       if (visited.has(root.id)) continue;
@@ -440,31 +450,75 @@ export class FileNodesRepository {
     return row ? this.mapRow(row) : null;
   }
 
-  async createDownloadIntent(
-    node: FileNodeResponse,
-    method: DownloadIntentResponse['method'],
-    auditMetadata: Record<string, unknown> = {},
-  ) {
+  async createDownloadIntent(input: {
+    auditMetadata?: Record<string, unknown>;
+    filename: string;
+    method: DownloadIntentResponse['method'];
+    nodeId: string;
+    purpose: DownloadIntentPurpose;
+    versionId?: string | null;
+    visitor?: { ip?: string; userAgent?: string };
+  }) {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const id = `fdl_${randomBytes(12).toString('base64url')}`;
     const row = await this.prisma.fileDownloadIntent.create({
       data: {
         id,
-        nodeId: node.id,
-        filename: node.name,
-        method,
-        auditMetadata: auditMetadata as Prisma.InputJsonValue,
+        nodeId: input.nodeId,
+        versionId: input.versionId ?? null,
+        filename: input.filename,
+        method: input.method,
+        purpose: input.purpose,
+        auditMetadata: (input.auditMetadata ?? {}) as Prisma.InputJsonValue,
         expiresAt: new Date(expiresAt),
+        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
+        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
       },
     });
     return this.mapDownloadIntent(row);
   }
 
-  async findDownloadIntent(downloadId: string) {
+  async openDownloadIntent(input: {
+    downloadId: string;
+    nodeId: string;
+    versionId?: string | null;
+    visitor?: { ip?: string; userAgent?: string };
+  }) {
     const row = await this.prisma.fileDownloadIntent.findUnique({
-      where: { id: downloadId },
+      where: { id: input.downloadId },
     });
-    return row ? this.mapDownloadIntent(row) : null;
+    const purpose = row?.purpose as DownloadIntentPurpose | undefined;
+    if (
+      !row ||
+      row.nodeId !== input.nodeId ||
+      row.versionId !== (input.versionId ?? null) ||
+      row.expiresAt.getTime() < Date.now() ||
+      (purpose !== 'download' && purpose !== 'preview') ||
+      (purpose === 'download' && row.consumedAt) ||
+      row.useCount >= this.getDownloadIntentUseLimit(purpose) ||
+      !this.matchesVisitorFingerprint(row, input.visitor)
+    ) {
+      return null;
+    }
+
+    const consumedAt = purpose === 'download' ? new Date() : null;
+    const result = await this.prisma.fileDownloadIntent.updateMany({
+      where: {
+        id: row.id,
+        consumedAt: null,
+        useCount: { lt: this.getDownloadIntentUseLimit(purpose) },
+      },
+      data: {
+        consumedAt: consumedAt ?? undefined,
+        useCount: { increment: 1 },
+      },
+    });
+    if (result.count !== 1) return null;
+    return this.mapDownloadIntent({
+      ...row,
+      consumedAt,
+      useCount: row.useCount + 1,
+    });
   }
 
   async createPreviewArtifact(
@@ -1262,12 +1316,48 @@ export class FileNodesRepository {
     return {
       downloadId: row.id,
       nodeId: row.nodeId,
+      versionId: row.versionId,
       filename: row.filename,
       method: row.method as DownloadIntentResponse['method'],
+      purpose: row.purpose as DownloadIntentPurpose,
       auditMetadata: this.parseJsonRecord(row.auditMetadata),
       expiresAt: row.expiresAt.toISOString(),
+      consumedAt: row.consumedAt?.toISOString() ?? null,
+      useCount: row.useCount,
       createdAt: row.createdAt.toISOString(),
     };
+  }
+
+  private getDownloadIntentUseLimit(purpose: DownloadIntentPurpose) {
+    return purpose === 'preview' ? 64 : 1;
+  }
+
+  private matchesVisitorFingerprint(
+    row: Pick<FileDownloadIntent, 'requestIpHash' | 'userAgentHash'>,
+    visitor?: { ip?: string; userAgent?: string },
+  ) {
+    const requestIpHash = this.hashVisitorValue(visitor?.ip);
+    const userAgentHash = this.hashVisitorValue(visitor?.userAgent);
+    return (
+      (!row.requestIpHash || row.requestIpHash === requestIpHash) &&
+      (!row.userAgentHash || row.userAgentHash === userAgentHash)
+    );
+  }
+
+  private hashVisitorValue(value: string | undefined) {
+    const normalized = value?.trim();
+    if (!normalized) return null;
+    return createHmac('sha256', this.resolveVisitorHashSecret())
+      .update(normalized)
+      .digest('hex');
+  }
+
+  private resolveVisitorHashSecret() {
+    return (
+      this.config.get<string>('share.visitorHashSecret')?.trim() ||
+      this.config.get<string>('auth.securitySecret')?.trim() ||
+      'icedr-dev-download-visitor-hash-secret'
+    );
   }
 
   private parseJsonRecord(value: unknown): Record<string, unknown> {
@@ -1283,7 +1373,7 @@ export class FileNodesRepository {
     return {};
   }
 
-  private mapVersionRow(row: FileVersion): FileVersionResponse {
+  private mapVersionRow(row: FileVersion): StoredFileVersionResponse {
     return {
       id: row.id,
       nodeId: row.nodeId,

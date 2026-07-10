@@ -325,22 +325,32 @@ model PreviewArtifact {
 }
 
 model FileDownloadIntent {
-  id            String   @id
-  nodeId        String   @map("node_id")
+  id            String    @id
+  nodeId        String    @map("node_id")
+  versionId     String?   @map("version_id")
   filename      String
   method        String
-  auditMetadata Json     @default("{}") @map("audit_metadata")
-  expiresAt     DateTime @map("expires_at") @db.Timestamptz
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  purpose       String    @default("download")
+  auditMetadata Json      @default("{}") @map("audit_metadata")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
+  useCount      Int       @default(0) @map("use_count")
+  requestIpHash String?   @map("request_ip_hash")
+  userAgentHash String?   @map("user_agent_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
+  @@index([nodeId, versionId])
+  @@index([expiresAt])
   @@map("file_download_intents")
 }
 
 model UploadSession {
   id                String   @id
   transferId        String   @map("transfer_id")
+  ownerUserId       String?  @map("owner_user_id")
   workspaceId       String   @map("workspace_id")
   spaceScope        String   @default("workspace") @map("space_scope")
+  conflictStrategy  String   @default("version") @map("conflict_strategy")
   objectKey         String   @map("object_key")
   multipartUploadId String?  @map("multipart_upload_id")
   resumeKey         String?  @map("resume_key")
@@ -355,6 +365,7 @@ model UploadSession {
 
   parts UploadSessionPart[]
 
+  @@index([ownerUserId])
   @@map("upload_sessions")
 }
 
@@ -392,6 +403,7 @@ model StorageSetting {
 model TransferTask {
   id           String   @id
   workspaceId  String   @map("workspace_id")
+  ownerUserId  String?  @map("owner_user_id")
   nodeId       String?  @map("node_id")
   objectKey    String?  @map("object_key")
   name         String
@@ -401,12 +413,14 @@ model TransferTask {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
+  @@index([ownerUserId])
   @@map("transfer_tasks")
 }
 
 model ShareLink {
   token          String    @id
   workspaceId    String    @default("workspace-default") @map("workspace_id")
+  creatorUserId  String?   @map("creator_user_id")
   title          String
   mode           String
   ownerName      String    @map("owner_name")
@@ -425,6 +439,7 @@ model ShareLink {
   accessSessions  ShareAccessSession[]
   downloadIntents ShareDownloadIntent[]
 
+  @@index([creatorUserId])
   @@map("share_links")
 }
 
@@ -478,10 +493,12 @@ model ShareDownloadIntent {
   nodeId        String    @map("node_id")
   filename      String
   method        String
+  purpose       String    @default("download")
   identityType  String    @default("anonymous") @map("identity_type")
   email         String?
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz
   consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
+  useCount      Int       @default(0) @map("use_count")
   requestIpHash String?   @map("request_ip_hash")
   userAgentHash String?   @map("user_agent_hash")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz

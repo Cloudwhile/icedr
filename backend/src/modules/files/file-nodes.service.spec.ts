@@ -37,12 +37,13 @@ describe('FileNodesService', () => {
     | 'distributedStorageEnabled'
     | 'findMultipartUploadPart'
     | 'getConfiguredQuotaBytes'
+    | 'openObjectStream'
     | 'writeUploadSessionPart'
   >;
   let transfers: {
     createUploadTransfer: jest.Mock;
     completeTransfer: jest.Mock;
-    updateTransfer: jest.Mock;
+    updateTransferInternal: jest.Mock;
   };
   let uploadSessions: UploadSessionsRepository;
 
@@ -130,6 +131,59 @@ describe('FileNodesService', () => {
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     }),
+    createNode({
+      id: 'personal-a',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: 'Personal A.txt',
+      kind: 'doc',
+      mimeType: 'text/plain',
+      sizeBytes: 32,
+      objectKey:
+        'local/workspaces/workspace-default/users/user-a/personal-a.txt',
+      owner: 'User A',
+      ownerUserId: 'user-a',
+      spaceScope: 'personal',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    }),
+    createNode({
+      id: 'personal-b',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: 'Personal B.txt',
+      kind: 'doc',
+      mimeType: 'text/plain',
+      sizeBytes: 32,
+      objectKey:
+        'local/workspaces/workspace-default/users/user-b/personal-b.txt',
+      owner: 'User B',
+      ownerUserId: 'user-b',
+      spaceScope: 'personal',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    }),
+    createNode({
+      id: 'personal-folder-b',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: 'User B Folder',
+      kind: 'folder',
+      mimeType: 'inode/directory',
+      sizeBytes: null,
+      objectKey: null,
+      owner: 'User B',
+      ownerUserId: 'user-b',
+      spaceScope: 'personal',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    }),
   ];
 
   async function readStreamSize(stream: Readable) {
@@ -144,6 +198,22 @@ describe('FileNodesService', () => {
 
   beforeEach(() => {
     const audits = new Map<string, number>();
+    const downloadIntents = new Map<
+      string,
+      {
+        auditMetadata: Record<string, unknown>;
+        consumedAt: string | null;
+        createdAt: string;
+        downloadId: string;
+        expiresAt: string;
+        filename: string;
+        method: 'stream' | 'manifest';
+        nodeId: string;
+        purpose: 'download' | 'preview';
+        useCount: number;
+        versionId: string | null;
+      }
+    >();
     const nodes = [...seedNodes];
     const sessions = new Map<string, UploadSession>();
     const sessionParts = new Map<string, UploadSessionPart[]>();
@@ -247,6 +317,89 @@ describe('FileNodesService', () => {
       findById: jest.fn((id: string) =>
         Promise.resolve(nodes.find((node) => node.id === id) ?? null),
       ),
+      findVersion: jest.fn((nodeId: string, versionId: string) =>
+        Promise.resolve(
+          nodeId === 'roadmap' && versionId === 'version-1'
+            ? {
+                id: 'version-1',
+                nodeId: 'roadmap',
+                versionNumber: 1,
+                objectKey:
+                  'uploads/workspace-default/root/seed-roadmap-v1.docx',
+                sizeBytes: 1024,
+                mimeType: docxMimeType,
+                uploadedBy: 'Workspace User',
+                remark: 'Initial version',
+                createdAt: new Date(0).toISOString(),
+              }
+            : null,
+        ),
+      ),
+      listVersions: jest.fn(() =>
+        Promise.resolve([
+          {
+            id: 'version-1',
+            nodeId: 'roadmap',
+            versionNumber: 1,
+            objectKey: 'uploads/workspace-default/root/seed-roadmap-v1.docx',
+            sizeBytes: 1024,
+            mimeType: docxMimeType,
+            uploadedBy: 'Workspace User',
+            remark: 'Initial version',
+            createdAt: new Date(0).toISOString(),
+          },
+        ]),
+      ),
+      createDownloadIntent: jest.fn(
+        (input: {
+          auditMetadata?: Record<string, unknown>;
+          filename: string;
+          method: 'stream' | 'manifest';
+          nodeId: string;
+          purpose: 'download' | 'preview';
+          versionId?: string | null;
+        }) => {
+          const downloadId = `fdl_test_${downloadIntents.size + 1}`;
+          const intent = {
+            auditMetadata: input.auditMetadata ?? {},
+            consumedAt: null,
+            createdAt: new Date().toISOString(),
+            downloadId,
+            expiresAt: new Date(Date.now() + 300000).toISOString(),
+            filename: input.filename,
+            method: input.method,
+            nodeId: input.nodeId,
+            purpose: input.purpose,
+            useCount: 0,
+            versionId: input.versionId ?? null,
+          };
+          downloadIntents.set(downloadId, intent);
+          return Promise.resolve(intent);
+        },
+      ),
+      openDownloadIntent: jest.fn(
+        (input: {
+          downloadId: string;
+          nodeId: string;
+          versionId?: string | null;
+        }) => {
+          const intent = downloadIntents.get(input.downloadId);
+          if (
+            !intent ||
+            intent.nodeId !== input.nodeId ||
+            intent.versionId !== (input.versionId ?? null) ||
+            new Date(intent.expiresAt).getTime() < Date.now() ||
+            (intent.purpose === 'download' && intent.consumedAt)
+          ) {
+            return Promise.resolve(null);
+          }
+          intent.useCount += 1;
+          if (intent.purpose === 'download') {
+            intent.consumedAt = new Date().toISOString();
+          }
+          return Promise.resolve({ ...intent });
+        },
+      ),
       completeUpload: jest.fn(
         (
           dto: CompleteUploadDto & {
@@ -318,18 +471,20 @@ describe('FileNodesService', () => {
             error: null,
           }),
       ),
-      findPreviewArtifact: jest.fn((previewId: string) =>
-        Promise.resolve({
+      findPreviewArtifact: jest.fn((previewId: string) => {
+        const nodeId =
+          previewId === 'preview-personal-b' ? 'personal-b' : 'roadmap';
+        return Promise.resolve({
           previewId,
-          nodeId: 'roadmap',
+          nodeId,
           status: 'ready',
           previewType: 'docx',
           renderMode: 'docx',
-          statusUrl: '/api/file-nodes/roadmap/preview/status',
+          statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
           capability: seedNodes[0].previewCapability,
           error: null,
-        }),
-      ),
+        });
+      }),
       recordAudit: jest.fn((action: string) => {
         audits.set(action, (audits.get(action) ?? 0) + 1);
         return Promise.resolve();
@@ -342,6 +497,18 @@ describe('FileNodesService', () => {
     storage = {
       distributedStorageEnabled: jest.fn(() => Promise.resolve(true)),
       getConfiguredQuotaBytes: jest.fn(() => Promise.resolve(null)),
+      openObjectStream: jest.fn(() =>
+        Promise.resolve({
+          acceptRanges: 'bytes' as const,
+          contentLength: 4,
+          contentRange: 'bytes 0-3/10',
+          contentType: 'application/octet-stream',
+          etag: null,
+          lastModified: null,
+          statusCode: 206 as const,
+          stream: Readable.from(['test']),
+        }),
+      ),
       createPresignedUpload: jest.fn((key: string) => ({
         key,
         bucket: 'icedr-drive',
@@ -397,6 +564,7 @@ describe('FileNodesService', () => {
           Promise.resolve({
             id: 'transfer-test',
             workspaceId: input.workspaceId,
+            ownerUserId: null,
             objectKey: input.objectKey,
             nodeId: null,
             name: input.name,
@@ -408,7 +576,7 @@ describe('FileNodesService', () => {
           }),
       ),
       completeTransfer: jest.fn(() => Promise.resolve()),
-      updateTransfer: jest.fn(() => Promise.resolve()),
+      updateTransferInternal: jest.fn(() => Promise.resolve()),
     };
     uploadSessions = {
       create: jest.fn(
@@ -417,7 +585,9 @@ describe('FileNodesService', () => {
             id: `upload-session-test-${++sessionCounter}`,
             transferId: input.transferId,
             workspaceId: input.workspaceId,
+            ownerUserId: input.ownerUserId ?? null,
             spaceScope: input.spaceScope ?? 'workspace',
+            conflictStrategy: input.conflictStrategy,
             objectKey: input.objectKey,
             multipartUploadId: input.multipartUploadId ?? null,
             resumeKey: input.resumeKey ?? null,
@@ -439,7 +609,9 @@ describe('FileNodesService', () => {
           const session = Array.from(sessions.values()).find(
             (item) =>
               item.workspaceId === input.workspaceId &&
+              item.ownerUserId === (input.ownerUserId ?? null) &&
               item.spaceScope === (input.spaceScope ?? 'workspace') &&
+              item.conflictStrategy === input.conflictStrategy &&
               item.resumeKey === input.resumeKey &&
               item.fileName === input.fileName &&
               item.parentNodeId === (input.parentNodeId ?? null) &&
@@ -558,6 +730,7 @@ describe('FileNodesService', () => {
     expect(transfers.completeTransfer).toHaveBeenCalledWith({
       transferId: 'transfer-test',
       nodeId: node.id,
+      ownerUserId: null,
     });
     await expect(
       repository.countAuditEvents('file.upload_intent_created'),
@@ -568,7 +741,7 @@ describe('FileNodesService', () => {
   });
 
   it('continues multipart uploads when the transfer progress task is gone', async () => {
-    transfers.updateTransfer.mockRejectedValueOnce(
+    transfers.updateTransferInternal.mockRejectedValueOnce(
       new NotFoundException('Transfer not found'),
     );
     const intent = await service.createUploadIntent({
@@ -945,9 +1118,11 @@ describe('FileNodesService', () => {
       uploadId: `multipart-${intent.objectKey}`,
     });
     expect(storage.deleteUploadSessionParts).not.toHaveBeenCalled();
-    expect(transfers.updateTransfer).toHaveBeenCalledWith(intent.transferId, {
-      status: 'canceled',
-    });
+    expect(transfers.updateTransferInternal).toHaveBeenCalledWith(
+      intent.transferId,
+      { status: 'canceled' },
+      null,
+    );
 
     const nextIntent = await service.createUploadIntent({
       workspaceId: 'workspace-default',
@@ -992,6 +1167,12 @@ describe('FileNodesService', () => {
       status: 'ready',
       renderMode: 'docx',
     });
+    await expect(
+      service.getPreviewStatus('personal-b', 'preview-personal-b', {
+        actorRole: 'member',
+        actorUserId: 'user-a',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('degrades unsafe or oversized preview intents to download-only', async () => {
@@ -1020,6 +1201,180 @@ describe('FileNodesService', () => {
       },
       error: 'File is too large to preview',
     });
+  });
+
+  it('prevents member IDOR across personal spaces', async () => {
+    const memberAccess = { actorRole: 'member', actorUserId: 'user-a' };
+
+    await expect(
+      service.getFileNode('personal-b', memberAccess),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.createDownloadIntent('personal-b', {}, memberAccess),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.renameFileNode(
+        'personal-b',
+        { name: 'Stolen.txt' },
+        memberAccess,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.createFolder({
+        workspaceId: 'workspace-default',
+        name: 'Injected Folder',
+        parentNodeId: 'personal-folder-b',
+        spaceScope: 'personal',
+        ownerUserId: 'user-a',
+        ...memberAccess,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    await expect(
+      service.getFileNode('personal-b', {
+        actorRole: 'admin',
+        actorUserId: 'admin-user',
+      }),
+    ).resolves.toMatchObject({ id: 'personal-b' });
+  });
+
+  it('requires upload completion to reference its server-created session', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Session Required.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-session-required',
+    });
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+
+    await expect(
+      service.completeUpload({
+        workspaceId: 'workspace-default',
+        fileName: 'Session Required.pdf',
+        objectKey: intent.objectKey,
+        sizeBytes: 4096,
+        mimeType: 'application/pdf',
+        transferId: intent.transferId,
+      }),
+    ).rejects.toThrow('Upload session is required');
+  });
+
+  it('does not allow another user to operate an upload session', async () => {
+    const intent = await service.createUploadIntent(
+      {
+        workspaceId: 'workspace-default',
+        fileName: 'Private Upload.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 4096,
+        resumeKey: 'resume-private-upload',
+      },
+      { ownerUserId: 'user-a' },
+    );
+
+    await expect(
+      service.completeUploadPart(
+        intent.sessionId ?? '',
+        0,
+        { eTag: '"etag-0"', sizeBytes: 4096 },
+        'user-b',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.cancelUploadSession(intent.sessionId ?? '', {
+        ownerUserId: 'user-b',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('binds download purpose to the intent and streams through ICEDR', async () => {
+    const previewIntent = await service.createDownloadIntent(
+      'roadmap',
+      { purpose: 'preview' },
+      { auditMetadata: { ip: '203.0.113.7', userAgent: 'Test Browser' } },
+    );
+
+    expect(previewIntent).toMatchObject({
+      method: 'stream',
+      purpose: 'preview',
+    });
+    expect(previewIntent.downloadUrl).not.toContain('purpose=');
+    const preview = await service.downloadFileNode(
+      'roadmap',
+      previewIntent.downloadId,
+      {
+        auditMetadata: { ip: '203.0.113.7', userAgent: 'Test Browser' },
+        range: 'bytes=0-3',
+      },
+    );
+    expect(preview).toMatchObject({
+      method: 'stream',
+      purpose: 'preview',
+      contentLength: 4,
+      contentRange: 'bytes 0-3/10',
+    });
+    expect(preview).not.toHaveProperty('redirectUrl');
+    expect(storage.openObjectStream).toHaveBeenCalledWith({
+      objectKey: 'uploads/workspace-default/root/seed-roadmap.docx',
+      range: 'bytes=0-3',
+    });
+
+    const downloadIntent = await service.createDownloadIntent('roadmap', {});
+    await expect(
+      service.downloadFileNode('roadmap', downloadIntent.downloadId),
+    ).resolves.toMatchObject({ method: 'stream', purpose: 'download' });
+    await expect(
+      service.downloadFileNode('roadmap', downloadIntent.downloadId),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('does not issue preview streams for download-only file types', async () => {
+    await expect(
+      service.createDownloadIntent('unsafe-html', { purpose: 'preview' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('keeps version object keys behind an ICEDR download endpoint', async () => {
+    const versions = await service.listFileVersions('roadmap');
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).not.toHaveProperty('objectKey');
+
+    const intent = await service.createVersionDownloadIntent(
+      'roadmap',
+      'version-1',
+      { auditMetadata: { ip: '203.0.113.7', userAgent: 'Test Browser' } },
+    );
+    expect(intent).toMatchObject({
+      method: 'stream',
+      purpose: 'download',
+    });
+    expect(intent.downloadUrl).toBe(
+      `/api/file-nodes/roadmap/versions/version-1/download?downloadId=${encodeURIComponent(intent.downloadId)}`,
+    );
+    expect(intent.downloadUrl).not.toContain('uploads/');
+
+    const download = await service.downloadFileVersion(
+      'roadmap',
+      'version-1',
+      intent.downloadId,
+      {
+        auditMetadata: { ip: '203.0.113.7', userAgent: 'Test Browser' },
+      },
+    );
+    expect(download).toMatchObject({
+      method: 'stream',
+      purpose: 'download',
+    });
+    expect(storage.openObjectStream).toHaveBeenLastCalledWith({
+      objectKey: 'uploads/workspace-default/root/seed-roadmap-v1.docx',
+      range: undefined,
+    });
+    await expect(
+      service.downloadFileVersion('roadmap', 'version-1', intent.downloadId),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('preserves the oversized text edit error message', async () => {

@@ -24,7 +24,8 @@ type DownloadIntentResponse = {
   downloadId: string;
   downloadUrl: string;
   filename: string;
-  method: "presigned-url" | "backend-manifest";
+  method: "stream" | "manifest";
+  purpose: "download" | "preview";
   availableAt: string;
   expiresAt: string;
   policyDecision?: ShareDownloadPolicyDecision;
@@ -135,12 +136,6 @@ function openDownloadUrl(url: string) {
   anchor.remove();
 }
 
-function buildPreviewDownloadUrl(downloadUrl: string) {
-  const url = new URL(buildApiUrl(downloadUrl), getOrigin());
-  url.searchParams.set("purpose", "preview");
-  return url.toString();
-}
-
 export function createPreviewUrl(itemId: DriveItem["id"]) {
   return `${getOrigin()}/preview/${encodeURIComponent(itemId)}`;
 }
@@ -174,6 +169,7 @@ export async function downloadSharedDriveItem(token: string, item: DriveItem, ac
   const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
     method: "POST",
     headers,
+    body: JSON.stringify({ purpose: "download" }),
   });
   if (!intentResponse.ok) throw await createDriveFetchError(intentResponse, "Download intent failed");
 
@@ -187,20 +183,19 @@ export async function createSharedDriveItemBlobUrl(token: string, item: DriveIte
   const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
     method: "POST",
     headers,
+    body: JSON.stringify({ purpose: "preview" }),
   });
   if (!intentResponse.ok) throw await createDriveFetchError(intentResponse, "Download intent failed");
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
-  const response = await fetch(buildPreviewDownloadUrl(intent.downloadUrl), {
-    redirect: "follow",
-  });
+  const response = await fetch(buildApiUrl(intent.downloadUrl));
   if (!response.ok) throw await createDriveFetchError(response, "Download failed");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
 
 export async function downloadWorkspaceDriveItem(item: DriveItem, workspaceId?: string) {
-  const intent = await createFileDownloadIntent(item.id, workspaceId);
+  const intent = await createFileDownloadIntent(item.id, workspaceId, "download");
   openDownloadUrl(buildApiUrl(intent.downloadUrl));
 }
 
@@ -216,19 +211,16 @@ export async function downloadWorkspaceFileVersion(item: DriveItem, versionId: s
 }
 
 export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspaceId?: string) {
-  const intent = await createFileDownloadIntent(item.id, workspaceId);
-  const downloadUrl = buildPreviewDownloadUrl(intent.downloadUrl);
-  const response = await fetch(downloadUrl, {
-    redirect: "follow",
-  });
+  const intent = await createFileDownloadIntent(item.id, workspaceId, "preview");
+  const response = await fetch(buildApiUrl(intent.downloadUrl));
   if (!response.ok) throw await createDriveFetchError(response, "Download failed");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
 
 export async function createWorkspaceDriveItemSourceUrl(item: DriveItem, workspaceId?: string) {
-  const intent = await createFileDownloadIntent(item.id, workspaceId);
-  return buildPreviewDownloadUrl(intent.downloadUrl);
+  const intent = await createFileDownloadIntent(item.id, workspaceId, "preview");
+  return buildApiUrl(intent.downloadUrl);
 }
 
 export function createUploadDriveFileTask({

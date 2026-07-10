@@ -43,9 +43,20 @@ export function getFileNameConflictKey(value: string) {
 }
 
 export function createAttachmentContentDisposition(filename: string) {
+  return createContentDisposition('attachment', filename);
+}
+
+export function createInlineContentDisposition(filename: string) {
+  return createContentDisposition('inline', filename);
+}
+
+function createContentDisposition(
+  disposition: 'attachment' | 'inline',
+  filename: string,
+) {
   const safeName = sanitizeDownloadFileName(filename);
   const fallbackName = createAsciiFallbackFileName(safeName);
-  return `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodeContentDispositionValue(safeName)}`;
+  return `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodeContentDispositionValue(safeName)}`;
 }
 
 function getFileNameBase(name: string) {

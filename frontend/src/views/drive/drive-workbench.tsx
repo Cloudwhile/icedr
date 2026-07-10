@@ -987,7 +987,7 @@ export function DriveWorkbench({
         spaceScope: previous?.spaceScope ?? spaceScopeRef.current,
         workspaceId: progress.workspaceId,
         nodeId: null,
-        objectKey: null,
+        hasContent: false,
         name: progress.fileName,
         type: "upload",
         errorMessage: null,
@@ -1046,7 +1046,7 @@ export function DriveWorkbench({
         spaceScope: targetSpaceScope,
         workspaceId: targetWorkspaceId,
         nodeId: null,
-        objectKey: null,
+        hasContent: false,
         name: file.name,
         type: "upload",
         errorMessage: null,
@@ -1248,7 +1248,7 @@ export function DriveWorkbench({
       return false;
     }
 
-    if (item.objectKey) {
+    if (item.hasContent) {
       const previousExtension = getNameExtension(item.name);
       const nextExtension = getNameExtension(name);
       if (previousExtension !== nextExtension) {

@@ -109,7 +109,7 @@ function mapRegisteredShareItemToDriveItem(item: RegisteredShareItem): DriveItem
     owner: item.owner,
     modifiedAt: item.updatedAt,
     mimeType: item.mimeType,
-    objectKey: null,
+    hasContent: item.hasContent,
     sizeBytes: item.sizeBytes,
     shared: true,
     starred: item.starred,

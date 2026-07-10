@@ -1,14 +1,18 @@
 import {
   BadRequestException,
-  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
+import { mkdir, rm, writeFile } from 'fs/promises';
+import { dirname } from 'path';
+import { Readable } from 'stream';
 import { PrismaService } from '../../database/prisma.service';
 import { StorageReconcileRepository } from './storage-reconcile.repository';
 import { StorageSettingsRepository } from './storage-settings.repository';
 import { StorageService } from './storage.service';
 import { StorageSettings } from './storage-settings.dto';
+import { RangeNotSatisfiableException } from './object-byte-range';
 
 describe('StorageService', () => {
   const configuredValues: Record<string, unknown> = {
@@ -173,88 +177,128 @@ describe('StorageService', () => {
     expect(signer).toHaveBeenCalledTimes(1);
   });
 
-  it('creates presigned download urls', async () => {
-    const { service } = createService();
-
-    const intent = await service.createPresignedDownload(
-      'workspace-default/root/file.pdf',
-      'file.pdf',
-    );
-
-    expect(intent).toMatchObject({
-      key: 'workspace-default/root/file.pdf',
-      bucket: 'icedr-drive',
-      method: 'GET',
-      url: 'http://signed.local',
-      expiresInSeconds: 300,
+  it('rejects unsafe object storage endpoints before creating clients', async () => {
+    const { service, signer } = createService({
+      ...configuredValues,
+      'storage.endpoint': 'http://169.254.169.254/latest/meta-data',
     });
-  });
 
-  it('uses opaque expiring tickets for local download urls', async () => {
-    const { service, signer } = createService();
-
-    const intent = await service.createPresignedDownload(
-      'local/workspace-default/root/file.pdf',
-      'file.pdf',
-    );
-
-    expect(intent).toMatchObject({
-      bucket: 'local',
-      expiresInSeconds: 300,
-      key: 'local/workspace-default/root/file.pdf',
-      method: 'GET',
-    });
-    expect(intent.url).toMatch(/^\/api\/storage\/local-files\?ticket=/);
-    expect(intent.url).not.toContain('workspace-default');
-    expect(intent.url).not.toContain('file.pdf');
-    expect(signer).not.toHaveBeenCalled();
     await expect(
-      service.getLocalDownload('invalid-ticket'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+      service.createPresignedUpload(
+        'workspace-default/root/file.pdf',
+        'application/pdf',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(signer).not.toHaveBeenCalled();
   });
 
-  it('rewrites presigned object urls to the public storage endpoint', async () => {
-    const { service } = createService(
-      {
-        ...configuredValues,
-        'storage.publicEndpoint': 'https://drive.example.com/objects',
-      },
-      'http://minio:9000/icedr-drive/workspace-default/root/file.pdf?X-Amz-Signature=test',
-    );
+  it('opens local object ranges without exposing the storage path', async () => {
+    const { service } = createService();
+    const objectKey = 'local/workspace-default/root/range-test.txt';
+    const filePath =
+      'backend/.tmp/storage-service-spec-local-files/workspace-default/root/range-test.txt';
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, '0123456789', 'utf8');
 
-    const intent = await service.createPresignedDownload(
-      'workspace-default/root/file.pdf',
-      'file.pdf',
-    );
+    try {
+      const result = await service.openObjectStream({
+        objectKey,
+        range: 'bytes=2-5',
+      });
+      const chunks: Buffer[] = [];
+      for await (const chunk of result.stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
 
-    expect(intent.url).toBe(
-      'https://drive.example.com/objects/icedr-drive/workspace-default/root/file.pdf?X-Amz-Signature=test',
-    );
+      expect(Buffer.concat(chunks).toString('utf8')).toBe('2345');
+      expect(result).toMatchObject({
+        acceptRanges: 'bytes',
+        contentLength: 4,
+        contentRange: 'bytes 2-5/10',
+        contentType: 'application/octet-stream',
+        statusCode: 206,
+      });
+      expect(result).not.toHaveProperty('path');
+      expect(result).not.toHaveProperty('url');
+    } finally {
+      await rm('backend/.tmp/storage-service-spec-local-files', {
+        force: true,
+        recursive: true,
+      });
+    }
   });
 
-  it('preserves public storage endpoint query parameters when rewriting urls', async () => {
-    const { service } = createService(
-      {
-        ...configuredValues,
-        'storage.publicEndpoint':
-          'https://drive.example.com/objects?gateway=cdn&X-Amz-Signature=public',
-      },
-      'http://minio:9000/icedr-drive/workspace-default/root/file.pdf?X-Amz-Signature=signed&X-Amz-Expires=300',
-    );
+  it('streams object storage ranges without creating a signed url', async () => {
+    const { service, signer } = createService();
+    const lastModified = new Date('2026-07-11T00:00:00.000Z');
+    const send = jest.fn((command: GetObjectCommand | HeadObjectCommand) => {
+      if (command instanceof HeadObjectCommand) {
+        return Promise.resolve({ ContentLength: 10 });
+      }
+      return Promise.resolve({
+        Body: Readable.from(['2345']),
+        ContentLength: 4,
+        ContentRange: 'bytes 2-5/10',
+        ContentType: 'text/plain',
+        ETag: '"etag-range"',
+        LastModified: lastModified,
+      });
+    });
+    jest
+      .spyOn(
+        service as unknown as {
+          createClient: () => { send: typeof send };
+        },
+        'createClient',
+      )
+      .mockReturnValue({ send });
 
-    const intent = await service.createPresignedDownload(
-      'workspace-default/root/file.pdf',
-      'file.pdf',
-    );
+    const result = await service.openObjectStream({
+      objectKey: 'workspace-default/root/range-test.txt',
+      range: 'bytes=2-5',
+    });
+    const chunks: Buffer[] = [];
+    for await (const chunk of result.stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
 
-    const url = new URL(intent.url);
-    expect(url.origin).toBe('https://drive.example.com');
-    expect(url.pathname).toBe(
-      '/objects/icedr-drive/workspace-default/root/file.pdf',
-    );
-    expect(url.searchParams.get('X-Amz-Signature')).toBe('signed');
-    expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
-    expect(url.searchParams.get('gateway')).toBe('cdn');
+    expect(Buffer.concat(chunks).toString('utf8')).toBe('2345');
+    expect(result).toMatchObject({
+      acceptRanges: 'bytes',
+      contentLength: 4,
+      contentRange: 'bytes 2-5/10',
+      contentType: 'text/plain',
+      etag: '"etag-range"',
+      lastModified,
+      statusCode: 206,
+    });
+    expect(result).not.toHaveProperty('bucket');
+    expect(result).not.toHaveProperty('url');
+    expect(signer).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0].input.Range).toBe('bytes=2-5');
+  });
+
+  it('rejects object storage ranges before requesting the object body', async () => {
+    const { service } = createService();
+    const send = jest.fn(() => Promise.resolve({ ContentLength: 10 }));
+    jest
+      .spyOn(
+        service as unknown as {
+          createClient: () => { send: typeof send };
+        },
+        'createClient',
+      )
+      .mockReturnValue({ send });
+
+    await expect(
+      service.openObjectStream({
+        objectKey: 'workspace-default/root/range-test.txt',
+        range: 'bytes=10-12',
+      }),
+    ).rejects.toBeInstanceOf(RangeNotSatisfiableException);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toBeInstanceOf(HeadObjectCommand);
   });
 
   it('rejects switching to distributed storage until object storage is configured', async () => {

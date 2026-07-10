@@ -351,6 +351,11 @@ export class AuthService {
       storedState.providerSnapshot,
       storedState.redirectUri,
     );
+    this.assertOAuthCallbackTarget(url, storedState.redirectUri);
+    const claimed = await this.authRepository.markOAuthStateUsed(state);
+    if (!claimed) {
+      throw new UnauthorizedException('OAuth state is invalid');
+    }
     const oauthAdapter = this.createOAuthProviderAdapter(oauth);
     const oauthUser = await oauthAdapter.exchangeCode({
       oauth,
@@ -359,10 +364,6 @@ export class AuthService {
       state,
       codeVerifier: storedState.codeVerifier,
     });
-    const claimed = await this.authRepository.markOAuthStateUsed(state);
-    if (claimed === false) {
-      throw new UnauthorizedException('OAuth state is invalid');
-    }
 
     this.assertOAuthUserPolicy(oauth, oauthUser);
     let user = await this.authRepository.findUserByProviderIdentity(
@@ -594,6 +595,32 @@ export class AuthService {
     return createOAuthProviderAdapter(oauth, {
       production: this.production,
     });
+  }
+
+  private assertOAuthCallbackTarget(url: URL, redirectUri: string) {
+    let expected: URL;
+    try {
+      expected = new URL(redirectUri);
+    } catch {
+      throw new UnauthorizedException('OAuth callback target is invalid');
+    }
+    if (
+      url.origin !== expected.origin ||
+      url.pathname !== expected.pathname ||
+      expected.username ||
+      expected.password ||
+      expected.hash ||
+      url.username ||
+      url.password ||
+      url.hash
+    ) {
+      throw new UnauthorizedException('OAuth callback target is invalid');
+    }
+    for (const [key, value] of expected.searchParams) {
+      if (!url.searchParams.getAll(key).includes(value)) {
+        throw new UnauthorizedException('OAuth callback target is invalid');
+      }
+    }
   }
 
   private createOAuthProviderSnapshot(

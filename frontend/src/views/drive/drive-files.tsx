@@ -774,7 +774,7 @@ function FileTable({
                 onCancel={onCancelRenameItem}
                 onCommit={(name) => onCommitRenameItem(item, name)}
                 palette={palette}
-                selectBaseName={Boolean(item.objectKey)}
+                selectBaseName={Boolean(item.hasContent)}
                 value={item.name}
               />
             ) : (
@@ -1015,7 +1015,7 @@ function FileGrid({
                   onCancel={onCancelRenameItem}
                   onCommit={(name) => onCommitRenameItem(item, name)}
                   palette={palette}
-                  selectBaseName={Boolean(item.objectKey)}
+                  selectBaseName={Boolean(item.hasContent)}
                   value={item.name}
                 />
               ) : (

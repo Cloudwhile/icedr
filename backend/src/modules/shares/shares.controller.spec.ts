@@ -36,8 +36,10 @@ describe('SharesController', () => {
       Promise.resolve({ user: accountUser }),
     );
     const requirePermission = jest.fn();
+    const listShares = jest.fn(() => Promise.resolve([]));
     const sharesService = {
       createVerifiedAccountAccessSession,
+      listShares,
       revokeShare,
     } as unknown as SharesService;
     const adminGuard = {
@@ -50,6 +52,7 @@ describe('SharesController', () => {
       accountUser,
       controller: new SharesController(sharesService, adminGuard),
       createVerifiedAccountAccessSession,
+      listShares,
       requireAdminSession,
       requirePermission,
       requireSession,
@@ -66,6 +69,20 @@ describe('SharesController', () => {
     expect(requireAdminSession).toHaveBeenCalledWith('Bearer admin');
     expect(requirePermission).not.toHaveBeenCalled();
     expect(revokeShare).toHaveBeenCalledWith('share-token', {});
+  });
+
+  it('scopes member share management lists to the current user', async () => {
+    const { controller, listShares, requirePermission } = createController();
+    requirePermission.mockResolvedValueOnce({
+      user: { id: 'user-member', role: 'member' },
+    });
+
+    await controller.listShares('workspace-default', 'Bearer member');
+
+    expect(listShares).toHaveBeenCalledWith('workspace-default', {
+      actorRole: 'member',
+      actorUserId: 'user-member',
+    });
   });
 
   it('does not revoke shares when admin session fails', async () => {

@@ -33,6 +33,7 @@ export type FileNodeSortField =
   | 'updatedAt'
   | 'sizeBytes';
 export type FileNodeSortDirection = 'asc' | 'desc';
+export type DownloadIntentPurpose = 'download' | 'preview';
 export type FileNodeTypeFilter =
   | 'folder'
   | 'doc'
@@ -138,8 +139,8 @@ export class CompleteUploadDto {
   transferId?: string;
 
   @IsString()
-  @IsOptional()
-  uploadSessionId?: string;
+  @IsNotEmpty()
+  uploadSessionId!: string;
 
   @IsIn(uploadConflictStrategies)
   @IsOptional()
@@ -276,6 +277,10 @@ export class CreateDownloadIntentDto {
   @IsString()
   @IsOptional()
   workspaceId?: string;
+
+  @IsIn(['download', 'preview'])
+  @IsOptional()
+  purpose?: DownloadIntentPurpose;
 }
 
 export class ListFileNodesQueryDto {
@@ -431,7 +436,8 @@ export type DownloadIntentResponse = {
   downloadId: string;
   nodeId: string;
   filename: string;
-  method: 'presigned-url' | 'backend-manifest';
+  method: 'stream' | 'manifest';
+  purpose: DownloadIntentPurpose;
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
@@ -442,7 +448,6 @@ export type FileVersionResponse = {
   nodeId: string;
   versionNumber: number;
   sizeBytes: number;
-  objectKey: string;
   mimeType: string;
   uploadedBy: string;
   remark: string;

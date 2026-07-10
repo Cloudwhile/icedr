@@ -113,7 +113,7 @@ function createService(options: { userLocale?: string | null } = {}) {
     createSession: jest.fn(() => Promise.resolve()),
     findOAuthState: jest.fn(),
     createOAuthState: jest.fn(() => Promise.resolve()),
-    markOAuthStateUsed: jest.fn(() => Promise.resolve()),
+    markOAuthStateUsed: jest.fn(() => Promise.resolve(true)),
     findUserByProviderIdentity: jest.fn(),
     createOAuthUser: jest.fn(),
     createOAuthExchangeCode: jest.fn(() => Promise.resolve()),
@@ -599,6 +599,121 @@ describe('AuthService', () => {
         user,
       }),
     );
+  });
+
+  it('claims OAuth state before contacting the provider', async () => {
+    const { repository, settingsService, service } = createService();
+    const exchangeCode = jest.fn();
+    const providerSnapshot = {
+      id: 'provider-1',
+      enabled: true,
+      providerKey: 'icetowne-blog' as const,
+      displayName: 'ICETOWNE BLOG',
+      providerProfile: 'icetowne-blog' as const,
+      issuerUrl: 'https://original.example',
+      authorizationUrl: '',
+      tokenUrl: '',
+      userinfoUrl: '',
+      clientId: 'original-client',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://app.example/callback',
+    };
+    settingsService.getOAuthSettings.mockResolvedValue({
+      ...providerSnapshot,
+      clientSecret: 'current-secret',
+      allowSignup: true,
+      linkByVerifiedEmail: false,
+      requireVerifiedEmail: false,
+      allowedEmailDomains: [],
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
+    settingsService.oauthConfigured.mockReturnValue(true);
+    repository.findOAuthState.mockResolvedValue({
+      state: 'stored-state',
+      flow: 'login',
+      shareToken: null,
+      userId: null,
+      sessionTokenHash: null,
+      purpose: null,
+      codeVerifier: 'stored-verifier',
+      redirectUri: 'https://app.example/callback',
+      providerSnapshot,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      usedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    repository.markOAuthStateUsed.mockResolvedValue(false);
+    jest.mocked(createOAuthProviderAdapter).mockReturnValue({
+      providerKey: 'icetowne-blog',
+      providerProfile: 'icetowne-blog',
+      buildAuthorizationUrl: jest.fn(),
+      exchangeCode,
+    });
+
+    await expect(
+      service.handleOAuthCallback(
+        'https://app.example/callback?state=stored-state&code=oauth-code',
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    expect(repository.markOAuthStateUsed).toHaveBeenCalledWith('stored-state');
+    expect(createOAuthProviderAdapter).not.toHaveBeenCalled();
+    expect(exchangeCode).not.toHaveBeenCalled();
+  });
+
+  it('rejects OAuth callbacks from another origin before claiming state', async () => {
+    const { repository, settingsService, service } = createService();
+    const providerSnapshot = {
+      id: 'provider-1',
+      enabled: true,
+      providerKey: 'icetowne-blog' as const,
+      displayName: 'ICETOWNE BLOG',
+      providerProfile: 'icetowne-blog' as const,
+      issuerUrl: 'https://original.example',
+      authorizationUrl: '',
+      tokenUrl: '',
+      userinfoUrl: '',
+      clientId: 'original-client',
+      audience: '',
+      scopes: 'basic',
+      redirectUri: 'https://app.example/callback',
+    };
+    settingsService.getOAuthSettings.mockResolvedValue({
+      ...providerSnapshot,
+      clientSecret: 'current-secret',
+      allowSignup: true,
+      linkByVerifiedEmail: false,
+      requireVerifiedEmail: false,
+      allowedEmailDomains: [],
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
+    settingsService.oauthConfigured.mockReturnValue(true);
+    repository.findOAuthState.mockResolvedValue({
+      state: 'stored-state',
+      flow: 'login',
+      shareToken: null,
+      userId: null,
+      sessionTokenHash: null,
+      purpose: null,
+      codeVerifier: 'stored-verifier',
+      redirectUri: 'https://app.example/callback',
+      providerSnapshot,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      usedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+
+    await expect(
+      service.handleOAuthCallback(
+        'https://evil.example/callback?state=stored-state&code=oauth-code',
+      ),
+    ).rejects.toMatchObject({ message: 'OAuth callback target is invalid' });
+
+    expect(repository.markOAuthStateUsed).not.toHaveBeenCalled();
+    expect(createOAuthProviderAdapter).not.toHaveBeenCalled();
   });
 
   it('falls back to current OAuth settings for callbacks from legacy states', async () => {

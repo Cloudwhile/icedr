@@ -4,7 +4,14 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as oidc from 'openid-client';
+import {
+  Agent,
+  fetch as undiciFetch,
+  type RequestInit as UndiciRequestInit,
+} from 'undici';
+import { createRestrictedLookup } from '../../common/security/outbound-http-policy';
 import type { OAuthSettings } from '../../modules/admin/settings/settings.dto';
+import { validateOAuthHttpUrl } from './oauth-url-policy';
 
 type OAuthTokenResponse = Record<string, unknown> & {
   access_token?: string;
@@ -15,6 +22,9 @@ type OAuthTokenResponse = Record<string, unknown> & {
 type OAuthProviderProfile = OAuthSettings['providerProfile'];
 export type OAuthEmailSource = 'provider' | 'derived';
 const oauthProviderRequestTimeoutMs = 10_000;
+const oauthDispatcher = new Agent({
+  connect: { lookup: createRestrictedLookup() },
+});
 export type OAuthProviderSnapshot = Pick<
   OAuthSettings,
   | 'enabled'
@@ -325,13 +335,17 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
   async buildAuthorizationUrl(input: OAuthAuthorizationInput) {
     try {
       const client = await this.createClient(input.oauth, input.redirectUri);
-      return oidc.buildAuthorizationUrl(client, {
+      const authorizationUrl = oidc.buildAuthorizationUrl(client, {
         redirect_uri: input.redirectUri,
         scope: ensureOpenIdScope(input.oauth.scopes),
         code_challenge: input.codeChallenge,
         code_challenge_method: 'S256',
         state: input.state,
         ...(input.oauth.audience ? { audience: input.oauth.audience } : {}),
+      });
+      return validateOAuthHttpUrl(authorizationUrl, {
+        label: 'OIDC authorization URL',
+        production: this.options.production,
       });
     } catch (error) {
       rethrowKnownOAuthException(error);
@@ -394,9 +408,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
           error,
         );
       }
-      throw new UnauthorizedException(
-        `OIDC code exchange failed: ${formatOAuthErrorDetail(error)}`,
-      );
+      throw new UnauthorizedException('OIDC code exchange failed');
     }
   }
 
@@ -407,6 +419,13 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       const cacheKey = createOidcDiscoveryCacheKey(issuer, oauth, redirectUri);
       let clientPromise = OidcOAuthAdapter.discoveryCache.get(cacheKey);
       if (!clientPromise) {
+        const discoveryOptions: oidc.DiscoveryRequestOptions = {
+          [oidc.customFetch]: createOAuthCustomFetch(this.options),
+          timeout: oauthProviderRequestTimeoutMs / 1000,
+          ...(issuer.protocol === 'http:' && !this.options.production
+            ? { execute: [oidc.allowInsecureRequests] }
+            : {}),
+        };
         clientPromise = oidc
           .discovery(
             issuer,
@@ -418,9 +437,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
             oauth.clientSecret
               ? oidc.ClientSecretPost(oauth.clientSecret)
               : oidc.None(),
-            issuer.protocol === 'http:' && !this.options.production
-              ? { execute: [oidc.allowInsecureRequests] }
-              : undefined,
+            discoveryOptions,
           )
           .catch((error: unknown) => {
             OidcOAuthAdapter.discoveryCache.delete(cacheKey);
@@ -485,23 +502,29 @@ class OAuth2OAuthAdapter implements OAuthProviderAdapter {
     );
     assertOAuthIssuerTransport(tokenUrl, this.options, 'OAuth2');
     assertOAuthIssuerTransport(userinfoUrl, this.options, 'OAuth2');
-    const tokenResponse = await postOAuthForm(tokenUrl.toString(), {
-      grant_type: 'authorization_code',
-      code,
-      client_id: input.oauth.clientId,
-      ...(input.oauth.clientSecret
-        ? { client_secret: input.oauth.clientSecret }
-        : {}),
-      redirect_uri: input.redirectUri,
-      code_verifier: input.codeVerifier,
-    });
+    const tokenResponse = await postOAuthForm(
+      tokenUrl.toString(),
+      {
+        grant_type: 'authorization_code',
+        code,
+        client_id: input.oauth.clientId,
+        ...(input.oauth.clientSecret
+          ? { client_secret: input.oauth.clientSecret }
+          : {}),
+        redirect_uri: input.redirectUri,
+        code_verifier: input.codeVerifier,
+      },
+      this.options,
+    );
     const accessToken = readStringField(tokenResponse, 'access_token');
     if (!accessToken) {
       throw new UnauthorizedException('OAuth2 access token is missing');
     }
-    const userInfo = await fetchOAuthJson(userinfoUrl.toString(), {
-      Authorization: `Bearer ${accessToken}`,
-    });
+    const userInfo = await fetchOAuthJson(
+      userinfoUrl.toString(),
+      { Authorization: `Bearer ${accessToken}` },
+      this.options,
+    );
     return mapOAuth2UserProfile(userInfo, tokenResponse, input.oauth);
   }
 }
@@ -523,6 +546,7 @@ class IcetowneBlogOAuthAdapter implements OAuthProviderAdapter {
           scope: input.oauth.scopes || 'basic',
           state: input.state,
         },
+        this.options,
       );
       const authUrl = readStringField(response, 'auth_url');
       if (!authUrl) {
@@ -530,7 +554,10 @@ class IcetowneBlogOAuthAdapter implements OAuthProviderAdapter {
           'ICETOWNE BLOG OAuth did not return an authorization URL',
         );
       }
-      return new URL(authUrl);
+      return validateOAuthHttpUrl(authUrl, {
+        label: 'ICETOWNE BLOG authorization URL',
+        production: this.options.production,
+      });
     } catch (error) {
       rethrowKnownOAuthException(error);
       throw toOAuthServiceUnavailableException(
@@ -554,6 +581,7 @@ class IcetowneBlogOAuthAdapter implements OAuthProviderAdapter {
         client_secret: input.oauth.clientSecret ?? '',
         redirect_uri: input.redirectUri,
       },
+      this.options,
     );
     const accessToken = readStringField(tokenResponse, 'access_token');
     if (!accessToken) {
@@ -564,6 +592,7 @@ class IcetowneBlogOAuthAdapter implements OAuthProviderAdapter {
       {
         Authorization: `Bearer ${accessToken}`,
       },
+      this.options,
     );
     return mapIcetowneBlogUserProfile(userInfo, tokenResponse, issuerUrl);
   }
@@ -631,11 +660,15 @@ async function probeOAuthEndpoint(
   const url = parseOAuthIssuer(target, `OAuth ${key} URL`);
   assertOAuthIssuerTransport(url, options, `OAuth ${key}`);
   try {
-    const response = await fetch(url, {
-      method: 'HEAD',
-      redirect: 'manual',
-      signal: AbortSignal.timeout(oauthProviderRequestTimeoutMs),
-    });
+    const response = await fetchOAuthResponse(
+      url,
+      {
+        method: 'HEAD',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(oauthProviderRequestTimeoutMs),
+      },
+      options,
+    );
     return { key, ok: response.status < 500, status: response.status };
   } catch (error) {
     void error;
@@ -645,12 +678,14 @@ async function probeOAuthEndpoint(
 async function postOAuthForm(
   targetUrl: string,
   fields: Record<string, string>,
+  options: OAuthAdapterOptions,
 ) {
   return fetchOAuthJson(
     targetUrl,
     {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
+    options,
     new URLSearchParams(fields),
   );
 }
@@ -658,36 +693,65 @@ async function postOAuthForm(
 async function fetchOAuthJson(
   targetUrl: string,
   headers: Record<string, string>,
+  options: OAuthAdapterOptions,
   body?: URLSearchParams,
 ) {
   let response: globalThis.Response;
   try {
-    response = await fetch(targetUrl, {
-      method: body ? 'POST' : 'GET',
-      headers: { Accept: 'application/json', ...headers },
-      body,
-      signal: AbortSignal.timeout(oauthProviderRequestTimeoutMs),
-    });
-  } catch (error) {
-    throw new ServiceUnavailableException(
-      `OAuth provider request failed: ${error instanceof Error ? error.message : 'network error'}`,
+    response = await fetchOAuthResponse(
+      targetUrl,
+      {
+        method: body ? 'POST' : 'GET',
+        headers: { Accept: 'application/json', ...headers },
+        body,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(oauthProviderRequestTimeoutMs),
+      },
+      options,
     );
+  } catch (error) {
+    void error;
+    throw new ServiceUnavailableException('OAuth provider request failed');
   }
   if (!response.ok) {
-    const message = await readOAuthResponseMessage(response);
-    const errorMessage = `OAuth provider returned ${response.status}: ${message}`;
+    await response.body?.cancel().catch(() => undefined);
     if (response.status === 400 || response.status === 401) {
-      throw new UnauthorizedException(errorMessage);
+      throw new UnauthorizedException('OAuth provider rejected the request');
     }
-    throw new ServiceUnavailableException(errorMessage);
+    throw new ServiceUnavailableException('OAuth provider request failed');
   }
   try {
     return (await response.json()) as Record<string, unknown>;
   } catch (error) {
+    void error;
     throw new ServiceUnavailableException(
-      `OAuth provider returned invalid JSON: ${formatOAuthErrorDetail(error)}`,
+      'OAuth provider returned an invalid response',
     );
   }
+}
+
+function createOAuthCustomFetch(
+  options: OAuthAdapterOptions,
+): oidc.CustomFetch {
+  return (url, requestOptions) =>
+    fetchOAuthResponse(url, requestOptions, options);
+}
+
+async function fetchOAuthResponse(
+  target: string | URL,
+  requestOptions: RequestInit | oidc.CustomFetchOptions,
+  options: OAuthAdapterOptions,
+) {
+  const url = validateOAuthHttpUrl(target, {
+    label: 'OAuth provider URL',
+    production: options.production,
+  });
+  const response = await undiciFetch(url, {
+    ...(requestOptions as unknown as UndiciRequestInit),
+    dispatcher: oauthDispatcher,
+    redirect: 'manual',
+  });
+  return response as unknown as globalThis.Response;
 }
 
 function joinOAuthUrl(baseUrl: string, path: string) {
@@ -758,14 +822,14 @@ function assertOAuthIssuerTransport(
   options: OAuthAdapterOptions,
   providerLabel: string,
 ) {
-  if (!['https:', 'http:'].includes(issuer.protocol)) {
+  try {
+    validateOAuthHttpUrl(issuer, {
+      label: `${providerLabel} issuer`,
+      production: options.production,
+    });
+  } catch (error) {
     throw new ServiceUnavailableException(
-      `${providerLabel} issuer must use HTTP or HTTPS`,
-    );
-  }
-  if (issuer.protocol === 'http:' && options.production) {
-    throw new ServiceUnavailableException(
-      `${providerLabel} issuer must use HTTPS in production`,
+      error instanceof Error ? error.message : `${providerLabel} is invalid`,
     );
   }
 }
@@ -773,29 +837,11 @@ function assertOAuthIssuerTransport(
 function throwOAuthCallbackError(url: URL) {
   const error = url.searchParams.get('error');
   if (!error) return;
-  const description =
-    url.searchParams.get('error_description') ||
-    url.searchParams.get('error_uri') ||
-    error;
   throw new UnauthorizedException(
-    `OAuth error: ${sanitizeOAuthMessage(description)}`,
+    error === 'access_denied'
+      ? 'OAuth authorization was denied'
+      : 'OAuth provider returned an authorization error',
   );
-}
-
-async function readOAuthResponseMessage(response: globalThis.Response) {
-  const rawMessage = await response.text().catch(() => response.statusText);
-  return sanitizeOAuthMessage(rawMessage || response.statusText);
-}
-
-function sanitizeOAuthMessage(message: string) {
-  const normalized = message
-    .replace(/[^\P{C}\t\r\n]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!normalized) return 'unknown error';
-  return normalized.length > 200
-    ? `${normalized.slice(0, 200)}...`
-    : normalized;
 }
 
 function rethrowKnownOAuthException(error: unknown): never | void {
@@ -808,16 +854,8 @@ function rethrowKnownOAuthException(error: unknown): never | void {
 }
 
 function toOAuthServiceUnavailableException(prefix: string, error: unknown) {
-  return new ServiceUnavailableException(
-    `${prefix}: ${formatOAuthErrorDetail(error)}`,
-  );
-}
-
-function formatOAuthErrorDetail(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return sanitizeOAuthMessage(error.message);
-  }
-  return 'unknown error';
+  void error;
+  return new ServiceUnavailableException(prefix);
 }
 
 function isNetworkOAuthError(error: unknown) {
