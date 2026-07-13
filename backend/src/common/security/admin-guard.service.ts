@@ -26,6 +26,20 @@ export class AdminGuardService {
     action: PermissionAction,
   ) {
     const session = await this.requireSession(authorization);
+    if (action !== 'read') {
+      const status = await this.authRepository.getAuthenticationMethodStatus(
+        session.user.id,
+      );
+      if (!status.compliant) {
+        throw new ForbiddenException({
+          code: 'AUTH_METHOD_POLICY_REQUIRED',
+          message:
+            'Add another authentication method before continuing this operation',
+          methodCount: status.methodCount,
+          minimumAuthenticationMethods: status.minimumAuthenticationMethods,
+        });
+      }
+    }
     if (!canAccessResource(session.user.role, resource, action)) {
       throw new ForbiddenException(
         `${formatPermission(resource, action)} permission is required`,

@@ -1,21 +1,31 @@
 "use client";
 
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "@/compat/navigation";
 import { AppInput } from "@/components/ui/app-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { AvatarCropDialog } from "@/components/ui/avatar-crop-dialog";
 import { AppUserAvatar } from "@/components/ui/app-user-avatar";
 import { showAppToast } from "@/components/ui/app-toast-store";
+import { PasskeyManager } from "@/components/security/passkey-manager";
 import { useTranslations } from "@/i18n/react";
 import { formatFileSize, getIntlLocale, type LanguageOption, type Locale, type Palette, type ThemePreference } from "@/features/file/model";
-import { updateCurrentUserProfile, type AuthUser, type StorageUsage } from "@/lib/drive-api";
+import {
+  fetchAuthenticationMethodStatus,
+  updateCurrentUserProfile,
+  type AuthenticationMethodStatus,
+  type AuthUser,
+  type StorageUsage,
+} from "@/lib/drive-api";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 
 type UserSettingsTab = "profile" | "preferences" | "security" | "storage";
-type UserSettingsNavigationItem =
-  | { enabled: true; icon: ReactNode; id: UserSettingsTab; labelKey: string }
-  | { enabled: false; icon: ReactNode; key: string; labelKey: string };
+type UserSettingsNavigationItem = {
+  icon: ReactNode;
+  id: UserSettingsTab;
+  labelKey: string;
+};
 
 export type DriveSettingsWorkspaceProps = {
   currentUser: AuthUser | null;
@@ -34,16 +44,10 @@ export type DriveSettingsWorkspaceProps = {
 };
 
 const settingsTabs: UserSettingsNavigationItem[] = [
-  { enabled: true, icon: <LocalIcon name="user_avatar" size={15} />, id: "profile", labelKey: "settings.accountSettings" },
-  { enabled: true, icon: <LocalIcon name="shield" size={15} />, id: "security", labelKey: "settings.securitySettings" },
-  { enabled: false, icon: <LocalIcon name="notification" size={15} />, key: "notifications", labelKey: "settings.notificationSettings" },
-  { enabled: true, icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.appearanceSettings" },
-  { enabled: true, icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageManagement" },
-  { enabled: false, icon: <LocalIcon name="upload" size={15} />, key: "transfers", labelKey: "settings.transferSettings" },
-  { enabled: false, icon: <LocalIcon name="lock" size={15} />, key: "privacy", labelKey: "settings.privacySettings" },
-  { enabled: false, icon: <LocalIcon name="trash" size={15} />, key: "trash", labelKey: "settings.trashSettings" },
-  { enabled: false, icon: <LocalIcon name="abc" size={15} />, key: "shortcuts", labelKey: "settings.shortcutSettings" },
-  { enabled: false, icon: <LocalIcon name="info" size={15} />, key: "about", labelKey: "settings.aboutApp" },
+  { icon: <LocalIcon name="user_avatar" size={15} />, id: "profile", labelKey: "settings.accountSettings" },
+  { icon: <LocalIcon name="shield" size={15} />, id: "security", labelKey: "settings.securitySettings" },
+  { icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.appearanceSettings" },
+  { icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageSpace" },
 ];
 
 export function DriveSettingsWorkspace({
@@ -61,8 +65,40 @@ export function DriveSettingsWorkspace({
   timeZone,
   timeZonePreference,
 }: DriveSettingsWorkspaceProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const t = useTranslations();
-  const [selectedUserTab, setSelectedUserTab] = useState<UserSettingsTab>("profile");
+  const requestedTab = parseSettingsTab(searchParams.get("tab"));
+  const [selectedUserTabState, setSelectedUserTabState] =
+    useState<UserSettingsTab>("profile");
+  const selectedUserTab = requestedTab ?? selectedUserTabState;
+  const [methodStatus, setMethodStatus] =
+    useState<AuthenticationMethodStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthenticationMethodStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setMethodStatus(status);
+        if (!status.compliant && !requestedTab) {
+          setSelectedUserTabState("security");
+          router.replace("/settings?tab=security");
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedTab, router]);
+
+  const selectTab = (tab: UserSettingsTab) => {
+    setSelectedUserTabState(tab);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", tab);
+    next.delete("oauthStepUpCode");
+    router.replace(`/settings?${next.toString()}`);
+  };
 
   return (
     <div className="drive-settings-workspace">
@@ -73,17 +109,14 @@ export function DriveSettingsWorkspace({
       <div className="drive-settings-user">
         <div className="drive-settings-tab-list" role="tablist" aria-label={t("settings.userSettings")}>
           {settingsTabs.map((tab) => {
-            const active = tab.enabled && selectedUserTab === tab.id;
+            const active = selectedUserTab === tab.id;
             return (
               <button
                 aria-selected={active}
-                aria-disabled={!tab.enabled}
                 className="drive-settings-tab"
                 data-active={active ? "true" : undefined}
-                data-muted={!tab.enabled ? "true" : undefined}
-                disabled={!tab.enabled}
-                key={tab.enabled ? tab.id : tab.key}
-                onClick={tab.enabled ? () => setSelectedUserTab(tab.id) : undefined}
+                key={tab.id}
+                onClick={() => selectTab(tab.id)}
                 role="tab"
                 type="button"
               >
@@ -130,7 +163,13 @@ export function DriveSettingsWorkspace({
               timeZonePreference={timeZonePreference}
             />
           ) : null}
-          {selectedUserTab === "security" ? <UserSecuritySettings currentUser={currentUser} /> : null}
+          {selectedUserTab === "security" ? (
+            <UserSecuritySettings
+              methodStatus={methodStatus}
+              onMethodStatusChange={setMethodStatus}
+              palette={palette}
+            />
+          ) : null}
           {selectedUserTab === "storage" ? <StorageSettingsPanel locale={locale} palette={palette} storageUsage={storageUsage} /> : null}
         </div>
       </div>
@@ -292,14 +331,6 @@ function UserProfileSettings({
             timeZonePreference={timeZonePreference}
           />
 
-          <section className="drive-settings-section drive-settings-security-card" aria-label={t("settings.loginSecurity")}>
-            <SettingsSectionHeader icon="lock" title={t("settings.loginSecurity")} />
-            <div className="drive-settings-action-list drive-settings-security-list">
-              <SettingsAction icon="lock" label={t("settings.passwordSecurity")} value="************" />
-              <SettingsAction icon="key" label={t("settings.passkeyConfiguration")} value={t("settings.configured")} tone="secure" />
-              <SettingsAction icon="shield" label={t("settings.userGroup")} value={roleLabel} />
-            </div>
-          </section>
         </div>
 
         <aside className="drive-settings-side-stack">
@@ -429,19 +460,21 @@ function PreferenceSettings({
   );
 }
 
-function UserSecuritySettings({ currentUser }: { currentUser: AuthUser | null }) {
-  const t = useTranslations();
-  const roleLabel = currentUser?.role === "admin" ? t("settings.roleAdmin") : t("settings.roleMember");
-
+function UserSecuritySettings({
+  methodStatus,
+  onMethodStatusChange,
+  palette,
+}: {
+  methodStatus: AuthenticationMethodStatus | null;
+  onMethodStatusChange: (status: AuthenticationMethodStatus) => void;
+  palette: Palette;
+}) {
   return (
-    <section className="drive-settings-section drive-settings-security-card" aria-label={t("settings.loginSecurity")}>
-      <SettingsSectionHeader icon="lock" title={t("settings.loginSecurity")} />
-      <div className="drive-settings-action-list drive-settings-security-list">
-        <SettingsAction icon="lock" label={t("settings.passwordSecurity")} value="************" />
-        <SettingsAction icon="key" label={t("settings.passkeyConfiguration")} value={currentUser ? t("settings.configured") : t("settings.notConfigured")} tone={currentUser ? "secure" : undefined} />
-        <SettingsAction icon="shield" label={t("settings.userGroup")} value={roleLabel} tone={currentUser ? "secure" : undefined} />
-      </div>
-    </section>
+    <PasskeyManager
+      initialMethodStatus={methodStatus}
+      onMethodStatusChange={onMethodStatusChange}
+      palette={palette}
+    />
   );
 }
 
@@ -591,26 +624,6 @@ function SettingsInfoRow({
   );
 }
 
-function SettingsAction({
-  icon,
-  label,
-  tone,
-  value,
-}: {
-  icon: "key" | "lock" | "shield";
-  label: string;
-  tone?: "secure";
-  value?: string;
-}) {
-  return (
-    <div className="drive-settings-action-row">
-      <LocalIcon name={icon} size={15} />
-      <span className="icedr-truncate">{label}</span>
-      {value ? <span className="icedr-truncate" data-tone={tone}>{value}</span> : null}
-    </div>
-  );
-}
-
 function getTimeZoneOptions(t: ReturnType<typeof useTranslations>, systemTimeZone: string) {
   return [
     { label: `${t("settings.timezoneSystem")} (${systemTimeZone})`, value: "system" },
@@ -622,6 +635,18 @@ function getTimeZoneOptions(t: ReturnType<typeof useTranslations>, systemTimeZon
     { label: "America/New_York", value: "America/New_York" },
     { label: "America/Los_Angeles", value: "America/Los_Angeles" },
   ];
+}
+
+function parseSettingsTab(value: string | null): UserSettingsTab | null {
+  if (
+    value === "profile" ||
+    value === "preferences" ||
+    value === "security" ||
+    value === "storage"
+  ) {
+    return value;
+  }
+  return null;
 }
 
 function resolveSystemTimeZoneLabel() {

@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -16,9 +17,6 @@ import {
   LoginDto,
   OAuthCallbackDto,
   OAuthExchangeDto,
-  PasskeyAuthenticationOptionsDto,
-  PasskeyAuthenticationVerificationDto,
-  PasskeyRegistrationVerificationDto,
   PasswordResetConfirmDto,
   PasswordResetRequestDto,
   PasswordResetVerifyDto,
@@ -27,11 +25,27 @@ import {
   UpdateCurrentUserDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
+import {
+  PasskeyAuthenticationVerificationDto,
+  PasskeyDeleteDto,
+  PasskeyOAuthStepUpExchangeDto,
+  PasskeyRecoveryCodeDto,
+  PasskeyRecoveryCodeGenerateDto,
+  PasskeyRegistrationOptionsDto,
+  PasskeyRegistrationVerificationDto,
+  PasskeyRenameDto,
+  PasskeyStepUpPasswordDto,
+  PasskeyStepUpVerificationDto,
+} from './passkey.dto';
+import { PasskeyService } from './passkey.service';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passkeyService: PasskeyService,
+  ) {}
 
   @Get('settings')
   getSettings() {
@@ -93,8 +107,8 @@ export class AuthController {
   }
 
   @Get('oauth/start')
-  startOAuth() {
-    return this.authService.startOAuthLogin();
+  startOAuth(@Query('providerId') providerId?: string) {
+    return this.authService.startOAuthLogin(providerId);
   }
 
   @Get('oauth/callback')
@@ -102,11 +116,10 @@ export class AuthController {
     const result = await this.authService.handleOAuthCallback(
       `${request.protocol}://${request.get('host')}${request.originalUrl}`,
     );
-    if (result.flow === 'share') {
-      response.redirect(302, '/');
-      return;
-    }
-    const target = this.authService.buildOAuthFrontendCallbackUrl(result.code);
+    const target = this.authService.buildOAuthFrontendCallbackUrl(
+      result.code,
+      result.flow,
+    );
     response.redirect(302, target);
   }
 
@@ -128,24 +141,50 @@ export class AuthController {
 
   @Post('passkeys/registration-options')
   createPasskeyRegistrationOptions(
+    @Body() dto: PasskeyRegistrationOptionsDto,
     @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
   ) {
-    return this.authService.createPasskeyRegistrationOptions(authorization);
+    return this.passkeyService.createRegistrationOptions(
+      dto,
+      authorization,
+      request,
+    );
   }
 
   @Post('passkeys/registration-verification')
   verifyPasskeyRegistration(
     @Body() dto: PasskeyRegistrationVerificationDto,
     @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
   ) {
-    return this.authService.verifyPasskeyRegistration(dto, authorization);
+    return this.passkeyService.verifyRegistration(dto, authorization, request);
+  }
+
+  @Post('security/reauth/oauth-start')
+  startOAuthStepUp(
+    @Query('providerId') providerId?: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.authService.startOAuthStepUp(providerId, authorization);
+  }
+
+  @Post('security/reauth/oauth-exchange')
+  exchangeOAuthStepUp(
+    @Body() dto: PasskeyOAuthStepUpExchangeDto,
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.authService.exchangeOAuthStepUpCode(
+      dto,
+      authorization,
+      request,
+    );
   }
 
   @Post('passkeys/authentication-options')
-  createPasskeyAuthenticationOptions(
-    @Body() dto: PasskeyAuthenticationOptionsDto,
-  ) {
-    return this.authService.createPasskeyAuthenticationOptions(dto);
+  createPasskeyAuthenticationOptions(@Req() request: Request) {
+    return this.passkeyService.createAuthenticationOptions(request);
   }
 
   @Post('passkeys/authentication-verification')
@@ -153,19 +192,96 @@ export class AuthController {
     @Body() dto: PasskeyAuthenticationVerificationDto,
     @Req() request: Request,
   ) {
-    return this.authService.verifyPasskeyAuthentication(dto, request);
+    return this.passkeyService.verifyAuthentication(dto, request);
   }
 
   @Get('passkeys')
   listPasskeys(@Headers('authorization') authorization?: string) {
-    return this.authService.listPasskeys(authorization);
+    return this.passkeyService.listPasskeys(authorization);
+  }
+
+  @Patch('passkeys/:id')
+  renamePasskey(
+    @Param('id') id: string,
+    @Body() dto: PasskeyRenameDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.passkeyService.renamePasskey(id, dto, authorization);
   }
 
   @Delete('passkeys/:id')
   deletePasskey(
     @Param('id') id: string,
+    @Body() dto: PasskeyDeleteDto,
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.passkeyService.deletePasskey(id, dto, authorization, request);
+  }
+
+  @Get('security/methods')
+  getAuthenticationMethodStatus(
     @Headers('authorization') authorization?: string,
   ) {
-    return this.authService.deletePasskey(id, authorization);
+    return this.passkeyService.getAuthenticationMethodStatus(authorization);
+  }
+
+  @Post('security/reauth/password')
+  reauthenticateWithPassword(
+    @Body() dto: PasskeyStepUpPasswordDto,
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.passkeyService.reauthenticateWithPassword(
+      dto,
+      authorization,
+      request,
+    );
+  }
+
+  @Post('security/reauth/passkey-options')
+  createPasskeyStepUpOptions(
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.passkeyService.createPasskeyStepUpOptions(
+      authorization,
+      request,
+    );
+  }
+
+  @Post('security/reauth/passkey-verification')
+  verifyPasskeyStepUp(
+    @Body() dto: PasskeyStepUpVerificationDto,
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.passkeyService.verifyPasskeyStepUp(dto, authorization, request);
+  }
+
+  @Post('security/reauth/recovery-code')
+  reauthenticateWithRecoveryCode(
+    @Body() dto: PasskeyRecoveryCodeDto,
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.passkeyService.reauthenticateWithRecoveryCode(
+      dto,
+      authorization,
+      request,
+    );
+  }
+
+  @Post('security/recovery-codes')
+  generateRecoveryCodes(
+    @Body() dto: PasskeyRecoveryCodeGenerateDto,
+    @Headers('authorization') authorization?: string,
+    @Req() request?: Request,
+  ) {
+    return this.passkeyService.generateRecoveryCodes(
+      dto,
+      authorization,
+      request,
+    );
   }
 }

@@ -14,7 +14,7 @@ export function mapFileNodeToDriveItem(node: FileNodeResponse): DriveItem {
     createdAt: node.createdAt,
     modifiedAt: node.updatedAt,
     mimeType: node.mimeType,
-    objectKey: node.objectKey,
+    hasContent: node.hasContent,
     sizeBytes: node.sizeBytes,
     shared: false,
     starred: node.starred,

@@ -37,6 +37,7 @@ export type LocalIconName =
   | "import"
   | "info"
   | "key"
+  | "laptop"
   | "link"
   | "lock"
   | "mail"
@@ -49,6 +50,7 @@ export type LocalIconName =
   | "play"
   | "plus"
   | "paste"
+  | "pencil"
   | "refresh"
   | "save"
   | "search"
@@ -82,7 +84,7 @@ export type DriveItem = {
   createdAt?: string | null;
   modifiedAt: string | null;
   mimeType?: string;
-  objectKey?: string | null;
+  hasContent?: boolean;
   sizeBytes: number | null;
   shared: boolean;
   starred: boolean;
@@ -236,7 +238,7 @@ export function getItemKind(item: DriveItem): DriveItemKind {
   if (item.mimeType?.startsWith("video/")) return "video";
   const extension = getItemExtension(item);
   if (extension) return extensionKinds[extension] ?? "other";
-  if (item.objectKey === null && item.sizeBytes === null) return "folder";
+  if (item.hasContent === false && item.sizeBytes === null) return "folder";
   return "other";
 }
 

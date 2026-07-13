@@ -56,4 +56,5 @@ export function AppDialogShell({
 
 export const AppDialogHeader = Modal.Header;
 export const AppDialogBody = Modal.Body;
+export const AppDialogFooter = Modal.Footer;
 export const AppDialogTitle = Modal.Heading;

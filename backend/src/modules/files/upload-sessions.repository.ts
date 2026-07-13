@@ -16,8 +16,10 @@ export type UploadSessionStatus =
 export type UploadSession = {
   id: string;
   transferId: string;
+  ownerUserId: string | null;
   workspaceId: string;
   spaceScope: 'workspace' | 'personal';
+  conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
   objectKey: string;
   multipartUploadId: string | null;
   resumeKey: string | null;
@@ -52,10 +54,12 @@ export class UploadSessionsRepository {
     mimeType: string;
     multipartUploadId?: string | null;
     objectKey: string;
+    ownerUserId?: string | null;
     parentNodeId?: string | null;
     resumeKey?: string | null;
     sizeBytes: number;
     spaceScope?: 'workspace' | 'personal';
+    conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
     transferId: string;
     workspaceId: string;
   }) {
@@ -64,8 +68,10 @@ export class UploadSessionsRepository {
       data: {
         id,
         transferId: input.transferId,
+        ownerUserId: input.ownerUserId ?? null,
         workspaceId: input.workspaceId,
         spaceScope: input.spaceScope ?? 'workspace',
+        conflictStrategy: input.conflictStrategy,
         objectKey: input.objectKey,
         multipartUploadId: input.multipartUploadId ?? null,
         resumeKey: input.resumeKey ?? null,
@@ -83,15 +89,19 @@ export class UploadSessionsRepository {
   async findReusable(input: {
     fileName: string;
     parentNodeId?: string | null;
+    ownerUserId?: string | null;
     resumeKey: string;
     sizeBytes: number;
     spaceScope?: 'workspace' | 'personal';
+    conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
     workspaceId: string;
   }) {
     const row = await this.prisma.uploadSession.findFirst({
       where: {
         workspaceId: input.workspaceId,
+        ownerUserId: input.ownerUserId ?? null,
         spaceScope: input.spaceScope ?? 'workspace',
+        conflictStrategy: input.conflictStrategy,
         resumeKey: input.resumeKey,
         fileName: input.fileName,
         parentNodeId: input.parentNodeId ?? null,
@@ -178,8 +188,11 @@ export class UploadSessionsRepository {
     return {
       id: row.id,
       transferId: row.transferId,
+      ownerUserId: row.ownerUserId,
       workspaceId: row.workspaceId,
       spaceScope: row.spaceScope as 'workspace' | 'personal',
+      conflictStrategy:
+        row.conflictStrategy as UploadSession['conflictStrategy'],
       objectKey: row.objectKey,
       multipartUploadId: row.multipartUploadId,
       resumeKey: row.resumeKey,

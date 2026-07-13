@@ -1,13 +1,13 @@
-﻿"use client";
+"use client";
 
 import { MotionLayoutGroup, MotionPresence, useMotionReveal, useMotionStagger } from "@/components/ui/motion";
 import Link from "@/compat/link";
 import { usePathname, useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Locale, type Palette, type ThemeMode } from "@/features/file/model";
-import { clearStoredAuthToken, confirmPasswordReset, defaultPublicSiteSettings, DriveApiError, exchangeOAuthCode, fetchAuthSettings, fetchCurrentUser, fetchPublicSiteSettings, fetchSetupStatus, loginLocalUser, logoutLocalUser, registerLocalUser, requestPasswordReset, resolvePublicSiteName, startOAuthLogin, createPasskeyAuthenticationOptions, verifyPasskeyAuthentication, verifyPasswordReset, setStoredAuthToken, type AuthUser, type AuthSettings, type PublicSiteSettings } from "@/lib/drive-api";
-import { startAuthentication } from "@simplewebauthn/browser";
+import { clearStoredAuthToken, confirmPasswordReset, defaultPublicSiteSettings, DriveApiError, exchangeOAuthCode, fetchAuthSettings, fetchCurrentUser, fetchIdentityConfig, fetchPublicSiteSettings, fetchSetupStatus, loginLocalUser, logoutLocalUser, registerLocalUser, requestPasswordReset, resolvePublicSiteName, startOAuthLogin, createPasskeyAuthenticationOptions, verifyPasskeyAuthentication, verifyPasswordReset, setStoredAuthToken, type AuthUser, type AuthSettings, type OAuthPublicProvider, type PublicSiteSettings } from "@/lib/drive-api";
+import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication } from "@simplewebauthn/browser";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { normalizeAuthCodeValue } from "@/components/auth/auth-code-utils";
 import { AuthCodePanel, AuthCurrentUserRow, AuthFormTitleBlock, AuthPasswordStrengthHint } from "@/components/auth/auth-page-parts";
@@ -16,6 +16,19 @@ import { LegalConsentDialog } from "./legal-consent-dialog";
 import { LegalFooter } from "./legal-footer";
 import { Surface } from "./drive-primitives";
 import { AppImage } from "@/components/ui/app-image";
+import { OAuthProviderMark } from "@/components/ui/oauth-provider-mark";
+import {
+  type AuthFieldErrors,
+  type AuthFieldName,
+  isValidEmailAddress,
+  isValidPasswordLength,
+  validateAuthSubmission,
+} from "@/features/auth/auth-input-validation";
+import {
+  assertPasskeyRequestContext,
+  getPasskeyErrorNotice,
+} from "@/features/auth/passkey-client-errors";
+import { getDriveApiErrorMessage } from "@/lib/drive-api-errors";
 export function AuthGate({
   children
 }: {
@@ -114,14 +127,21 @@ function AuthPage({
   const [resetCooldown, setResetCooldown] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthStatus>(null);
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
   const [statusMode, setStatusMode] = useState<AuthPageMode>(mode);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authRedirectReadyKey, setAuthRedirectReadyKey] = useState<string | null>(null);
   const [authSettings, setAuthSettings] = useState<AuthSettings | null>(null);
+  const [oauthProviders, setOauthProviders] = useState<OAuthPublicProvider[]>([]);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [pendingRegistrationValues, setPendingRegistrationValues] = useState<AuthFormValues | null>(null);
+  const conditionalPasskeyStartedRef = useRef(false);
+  const passkeyContextRef = useRef<{
+    expectedOrigin?: string;
+    rpId?: string;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void fetchSetupStatus().then(setup => {
@@ -135,10 +155,11 @@ function AuthPage({
   }, [next, pathname, router]);
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([fetchPublicSiteSettings(), fetchAuthSettings()]).then(([site, settings]) => {
+    void Promise.all([fetchPublicSiteSettings(), fetchAuthSettings(), fetchIdentityConfig().catch(() => null)]).then(([site, settings, identity]) => {
       if (!cancelled) {
         setSiteSettings(site);
         setAuthSettings(settings);
+        setOauthProviders(identity?.providers ?? []);
       }
     }).catch(() => undefined);
     return () => {
@@ -176,12 +197,55 @@ function AuthPage({
     router.replace(resolveAuthNextTarget(next));
   }, [next, router]);
   useEffect(() => {
+    if (
+      mode !== "login" ||
+      currentUser ||
+      !authSettings?.passkeyEnabled ||
+      !authSettings.passkeyConfigured ||
+      conditionalPasskeyStartedRef.current
+    ) {
+      return;
+    }
+    conditionalPasskeyStartedRef.current = true;
+    let cancelled = false;
+    void browserSupportsWebAuthnAutofill()
+      .then((supported) => {
+        if (!supported || cancelled) return null;
+        return createPasskeyAuthenticationOptions();
+      })
+      .then((ceremony) => {
+        if (!ceremony || cancelled) return null;
+        passkeyContextRef.current = {
+          expectedOrigin: ceremony.expectedOrigin,
+          rpId: ceremony.options.rpId,
+        };
+        assertPasskeyRequestContext(ceremony.options, ceremony.expectedOrigin);
+        return startAuthentication({
+          optionsJSON: ceremony.options,
+          useBrowserAutofill: true,
+        }).then((response) =>
+          verifyPasskeyAuthentication({
+            ceremonyId: ceremony.ceremonyId,
+            response,
+          }),
+        );
+      })
+      .then((session) => {
+        if (session && !cancelled) finishSession(session);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [authSettings, currentUser, finishSession, mode]);
+  useEffect(() => {
     let cancelled = false;
     window.queueMicrotask(() => {
       if (cancelled) return;
       setBusy(false);
       setStatusMode(mode);
       setStatus(null);
+      setFieldErrors({});
       setDisplayName("");
       setPassword("");
       setConfirmPassword("");
@@ -234,11 +298,12 @@ function AuthPage({
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [resetCooldown]);
-  const loginWithOAuth = () => {
+  const loginWithOAuth = (providerId?: string) => {
     if (busy) return;
+    setFieldErrors({});
     setBusy(true);
     setStatusMode(mode);
-    void startOAuthLogin().then(response => {
+    void startOAuthLogin(providerId).then(response => {
       window.location.href = response.authorizationUrl;
     }).catch(() => {
       setStatus({
@@ -250,56 +315,75 @@ function AuthPage({
   };
   const loginWithPasskey = () => {
     if (busy) return;
-    if (!email.trim()) {
+    setFieldErrors({});
+    if (passkeyContextRef.current) {
+      try {
+        assertPasskeyRequestContext(
+          { rpId: passkeyContextRef.current.rpId },
+          passkeyContextRef.current.expectedOrigin,
+        );
+      } catch (error) {
+        setStatusMode(mode);
+        const notice = getPasskeyErrorNotice(error, t);
+        if (notice) setStatus(notice);
+        return;
+      }
+    }
+    if (!browserSupportsWebAuthn()) {
       setStatusMode(mode);
-      setStatus({
-        message: t("auth.passkeyEmailRequired"),
-        tone: "error"
-      });
+      setStatus({ message: t("auth.passkeyUnsupported"), tone: "error" });
       return;
     }
     setBusy(true);
     setStatusMode(mode);
-    void createPasskeyAuthenticationOptions({
-      email
-    }).then(optionsJSON => startAuthentication({
-      optionsJSON
-    })).then(response => verifyPasskeyAuthentication({
-      email,
-      response
-    })).then(finishSession).catch(() => {
-      setStatus({
-        message: t("auth.passkeyFailed"),
-        tone: "error"
-      });
-    }).finally(() => setBusy(false));
+    setStatus(null);
+    void createPasskeyAuthenticationOptions()
+      .then((ceremony) => {
+        passkeyContextRef.current = {
+          expectedOrigin: ceremony.expectedOrigin,
+          rpId: ceremony.options.rpId,
+        };
+        assertPasskeyRequestContext(ceremony.options, ceremony.expectedOrigin);
+        return startAuthentication({ optionsJSON: ceremony.options }).then(
+          (response) =>
+            verifyPasskeyAuthentication({
+              ceremonyId: ceremony.ceremonyId,
+              response,
+            }),
+        );
+      })
+      .then(finishSession)
+      .catch((error) => {
+        const notice = getPasskeyErrorNotice(error, t);
+        if (notice) setStatus(notice);
+      })
+      .finally(() => setBusy(false));
   };
   const runAuthAction = (codeOverride?: string, formValues: AuthFormValues = {}, legalConfirmed = false) => {
     if (busy) return;
-    const effectiveCode = normalizeAuthCodeValue(codeOverride ?? code, passwordResetCodeLength);
-    const nextEmail = formValues.email ?? email;
-    const nextPassword = formValues.password ?? password;
-    const nextConfirmPassword = formValues.confirmPassword ?? confirmPassword;
-    const nextDisplayName = formValues.displayName ?? displayName;
-    const passwordResetting = (mode === "forgot" || mode === "reset") && passwordResetStep === "reset";
+    const validation = validateAuthSubmission({
+      code: normalizeAuthCodeValue(codeOverride ?? code, passwordResetCodeLength),
+      confirmPassword: formValues.confirmPassword ?? confirmPassword,
+      displayName: formValues.displayName ?? displayName,
+      email: formValues.email ?? email,
+      mode,
+      password: formValues.password ?? password,
+      step: passwordResetStep,
+    });
+    if (validation.firstInvalidField) {
+      setStatusMode(mode);
+      setStatus(null);
+      setFieldErrors(validation.errors);
+      focusAuthField(validation.firstInvalidField);
+      return;
+    }
+    const effectiveCode = validation.values.code;
+    const nextEmail = validation.values.email;
+    const nextPassword = validation.values.password;
+    const nextConfirmPassword = validation.values.confirmPassword;
+    const nextDisplayName = validation.values.displayName;
     const resetCodeForConfirm = verifiedResetCode ?? effectiveCode;
-    const settingPassword = mode === "register" || passwordResetting;
-    if (settingPassword && !passwordIsValidLength(nextPassword)) {
-      setStatusMode(mode);
-      setStatus({
-        message: t("auth.passwordLengthInvalid"),
-        tone: "error"
-      });
-      return;
-    }
-    if ((mode === "register" || passwordResetting) && nextPassword !== nextConfirmPassword) {
-      setStatusMode(mode);
-      setStatus({
-        message: t("auth.passwordMismatch"),
-        tone: "error"
-      });
-      return;
-    }
+    setFieldErrors({});
     if (mode === "register" && !legalAccepted && !legalConfirmed) {
       setPendingRegistrationValues({
         confirmPassword: nextConfirmPassword,
@@ -402,7 +486,15 @@ function AuthPage({
     window.queueMicrotask(() => runAuthAction(undefined, formValues, true));
   };
   const resendPasswordResetCode = () => {
-    if (busy || resetCooldown > 0 || !email.trim()) return;
+    if (busy || resetCooldown > 0) return;
+    if (!isValidEmailAddress(email)) {
+      setStatus(null);
+      setFieldErrors({
+        email: email.trim() ? "auth.emailInvalid" : "auth.emailRequired",
+      });
+      focusAuthField("email");
+      return;
+    }
     setBusy(true);
     setStatusMode(mode);
     void requestPasswordReset({
@@ -480,21 +572,26 @@ function AuthPage({
               <AuthModePrompt mode={mode} next={next} />
             </div>
             <div ref={formRef} className="icedr-auth-form-slot">
-              <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} mode={mode} next={next} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={value => {
+              <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} fieldErrors={fieldErrors} mode={mode} next={next} oauthProviders={oauthProviders} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={value => {
         setDisplayName(value);
+        clearAuthFieldError("displayName", setFieldErrors);
         clearAuthInputError(status, setStatus);
       }} onEmailChange={value => {
         setEmail(value);
+        clearAuthFieldError("email", setFieldErrors);
         clearAuthInputError(status, setStatus);
       }} onLogout={logout} onPasskeyLogin={loginWithPasskey} onConfirmPasswordChange={value => {
         setConfirmPassword(value);
+        clearAuthFieldError("confirmPassword", setFieldErrors);
         clearAuthInputError(status, setStatus);
       }} onPasswordChange={value => {
         setPassword(value);
+        clearAuthFieldError("password", setFieldErrors);
         clearAuthInputError(status, setStatus);
       }} onBackToResetEmail={backToResetEmail} onCodeComplete={value => runAuthAction(value)} onResendCode={resendPasswordResetCode} onSubmit={submit} onCodeChange={value => {
         setVerifiedResetCode(null);
         setCode(normalizeAuthCodeValue(value, passwordResetCodeLength));
+        clearAuthFieldError("code", setFieldErrors);
         clearAuthInputError(status, setStatus);
       }} palette={palette} password={password} passwordResetStep={passwordResetStep} resetCooldown={resetCooldown} status={visibleStatus} code={code} />
             </div>
@@ -624,8 +721,10 @@ function AuthFormCard({
   currentUser,
   displayName,
   email,
+  fieldErrors,
   mode,
   next,
+  oauthProviders,
   onBackToResetEmail,
   onCodeChange,
   onCodeComplete,
@@ -653,8 +752,10 @@ function AuthFormCard({
   currentUser: AuthUser | null;
   displayName: string;
   email: string;
+  fieldErrors: AuthFieldErrors;
   mode: AuthPageMode;
   next: string;
+  oauthProviders: OAuthPublicProvider[];
   onBackToResetEmail: () => void;
   onCodeChange: (value: string) => void;
   onCodeComplete: (value: string) => void;
@@ -663,7 +764,7 @@ function AuthFormCard({
   onDisplayNameChange: (value: string) => void;
   onEmailChange: (value: string) => void;
   onLogout: () => void;
-  onOAuthLogin: () => void;
+  onOAuthLogin: (providerId?: string) => void;
   onPasskeyLogin: () => void;
   onPasswordChange: (value: string) => void;
   onResendCode: () => void;
@@ -682,10 +783,11 @@ function AuthFormCard({
   const showsPasswordFields = !inPasswordResetFlow || passwordResetStep === "reset";
   const needsPasswordConfirmation = mode === "register" || inPasswordResetFlow && passwordResetStep === "reset";
   const confirmPasswordInvalid = needsPasswordConfirmation && Boolean(confirmPassword) && password !== confirmPassword;
+  const confirmPasswordError = fieldErrors.confirmPassword ?? (confirmPasswordInvalid ? "auth.passwordMismatch" : undefined);
   const emailLocked = mode === "forgot" && passwordResetStep !== "request" || mode === "reset" && passwordResetStep === "reset";
   const showsEmailField = !showsCodeField || mode === "reset";
   const submitLabel = inPasswordResetFlow && passwordResetStep === "verify" ? t("auth.verifyCode") : inPasswordResetFlow && passwordResetStep === "reset" ? t("auth.resetPassword") : authCopy.submit;
-  const resetPasswordIncomplete = inPasswordResetFlow && passwordResetStep === "reset" && (!passwordIsValidLength(password) || !confirmPassword || confirmPasswordInvalid);
+  const resetPasswordIncomplete = inPasswordResetFlow && passwordResetStep === "reset" && (!isValidPasswordLength(password) || !confirmPassword || confirmPasswordInvalid);
   const submitDisabled = busy || mode === "login" && authSettings?.localEnabled === false || showsCodeField && (code.length !== passwordResetCodeLength || !email.trim()) || resetPasswordIncomplete;
   return <Surface palette={palette} data-auth-mode={mode} className="icedr-auth-form-card" style={{
     "--auth-card-highlight": `color-mix(in srgb, ${palette.ink} 6%, transparent)`,
@@ -717,37 +819,37 @@ function AuthFormCard({
         ) : (
           <>
             <MotionPresence key={`${mode}-${passwordResetStep}`} show preset="fade">
-              <form onSubmit={onSubmit}>
+              <form noValidate onSubmit={onSubmit}>
                 <div className="icedr-auth-fields-stack" style={{
                 display: "flex",
                 flexDirection: "column"
               }}>
                   {mode === "register" ? <div data-auth-form-row>
-                      <AuthField label={t("auth.displayName")} palette={palette} required>
-                        <AuthInput name="displayName" value={displayName} onChange={event => onDisplayNameChange(event.target.value)} palette={palette} autoComplete="name" />
+                      <AuthField errorText={fieldErrors.displayName ? t(fieldErrors.displayName) : undefined} invalid={Boolean(fieldErrors.displayName)} label={t("auth.displayName")} palette={palette} required>
+                        <AuthInput invalid={Boolean(fieldErrors.displayName)} maxLength={80} name="displayName" value={displayName} onChange={event => onDisplayNameChange(event.target.value)} palette={palette} autoComplete="name" />
                       </AuthField>
                     </div> : null}
 
                   {showsEmailField ? <div data-auth-form-row>
-                      <AuthField label={t("auth.email")} palette={palette} required>
-                        <AuthInput name="email" type="email" value={email} disabled={emailLocked} onChange={event => onEmailChange(event.target.value)} palette={palette} autoComplete="email" />
+                      <AuthField errorText={fieldErrors.email ? t(fieldErrors.email) : undefined} invalid={Boolean(fieldErrors.email)} label={t("auth.email")} palette={palette} required>
+                        <AuthInput autoCapitalize="none" invalid={Boolean(fieldErrors.email)} maxLength={254} name="email" spellCheck={false} type="email" value={email} disabled={emailLocked} onChange={event => onEmailChange(event.target.value)} palette={palette} autoComplete={mode === "login" ? "username webauthn" : "email"} />
                       </AuthField>
                     </div> : null}
 
                   {showsCodeField ? <div data-auth-form-row>
-                      <AuthCodePanel busy={busy} code={code} codeLength={passwordResetCodeLength} email={email} onBack={mode === "forgot" ? onBackToResetEmail : undefined} onChange={onCodeChange} onComplete={onCodeComplete} onResend={onResendCode} palette={palette} resetCooldown={resetCooldown} />
+                      <AuthCodePanel busy={busy} code={code} codeLength={passwordResetCodeLength} email={email} errorText={fieldErrors.code ? t(fieldErrors.code) : undefined} invalid={Boolean(fieldErrors.code)} onBack={mode === "forgot" ? onBackToResetEmail : undefined} onChange={onCodeChange} onComplete={onCodeComplete} onResend={onResendCode} palette={palette} resetCooldown={resetCooldown} />
                     </div> : null}
 
                   {showsPasswordFields ? <div data-auth-form-row>
-                      <AuthField label={t("auth.password")} palette={palette} required>
-                        <AuthInput name="password" type="password" value={password} onChange={event => onPasswordChange(event.target.value)} palette={palette} autoComplete={mode === "login" ? "current-password" : "new-password"} />
+                      <AuthField errorText={fieldErrors.password ? t(fieldErrors.password) : undefined} invalid={Boolean(fieldErrors.password)} label={t("auth.password")} palette={palette} required>
+                        <AuthInput invalid={Boolean(fieldErrors.password)} maxLength={128} name="password" type="password" value={password} onChange={event => onPasswordChange(event.target.value)} palette={palette} autoComplete={mode === "login" ? "current-password" : "new-password"} />
                         {mode === "register" ? <AuthPasswordStrengthHint palette={palette} password={password} /> : null}
                       </AuthField>
                     </div> : null}
 
                   {needsPasswordConfirmation ? <div data-auth-form-row>
-                      <AuthField errorText={t("auth.passwordMismatch")} invalid={confirmPasswordInvalid} label={t("auth.confirmPassword")} palette={palette} required>
-                        <AuthInput invalid={confirmPasswordInvalid} name="confirmPassword" type="password" value={confirmPassword} onChange={event => onConfirmPasswordChange(event.target.value)} palette={palette} autoComplete="new-password" />
+                      <AuthField errorText={confirmPasswordError ? t(confirmPasswordError) : undefined} invalid={Boolean(confirmPasswordError)} label={t("auth.confirmPassword")} palette={palette} required>
+                        <AuthInput invalid={Boolean(confirmPasswordError)} maxLength={128} name="confirmPassword" type="password" value={confirmPassword} onChange={event => onConfirmPasswordChange(event.target.value)} palette={palette} autoComplete="new-password" />
                       </AuthField>
                     </div> : null}
 
@@ -761,9 +863,17 @@ function AuthFormCard({
             </MotionPresence>
 
             {mode === "login" ? <div data-auth-form-row className="icedr-auth-provider-stack">
-                {authSettings?.oauthEnabled && authSettings.oauthConfigured ? <AuthPrimaryButton icon={null} palette={palette} disabled={busy} busy={busy} onClick={onOAuthLogin} variant="secondary">
-                    {t("auth.oauthLogin")}
-                  </AuthPrimaryButton> : null}
+                {authSettings?.oauthEnabled && authSettings.oauthConfigured ? (
+                  oauthProviders.length > 0 ? oauthProviders.map((provider) => (
+                    <AuthPrimaryButton icon={null} key={provider.id} palette={palette} disabled={busy} busy={busy} onClick={() => onOAuthLogin(provider.id)} variant="secondary">
+                      <span className="icedr-auth-provider-label"><OAuthProviderMark provider={provider.providerKey ?? "oidc"} size="sm" /><span>{t("auth.oauthLoginWith", { provider: provider.provider })}</span></span>
+                    </AuthPrimaryButton>
+                  )) : (
+                    <AuthPrimaryButton icon={null} palette={palette} disabled={busy} busy={busy} onClick={() => onOAuthLogin()} variant="secondary">
+                      {t("auth.oauthLogin")}
+                    </AuthPrimaryButton>
+                  )
+                ) : null}
                 {authSettings?.passkeyEnabled && authSettings.passkeyConfigured ? <AuthPrimaryButton icon={null} palette={palette} disabled={busy} busy={busy} onClick={onPasskeyLogin} variant="secondary">
                     {t("auth.passkeyLogin")}
                   </AuthPrimaryButton> : null}
@@ -798,15 +908,28 @@ function getAuthFailureStatus(mode: AuthPageMode, error: unknown, t: ReturnType<
     };
   }
   return {
-    message: t("auth.failed"),
+    message: getDriveApiErrorMessage(error, t, {
+      fallbackKey: "auth.failed",
+      scope: "form"
+    }),
     tone: "error"
   };
 }
 function clearAuthInputError(status: AuthStatus, setStatus: React.Dispatch<React.SetStateAction<AuthStatus>>) {
   if (status?.tone === "error") setStatus(null);
 }
-function passwordIsValidLength(password: string) {
-  return password.length >= 8 && password.length <= 128;
+function clearAuthFieldError(field: AuthFieldName, setFieldErrors: React.Dispatch<React.SetStateAction<AuthFieldErrors>>) {
+  setFieldErrors(current => {
+    if (!current[field]) return current;
+    const next = { ...current };
+    delete next[field];
+    return next;
+  });
+}
+function focusAuthField(field: AuthFieldName) {
+  window.requestAnimationFrame(() => {
+    document.querySelector<HTMLElement>(`[name="${field}"]`)?.focus();
+  });
 }
 function getFormString(formData: FormData, name: string) {
   const value = formData.get(name);

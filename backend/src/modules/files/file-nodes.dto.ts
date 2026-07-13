@@ -33,6 +33,7 @@ export type FileNodeSortField =
   | 'updatedAt'
   | 'sizeBytes';
 export type FileNodeSortDirection = 'asc' | 'desc';
+export type DownloadIntentPurpose = 'download' | 'preview';
 export type FileNodeTypeFilter =
   | 'folder'
   | 'doc'
@@ -47,6 +48,17 @@ export type FileNodePreviewStatus =
   | 'unsupported'
   | 'failed';
 export type FileNodePreviewType = FileNodeKind | 'metadata' | PreviewRenderMode;
+export type UploadConflictStrategy =
+  | 'overwrite'
+  | 'rename'
+  | 'skip'
+  | 'version';
+export const uploadConflictStrategies: UploadConflictStrategy[] = [
+  'overwrite',
+  'rename',
+  'skip',
+  'version',
+];
 
 export class CreateUploadIntentDto {
   @IsString()
@@ -83,6 +95,10 @@ export class CreateUploadIntentDto {
   @Max(32 * 1024 * 1024)
   @IsOptional()
   chunkSizeBytes?: number;
+
+  @IsIn(uploadConflictStrategies)
+  @IsOptional()
+  conflictStrategy?: UploadConflictStrategy;
 }
 
 export class CompleteUploadDto {
@@ -123,8 +139,12 @@ export class CompleteUploadDto {
   transferId?: string;
 
   @IsString()
+  @IsNotEmpty()
+  uploadSessionId!: string;
+
+  @IsIn(uploadConflictStrategies)
   @IsOptional()
-  uploadSessionId?: string;
+  conflictStrategy?: UploadConflictStrategy;
 }
 
 export class UploadChunkParamsDto {
@@ -257,6 +277,10 @@ export class CreateDownloadIntentDto {
   @IsString()
   @IsOptional()
   workspaceId?: string;
+
+  @IsIn(['download', 'preview'])
+  @IsOptional()
+  purpose?: DownloadIntentPurpose;
 }
 
 export class ListFileNodesQueryDto {
@@ -412,7 +436,8 @@ export type DownloadIntentResponse = {
   downloadId: string;
   nodeId: string;
   filename: string;
-  method: 'presigned-url' | 'backend-manifest';
+  method: 'stream' | 'manifest';
+  purpose: DownloadIntentPurpose;
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
@@ -423,7 +448,6 @@ export type FileVersionResponse = {
   nodeId: string;
   versionNumber: number;
   sizeBytes: number;
-  objectKey: string;
   mimeType: string;
   uploadedBy: string;
   remark: string;
@@ -458,6 +482,8 @@ export type BatchDownloadIntentResponse = {
 };
 
 export type UploadIntentResponse = {
+  conflictStrategy: UploadConflictStrategy;
+  fileName: string;
   objectKey: string;
   transferId: string;
   uploadMethod:

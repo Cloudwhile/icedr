@@ -1,8 +1,12 @@
 import {
+  BadRequestException,
   ForbiddenException,
   GoneException,
+  HttpException,
   NotFoundException,
 } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
+import { Readable } from 'stream';
 import type { FileNodeResponse } from '../files/file-nodes.dto';
 import { FileNodesService } from '../files/file-nodes.service';
 import { resolveFilePreviewCapability } from '../files/file-preview-policy';
@@ -69,18 +73,21 @@ class SharesRepositorySpecDouble {
       filename: string;
       identityType: 'anonymous' | 'email' | 'ica';
       email?: string;
-      method: 'presigned-url' | 'backend-manifest';
+      method: 'stream' | 'manifest';
       nodeId: string;
+      purpose: 'download' | 'preview';
       token: string;
+      useCount: number;
     }
   >();
   readonly auditEvents: Array<{
     action: string;
+    createdAt: string;
     target: string;
     metadata: Record<string, unknown>;
   }> = [];
 
-  create(dto: CreateShareDto) {
+  create(dto: CreateShareDto, creatorUserId?: string) {
     const token = `s_${Math.random().toString(36).slice(2, 14)}`;
     const share: ShareResponse = {
       token,
@@ -102,6 +109,7 @@ class SharesRepositorySpecDouble {
       revokedAt: null,
     };
     this.shares.set(token, share);
+    void creatorUserId;
     return share;
   }
 
@@ -126,7 +134,12 @@ class SharesRepositorySpecDouble {
     target: string,
     metadata: Record<string, unknown> = {},
   ) {
-    this.auditEvents.push({ action, target, metadata });
+    this.auditEvents.push({
+      action,
+      createdAt: new Date().toISOString(),
+      target,
+      metadata,
+    });
   }
 
   recordDownloadStarted(
@@ -172,6 +185,7 @@ class SharesRepositorySpecDouble {
     }
     this.auditEvents.push({
       action: 'share.download_started',
+      createdAt: new Date().toISOString(),
       target: token,
       metadata,
     });
@@ -195,6 +209,27 @@ class SharesRepositorySpecDouble {
       this.auditEvents.filter(
         (event) => event.target === token && event.action === action,
       ).length,
+    );
+  }
+
+  listRecentShareAuditEvents(token: string, since: Date) {
+    return Promise.resolve(
+      this.auditEvents
+        .filter(
+          (event) =>
+            event.target === token &&
+            new Date(event.createdAt).getTime() >= since.getTime(),
+        )
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() -
+            new Date(left.createdAt).getTime(),
+        )
+        .map((event) => ({
+          action: event.action,
+          createdAt: event.createdAt,
+          metadata: event.metadata,
+        })),
     );
   }
 
@@ -250,18 +285,20 @@ class SharesRepositorySpecDouble {
     filename: string;
     identityType: 'anonymous' | 'email' | 'ica';
     email?: string;
-    method: 'presigned-url' | 'backend-manifest';
+    method: 'stream' | 'manifest';
     nodeId: string;
+    purpose: 'download' | 'preview';
     token: string;
   }) {
     this.downloadIntents.set(input.downloadId, {
       ...input,
       consumedAt: null,
+      useCount: 0,
     });
     return Promise.resolve(this.downloadIntents.get(input.downloadId));
   }
 
-  consumeShareDownloadIntent(input: {
+  openShareDownloadIntent(input: {
     downloadId: string;
     nodeId: string;
     token: string;
@@ -269,14 +306,18 @@ class SharesRepositorySpecDouble {
     const intent = this.downloadIntents.get(input.downloadId);
     if (
       !intent ||
-      intent.consumedAt ||
       intent.token !== input.token ||
       intent.nodeId !== input.nodeId ||
-      new Date(intent.expiresAt).getTime() < Date.now()
+      new Date(intent.expiresAt).getTime() < Date.now() ||
+      (intent.purpose === 'download' && intent.consumedAt) ||
+      intent.useCount >= (intent.purpose === 'preview' ? 64 : 1)
     ) {
       return Promise.resolve(null);
     }
-    intent.consumedAt = new Date().toISOString();
+    intent.useCount += 1;
+    if (intent.purpose === 'download') {
+      intent.consumedAt = new Date().toISOString();
+    }
     return Promise.resolve(intent);
   }
 }
@@ -289,12 +330,19 @@ describe('SharesService', () => {
     'listFileNodes' | 'getFileNode' | 'createPreviewIntent' | 'getPreviewStatus'
   >;
   let mailService: Pick<MailService, 'sendShareAccessCode'>;
-  let storageService: Pick<StorageService, 'createPresignedDownload'>;
+  let storageService: Pick<StorageService, 'openObjectStream'>;
   let workspacesService: Pick<WorkspacesService, 'getShareSettings'>;
+  let configService: Pick<ConfigService, 'get'>;
+  let configValues: Record<string, unknown>;
   let sentCodes: Map<string, string>;
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
 
   beforeEach(() => {
     sentCodes = new Map<string, string>();
+    configValues = {};
     repository =
       new SharesRepositorySpecDouble() as unknown as SharesRepository;
     fileNodesService = {
@@ -326,6 +374,38 @@ describe('SharesService', () => {
             sizeBytes: null,
             objectKey: null,
             owner: 'Mina',
+            starred: false,
+            archivedAt: null,
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          }),
+          createNode({
+            id: 'product-brief',
+            workspaceId: 'workspace-default',
+            parentNodeId: 'folder-product',
+            name: 'Product Brief.txt',
+            kind: 'doc',
+            mimeType: 'text/plain',
+            sizeBytes: 1024,
+            objectKey: 'seed/workspace-default/product-brief.txt',
+            owner: 'Mina',
+            starred: false,
+            archivedAt: null,
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          }),
+          createNode({
+            id: 'personal-b',
+            workspaceId: 'workspace-default',
+            spaceScope: 'personal',
+            ownerUserId: 'user-b',
+            parentNodeId: null,
+            name: 'Personal B.txt',
+            kind: 'doc',
+            mimeType: 'text/plain',
+            sizeBytes: 128,
+            objectKey: 'seed/workspace-default/personal-b.txt',
+            owner: 'User B',
             starred: false,
             archivedAt: null,
             createdAt: new Date(0).toISOString(),
@@ -368,7 +448,41 @@ describe('SharesService', () => {
                   createdAt: new Date(0).toISOString(),
                   updatedAt: new Date(0).toISOString(),
                 })
-              : null,
+              : id === 'product-brief'
+                ? createNode({
+                    id: 'product-brief',
+                    workspaceId: 'workspace-default',
+                    parentNodeId: 'folder-product',
+                    name: 'Product Brief.txt',
+                    kind: 'doc',
+                    mimeType: 'text/plain',
+                    sizeBytes: 1024,
+                    objectKey: 'seed/workspace-default/product-brief.txt',
+                    owner: 'Mina',
+                    starred: false,
+                    archivedAt: null,
+                    createdAt: new Date(0).toISOString(),
+                    updatedAt: new Date(0).toISOString(),
+                  })
+                : id === 'personal-b'
+                  ? createNode({
+                      id: 'personal-b',
+                      workspaceId: 'workspace-default',
+                      spaceScope: 'personal',
+                      ownerUserId: 'user-b',
+                      parentNodeId: null,
+                      name: 'Personal B.txt',
+                      kind: 'doc',
+                      mimeType: 'text/plain',
+                      sizeBytes: 128,
+                      objectKey: 'seed/workspace-default/personal-b.txt',
+                      owner: 'User B',
+                      starred: false,
+                      archivedAt: null,
+                      createdAt: new Date(0).toISOString(),
+                      updatedAt: new Date(0).toISOString(),
+                    })
+                  : null,
         ),
       ),
       createPreviewIntent: jest.fn((nodeId: string) =>
@@ -407,14 +521,16 @@ describe('SharesService', () => {
       })),
     };
     storageService = {
-      createPresignedDownload: jest.fn(() =>
+      openObjectStream: jest.fn(() =>
         Promise.resolve({
-          key: 'seed/workspace-default/roadmap.docx',
-          bucket: 'icedr-drive',
-          method: 'GET',
-          url: 'http://signed-download.local',
-          expiresInSeconds: 300,
-          expiresAt: new Date(Date.now() + 300000).toISOString(),
+          acceptRanges: 'bytes' as const,
+          contentLength: 4,
+          contentRange: null,
+          contentType: 'application/octet-stream',
+          etag: null,
+          lastModified: null,
+          statusCode: 200 as const,
+          stream: Readable.from(['test']),
         }),
       ),
     };
@@ -445,12 +561,16 @@ describe('SharesService', () => {
         }),
       ),
     };
+    configService = {
+      get: jest.fn((key: string) => configValues[key]),
+    };
     service = new SharesService(
       repository,
       fileNodesService as FileNodesService,
       storageService as StorageService,
       workspacesService as WorkspacesService,
       mailService as MailService,
+      configService as ConfigService,
     );
   });
 
@@ -494,11 +614,12 @@ describe('SharesService', () => {
   });
 
   it('rejects expired shares', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-01T00:00:00.000Z'));
     const created = await service.createShare({
       ...createDto(),
       expiresDays: 1,
     });
-    created.createdAt = new Date(Date.now() - 2 * 86400000).toISOString();
+    jest.setSystemTime(new Date('2026-07-03T00:00:00.000Z'));
 
     await expect(service.getShare(created.token)).rejects.toBeInstanceOf(
       GoneException,
@@ -515,7 +636,29 @@ describe('SharesService', () => {
     await expect(repository.countAuditEvents('share.revoked')).resolves.toBe(1);
   });
 
-  it('creates download intents and returns presigned object redirects for files', async () => {
+  it('rate limits repeated share views and records abnormal access', async () => {
+    configValues['share.rateLimit.viewMax'] = 1;
+    configValues['share.rateLimit.viewWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.10', userAgent: 'Spec Browser' };
+
+    await service.getShare(created.token, visitor);
+    await expectRateLimited(service.getShare(created.token, visitor));
+
+    const rateLimitedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.rate_limited');
+    expect(rateLimitedAudit?.metadata).toMatchObject({
+      ip: '203.0.113.10',
+      rateLimit: {
+        limit: 1,
+        scope: 'view',
+        windowSeconds: 60,
+      },
+    });
+  });
+
+  it('creates download intents and streams files through ICEDR', async () => {
     const created = await service.createShare(createDto());
     const session = await createEmailSession(created.token);
     const intent = await service.createDownloadIntent(
@@ -529,22 +672,117 @@ describe('SharesService', () => {
       intent.downloadId,
     );
 
-    expect(intent.method).toBe('presigned-url');
+    expect(intent.method).toBe('stream');
+    expect(intent.purpose).toBe('download');
     expect(download).toMatchObject({
-      method: 'presigned-url',
+      method: 'stream',
       filename: 'ICEDR Roadmap.docx',
-      redirectUrl: 'http://signed-download.local',
+      purpose: 'download',
     });
-    expect(storageService.createPresignedDownload).toHaveBeenCalledWith(
-      'seed/workspace-default/roadmap.docx',
-      'ICEDR Roadmap.docx',
-    );
+    expect(download).not.toHaveProperty('redirectUrl');
+    expect(storageService.openObjectStream).toHaveBeenCalledWith({
+      objectKey: 'seed/workspace-default/roadmap.docx',
+      range: undefined,
+    });
     await expect(
       repository.countAuditEvents('share.download_intent_created'),
     ).resolves.toBe(1);
     await expect(
       repository.countAuditEvents('share.download_started'),
     ).resolves.toBe(1);
+  });
+
+  it('validates share nodes, workspace, hierarchy, and personal ownership', async () => {
+    await expect(
+      service.createShare(
+        {
+          ...createDto(),
+          mode: 'folder',
+          title: 'Product',
+          rootItemIds: ['folder-product'],
+          allowedItemIds: ['folder-product', 'product-brief'],
+          dynamicRootId: 'folder-product',
+        },
+        {},
+        { actorRole: 'member', actorUserId: 'user-a' },
+      ),
+    ).resolves.toMatchObject({
+      rootItemIds: ['folder-product'],
+      allowedItemIds: ['folder-product', 'product-brief'],
+    });
+
+    await expect(
+      service.createShare(
+        {
+          ...createDto(),
+          rootItemIds: ['roadmap'],
+          allowedItemIds: ['roadmap', 'folder-product'],
+        },
+        {},
+        { actorRole: 'member', actorUserId: 'user-a' },
+      ),
+    ).rejects.toThrow('outside the selected share roots');
+    await expect(
+      service.createShare(
+        {
+          ...createDto(),
+          rootItemIds: ['personal-b'],
+          allowedItemIds: ['personal-b'],
+        },
+        {},
+        { actorRole: 'member', actorUserId: 'user-a' },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.createShare(
+        { ...createDto(), workspaceId: 'workspace-other' },
+        {},
+        { actorRole: 'member', actorUserId: 'user-a' },
+      ),
+    ).rejects.toThrow('another workspace');
+  });
+
+  it('keeps preview access separate from disabled share downloads', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      allowDownload: false,
+      allowPreview: true,
+    });
+    const session = await createEmailSession(created.token);
+
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+      {},
+      undefined,
+      'preview',
+    );
+    expect(intent).toMatchObject({ method: 'stream', purpose: 'preview' });
+    await expect(
+      service.downloadSharedNode(
+        created.token,
+        'roadmap',
+        intent.downloadId,
+        {},
+        { range: 'bytes=0-3' },
+      ),
+    ).resolves.toMatchObject({ method: 'stream', purpose: 'preview' });
+    await expect(
+      service.downloadSharedNode(
+        created.token,
+        'roadmap',
+        intent.downloadId,
+        {},
+        { range: 'bytes=4-7' },
+      ),
+    ).resolves.toMatchObject({ method: 'stream', purpose: 'preview' });
+    await expect(
+      repository.countAuditEvents('share.download_started'),
+    ).resolves.toBe(0);
+    await expect(
+      service.createDownloadIntent(created.token, 'roadmap', session.sessionId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('returns a unified download policy and policy decisions for email visitors', async () => {
@@ -680,7 +918,7 @@ describe('SharesService', () => {
     await expect(
       service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
     ).rejects.toThrow('Share link is revoked');
-    expect(storageService.createPresignedDownload).not.toHaveBeenCalled();
+    expect(storageService.openObjectStream).not.toHaveBeenCalled();
     await expect(
       repository.countAuditEvents('share.download_started'),
     ).resolves.toBe(0);
@@ -688,7 +926,7 @@ describe('SharesService', () => {
 
   it('uses account access sessions to bypass visitor wait and speed limits', async () => {
     const created = await service.createShare(createDto());
-    const session = await service.createVerifiedOAuthAccessSession(
+    const session = await service.createVerifiedAccountAccessSession(
       created.token,
       {
         id: 'user_ica',
@@ -729,6 +967,65 @@ describe('SharesService', () => {
     });
   });
 
+  it('uses the main account session directly for gated share downloads', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, waitValue: 15 },
+    });
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      undefined,
+      { actorUserId: 'user_main' },
+      {
+        id: 'user_main',
+        avatarUrl: null,
+        displayName: 'Main User',
+        email: 'main@example.test',
+      },
+    );
+
+    expect(intent.policyDecision).toMatchObject({
+      identityType: 'ica',
+      waitSeconds: 0,
+      speedLimit: null,
+      bypassWait: true,
+      bypassSpeedLimit: true,
+    });
+    const audit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents
+      .filter((event) => event.action === 'share.download_intent_created')
+      .at(-1);
+    expect(audit?.metadata).toMatchObject({
+      actorUserId: 'user_main',
+      identityType: 'ica',
+      email: 'main@example.test',
+    });
+  });
+
+  it('enforces share email rules for main account access', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, allowedDomain: 'company.example' },
+    });
+
+    await expect(
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        undefined,
+        {},
+        {
+          id: 'user_main',
+          avatarUrl: null,
+          displayName: 'Main User',
+          email: 'main@example.test',
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('returns backend manifest downloads for folders without object keys', async () => {
     const created = await service.createShare({
       ...createDto(),
@@ -750,14 +1047,15 @@ describe('SharesService', () => {
       intent.downloadId,
     );
 
-    expect(intent.method).toBe('backend-manifest');
-    expect(download.method).toBe('backend-manifest');
-    if (download.method === 'backend-manifest') {
+    expect(intent.method).toBe('manifest');
+    expect(download.method).toBe('manifest');
+    if (download.method === 'manifest') {
       expect(download.filename).toBe('Product.txt');
       expect(download.content).toContain('folder-product');
       expect(download.content).toContain('folder');
+      expect(download.content).not.toContain('objectKey');
     }
-    expect(storageService.createPresignedDownload).not.toHaveBeenCalled();
+    expect(storageService.openObjectStream).not.toHaveBeenCalled();
   });
 
   it('blocks download intents outside the share scope', async () => {
@@ -820,6 +1118,99 @@ describe('SharesService', () => {
     ).resolves.toBe(1);
   });
 
+  it('rate limits email access code requests before delivery', async () => {
+    configValues['share.rateLimit.emailCodeMax'] = 1;
+    configValues['share.rateLimit.emailCodeWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.11', userAgent: 'Spec Browser' };
+
+    await service.sendEmailAccessCode(
+      created.token,
+      { email: 'reviewer@example.com' },
+      visitor,
+    );
+    await expectRateLimited(
+      service.sendEmailAccessCode(
+        created.token,
+        { email: 'reviewer@example.com' },
+        visitor,
+      ),
+    );
+
+    expect(mailService.sendShareAccessCode).toHaveBeenCalledTimes(1);
+    const rateLimitedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.rate_limited');
+    expect(rateLimitedAudit?.metadata).toMatchObject({
+      visitorEmail: 'reviewer@example.com',
+      rateLimit: {
+        limit: 1,
+        scope: 'email-code',
+      },
+    });
+  });
+
+  it('temporarily locks email code verification after repeated failures', async () => {
+    configValues['share.rateLimit.emailVerifyMax'] = 1;
+    configValues['share.rateLimit.emailVerifyWindowSeconds'] = 60;
+    configValues['share.rateLimit.emailVerifyLockSeconds'] = 300;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.12', userAgent: 'Spec Browser' };
+    const email = 'reviewer@example.com';
+    await service.sendEmailAccessCode(created.token, { email }, visitor);
+
+    await expect(
+      service.verifyEmailAccessCode(
+        created.token,
+        { email, code: '000000' },
+        visitor,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expectRateLimited(
+      service.verifyEmailAccessCode(
+        created.token,
+        { email, code: '111111' },
+        visitor,
+      ),
+    );
+
+    await expect(
+      repository.countAuditEvents('share.access_code_failed'),
+    ).resolves.toBe(1);
+    await expect(
+      repository.countAuditEvents('share.access_code_locked'),
+    ).resolves.toBe(1);
+  });
+
+  it('rate limits repeated download intent creation', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+
+    await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    await expectRateLimited(
+      service.createDownloadIntent(created.token, 'roadmap', session.sessionId),
+    );
+
+    const rateLimitedAudit = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.rate_limited');
+    expect(rateLimitedAudit?.metadata).toMatchObject({
+      identityType: 'email',
+      nodeId: 'roadmap',
+      visitorEmail: 'reviewer@example.com',
+      rateLimit: {
+        limit: 1,
+        scope: 'download-intent',
+      },
+    });
+  });
+
   it('keeps email sessions and download intents usable across service instances', async () => {
     const created = await service.createShare(createDto());
     const email = 'reviewer@example.com';
@@ -833,6 +1224,7 @@ describe('SharesService', () => {
       storageService as StorageService,
       workspacesService as WorkspacesService,
       mailService as MailService,
+      configService as ConfigService,
     );
     const session = await restartedService.verifyEmailAccessCode(
       created.token,
@@ -850,7 +1242,7 @@ describe('SharesService', () => {
     );
 
     expect(download).toMatchObject({
-      method: 'presigned-url',
+      method: 'stream',
       filename: 'ICEDR Roadmap.docx',
     });
     await expect(
@@ -973,11 +1365,9 @@ describe('SharesService', () => {
         updatedAt: new Date(0).toISOString(),
       }),
     );
-    const created = await service.createShare(createDto());
-
-    await expect(
-      service.createDownloadIntent(created.token, 'roadmap'),
-    ).rejects.toBeInstanceOf(GoneException);
+    await expect(service.createShare(createDto())).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   async function createEmailSession(token: string) {
@@ -996,5 +1386,16 @@ describe('SharesService', () => {
     const code = sentCodes.get(email);
     expect(code).toBeDefined();
     return service.verifyEmailAccessCode(token, { email, code: code! });
+  }
+
+  async function expectRateLimited(promise: Promise<unknown>) {
+    let caught: unknown;
+    try {
+      await promise;
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).getStatus()).toBe(429);
   }
 });

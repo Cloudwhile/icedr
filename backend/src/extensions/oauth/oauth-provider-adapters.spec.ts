@@ -9,6 +9,12 @@ import {
   mapOidcUserProfile,
 } from './oauth-provider-adapters';
 import * as oidc from 'openid-client';
+import { fetch as undiciFetch } from 'undici';
+
+jest.mock('undici', () => ({
+  Agent: jest.fn(() => ({})),
+  fetch: jest.fn(),
+}));
 
 jest.mock('openid-client', () => ({
   __esModule: true,
@@ -17,6 +23,7 @@ jest.mock('openid-client', () => ({
   buildAuthorizationUrl: jest.fn(),
   calculatePKCECodeChallenge: jest.fn(),
   ClientSecretPost: jest.fn((secret: string) => ({ secret })),
+  customFetch: Symbol('customFetch'),
   discovery: jest.fn(),
   fetchUserInfo: jest.fn(),
   None: jest.fn(() => ({ type: 'none' })),
@@ -40,6 +47,7 @@ describe('OAuth provider adapters', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     jest.clearAllMocks();
+    jest.mocked(undiciFetch).mockReset();
   });
 
   it('maps standard OIDC user fields into the local identity shape', () => {
@@ -56,6 +64,7 @@ describe('OAuth provider adapters', () => {
       subject: 'oidc-subject-1',
       email: 'user@example.com',
       emailSource: 'provider',
+      emailVerified: false,
       displayName: 'OIDC User',
     });
   });
@@ -166,6 +175,7 @@ describe('OAuth provider adapters', () => {
       subject: '42',
       email: 'blogger@example.com',
       emailSource: 'provider',
+      emailVerified: false,
       displayName: 'ice-blogger',
     });
   });
@@ -214,7 +224,6 @@ describe('OAuth provider adapters', () => {
   });
 
   it('rejects HTTP ICETOWNE BLOG issuers in production before network requests', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
     const adapter = createOAuthProviderAdapter('icetowne-blog', {
       production: true,
     });
@@ -230,14 +239,14 @@ describe('OAuth provider adapters', () => {
         codeChallenge: 'challenge',
       }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(undiciFetch).not.toHaveBeenCalled();
   });
 
   it('maps ICETOWNE BLOG token auth failures to UnauthorizedException', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+    jest.mocked(undiciFetch).mockResolvedValue(
       new Response('invalid authorization code', {
         status: 400,
-      }),
+      }) as never,
     );
     const adapter = createOAuthProviderAdapter('icetowne-blog', {
       production: false,
@@ -253,16 +262,16 @@ describe('OAuth provider adapters', () => {
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     const expectedSignal = expect.any(AbortSignal) as unknown as AbortSignal;
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://blog.example/oauth/token',
+    expect(undiciFetch).toHaveBeenCalledWith(
+      new URL('https://blog.example/oauth/token'),
       expect.objectContaining({
+        redirect: 'manual',
         signal: expectedSignal,
       }),
     );
   });
 
   it('rejects provider callback errors before exchanging codes', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
     const adapter = createOAuthProviderAdapter('icetowne-blog', {
       production: false,
     });
@@ -277,9 +286,7 @@ describe('OAuth provider adapters', () => {
         state: 'oauth-state',
         codeVerifier: 'verifier',
       }),
-    ).rejects.toMatchObject({
-      message: 'OAuth error: Denied by provider',
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ message: 'OAuth authorization was denied' });
+    expect(undiciFetch).not.toHaveBeenCalled();
   });
 });

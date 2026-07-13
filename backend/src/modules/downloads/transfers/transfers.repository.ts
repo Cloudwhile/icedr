@@ -25,6 +25,7 @@ export class TransfersRepository {
 
   async create(input: {
     workspaceId: string;
+    ownerUserId?: string | null;
     nodeId?: string | null;
     objectKey?: string | null;
     name: string;
@@ -38,6 +39,7 @@ export class TransfersRepository {
       data: {
         id,
         workspaceId: input.workspaceId,
+        ownerUserId: input.ownerUserId ?? null,
         nodeId: input.nodeId ?? null,
         objectKey: input.objectKey ?? null,
         name: input.name,
@@ -59,6 +61,7 @@ export class TransfersRepository {
       nodeId?: string;
       auditMetadata?: TransferAuditMetadata;
     },
+    ownerUserId?: string,
   ) {
     const data: Prisma.TransferTaskUpdateInput = {
       updatedAt: new Date(),
@@ -72,16 +75,22 @@ export class TransfersRepository {
       input.status !== undefined ||
       input.progress !== undefined ||
       input.nodeId !== undefined;
-    if (!hasUpdate) return this.findById(id);
+    if (!hasUpdate) return this.findById(id, ownerUserId);
+
+    const where: Prisma.TransferTaskWhereInput = {
+      id,
+      transferType: 'upload',
+      ...(ownerUserId ? { ownerUserId } : {}),
+    };
 
     const updated = await this.prisma.transferTask.updateMany({
-      where: { id, transferType: 'upload' },
+      where,
       data,
     });
     if (updated.count === 0) return null;
 
     const row = await this.prisma.transferTask.findFirst({
-      where: { id, transferType: 'upload' },
+      where,
     });
     if (!row) return null;
 
@@ -95,24 +104,37 @@ export class TransfersRepository {
     return transfer;
   }
 
-  async delete(id: string, auditMetadata: TransferAuditMetadata = {}) {
-    const transfer = await this.findById(id);
+  async delete(
+    id: string,
+    auditMetadata: TransferAuditMetadata = {},
+    ownerUserId?: string,
+  ) {
+    const transfer = await this.findById(id, ownerUserId);
     if (!transfer) return false;
     const deleted = await this.prisma.transferTask.deleteMany({
-      where: { id, transferType: 'upload' },
+      where: {
+        id,
+        transferType: 'upload',
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
     });
     if (deleted.count === 0) return false;
     await this.recordAudit('transfer.deleted', transfer, auditMetadata);
     return true;
   }
 
-  async failStaleRunning(cutoff: Date, workspaceId?: string) {
+  async failStaleRunning(
+    cutoff: Date,
+    workspaceId?: string,
+    ownerUserId?: string,
+  ) {
     const where: Prisma.TransferTaskWhereInput = {
       status: 'running',
       transferType: 'upload',
       updatedAt: { lt: cutoff },
     };
     if (workspaceId) where.workspaceId = workspaceId;
+    if (ownerUserId) where.ownerUserId = ownerUserId;
 
     const staleRows = await this.prisma.transferTask.findMany({
       where,
@@ -122,14 +144,22 @@ export class TransfersRepository {
 
     const ids = staleRows.map((row) => row.id);
     await this.prisma.transferTask.updateMany({
-      where: { id: { in: ids }, transferType: 'upload' },
+      where: {
+        id: { in: ids },
+        transferType: 'upload',
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
       data: {
         status: 'failed',
         updatedAt: new Date(),
       },
     });
     const rows = await this.prisma.transferTask.findMany({
-      where: { id: { in: ids }, transferType: 'upload' },
+      where: {
+        id: { in: ids },
+        transferType: 'upload',
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
     const transfers = rows.map((row) => this.mapRow(row));
@@ -144,18 +174,23 @@ export class TransfersRepository {
     return transfers;
   }
 
-  async findById(id: string) {
+  async findById(id: string, ownerUserId?: string) {
     const row = await this.prisma.transferTask.findFirst({
-      where: { id, transferType: 'upload' },
+      where: {
+        id,
+        transferType: 'upload',
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
     });
     return row ? this.mapRow(row) : null;
   }
 
-  async list(workspaceId?: string, limit = 100) {
+  async list(workspaceId?: string, limit = 100, ownerUserId?: string) {
     const rows = await this.prisma.transferTask.findMany({
       where: {
         transferType: 'upload',
         ...(workspaceId ? { workspaceId } : {}),
+        ...(ownerUserId ? { ownerUserId } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(Math.trunc(limit), 1), 500),
@@ -178,7 +213,7 @@ export class TransfersRepository {
       metadata: {
         source: 'transfers-service',
         transferType: transfer.type,
-        objectKey: transfer.objectKey,
+        hasContent: Boolean(transfer.objectKey),
         status: transfer.status,
         result: action === 'transfer.failed' ? 'failed' : 'success',
         ...metadata,
@@ -204,6 +239,7 @@ export class TransfersRepository {
     return {
       id: row.id,
       workspaceId: row.workspaceId,
+      ownerUserId: row.ownerUserId,
       nodeId: row.nodeId,
       objectKey: row.objectKey,
       name: row.name,

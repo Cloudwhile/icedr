@@ -1,0 +1,1069 @@
+/* OAuth administration page */
+.admin-shell .drive-oauth-admin {
+  display: block;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-admin-main {
+  animation: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  container-name: oauth-admin;
+  container-type: inline-size;
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.admin-shell .drive-oauth-toolbar {
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-shell .drive-oauth-admin-overview {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 11px 13px;
+}
+
+.admin-shell .drive-oauth-overview-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-overview-actions .icedr-tool-button,
+.admin-shell .drive-oauth-filterbar > .icedr-tool-button {
+  height: 34px;
+  min-width: 34px;
+  width: 34px;
+}
+
+.admin-shell .drive-oauth-summary {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(88px, 1fr));
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-summary > div {
+  align-content: center;
+  display: grid;
+  gap: 2px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 13px;
+}
+
+.admin-shell .drive-oauth-summary > div + div {
+  border-left: 1px solid #e7edf5;
+}
+
+.admin-shell .drive-oauth-summary dt {
+  color: #66758a;
+  font-size: 11px;
+  font-weight: 690;
+  line-height: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell .drive-oauth-summary dd {
+  color: #172033;
+  font-size: 16px;
+  font-weight: 840;
+  line-height: 20px;
+  margin: 0;
+}
+
+.admin-shell .drive-oauth-summary > div[data-tone="secure"] dd {
+  color: #168a34;
+}
+
+.admin-shell .drive-oauth-summary > div[data-tone="risk"] dd {
+  color: #c66b08;
+}
+
+.admin-shell .drive-oauth-filterbar {
+  align-items: center;
+  border-top: 1px solid #e7edf5;
+  display: grid;
+  gap: 8px;
+  grid-template-columns:
+    minmax(142px, 174px) minmax(132px, 158px) minmax(220px, 1fr)
+    34px;
+  min-width: 0;
+  padding: 9px 13px;
+}
+
+.admin-shell .drive-oauth-filterbar .icedr-app-select-shell,
+.admin-shell .drive-oauth-filterbar .icedr-app-input {
+  background: #ffffff;
+  border-color: #dfe7f2;
+  box-shadow: none;
+  min-height: 36px;
+}
+
+.admin-shell .drive-oauth-filterbar .icedr-app-select,
+.admin-shell .drive-oauth-filterbar .icedr-app-input {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.admin-shell .drive-oauth-search-field {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  color: #7b89a2;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  min-height: 36px;
+  min-width: 0;
+  padding: 0 9px;
+}
+
+.admin-shell .drive-oauth-search-field .icedr-app-input {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 32px;
+  min-width: 0;
+  padding-inline: 0;
+}
+
+.admin-shell .drive-oauth-search-field:focus-within {
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 42%, #dfe7f2);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.1);
+}
+
+.admin-shell .drive-oauth-provider-groups {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+}
+
+.admin-shell .drive-oauth-provider-group {
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.018);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-shell .drive-oauth-provider-group-header {
+  align-items: center;
+  background: #ffffff;
+  border: 0;
+  color: #172033;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr) auto 18px;
+  min-height: 48px;
+  padding: 7px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.admin-shell .drive-oauth-provider-group-header:hover {
+  background: #f8fafc;
+}
+
+.admin-shell .drive-oauth-provider-group-header:focus-visible {
+  outline: 2px solid var(--drive-ui-blue-600);
+  outline-offset: -2px;
+}
+
+.admin-shell .drive-oauth-provider-group-copy {
+  display: block;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-provider-group-copy strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 820;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-shell .drive-oauth-provider-count {
+  align-items: center;
+  background: #f3f6fa;
+  border: 1px solid #e0e7f0;
+  border-radius: 999px;
+  color: #56657d;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 760;
+  height: 23px;
+  justify-content: center;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.admin-shell .drive-oauth-table-shell {
+  border-top: 1px solid #e7edf5;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-table {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns:
+    minmax(116px, 0.9fr) minmax(108px, 0.82fr) minmax(190px, 1.45fr)
+    minmax(118px, 0.9fr) minmax(88px, 0.66fr) 148px;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-table-head {
+  background: #f8fafc;
+  color: #66758a;
+  font-size: 11px;
+  font-weight: 760;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.admin-shell .drive-oauth-table-row {
+  border-top: 1px solid #edf2f7;
+  min-height: 54px;
+  padding: 8px 12px;
+}
+
+.admin-shell .drive-oauth-table-head + .drive-oauth-table-row {
+  border-top: 0;
+}
+
+.admin-shell .drive-oauth-cell {
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-cell::before {
+  content: none;
+}
+
+.admin-shell .drive-oauth-config-name {
+  display: grid;
+  gap: 1px;
+}
+
+.admin-shell .drive-oauth-config-name strong {
+  color: #172033;
+  font-size: 12px;
+  font-weight: 790;
+  line-height: 17px;
+}
+
+.admin-shell .drive-oauth-config-name small,
+.admin-shell .drive-oauth-muted {
+  color: #66758a;
+  font-size: 11px;
+  font-weight: 620;
+  line-height: 16px;
+}
+
+.admin-shell .drive-oauth-copy-cell {
+  align-items: center;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) 24px;
+}
+
+.admin-shell .drive-oauth-copy-cell > span {
+  color: #334155;
+  font-size: 11px;
+  font-weight: 680;
+  min-width: 0;
+}
+
+.admin-shell .drive-oauth-copy-cell button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #7b89a2;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.admin-shell .drive-oauth-copy-cell button:hover,
+.admin-shell .drive-oauth-copy-cell button:focus-visible {
+  background: #eef3ff;
+  color: var(--drive-ui-blue-600);
+}
+
+.admin-shell .drive-oauth-status-cell {
+  align-items: center;
+  display: flex;
+}
+
+.admin-shell .drive-oauth-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+}
+
+.admin-shell .drive-oauth-row-actions .icedr-tool-button {
+  background: transparent;
+  border-color: transparent;
+  height: 30px;
+  min-width: 30px;
+  width: 30px;
+}
+
+.admin-shell .drive-oauth-row-actions .icedr-tool-button:hover {
+  background: #f1f5ff;
+  border-color: #dfe7ff;
+}
+
+.admin-shell .drive-oauth-table-empty,
+.admin-shell .drive-oauth-empty {
+  align-items: center;
+  color: #66758a;
+  display: flex;
+  font-size: 12px;
+  font-weight: 680;
+  gap: 8px;
+  justify-content: center;
+  min-height: 76px;
+  padding: 16px;
+}
+
+.drive-oauth-provider-mark[data-provider="oidc"],
+.drive-oauth-provider-mark[data-provider="icetowne-blog"] {
+  background: #eff6ff;
+  border: 1px solid #dce9fb;
+  color: #2761b7;
+}
+
+.drive-oauth-provider-mark[data-provider="icetowne-blog"] {
+  background: #eaf8f5;
+  border-color: #cceae3;
+  color: #087c77;
+}
+
+@container oauth-admin (max-width: 900px) {
+  .admin-shell .drive-oauth-admin-overview {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell .drive-oauth-summary {
+    width: 100%;
+  }
+
+  .admin-shell .drive-oauth-filterbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  }
+
+  .admin-shell .drive-oauth-search-field {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .admin-shell .drive-oauth-filterbar > .icedr-tool-button {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .admin-shell .drive-oauth-table-head {
+    display: none;
+  }
+
+  .admin-shell .drive-oauth-table-row {
+    align-items: start;
+    gap: 12px 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 13px;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-cell {
+    align-content: start;
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-cell::before {
+    color: #7b89a2;
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    font-weight: 740;
+    line-height: 14px;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-config-name,
+  .admin-shell .drive-oauth-table-row .drive-oauth-row-actions {
+    grid-column: 1 / -1;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-copy-cell {
+    grid-template-columns: minmax(0, 1fr) 24px;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-copy-cell::before {
+    grid-column: 1 / -1;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-status-cell {
+    display: grid;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-status-cell .icedr-status-pill {
+    justify-self: start;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-row-actions::before {
+    flex: 0 0 100%;
+    width: 100%;
+  }
+}
+
+@container oauth-admin (max-width: 520px) {
+  .admin-shell .drive-oauth-admin-overview,
+  .admin-shell .drive-oauth-filterbar {
+    padding-inline: 10px;
+  }
+
+  .admin-shell .drive-oauth-overview-actions .icedr-status-pill {
+    max-width: 100%;
+  }
+
+  .admin-shell .drive-oauth-summary > div {
+    padding-inline: 8px;
+  }
+
+  .admin-shell .drive-oauth-filterbar {
+    gap: 7px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  }
+
+  .admin-shell .drive-oauth-provider-group-header {
+    grid-template-columns: 30px minmax(0, 1fr) auto 16px;
+    padding-inline: 10px;
+  }
+
+  .admin-shell .drive-oauth-provider-group-header > span:last-child {
+    display: inline-flex;
+  }
+
+  .admin-shell .drive-oauth-table-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell .drive-oauth-table-row .drive-oauth-config-name,
+  .admin-shell .drive-oauth-table-row .drive-oauth-row-actions {
+    grid-column: 1;
+  }
+}
+
+/* OAuth provider dialog. The modal is rendered in a portal outside .admin-shell. */
+.icedr-dialog-container.drive-oauth-dialog-container {
+  box-sizing: border-box;
+  max-width: none;
+  padding: 16px;
+  width: 100%;
+}
+
+.icedr-dialog.drive-oauth-dialog {
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.drive-oauth-dialog .drive-oauth-dialog-header {
+  border-bottom: 1px solid #e4eaf2;
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 14px 16px 12px;
+}
+
+.drive-oauth-dialog-title-row {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  min-width: 0;
+}
+
+.drive-oauth-dialog-heading {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.drive-oauth-dialog-heading h2 {
+  color: #172033;
+  font-size: 18px;
+  font-weight: 830;
+  letter-spacing: 0;
+  line-height: 24px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.drive-oauth-dialog-context {
+  align-items: center;
+  color: #56657d;
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-oauth-dialog-context > span:last-child {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  min-width: 0;
+}
+
+.drive-oauth-dialog-context strong {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 17px;
+}
+
+.drive-oauth-dialog-context small {
+  color: #7b89a2;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+}
+
+.drive-oauth-dialog .drive-oauth-dialog-body {
+  flex: 1 1 auto;
+  margin: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+.drive-oauth-dialog-layout {
+  display: grid;
+  min-width: 0;
+}
+
+.drive-oauth-template-panel {
+  background: #f8fafc;
+  border-bottom: 1px solid #e4eaf2;
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.drive-oauth-dialog-section-title {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 780;
+  letter-spacing: 0;
+  line-height: 18px;
+  margin: 0;
+}
+
+.drive-oauth-template-grid {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.drive-oauth-template-option {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  color: #172033;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  min-height: 50px;
+  min-width: 0;
+  padding: 7px 8px;
+  position: relative;
+  text-align: left;
+}
+
+.drive-oauth-template-option:hover {
+  background: #fdfefe;
+  border-color: color-mix(in srgb, var(--oauth-provider-accent) 34%, #dfe7f2);
+}
+
+.drive-oauth-template-option[data-active="true"] {
+  background: color-mix(in srgb, var(--oauth-provider-accent) 6%, #ffffff);
+  border-color: color-mix(in srgb, var(--oauth-provider-accent) 46%, #dfe7f2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--oauth-provider-accent) 12%, transparent);
+}
+
+.drive-oauth-template-option[data-active="true"]::after {
+  background: var(--oauth-provider-accent);
+  border-radius: 999px;
+  content: "";
+  height: 4px;
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 4px;
+}
+
+.drive-oauth-template-option:focus-visible {
+  outline: 2px solid var(--oauth-provider-accent);
+  outline-offset: 1px;
+}
+
+.drive-oauth-template-option:disabled {
+  cursor: progress;
+  opacity: 0.62;
+}
+
+.drive-oauth-template-option > span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.drive-oauth-template-option strong,
+.drive-oauth-template-option small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-oauth-template-option strong {
+  color: #172033;
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 16px;
+}
+
+.drive-oauth-template-option small {
+  color: #7b89a2;
+  font-size: 10px;
+  font-weight: 620;
+  line-height: 14px;
+}
+
+.drive-oauth-form-panel {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+}
+
+.drive-oauth-form-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.drive-oauth-form-columns {
+  align-items: start;
+  display: grid;
+  gap: 12px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.drive-oauth-form-column {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+}
+
+.drive-oauth-form-panel .icedr-field {
+  gap: 6px;
+  min-width: 0;
+}
+
+.drive-oauth-form-panel .icedr-field-label {
+  color: #56657d;
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 16px;
+}
+
+.drive-oauth-form-panel .icedr-app-input {
+  background: #ffffff;
+  border-color: #dce4ef;
+  box-shadow: none;
+  min-height: 37px;
+  min-width: 0;
+}
+
+.drive-oauth-copy-field {
+  align-items: center;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-width: 0;
+}
+
+.drive-oauth-copy-field .icedr-tool-button {
+  height: 34px;
+  min-width: 34px;
+  width: 34px;
+}
+
+.drive-oauth-advanced {
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.drive-oauth-advanced summary {
+  align-items: center;
+  background: #f8fafc;
+  color: #40506a;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+  list-style: none;
+  min-height: 38px;
+  padding: 0 11px;
+  user-select: none;
+}
+
+.drive-oauth-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.drive-oauth-advanced summary::after {
+  color: #7b89a2;
+  content: "+";
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1;
+  text-align: center;
+}
+
+.drive-oauth-advanced[open] summary::after {
+  content: "-";
+}
+
+.drive-oauth-advanced summary span {
+  font-size: 11px;
+  font-weight: 740;
+}
+
+.drive-oauth-advanced-body {
+  border-top: 1px solid #e7edf5;
+  padding: 12px;
+}
+
+.drive-oauth-policy-title {
+  color: #56657d;
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 16px;
+}
+
+.drive-oauth-policy-toggle {
+  align-items: center;
+  color: #334155;
+  cursor: pointer;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-height: 28px;
+  min-width: 0;
+}
+
+.drive-oauth-policy-toggle input {
+  appearance: none;
+  background: #cbd5e1;
+  border: 0;
+  border-radius: 999px;
+  height: 18px;
+  margin: 0;
+  padding: 2px;
+  position: relative;
+  transition: background-color 150ms var(--motion-ease);
+  width: 34px;
+}
+
+.drive-oauth-policy-toggle input::before {
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  content: "";
+  display: block;
+  height: 14px;
+  transform: translateX(0);
+  transition: transform 150ms var(--motion-ease-emphasized);
+  width: 14px;
+}
+
+.drive-oauth-policy-toggle input:checked {
+  background: #3567d6;
+}
+
+.drive-oauth-policy-toggle input:checked::before {
+  transform: translateX(16px);
+}
+
+.drive-oauth-policy-toggle input:focus-visible {
+  outline: 2px solid #5e6ad2;
+  outline-offset: 2px;
+}
+
+.drive-oauth-policy-toggle input:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.drive-oauth-policy-toggle span {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  min-width: 0;
+}
+
+.drive-oauth-doc-link {
+  align-items: center;
+  color: #345ecb;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 720;
+  gap: 5px;
+  line-height: 16px;
+  max-width: 100%;
+  text-decoration: none;
+}
+
+.drive-oauth-doc-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-oauth-doc-link:hover {
+  text-decoration: underline;
+}
+
+.drive-oauth-test-result {
+  background: #fff8ed;
+  border: 1px solid #f1d2a7;
+  border-radius: 8px;
+  color: #9a5207;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.drive-oauth-test-result[data-tone="secure"] {
+  background: #edf9f1;
+  border-color: #c9ead4;
+  color: #167736;
+}
+
+.drive-oauth-test-result > header {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.drive-oauth-test-result > header strong {
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 16px;
+}
+
+.drive-oauth-test-result > div {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.drive-oauth-test-result > div > span {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  min-height: 30px;
+  padding: 5px 7px;
+}
+
+.drive-oauth-test-result > div > span[data-ok="true"] {
+  color: #167736;
+}
+
+.drive-oauth-test-result small {
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.drive-oauth-dialog > .drive-oauth-dialog-actions {
+  align-items: center;
+  background: #ffffff;
+  border-top: 1px solid #e4eaf2;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  justify-content: space-between;
+  margin: 0;
+  padding: 9px 12px;
+}
+
+.drive-oauth-dialog-actions-primary {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.drive-oauth-dialog-actions .icedr-tool-button {
+  height: 34px;
+  min-width: 34px;
+  width: 34px;
+}
+
+.drive-oauth-dialog-actions .drive-oauth-dialog-action-activate {
+  background: #168a34;
+  border-color: #168a34;
+  color: #ffffff;
+}
+
+.drive-oauth-dialog-actions .drive-oauth-dialog-action-activate:hover {
+  background: #12752c;
+  border-color: #12752c;
+  color: #ffffff;
+}
+
+.icedr-dialog.drive-oauth-global-dialog {
+  padding: 0;
+}
+
+.drive-oauth-global-dialog > header {
+  align-items: center;
+  border-bottom: 1px solid #e4eaf2;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0;
+  padding: 14px 16px;
+}
+
+.drive-oauth-global-dialog > header h2 {
+  color: #172033;
+  font-size: 16px;
+  font-weight: 820;
+  line-height: 22px;
+  margin: 0;
+}
+
+.drive-oauth-global-dialog [data-slot="body"] {
+  margin: 0;
+  padding: 14px 16px 16px;
+}
+
+.drive-oauth-global-dialog p {
+  color: #56657d;
+  font-size: 12px;
+  line-height: 18px;
+  margin: 0;
+}
+
+.drive-oauth-global-dialog footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .drive-oauth-template-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .drive-oauth-form-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-oauth-test-result > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .icedr-dialog-container.drive-oauth-dialog-container {
+    padding: 10px;
+  }
+
+  .drive-oauth-dialog .drive-oauth-dialog-header,
+  .drive-oauth-template-panel,
+  .drive-oauth-form-panel {
+    padding-inline: 12px;
+  }
+
+  .drive-oauth-template-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-oauth-template-option {
+    min-height: 48px;
+  }
+
+  .drive-oauth-form-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .drive-oauth-copy-field {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .drive-oauth-dialog > .drive-oauth-dialog-actions {
+    padding-inline: 10px;
+  }
+}

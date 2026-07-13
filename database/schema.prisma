@@ -9,11 +9,12 @@ datasource db {
 }
 
 model AuthSetting {
-  settingKey     String   @id @map("setting_key")
-  localEnabled   Boolean  @map("local_enabled")
-  oauthEnabled   Boolean  @map("oauth_enabled")
-  passkeyEnabled Boolean  @map("passkey_enabled")
-  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  settingKey                  String   @id @map("setting_key")
+  localEnabled                Boolean  @map("local_enabled")
+  oauthEnabled                Boolean  @map("oauth_enabled")
+  passkeyEnabled              Boolean  @map("passkey_enabled")
+  minimumAuthenticationMethods Int     @default(1) @map("minimum_authentication_methods")
+  updatedAt                   DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("auth_settings")
 }
@@ -33,6 +34,9 @@ model User {
   passwordResets      AuthPasswordReset[]
   passkeys            AuthPasskey[]
   challenges          AuthChallenge[]
+  stepUpTokens        AuthStepUpToken[]
+  recoveryCodes       AuthRecoveryCode[]
+  oauthStates         AuthOAuthState[]
   oauthExchangeCodes  AuthOAuthExchangeCode[]
   ownedFileNodes      FileNode[]
 
@@ -104,6 +108,11 @@ model AuthPasskey {
   deviceType   String    @map("device_type")
   backedUp     Boolean   @default(false) @map("backed_up")
   name         String
+  aaguid       String?
+  createdUserAgent String? @map("created_user_agent")
+  createdIpHash String? @map("created_ip_hash")
+  lastUsedUserAgent String? @map("last_used_user_agent")
+  lastUsedIpHash String? @map("last_used_ip_hash")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz
 
@@ -117,21 +126,70 @@ model AuthChallenge {
   flow      String
   challenge String
   userId    String?   @map("user_id")
-  email     String?
   expiresAt DateTime  @map("expires_at") @db.Timestamptz
   usedAt    DateTime? @map("used_at") @db.Timestamptz
+  attemptCount Int @default(0) @map("attempt_count")
+  claimedAt DateTime? @map("claimed_at") @db.Timestamptz
+  claimTokenHash String? @map("claim_token_hash")
   metadata  Json      @default("{}")
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([flow, expiresAt, usedAt])
   @@map("auth_challenges")
+}
+
+model AuthRateLimit {
+  id              String   @id
+  action          String
+  scopeHash       String   @map("scope_hash")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz
+  count           Int      @default(1)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([action, scopeHash])
+  @@index([updatedAt])
+  @@map("auth_rate_limits")
+}
+
+model AuthStepUpToken {
+  tokenHash        String    @id @map("token_hash")
+  userId           String    @map("user_id")
+  sessionTokenHash String    @map("session_token_hash")
+  method           String
+  purpose          String
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz
+  usedAt           DateTime? @map("used_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, expiresAt])
+  @@map("auth_step_up_tokens")
+}
+
+model AuthRecoveryCode {
+  id        String    @id
+  userId    String    @map("user_id")
+  batchId   String    @map("batch_id")
+  codeHash  String    @unique @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("auth_recovery_codes")
 }
 
 model AuthOAuthState {
   state        String    @id
   flow         String
   shareToken   String?   @map("share_token")
+  userId       String?   @map("user_id")
+  sessionTokenHash String? @map("session_token_hash")
+  purpose      String?
   codeVerifier String    @map("code_verifier")
   redirectUri  String    @map("redirect_uri")
   providerSnapshot Json?  @map("provider_snapshot")
@@ -139,12 +197,17 @@ model AuthOAuthState {
   usedAt       DateTime? @map("used_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("auth_oauth_states")
 }
 
 model AuthOAuthExchangeCode {
   codeHash  String    @id @map("code_hash")
   userId    String    @map("user_id")
+  flow      String    @default("login")
+  sessionTokenHash String? @map("session_token_hash")
+  purpose   String?
   expiresAt DateTime  @map("expires_at") @db.Timestamptz
   usedAt    DateTime? @map("used_at") @db.Timestamptz
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
@@ -262,22 +325,32 @@ model PreviewArtifact {
 }
 
 model FileDownloadIntent {
-  id            String   @id
-  nodeId        String   @map("node_id")
+  id            String    @id
+  nodeId        String    @map("node_id")
+  versionId     String?   @map("version_id")
   filename      String
   method        String
-  auditMetadata Json     @default("{}") @map("audit_metadata")
-  expiresAt     DateTime @map("expires_at") @db.Timestamptz
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  purpose       String    @default("download")
+  auditMetadata Json      @default("{}") @map("audit_metadata")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
+  useCount      Int       @default(0) @map("use_count")
+  requestIpHash String?   @map("request_ip_hash")
+  userAgentHash String?   @map("user_agent_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
+  @@index([nodeId, versionId])
+  @@index([expiresAt])
   @@map("file_download_intents")
 }
 
 model UploadSession {
   id                String   @id
   transferId        String   @map("transfer_id")
+  ownerUserId       String?  @map("owner_user_id")
   workspaceId       String   @map("workspace_id")
   spaceScope        String   @default("workspace") @map("space_scope")
+  conflictStrategy  String   @default("version") @map("conflict_strategy")
   objectKey         String   @map("object_key")
   multipartUploadId String?  @map("multipart_upload_id")
   resumeKey         String?  @map("resume_key")
@@ -292,6 +365,7 @@ model UploadSession {
 
   parts UploadSessionPart[]
 
+  @@index([ownerUserId])
   @@map("upload_sessions")
 }
 
@@ -329,6 +403,7 @@ model StorageSetting {
 model TransferTask {
   id           String   @id
   workspaceId  String   @map("workspace_id")
+  ownerUserId  String?  @map("owner_user_id")
   nodeId       String?  @map("node_id")
   objectKey    String?  @map("object_key")
   name         String
@@ -338,12 +413,14 @@ model TransferTask {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
+  @@index([ownerUserId])
   @@map("transfer_tasks")
 }
 
 model ShareLink {
   token          String    @id
   workspaceId    String    @default("workspace-default") @map("workspace_id")
+  creatorUserId  String?   @map("creator_user_id")
   title          String
   mode           String
   ownerName      String    @map("owner_name")
@@ -362,6 +439,7 @@ model ShareLink {
   accessSessions  ShareAccessSession[]
   downloadIntents ShareDownloadIntent[]
 
+  @@index([creatorUserId])
   @@map("share_links")
 }
 
@@ -415,10 +493,12 @@ model ShareDownloadIntent {
   nodeId        String    @map("node_id")
   filename      String
   method        String
+  purpose       String    @default("download")
   identityType  String    @default("anonymous") @map("identity_type")
   email         String?
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz
   consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
+  useCount      Int       @default(0) @map("use_count")
   requestIpHash String?   @map("request_ip_hash")
   userAgentHash String?   @map("user_agent_hash")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz

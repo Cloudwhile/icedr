@@ -83,7 +83,7 @@ export function DetailsPanel({
   const selectedSize = formatFileSize(sumDriveItemSizes(detailItems, sourceItems), locale);
   const owner = displayItem?.owner ?? currentFolder?.owner ?? "--";
   const shared = displayItem?.shared ?? currentFolder?.shared;
-  const versionItem = !multiSelect && displayItem?.objectKey && !displayItem.archivedAt ? displayItem : null;
+  const versionItem = !multiSelect && displayItem?.hasContent && !displayItem.archivedAt ? displayItem : null;
   const quickActionItem = !multiSelect ? displayItem ?? currentFolder : null;
   const quickActionItems = selectedItems.length > 0 ? selectedItems : quickActionItem ? [quickActionItem] : [];
   const canPreview = Boolean(quickActionItem && getItemKind(quickActionItem) !== "folder" && onPreviewItem);

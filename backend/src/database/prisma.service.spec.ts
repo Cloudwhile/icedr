@@ -79,10 +79,27 @@ describe('PrismaService', () => {
     const client = {
       $connect: jest.fn().mockResolvedValue(undefined),
       $disconnect: jest.fn().mockResolvedValue(undefined),
-      $queryRawUnsafe: jest
-        .fn()
-        .mockResolvedValueOnce([{ name: 'space_scope' }])
-        .mockResolvedValueOnce([{ name: 'space_scope' }]),
+      $queryRawUnsafe: jest.fn((statement: string) => {
+        const table = statement.match(/PRAGMA table_info\("([^"]+)"\)/)?.[1];
+        const columns: Record<string, string[]> = {
+          auth_settings: ['minimum_authentication_methods'],
+          auth_passkeys: [
+            'aaguid',
+            'created_user_agent',
+            'created_ip_hash',
+            'last_used_user_agent',
+            'last_used_ip_hash',
+          ],
+          auth_challenges: ['attempt_count', 'claimed_at', 'claim_token_hash'],
+          auth_oauth_states: ['user_id', 'session_token_hash', 'purpose'],
+          auth_oauth_exchange_codes: ['flow', 'session_token_hash', 'purpose'],
+          file_nodes: ['space_scope'],
+          upload_sessions: ['space_scope'],
+        };
+        return Promise.resolve(
+          (table ? columns[table] : undefined)?.map((name) => ({ name })) ?? [],
+        );
+      }),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -92,7 +109,19 @@ describe('PrismaService', () => {
 
     await service.onModuleInit();
 
-    expect(client.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+    const statements = client.$executeRawUnsafe.mock.calls.map(
+      ([statement]) => statement as string,
+    );
+    expect(
+      statements.some((statement) =>
+        statement.startsWith('ALTER TABLE "file_nodes"'),
+      ),
+    ).toBe(false);
+    expect(
+      statements.some((statement) =>
+        statement.startsWith('ALTER TABLE "upload_sessions"'),
+      ),
+    ).toBe(false);
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
     );

@@ -102,7 +102,7 @@ function getDriveDocumentTitleParts(
 ): DocumentTitleParts | null {
   const nav = driveRouteNavs[pathname];
   if (!nav) return null;
-  if (nav === "links") return { title: t("links.title"), subtitle: t("links.subtitle") };
+  if (nav === "links") return { title: t("links.pageTitle"), subtitle: t("nav.links") };
   if (nav === "transfers") return { title: t("transfers.title"), subtitle: t("transfers.subtitle") };
   if (nav === "settings") return { title: t("settings.profile"), subtitle: t("settings.profileSubtitle") };
   return { title: t(`nav.${nav}`), subtitle: t("app.workspace") };
@@ -124,11 +124,20 @@ function getAdminDocumentTitleParts(
   t: ReturnType<typeof useTranslations>,
 ): DocumentTitleParts {
   if (pathname === "/admin/audit") return { title: t("audit.title"), subtitle: t("audit.subtitle") };
+  if (pathname === "/admin/status") {
+    return {
+      title: t("settings.systemStatus"),
+      subtitle: t("settings.systemStatusSubtitle"),
+    };
+  }
   if (pathname === "/admin/external-share") {
     return { title: t("admin.externalLinkPolicy"), subtitle: t("admin.externalLinkPolicySubtitle") };
   }
   if (pathname === "/admin/system/storage") {
     return { title: t("settings.storagePolicy"), subtitle: t("settings.storagePolicySubtitle") };
+  }
+  if (pathname === "/admin/system/oauth") {
+    return { title: t("admin.oauthSettings"), subtitle: t("settings.oauthSettingsSubtitle") };
   }
   if (pathname === "/admin/system/lifecycle") {
     return { title: t("settings.lifecyclePolicy"), subtitle: t("settings.lifecyclePolicySubtitle") };

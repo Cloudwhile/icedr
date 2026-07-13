@@ -54,6 +54,8 @@ export function AuthCodePanel({
   code,
   codeLength = defaultAuthCodeLength,
   email,
+  errorText,
+  invalid,
   onBack,
   onChange,
   onComplete,
@@ -65,6 +67,8 @@ export function AuthCodePanel({
   code: string;
   codeLength?: number;
   email: string;
+  errorText?: string;
+  invalid?: boolean;
   onBack?: () => void;
   onChange: (value: string) => void;
   onComplete: (value: string) => void;
@@ -80,6 +84,7 @@ export function AuthCodePanel({
     <div
       className="icedr-auth-code-panel"
       data-complete={complete ? "true" : undefined}
+      data-invalid={invalid ? "true" : undefined}
       style={{
         "--auth-code-border": palette.hairline,
         "--auth-code-focus": palette.focusRing,
@@ -104,10 +109,17 @@ export function AuthCodePanel({
         busy={busy}
         code={code}
         codeLength={codeLength}
+        invalid={invalid}
         onChange={onChange}
         onComplete={email.trim() ? onComplete : undefined}
         palette={palette}
       />
+
+      {invalid && errorText ? (
+        <span className="icedr-auth-code-error" role="alert">
+          {errorText}
+        </span>
+      ) : null}
 
       <button
         type="button"
@@ -136,6 +148,7 @@ function AuthCodeInput({
   busy,
   code,
   codeLength,
+  invalid,
   onChange,
   onComplete,
   palette,
@@ -144,6 +157,7 @@ function AuthCodeInput({
   busy: boolean;
   code: string;
   codeLength: number;
+  invalid?: boolean;
   onChange: (value: string) => void;
   onComplete?: (value: string) => void;
   palette: Palette;
@@ -169,6 +183,7 @@ function AuthCodeInput({
       className="icedr-auth-otp"
       inputMode="text"
       isDisabled={busy}
+      isInvalid={invalid}
       maxLength={codeLength}
       name="code"
       pasteTransformer={value => normalizeAuthCodeValue(value, codeLength)}

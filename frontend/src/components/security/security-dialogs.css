@@ -1,0 +1,216 @@
+.icedr-security-dialog-header,
+.icedr-security-dialog-heading,
+.icedr-recovery-code-tools {
+  align-items: center;
+  display: flex;
+}
+
+.icedr-security-dialog-header {
+  align-items: start !important;
+  display: grid !important;
+  gap: 12px !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.icedr-security-dialog-header > .icedr-tooltip-trigger {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.icedr-security-dialog-heading {
+  grid-column: 1;
+  grid-row: 1;
+  gap: 10px;
+  min-width: 0;
+}
+
+.icedr-security-dialog-heading > svg {
+  color: var(--drive-ui-blue-600, #4263eb);
+  flex: 0 0 auto;
+}
+
+.icedr-security-dialog-heading > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.icedr-security-dialog-heading > div > span {
+  color: var(--drive-ui-muted, #64748b);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.icedr-reauth-methods {
+  border: 1px solid var(--drive-ui-line, #e2e8f0);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.icedr-reauth-methods button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--drive-ui-line, #e2e8f0);
+  color: var(--drive-ui-muted, #64748b);
+  display: flex;
+  font-size: 12px;
+  font-weight: 720;
+  gap: 8px;
+  min-height: 42px;
+  min-width: 0;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.icedr-reauth-methods button:nth-child(odd) {
+  border-right: 1px solid var(--drive-ui-line, #e2e8f0);
+}
+
+.icedr-reauth-methods button:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.icedr-reauth-methods button[data-active="true"] {
+  background: color-mix(in srgb, var(--drive-ui-blue-600, #4263eb) 8%, transparent);
+  box-shadow: inset 3px 0 0 var(--drive-ui-blue-600, #4263eb);
+  color: var(--drive-ui-ink, #172033);
+}
+
+.icedr-reauth-methods button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--drive-ui-blue-600, #4263eb);
+  outline: 0;
+}
+
+.icedr-security-dialog-field {
+  display: grid;
+  gap: 8px;
+}
+
+.icedr-security-dialog-field > span:first-child {
+  color: var(--drive-ui-ink, #172033);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.icedr-security-dialog-field > span:last-child {
+  color: var(--drive-ui-muted, #64748b);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.icedr-security-dialog-method-copy,
+.icedr-security-dialog-unavailable,
+.icedr-security-dialog-error,
+.icedr-recovery-codes-warning {
+  align-items: flex-start;
+  border: 1px solid var(--drive-ui-line, #e2e8f0);
+  border-radius: 8px;
+  display: flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 9px;
+  line-height: 18px;
+  padding: 11px 12px;
+}
+
+.icedr-security-dialog-method-copy {
+  background: color-mix(in srgb, var(--drive-ui-blue-600, #4263eb) 5%, transparent);
+  color: var(--drive-ui-muted, #64748b);
+}
+
+.icedr-security-dialog-unavailable,
+.icedr-security-dialog-error {
+  background: color-mix(in srgb, var(--drive-ui-danger, #dc2626) 6%, transparent);
+  border-color: color-mix(in srgb, var(--drive-ui-danger, #dc2626) 28%, var(--drive-ui-line, #e2e8f0));
+  color: var(--drive-ui-danger, #dc2626);
+}
+
+.icedr-security-reauth-dialog footer,
+.icedr-recovery-codes-dialog footer {
+  justify-content: flex-end;
+}
+
+.icedr-recovery-code-tools {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.icedr-recovery-codes-warning {
+  background: color-mix(in srgb, #d97706 7%, transparent);
+  border-color: color-mix(in srgb, #d97706 30%, var(--drive-ui-line, #e2e8f0));
+  color: #a45305;
+}
+
+.icedr-recovery-codes-list {
+  border: 1px solid var(--drive-ui-line, #e2e8f0);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.icedr-recovery-codes-list li {
+  align-items: center;
+  border-bottom: 1px solid var(--drive-ui-line, #e2e8f0);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  min-height: 43px;
+  padding: 0 12px;
+}
+
+.icedr-recovery-codes-list li:nth-child(odd) {
+  border-right: 1px solid var(--drive-ui-line, #e2e8f0);
+}
+
+.icedr-recovery-codes-list li:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.icedr-recovery-codes-list li > span {
+  color: var(--drive-ui-muted, #64748b);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.icedr-recovery-codes-list code {
+  color: var(--drive-ui-ink, #172033);
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 760;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .icedr-reauth-methods,
+  .icedr-recovery-codes-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .icedr-reauth-methods button,
+  .icedr-reauth-methods button:nth-child(odd),
+  .icedr-recovery-codes-list li,
+  .icedr-recovery-codes-list li:nth-child(odd) {
+    border-bottom: 1px solid var(--drive-ui-line, #e2e8f0);
+    border-right: 0;
+  }
+
+  .icedr-reauth-methods button:last-child,
+  .icedr-recovery-codes-list li:last-child {
+    border-bottom: 0;
+  }
+
+  .icedr-security-dialog-heading > div > span {
+    display: none;
+  }
+}

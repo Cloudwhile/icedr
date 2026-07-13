@@ -2,6 +2,22 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
+import {
+  createDriveApiResponseError,
+  createDriveApiUnavailableError,
+  DriveApiError,
+  readDriveApiError,
+} from "./drive-api-errors";
+export {
+  createDriveApiResponseError,
+  createDriveApiUnavailableError,
+  DriveApiError,
+  getDriveApiErrorMessage,
+  getDriveApiErrorMessageKey,
+  isAuthExpiredApiError,
+  normalizeDriveApiError,
+  readDriveApiError,
+} from "./drive-api-errors";
 
 export type AuditEventResponse = {
   id: string;
@@ -22,7 +38,11 @@ export type AuditEventsPageResponse = {
   offset: number;
 };
 
-export type ShareAccessIdentityType = "anonymous" | "email" | "ica" | "workspace";
+export type ShareAccessIdentityType =
+  | "anonymous"
+  | "email"
+  | "ica"
+  | "workspace";
 
 export type ShareAccessSession = {
   sessionId: string;
@@ -37,7 +57,10 @@ export type ShareAccessSession = {
   expiresAt: string;
 };
 
-export type ShareDownloadSpeedLimit = { value: number; unit: "KB/s" | "MB/s" } | null;
+export type ShareDownloadSpeedLimit = {
+  value: number;
+  unit: "KB/s" | "MB/s";
+} | null;
 
 export type ShareDownloadRule = {
   identityType: ShareAccessIdentityType;
@@ -75,12 +98,26 @@ export type IdentityConfigResponse = {
   clientId: string;
   audience: string;
   tokenType: string;
+  providers?: OAuthPublicProvider[];
+};
+
+export type OAuthPublicProvider = {
+  id: string;
+  provider: string;
+  providerKey?: OAuthProviderKey;
+  providerProfile: OAuthProviderProfile;
+  protocol: string;
+  issuerUrl: string;
+  clientId: string;
+  audience: string;
+  tokenType: string;
 };
 
 export type AuthSettings = {
   localEnabled: boolean;
   oauthEnabled: boolean;
   passkeyEnabled: boolean;
+  minimumAuthenticationMethods: number;
   oauthConfigured: boolean;
   passkeyConfigured: boolean;
   updatedAt: string;
@@ -287,27 +324,64 @@ export type TranslationSettings = {
   bundles: TranslationBundle[];
 };
 
-export type OAuthProviderProfile = "oidc" | "icetowne-blog";
+export type OAuthProviderProfile = "oidc" | "oauth2" | "icetowne-blog";
+export type OAuthProviderKey =
+  | "google"
+  | "github"
+  | "microsoft"
+  | "gitlab"
+  | "oidc"
+  | "icetowne-blog";
 
 export type OAuthSettingsInput = {
+  id?: string;
   enabled: boolean;
+  providerKey: OAuthProviderKey;
+  displayName: string;
   providerProfile: OAuthProviderProfile;
   issuerUrl: string;
+  authorizationUrl: string;
+  tokenUrl: string;
+  userinfoUrl: string;
   clientId: string;
   audience: string;
   scopes: string;
   redirectUri: string;
+  allowSignup: boolean;
+  linkByVerifiedEmail: boolean;
+  requireVerifiedEmail: boolean;
+  allowedEmailDomains: string[];
 };
 
-export type OAuthSettingsResponse = OAuthSettingsInput & {
+export type OAuthSettingsResponse = Omit<OAuthSettingsInput, "id"> & {
+  id: string;
   providerMode: "standard" | "compatibility";
   clientSecretConfigured: boolean;
+  configured: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type OAuthSettings = OAuthSettingsResponse;
 
+export type OAuthProviderListResponse = {
+  activeProvider: OAuthSettings | null;
+  configured: boolean;
+  providers: OAuthSettings[];
+};
+
+export type OAuthConnectionCheck = {
+  key: "authorization" | "discovery" | "issuer" | "token" | "userinfo";
+  ok: boolean;
+  status?: number;
+};
+
+export type OAuthConnectionTestResult = {
+  ok: boolean;
+  checks: OAuthConnectionCheck[];
+  testedAt: string;
+};
 export type PasskeySettings = {
-  enabled: boolean;
   rpName: string;
   rpId: string;
   origin: string;
@@ -327,21 +401,31 @@ export type MailSettings = {
   verifiedAt: string | null;
 };
 
-export type MailSettingsInput = Partial<Omit<MailSettings, "configured" | "passwordConfigured" | "verifiedAt">> & {
+export type MailSettingsInput = Partial<
+  Omit<MailSettings, "configured" | "passwordConfigured" | "verifiedAt">
+> & {
   password?: string;
 };
 
-export type SetupStatus = {
+type SetupStatusBase = {
   databaseAvailable: boolean;
-  needsSetup: boolean;
-  bootstrapCompleted: boolean;
-  databaseProfile: DatabaseProfile;
-  site: PublicSiteSettings;
-  oauth: OAuthSettings;
-  passkey: PasskeySettings;
-  mail: MailSettings;
-  storage: StorageSettings;
 };
+
+export type SetupStatus =
+  | (SetupStatusBase & {
+      needsSetup: false;
+      bootstrapCompleted: true;
+    })
+  | (SetupStatusBase & {
+      needsSetup: true;
+      bootstrapCompleted: false;
+      databaseProfile: DatabaseProfile;
+      site: PublicSiteSettings;
+      oauth: OAuthSettings;
+      passkey: PasskeySettings;
+      mail: MailSettings;
+      storage: StorageSettings;
+    });
 
 export type AdminSettings = {
   site: PublicSiteSettings;
@@ -379,8 +463,42 @@ export type PasskeyRecord = {
   id: string;
   name: string;
   transports: string[];
+  deviceType: "singleDevice" | "multiDevice";
+  backedUp: boolean;
+  aaguid: string | null;
+  deviceName: string;
   createdAt: string;
   lastUsedAt: string | null;
+};
+
+export type PasskeyCeremony<TOptions> = {
+  ceremonyId: string;
+  expectedOrigin: string;
+  options: TOptions;
+};
+
+export type AuthenticationMethodStatus = {
+  compliant: boolean;
+  methodCount: number;
+  minimumAuthenticationMethods: number;
+  methods: {
+    password: boolean;
+    oauth: boolean;
+    passkey: boolean;
+    recoveryCodes: number;
+  };
+};
+
+export type AuthenticationStepUp = {
+  token: string;
+  expiresAt: string;
+  method: "password" | "passkey" | "oauth" | "recovery";
+};
+
+export type RecoveryCodeSet = {
+  codes: string[];
+  count: number;
+  generatedAt: string;
 };
 
 export type AuthSession = {
@@ -463,7 +581,7 @@ export type FileNodeResponse = {
   kind: "folder" | "doc" | "sheet" | "image" | "video" | "archive" | "other";
   mimeType: string;
   sizeBytes: number | null;
-  objectKey: string | null;
+  hasContent: boolean;
   owner: string;
   ownerUserId: string | null;
   spaceScope: DriveSpaceScope;
@@ -523,7 +641,7 @@ export type TransferResponse = {
   id: string;
   workspaceId: string;
   nodeId: string | null;
-  objectKey: string | null;
+  hasContent: boolean;
   name: string;
   type: "upload";
   progress: number;
@@ -536,7 +654,8 @@ export type DownloadIntentResponse = {
   downloadId: string;
   nodeId: string;
   filename: string;
-  method: "presigned-url" | "backend-manifest";
+  method: "stream" | "manifest";
+  purpose: "download" | "preview";
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
@@ -547,7 +666,6 @@ export type FileVersionResponse = {
   nodeId: string;
   versionNumber: number;
   sizeBytes: number;
-  objectKey: string;
   mimeType: string;
   uploadedBy: string;
   remark: string;
@@ -573,17 +691,6 @@ export type BatchDownloadIntentResponse = {
     succeeded: number;
   };
 };
-
-export class DriveApiError extends Error {
-  constructor(
-    message: string,
-    readonly status?: number,
-    readonly code?: string,
-  ) {
-    super(message);
-    this.name = "DriveApiError";
-  }
-}
 
 export function getApiBaseUrl() {
   const configuredBaseUrl = readConfiguredApiBaseUrl();
@@ -659,12 +766,12 @@ export async function requestDriveApi<T>(path: string, init?: RequestInit) {
       headers,
     });
   } catch {
-    throw new DriveApiError("Drive API is unavailable");
+    throw createDriveApiUnavailableError();
   }
 
   if (!response.ok) {
     const apiError = await readDriveApiError(response);
-    throw new DriveApiError(apiError.message, response.status, apiError.code);
+    throw createDriveApiResponseError(response, apiError);
   }
 
   if (response.status === 204) return undefined as T;
@@ -678,61 +785,36 @@ export async function requestDriveApi<T>(path: string, init?: RequestInit) {
   return (await response.json()) as T;
 }
 
-async function readDriveApiError(response: Response) {
-  const fallback = "Drive API request failed";
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("text/html")) {
-    return {
-      message: "Drive API returned an HTML response",
-      code: "DRIVE_API_HTML_RESPONSE",
-    };
-  }
-  if (!contentType.includes("application/json")) {
-    return { message: fallback, code: undefined };
-  }
-
-  try {
-    const body = (await response.json()) as unknown;
-    if (!body || typeof body !== "object") {
-      return { message: fallback, code: undefined };
-    }
-    const code = (body as { code?: unknown }).code;
-    const message = (body as { message?: unknown }).message;
-    const resolvedMessage = Array.isArray(message)
-      ? message.filter((item): item is string => typeof item === "string").join("; ")
-      : typeof message === "string"
-        ? message
-        : fallback;
-    return {
-      message: resolvedMessage || fallback,
-      code: typeof code === "string" ? code : undefined,
-    };
-  } catch {
-    return { message: fallback, code: undefined };
-  }
-}
-
 function isHtmlResponse(response: Response) {
   return (response.headers.get("content-type") ?? "").includes("text/html");
 }
 
-export async function fetchAuditEvents(filters: {
-  workspaceId?: string;
-  shareToken?: string;
-  nodeId?: string;
-  action?: string;
-  limit?: number;
-  offset?: number;
-} = {}) {
+export async function fetchAuditEvents(
+  filters: {
+    workspaceId?: string;
+    shareToken?: string;
+    nodeId?: string;
+    action?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+) {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    if (value !== undefined && value !== null && value !== "")
+      query.set(key, String(value));
   });
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return requestDriveApi<AuditEventsPageResponse>(`/audit/events${suffix}`);
 }
 
-export async function fetchFileNodes(filters: { workspaceId?: string; parentNodeId?: string | null; spaceScope?: DriveSpaceScope } = {}) {
+export async function fetchFileNodes(
+  filters: {
+    workspaceId?: string;
+    parentNodeId?: string | null;
+    spaceScope?: DriveSpaceScope;
+  } = {},
+) {
   const query = new URLSearchParams();
   if (filters.workspaceId) query.set("workspaceId", filters.workspaceId);
   if (filters.parentNodeId !== undefined && filters.parentNodeId !== null) {
@@ -744,7 +826,12 @@ export async function fetchFileNodes(filters: { workspaceId?: string; parentNode
 }
 
 export async function fetchFileNodesByState(
-  filters: { workspaceId?: string; parentNodeId?: string | null; state?: FileNodeListState; spaceScope?: DriveSpaceScope } = {},
+  filters: {
+    workspaceId?: string;
+    parentNodeId?: string | null;
+    state?: FileNodeListState;
+    spaceScope?: DriveSpaceScope;
+  } = {},
 ) {
   const query = new URLSearchParams();
   if (filters.workspaceId) query.set("workspaceId", filters.workspaceId);
@@ -764,62 +851,94 @@ export async function searchFileNodes(filters: FileNodeSearchQuery = {}) {
       query.set(key, "");
       return;
     }
-    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    if (value !== undefined && value !== null && value !== "")
+      query.set(key, String(value));
   });
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return requestDriveApi<FileNodeSearchResultResponse>(`/file-nodes/search${suffix}`);
+  return requestDriveApi<FileNodeSearchResultResponse>(
+    `/file-nodes/search${suffix}`,
+  );
 }
 
 export function fetchFileNode(id: string) {
-  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}`);
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}`,
+  );
 }
 
-export function updateFileNodeState(id: string, state: { starred?: boolean; archived?: boolean }) {
-  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/state`, {
-    method: "PATCH",
-    body: JSON.stringify(state),
-  });
+export function updateFileNodeState(
+  id: string,
+  state: { starred?: boolean; archived?: boolean },
+) {
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/state`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(state),
+    },
+  );
 }
 
-export function restoreFileNode(id: string, input: { parentNodeId?: string | null; name?: string } = {}) {
-  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/restore`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export function restoreFileNode(
+  id: string,
+  input: { parentNodeId?: string | null; name?: string } = {},
+) {
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/restore`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function permanentlyDeleteFileNode(id: string) {
-  return requestDriveApi<{ deleted: number; id: string; ok: true }>(`/file-nodes/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+  return requestDriveApi<{ deleted: number; id: string; ok: true }>(
+    `/file-nodes/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export function batchArchiveFileNodes(ids: string[]) {
-  return requestDriveApi<BatchFileNodeOperationResponse>("/file-nodes/batch/archive", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+  return requestDriveApi<BatchFileNodeOperationResponse>(
+    "/file-nodes/batch/archive",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    },
+  );
 }
 
 export function batchRestoreFileNodes(ids: string[]) {
-  return requestDriveApi<BatchFileNodeOperationResponse>("/file-nodes/batch/restore", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+  return requestDriveApi<BatchFileNodeOperationResponse>(
+    "/file-nodes/batch/restore",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    },
+  );
 }
 
 export function batchMoveFileNodes(ids: string[], parentNodeId: string | null) {
-  return requestDriveApi<BatchFileNodeOperationResponse>("/file-nodes/batch/move", {
-    method: "POST",
-    body: JSON.stringify({ ids, parentNodeId }),
-  });
+  return requestDriveApi<BatchFileNodeOperationResponse>(
+    "/file-nodes/batch/move",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids, parentNodeId }),
+    },
+  );
 }
 
 export function createBatchFileDownloadIntents(ids: string[]) {
-  return requestDriveApi<BatchDownloadIntentResponse>("/file-nodes/batch/download-intents", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+  return requestDriveApi<BatchDownloadIntentResponse>(
+    "/file-nodes/batch/download-intents",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    },
+  );
 }
 
 export function createFolderNode(input: {
@@ -839,46 +958,72 @@ export function createFolderNode(input: {
 }
 
 export function renameFileNode(id: string, name: string) {
-  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name }),
-  });
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    },
+  );
 }
 
 export function moveFileNode(id: string, parentNodeId: string | null) {
-  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/move`, {
-    method: "POST",
-    body: JSON.stringify({ parentNodeId }),
-  });
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/move`,
+    {
+      method: "POST",
+      body: JSON.stringify({ parentNodeId }),
+    },
+  );
 }
 
-export function copyFileNode(id: string, input: { name?: string; parentNodeId?: string | null } = {}) {
-  return requestDriveApi<FileNodeResponse>(`/file-nodes/${encodeURIComponent(id)}/copy`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export function copyFileNode(
+  id: string,
+  input: { name?: string; parentNodeId?: string | null } = {},
+) {
+  return requestDriveApi<FileNodeResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/copy`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function fetchFileNodeContent(id: string) {
-  return requestDriveApi<FileNodeContentResponse>(`/file-nodes/${encodeURIComponent(id)}/content`);
+  return requestDriveApi<FileNodeContentResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/content`,
+  );
 }
 
 export function updateFileNodeContent(id: string, content: string) {
-  return requestDriveApi<FileNodeContentResponse>(`/file-nodes/${encodeURIComponent(id)}/content`, {
-    method: "PATCH",
-    body: JSON.stringify({ content }),
-  });
+  return requestDriveApi<FileNodeContentResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/content`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    },
+  );
 }
 
-export function createFileDownloadIntent(id: string, workspaceId?: string) {
-  return requestDriveApi<DownloadIntentResponse>(`/file-nodes/${encodeURIComponent(id)}/download-intents`, {
-    method: "POST",
-    body: JSON.stringify({ workspaceId }),
-  });
+export function createFileDownloadIntent(
+  id: string,
+  workspaceId?: string,
+  purpose: "download" | "preview" = "download",
+) {
+  return requestDriveApi<DownloadIntentResponse>(
+    `/file-nodes/${encodeURIComponent(id)}/download-intents`,
+    {
+      method: "POST",
+      body: JSON.stringify({ purpose, workspaceId }),
+    },
+  );
 }
 
 export function fetchFileVersions(id: string) {
-  return requestDriveApi<FileVersionResponse[]>(`/file-nodes/${encodeURIComponent(id)}/versions`);
+  return requestDriveApi<FileVersionResponse[]>(
+    `/file-nodes/${encodeURIComponent(id)}/versions`,
+  );
 }
 
 export function createFileVersionDownloadIntent(id: string, versionId: string) {
@@ -899,31 +1044,13 @@ export function restoreFileVersion(id: string, versionId: string) {
   );
 }
 
-export function sendShareEmailCode(token: string, email: string) {
-  return requestDriveApi<{ delivery: string; expiresAt: string; configured: boolean }>(
-    `/shares/${encodeURIComponent(token)}/access-sessions/email-code`,
+export function createShareAccountAccessSession(token: string) {
+  return requestDriveApi<ShareAccessSession>(
+    `/shares/${encodeURIComponent(token)}/access-sessions/account`,
     {
       method: "POST",
-      body: JSON.stringify({ email }),
     },
   );
-}
-
-export function verifyShareEmailCode(token: string, email: string, code: string) {
-  return requestDriveApi<ShareAccessSession>(`/shares/${encodeURIComponent(token)}/access-sessions/verify-email`, {
-    method: "POST",
-    body: JSON.stringify({ email, code }),
-  });
-}
-
-export function createShareAccountAccessSession(token: string) {
-  return requestDriveApi<ShareAccessSession>(`/shares/${encodeURIComponent(token)}/access-sessions/account`, {
-    method: "POST",
-  });
-}
-
-export function createShareOAuthSession(token: string) {
-  return startShareOAuth(token);
 }
 
 export function fetchIdentityConfig() {
@@ -972,10 +1099,15 @@ export function fetchTranslationSettings() {
 }
 
 export function fetchPublicTranslationSettings() {
-  return requestDriveApi<TranslationSettings>("/site/settings/public/translations");
+  return requestDriveApi<TranslationSettings>(
+    "/site/settings/public/translations",
+  );
 }
 
-export function upsertTranslationBundle(input: { code: string; content: string }) {
+export function upsertTranslationBundle(input: {
+  code: string;
+  content: string;
+}) {
   return requestDriveApi<TranslationBundle>("/site/settings/translations", {
     method: "POST",
     body: JSON.stringify(input),
@@ -990,7 +1122,15 @@ export function fetchWorkspaces() {
   return requestDriveApi<WorkspaceResponse[]>("/workspaces");
 }
 
-export function updateAuthSettings(settings: Pick<AuthSettings, "localEnabled" | "oauthEnabled" | "passkeyEnabled">) {
+export function updateAuthSettings(
+  settings: Pick<
+    AuthSettings,
+    | "localEnabled"
+    | "oauthEnabled"
+    | "passkeyEnabled"
+    | "minimumAuthenticationMethods"
+  >,
+) {
   return requestDriveApi<AuthSettings>("/auth/settings", {
     method: "PATCH",
     body: JSON.stringify(settings),
@@ -1001,25 +1141,121 @@ export function fetchOAuthSettings() {
   return requestDriveApi<OAuthSettingsResponse>("/identity/oauth/settings");
 }
 
-export function updateOAuthSettings(settings: Partial<OAuthSettingsInput> & { clientSecret?: string }) {
+export function updateOAuthSettings(
+  settings: Partial<OAuthSettingsInput> & { clientSecret?: string },
+) {
   return requestDriveApi<OAuthSettingsResponse>("/identity/oauth/settings", {
     method: "PATCH",
     body: JSON.stringify(toOAuthSettingsInput(settings)),
   });
 }
 
+export function fetchOAuthProviders() {
+  return requestDriveApi<OAuthProviderListResponse>(
+    "/identity/oauth/settings/providers",
+  );
+}
+
+export function testOAuthProvider(
+  settings: Partial<OAuthSettingsInput> & { clientSecret?: string },
+) {
+  return requestDriveApi<OAuthConnectionTestResult>(
+    "/identity/oauth/settings/providers/test",
+    {
+      method: "POST",
+      body: JSON.stringify(toOAuthSettingsInput(settings)),
+    },
+  );
+}
+export function createOAuthProvider(
+  settings: Partial<OAuthSettingsInput> & { clientSecret?: string },
+) {
+  return requestDriveApi<OAuthSettingsResponse>(
+    "/identity/oauth/settings/providers",
+    {
+      method: "POST",
+      body: JSON.stringify(toOAuthSettingsInput(settings)),
+    },
+  );
+}
+
+export function updateOAuthProvider(
+  id: string,
+  settings: Partial<OAuthSettingsInput> & { clientSecret?: string },
+) {
+  return requestDriveApi<OAuthSettingsResponse>(
+    `/identity/oauth/settings/providers/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(toOAuthSettingsInput(settings)),
+    },
+  );
+}
+
+export function activateOAuthProvider(id: string) {
+  return requestDriveApi<OAuthSettingsResponse>(
+    `/identity/oauth/settings/providers/${encodeURIComponent(id)}/activate`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function deleteOAuthProvider(id: string) {
+  return requestDriveApi<{ ok: true }>(
+    `/identity/oauth/settings/providers/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
 export function toOAuthSettingsInput(
   settings: Partial<OAuthSettingsInput> & { clientSecret?: string },
 ) {
   return {
+    ...(settings.id !== undefined ? { id: settings.id } : {}),
     ...(settings.enabled !== undefined ? { enabled: settings.enabled } : {}),
-    ...(settings.providerProfile !== undefined ? { providerProfile: settings.providerProfile } : {}),
-    ...(settings.issuerUrl !== undefined ? { issuerUrl: settings.issuerUrl } : {}),
+    ...(settings.providerKey !== undefined
+      ? { providerKey: settings.providerKey }
+      : {}),
+    ...(settings.displayName !== undefined
+      ? { displayName: settings.displayName }
+      : {}),
+    ...(settings.providerProfile !== undefined
+      ? { providerProfile: settings.providerProfile }
+      : {}),
+    ...(settings.issuerUrl !== undefined
+      ? { issuerUrl: settings.issuerUrl }
+      : {}),
+    ...(settings.authorizationUrl !== undefined
+      ? { authorizationUrl: settings.authorizationUrl }
+      : {}),
+    ...(settings.tokenUrl !== undefined ? { tokenUrl: settings.tokenUrl } : {}),
+    ...(settings.userinfoUrl !== undefined
+      ? { userinfoUrl: settings.userinfoUrl }
+      : {}),
     ...(settings.clientId !== undefined ? { clientId: settings.clientId } : {}),
     ...(settings.audience !== undefined ? { audience: settings.audience } : {}),
     ...(settings.scopes !== undefined ? { scopes: settings.scopes } : {}),
-    ...(settings.redirectUri !== undefined ? { redirectUri: settings.redirectUri } : {}),
-    ...(settings.clientSecret !== undefined ? { clientSecret: settings.clientSecret } : {}),
+    ...(settings.redirectUri !== undefined
+      ? { redirectUri: settings.redirectUri }
+      : {}),
+    ...(settings.allowSignup !== undefined
+      ? { allowSignup: settings.allowSignup }
+      : {}),
+    ...(settings.linkByVerifiedEmail !== undefined
+      ? { linkByVerifiedEmail: settings.linkByVerifiedEmail }
+      : {}),
+    ...(settings.requireVerifiedEmail !== undefined
+      ? { requireVerifiedEmail: settings.requireVerifiedEmail }
+      : {}),
+    ...(settings.allowedEmailDomains !== undefined
+      ? { allowedEmailDomains: settings.allowedEmailDomains }
+      : {}),
+    ...(settings.clientSecret !== undefined
+      ? { clientSecret: settings.clientSecret }
+      : {}),
   };
 }
 
@@ -1066,8 +1302,11 @@ export function testSetupMailSettings(recipientEmail: string) {
   });
 }
 
-export function startOAuthLogin() {
-  return requestDriveApi<OAuthStartResponse>("/auth/oauth/start");
+export function startOAuthLogin(providerId?: string) {
+  const query = providerId
+    ? `?providerId=${encodeURIComponent(providerId)}`
+    : "";
+  return requestDriveApi<OAuthStartResponse>(`/auth/oauth/start${query}`);
 }
 
 export function exchangeOAuthCode(input: { code: string }) {
@@ -1084,48 +1323,155 @@ export function completeOAuthCallback(input: { callbackUrl: string }) {
   });
 }
 
-export function createPasskeyRegistrationOptions() {
-  return requestDriveApi<PublicKeyCredentialCreationOptionsJSON>("/auth/passkeys/registration-options", {
-    method: "POST",
-  });
+export function createPasskeyRegistrationOptions(stepUpToken: string) {
+  return requestDriveApi<
+    PasskeyCeremony<PublicKeyCredentialCreationOptionsJSON>
+  >(
+    "/auth/passkeys/registration-options",
+    {
+      method: "POST",
+      body: JSON.stringify({ stepUpToken }),
+    },
+  );
 }
 
-export function verifyPasskeyRegistration(input: { name?: string; response: unknown }) {
-  return requestDriveApi<PasskeyRecord>("/auth/passkeys/registration-verification", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export function verifyPasskeyRegistration(input: {
+  ceremonyId: string;
+  name?: string;
+  response: unknown;
+}) {
+  return requestDriveApi<PasskeyRecord>(
+    "/auth/passkeys/registration-verification",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
-export function createPasskeyAuthenticationOptions(input: { email: string }) {
-  return requestDriveApi<PublicKeyCredentialRequestOptionsJSON>("/auth/passkeys/authentication-options", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export function createPasskeyAuthenticationOptions() {
+  return requestDriveApi<
+    PasskeyCeremony<PublicKeyCredentialRequestOptionsJSON>
+  >(
+    "/auth/passkeys/authentication-options",
+    {
+      method: "POST",
+    },
+  );
 }
 
-export function verifyPasskeyAuthentication(input: { email: string; response: unknown }) {
-  return requestDriveApi<AuthSession>("/auth/passkeys/authentication-verification", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export function verifyPasskeyAuthentication(input: {
+  ceremonyId: string;
+  response: unknown;
+}) {
+  return requestDriveApi<AuthSession>(
+    "/auth/passkeys/authentication-verification",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function fetchPasskeys() {
   return requestDriveApi<PasskeyRecord[]>("/auth/passkeys");
 }
 
-export function deletePasskey(id: string) {
-  return requestDriveApi<{ ok: boolean }>(`/auth/passkeys/${encodeURIComponent(id)}`, {
-    method: "DELETE",
+export function renamePasskey(id: string, name: string) {
+  return requestDriveApi<PasskeyRecord>(
+    `/auth/passkeys/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    },
+  );
+}
+
+export function deletePasskey(id: string, stepUpToken: string) {
+  return requestDriveApi<{ ok: boolean }>(
+    `/auth/passkeys/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ stepUpToken }),
+    },
+  );
+}
+
+export function fetchAuthenticationMethodStatus() {
+  return requestDriveApi<AuthenticationMethodStatus>("/auth/security/methods");
+}
+
+export function reauthenticateWithPassword(password: string) {
+  return requestDriveApi<AuthenticationStepUp>(
+    "/auth/security/reauth/password",
+    {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    },
+  );
+}
+
+export function createPasskeyStepUpOptions() {
+  return requestDriveApi<
+    PasskeyCeremony<PublicKeyCredentialRequestOptionsJSON>
+  >("/auth/security/reauth/passkey-options", { method: "POST" });
+}
+
+export function verifyPasskeyStepUp(input: {
+  ceremonyId: string;
+  response: unknown;
+}) {
+  return requestDriveApi<AuthenticationStepUp>(
+    "/auth/security/reauth/passkey-verification",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function reauthenticateWithRecoveryCode(code: string) {
+  return requestDriveApi<AuthenticationStepUp>(
+    "/auth/security/reauth/recovery-code",
+    {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    },
+  );
+}
+
+export function startOAuthStepUp(providerId?: string) {
+  const query = providerId
+    ? `?providerId=${encodeURIComponent(providerId)}`
+    : "";
+  return requestDriveApi<OAuthStartResponse>(
+    `/auth/security/reauth/oauth-start${query}`,
+    { method: "POST" },
+  );
+}
+
+export function exchangeOAuthStepUpCode(code: string) {
+  return requestDriveApi<AuthenticationStepUp>(
+    "/auth/security/reauth/oauth-exchange",
+    {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    },
+  );
+}
+
+export function generateRecoveryCodes(stepUpToken: string) {
+  return requestDriveApi<RecoveryCodeSet>("/auth/security/recovery-codes", {
+    method: "POST",
+    body: JSON.stringify({ stepUpToken }),
   });
 }
 
-export function startShareOAuth(token: string) {
-  return requestDriveApi<OAuthStartResponse>(`/shares/${encodeURIComponent(token)}/oauth/start`);
-}
-
-export function registerLocalUser(input: { email: string; password: string; displayName: string }) {
+export function registerLocalUser(input: {
+  email: string;
+  password: string;
+  displayName: string;
+}) {
   return requestDriveApi<AuthSession>("/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
@@ -1156,21 +1502,34 @@ export function updateCurrentUserProfile(input: UpdateCurrentUserInput) {
   });
 }
 
-export function requestPasswordReset(input: { email: string; locale?: "en" | "zh" }) {
-  return requestDriveApi<PasswordResetRequestResponse>("/auth/password-reset/request", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export function requestPasswordReset(input: {
+  email: string;
+  locale?: "en" | "zh";
+}) {
+  return requestDriveApi<PasswordResetRequestResponse>(
+    "/auth/password-reset/request",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function verifyPasswordReset(input: { email: string; code: string }) {
-  return requestDriveApi<PasswordResetVerifyResponse>("/auth/password-reset/verify", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return requestDriveApi<PasswordResetVerifyResponse>(
+    "/auth/password-reset/verify",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
-export function confirmPasswordReset(input: { email: string; code: string; password: string }) {
+export function confirmPasswordReset(input: {
+  email: string;
+  code: string;
+  password: string;
+}) {
   return requestDriveApi<AuthSession>("/auth/password-reset/confirm", {
     method: "POST",
     body: JSON.stringify(input),
@@ -1189,13 +1548,18 @@ export function fetchSystemUpdateStatus() {
   return requestDriveApi<SystemUpdateStatus>("/system/updates");
 }
 
-export function fetchStorageUsage(workspaceId: string, spaceScope: DriveSpaceScope = "workspace") {
+export function fetchStorageUsage(
+  workspaceId: string,
+  spaceScope: DriveSpaceScope = "workspace",
+) {
   const query = new URLSearchParams({ workspaceId, spaceScope });
   return requestDriveApi<StorageUsage>(`/storage/usage?${query.toString()}`);
 }
 
 export function fetchStorageUsageBreakdown(workspaceId: string) {
-  return requestDriveApi<StorageUsageBreakdown>(`/storage/usage/breakdown?workspaceId=${encodeURIComponent(workspaceId)}`);
+  return requestDriveApi<StorageUsageBreakdown>(
+    `/storage/usage/breakdown?workspaceId=${encodeURIComponent(workspaceId)}`,
+  );
 }
 
 export function updateWorkspaceStorageQuota(input: {
@@ -1225,7 +1589,9 @@ export function fetchFilePolicySettings() {
   return requestDriveApi<FilePolicySettings>("/file-nodes/trash-policy");
 }
 
-export function updateFilePolicySettings(settings: Partial<Omit<FilePolicySettings, "updatedAt">>) {
+export function updateFilePolicySettings(
+  settings: Partial<Omit<FilePolicySettings, "updatedAt">>,
+) {
   return requestDriveApi<FilePolicySettings>("/file-nodes/trash-policy", {
     method: "PATCH",
     body: JSON.stringify(settings),
@@ -1247,20 +1613,27 @@ export function testStorageSettings(settings: StorageSettingsInput) {
 }
 
 export function fetchWorkspaceShareSettings(workspaceId: string) {
-  return requestDriveApi<WorkspaceShareSettings>(`/workspaces/${encodeURIComponent(workspaceId)}/share-settings`);
+  return requestDriveApi<WorkspaceShareSettings>(
+    `/workspaces/${encodeURIComponent(workspaceId)}/share-settings`,
+  );
 }
 
 export function updateWorkspaceShareSettings(
   workspaceId: string,
   settings: Omit<WorkspaceShareSettings, "workspaceId" | "updatedAt">,
 ) {
-  return requestDriveApi<WorkspaceShareSettings>(`/workspaces/${encodeURIComponent(workspaceId)}/share-settings`, {
-    method: "PATCH",
-    body: JSON.stringify(settings),
-  });
+  return requestDriveApi<WorkspaceShareSettings>(
+    `/workspaces/${encodeURIComponent(workspaceId)}/share-settings`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(settings),
+    },
+  );
 }
 
-export function fetchTransfers(filters: { workspaceId?: string; limit?: number } = {}) {
+export function fetchTransfers(
+  filters: { workspaceId?: string; limit?: number } = {},
+) {
   const query = new URLSearchParams();
   if (filters.workspaceId) query.set("workspaceId", filters.workspaceId);
   if (filters.limit) query.set("limit", String(filters.limit));
@@ -1268,15 +1641,24 @@ export function fetchTransfers(filters: { workspaceId?: string; limit?: number }
   return requestDriveApi<TransferResponse[]>(`/transfers${suffix}`);
 }
 
-export function updateTransfer(id: string, input: { status: TransferResponse["status"]; progress?: number }) {
-  return requestDriveApi<TransferResponse>(`/transfers/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+export function updateTransfer(
+  id: string,
+  input: { status: TransferResponse["status"]; progress?: number },
+) {
+  return requestDriveApi<TransferResponse>(
+    `/transfers/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function deleteTransfer(id: string) {
-  return requestDriveApi<{ ok: boolean }>(`/transfers/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+  return requestDriveApi<{ ok: boolean }>(
+    `/transfers/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
 }

@@ -16,6 +16,7 @@ export type TransfersModuleProps = {
   onDeleteTransfer?: (id: string) => void;
   onPauseTransfer?: (id: string) => void;
   onResumeTransfer?: (id: string) => void;
+  onRetryTransfer?: (id: string) => void;
   palette: Palette;
   rows: TransferRow[];
 };
@@ -36,6 +37,7 @@ export function TransfersModule({
   onDeleteTransfer,
   onPauseTransfer,
   onResumeTransfer,
+  onRetryTransfer,
   palette,
   rows,
 }: TransfersModuleProps) {
@@ -162,6 +164,7 @@ export function TransfersModule({
                   onDeleteTransfer={onDeleteTransfer}
                   onPauseTransfer={onPauseTransfer}
                   onResumeTransfer={onResumeTransfer}
+                  onRetryTransfer={onRetryTransfer}
                   palette={palette}
                   section={section}
                 />
@@ -257,6 +260,7 @@ function TransferSectionTable({
   onDeleteTransfer,
   onPauseTransfer,
   onResumeTransfer,
+  onRetryTransfer,
   palette,
   section,
 }: {
@@ -266,6 +270,7 @@ function TransferSectionTable({
   onDeleteTransfer?: (id: string) => void;
   onPauseTransfer?: (id: string) => void;
   onResumeTransfer?: (id: string) => void;
+  onRetryTransfer?: (id: string) => void;
   palette: Palette;
   section: TransferSection;
 }) {
@@ -299,6 +304,7 @@ function TransferSectionTable({
             onDeleteTransfer={onDeleteTransfer}
             onPauseTransfer={onPauseTransfer}
             onResumeTransfer={onResumeTransfer}
+            onRetryTransfer={onRetryTransfer}
             palette={palette}
             row={row}
           />
@@ -315,6 +321,7 @@ function TransferTableRow({
   onDeleteTransfer,
   onPauseTransfer,
   onResumeTransfer,
+  onRetryTransfer,
   palette,
   row,
 }: {
@@ -324,12 +331,14 @@ function TransferTableRow({
   onDeleteTransfer?: (id: string) => void;
   onPauseTransfer?: (id: string) => void;
   onResumeTransfer?: (id: string) => void;
+  onRetryTransfer?: (id: string) => void;
   palette: Palette;
   row: TransferRow;
 }) {
   const t = useTranslations();
   const canPause = controllable && row.status === "running";
   const canResume = controllable && row.status === "paused";
+  const canRetry = controllable && row.status === "failed";
   const canCancel = controllable && (row.status === "queued" || row.status === "running" || row.status === "paused");
   const canDelete = Boolean(onDeleteTransfer);
   const progressColor = getTransferProgressColor(row, palette);
@@ -342,6 +351,7 @@ function TransferTableRow({
       <TransferFileIcon palette={palette} row={row} />
       <div className="drive-module-row-copy">
         <span className="drive-module-row-title icedr-truncate">{row.name}</span>
+        {row.status === "failed" && row.errorMessage ? <span className="drive-transfer-row-error icedr-truncate">{row.errorMessage}</span> : null}
       </div>
 
       <span className="drive-transfer-size-cell icedr-truncate">{totalLabel}</span>
@@ -371,6 +381,11 @@ function TransferTableRow({
         {canResume ? (
           <ToolButton label={t("transfers.resume")} palette={palette} size="sm" onClick={() => onResumeTransfer?.(row.id)}>
             <LocalIcon name="play" size={15} />
+          </ToolButton>
+        ) : null}
+        {canRetry ? (
+          <ToolButton label={t("transfers.retry")} palette={palette} size="sm" onClick={() => onRetryTransfer?.(row.id)}>
+            <LocalIcon name="refresh" size={15} />
           </ToolButton>
         ) : null}
         {canCancel ? (
@@ -513,7 +528,7 @@ function createTransferDriveItem(row: TransferRow): DriveItem {
     id: row.nodeId ?? row.id,
     modifiedAt: row.updatedAt ?? row.createdAt,
     name: row.name,
-    objectKey: row.objectKey,
+    hasContent: row.hasContent,
     owner: "",
     parentId: null,
     shared: false,

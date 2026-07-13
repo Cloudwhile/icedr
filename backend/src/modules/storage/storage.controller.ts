@@ -5,14 +5,9 @@ import {
   Headers,
   Patch,
   Post,
-  Put,
   Query,
-  Req,
-  Res,
-  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
 import { RunBlobReconcileDto } from './storage-reconcile.dto';
 import {
@@ -122,31 +117,5 @@ export class StorageController {
   ) {
     await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
     return this.storageService.testSettings(dto);
-  }
-
-  @Put('local-uploads')
-  async uploadLocalObject(
-    @Query('objectKey') objectKey: string,
-    @Req() request: Request,
-  ) {
-    return this.storageService.writeLocalUpload(objectKey, request);
-  }
-
-  @Get('local-files')
-  async downloadLocalObject(
-    @Query('objectKey') objectKey: string,
-    @Query('filename') filename: string,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const localFile = await this.storageService.getLocalDownload(
-      objectKey,
-      filename,
-    );
-    response.setHeader('Content-Type', localFile.contentType);
-    response.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(localFile.filename)}"`,
-    );
-    return new StreamableFile(localFile.stream);
   }
 }

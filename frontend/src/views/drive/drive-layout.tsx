@@ -368,9 +368,9 @@ function DirectoryTreeRootRow({
     <div
       className="drive-directory-tree-row"
       data-root="true"
-      data-active={active ? "true" : undefined}
       role="treeitem"
       aria-expanded={hasChildren ? expanded : undefined}
+      aria-selected={active}
       style={{ "--directory-tree-depth": `${depth * 12}px` } as React.CSSProperties}
     >
       {hasChildren ? (
@@ -423,9 +423,9 @@ function DirectoryTreeItem({
     <>
       <div
         className="drive-directory-tree-row"
-        data-active={activeId === node.item.id ? "true" : undefined}
         role="treeitem"
         aria-expanded={hasChildren ? expanded : undefined}
+        aria-selected={activeId === node.item.id}
         style={{ "--directory-tree-depth": `${depth * 12}px` } as React.CSSProperties}
       >
         {hasChildren ? (
@@ -683,14 +683,15 @@ export function WorkspaceBar({
   const t = useTranslations();
   const isPathView = activeNav === "drive";
   const isFileListView = !["links", "transfers", "settings"].includes(activeNav);
-  const activeLabel = activeNav === "drive" ? rootLabel : activeNav === "settings" ? t("app.settings") : t(`nav.${activeNav}`);
+  const activeLabel = activeNav === "drive"
+    ? rootLabel
+    : activeNav === "links"
+      ? t("links.pageTitle")
+      : activeNav === "settings"
+        ? t("app.settings")
+        : t(`nav.${activeNav}`);
   const activeNavIcon = navItems.find((item) => item.id === activeNav)?.icon ?? "folder";
-  const moduleSubtitleKey =
-    activeNav === "links"
-      ? "links.subtitle"
-      : activeNav === "transfers"
-        ? "transfers.subtitle"
-        : null;
+  const moduleSubtitleKey = activeNav === "transfers" ? "transfers.subtitle" : null;
   const pathItems = isPathView ? folderPath : [];
   const isRootCurrent = pathItems.length === 0;
   const hasWorkspaceTools = isPathView || isFileListView;

@@ -8,23 +8,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  createHash,
-  randomBytes,
-  randomInt,
-  scrypt,
-  timingSafeEqual,
-} from 'crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
-import { promisify } from 'util';
-import {
-  generateAuthenticationOptions,
-  generateRegistrationOptions,
-  verifyAuthenticationResponse,
-  verifyRegistrationResponse,
-  type AuthenticationResponseJSON,
-  type RegistrationResponseJSON,
-} from '@simplewebauthn/server';
 import { MailService } from '../../admin/mail/mail.service';
 import { SettingsService } from '../../admin/settings/settings.service';
 import type { OAuthSettings } from '../../admin/settings/settings.dto';
@@ -37,10 +22,6 @@ import {
   OAuthExchangeDto,
   OAuthExchangeResponse,
   OAuthStartResponse,
-  PasskeyAuthenticationOptionsDto,
-  PasskeyAuthenticationVerificationDto,
-  PasskeyRegistrationVerificationDto,
-  PasskeyResponse,
   PasswordResetConfirmDto,
   PasswordResetConfirmResponse,
   PasswordResetRequestDto,
@@ -56,17 +37,17 @@ import {
   createOAuthProviderAdapter,
   createOAuthRequestState,
   type OAuthProviderSnapshot,
-} from './oauth-provider-adapters';
+} from '../../../extensions/oauth/oauth-provider-adapters';
 import { AuthAuditService, type AuthAuditMethod } from './auth-audit.service';
+import { hashPassword, verifyPasswordHash } from './password-security';
+import { PasskeyOAuthStepUpExchangeDto } from './passkey.dto';
 
-const scryptAsync = promisify(scrypt);
 const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
 const resetTtlMs = 15 * 60 * 1000;
 const resetTtlMinutes = resetTtlMs / 60 / 1000;
 const resetCodeLength = 6;
 const resetCodeMaxAttempts = 5;
 const resetCodeAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-const challengeTtlMs = 5 * 60 * 1000;
 const oauthStateTtlMs = 10 * 60 * 1000;
 const oauthExchangeTtlMs = 2 * 60 * 1000;
 const invalidCredentialsCode = 'AUTH_INVALID_CREDENTIALS';
@@ -184,10 +165,22 @@ export class AuthService {
 
     if (!user) {
       await this.verifyPassword(dto.password, invalidCredentialsPasswordHash);
+      await this.authAuditService.record('auth.login_failed', null, {
+        method: 'local',
+        result: 'failure',
+        request,
+        metadata: { stage: 'credentials' },
+      });
       throw this.invalidCredentialsException();
     }
 
     if (!(await this.verifyPassword(dto.password, user.passwordHash))) {
+      await this.authAuditService.record('auth.login_failed', user, {
+        method: 'local',
+        result: 'failure',
+        request,
+        metadata: { stage: 'credentials' },
+      });
       throw this.invalidCredentialsException();
     }
 
@@ -196,6 +189,7 @@ export class AuthService {
       method: 'local',
       request,
     });
+    await this.notifyLogin(session.user, request);
     return session;
   }
 
@@ -312,16 +306,29 @@ export class AuthService {
     };
   }
 
-  async startOAuthLogin(): Promise<OAuthStartResponse> {
+  async startOAuthLogin(providerId?: string): Promise<OAuthStartResponse> {
     const settings = await this.authRepository.getSettings();
     if (!settings.oauthEnabled) {
       throw new ForbiddenException('OAuth login is disabled');
     }
-    return this.createOAuthStart('login');
+    return this.createOAuthStart(providerId);
   }
 
-  async startOAuthShareAccess(token: string): Promise<OAuthStartResponse> {
-    return this.createOAuthStart('share', token);
+  async startOAuthStepUp(
+    providerId?: string,
+    authorization?: string,
+  ): Promise<OAuthStartResponse> {
+    const session = await this.requireSession(authorization);
+    const settings = await this.authRepository.getSettings();
+    if (!settings.oauthEnabled) {
+      throw new ForbiddenException('OAuth login is disabled');
+    }
+    return this.createOAuthStart(providerId, {
+      flow: 'step-up',
+      userId: session.user.id,
+      sessionTokenHash: session.tokenHash,
+      purpose: 'manage-authenticators',
+    });
   }
 
   async handleOAuthCallback(currentUrl: string) {
@@ -336,11 +343,19 @@ export class AuthService {
     ) {
       throw new UnauthorizedException('OAuth state is invalid');
     }
+    if (storedState.flow !== 'login' && storedState.flow !== 'step-up') {
+      throw new UnauthorizedException('OAuth state flow is invalid');
+    }
 
     const oauth = await this.resolveOAuthStateProvider(
       storedState.providerSnapshot,
       storedState.redirectUri,
     );
+    this.assertOAuthCallbackTarget(url, storedState.redirectUri);
+    const claimed = await this.authRepository.markOAuthStateUsed(state);
+    if (!claimed) {
+      throw new UnauthorizedException('OAuth state is invalid');
+    }
     const oauthAdapter = this.createOAuthProviderAdapter(oauth);
     const oauthUser = await oauthAdapter.exchangeCode({
       oauth,
@@ -349,30 +364,67 @@ export class AuthService {
       state,
       codeVerifier: storedState.codeVerifier,
     });
-    await this.authRepository.markOAuthStateUsed(state);
 
+    this.assertOAuthUserPolicy(oauth, oauthUser);
     let user = await this.authRepository.findUserByProviderIdentity(
       oauthUser.provider,
       oauthUser.subject,
     );
-    if (!user) {
-      user = await this.authRepository.createOAuthUser({
-        provider: oauthUser.provider,
-        subject: oauthUser.subject,
-        email: this.normalizeEmail(oauthUser.email),
-        emailSource: oauthUser.emailSource,
-        displayName: oauthUser.displayName,
+    if (storedState.flow === 'step-up') {
+      if (!user || user.id !== storedState.userId) {
+        throw new UnauthorizedException(
+          'OAuth reauthentication identity does not match the current account',
+        );
+      }
+      const exchangeCode = this.createToken('oauth_stepup');
+      await this.authRepository.createOAuthExchangeCode({
+        codeHash: this.hashToken(exchangeCode),
+        userId: user.id,
+        flow: 'step-up',
+        sessionTokenHash: storedState.sessionTokenHash,
+        purpose: storedState.purpose,
+        expiresAt: new Date(Date.now() + oauthExchangeTtlMs).toISOString(),
       });
-    }
-    const userResponse = this.toUserResponse(user);
-
-    if (storedState.flow === 'share') {
       return {
-        flow: 'share' as const,
-        shareToken: storedState.shareToken,
-        user: userResponse,
+        flow: 'step-up' as const,
+        code: exchangeCode,
+        user: this.toUserResponse(user),
       };
     }
+    if (!user) {
+      const normalizedEmail = this.normalizeEmail(oauthUser.email);
+      const existingUser =
+        oauthUser.emailSource === 'provider'
+          ? await this.authRepository.findUserByEmail(normalizedEmail)
+          : null;
+      if (existingUser) {
+        if (!oauth.linkByVerifiedEmail || !oauthUser.emailVerified) {
+          throw new ConflictException(
+            'An account already exists for this email and automatic linking is not allowed',
+          );
+        }
+        user = await this.authRepository.linkOAuthIdentity({
+          userId: existingUser.id,
+          provider: oauthUser.provider,
+          subject: oauthUser.subject,
+          emailSource: oauthUser.emailSource,
+        });
+      } else {
+        if (oauth.allowSignup === false) {
+          throw new ForbiddenException(
+            'OAuth account provisioning is disabled',
+          );
+        }
+        user = await this.authRepository.createOAuthUser({
+          provider: oauthUser.provider,
+          subject: oauthUser.subject,
+          email: normalizedEmail,
+          emailSource: oauthUser.emailSource,
+          displayName: oauthUser.displayName,
+        });
+      }
+    }
+    const userResponse = this.toUserResponse(user);
 
     const exchangeCode = this.createToken('oauth');
     await this.authRepository.createOAuthExchangeCode({
@@ -387,16 +439,50 @@ export class AuthService {
     };
   }
 
+  async exchangeOAuthStepUpCode(
+    dto: PasskeyOAuthStepUpExchangeDto,
+    authorization?: string,
+    request?: Request,
+  ) {
+    const session = await this.requireSession(authorization);
+    const token = this.createToken('stepup');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const consumed = await this.authRepository.consumeOAuthStepUpExchangeCode({
+      codeHash: this.hashToken(dto.code),
+      userId: session.user.id,
+      sessionTokenHash: session.tokenHash,
+      stepUpTokenHash: this.hashToken(token),
+      stepUpExpiresAt: expiresAt,
+    });
+    if (!consumed) {
+      await this.authAuditService.record(
+        'auth.reauthentication_failed',
+        session.user,
+        {
+          method: 'oauth',
+          result: 'failure',
+          request,
+          metadata: { stage: 'oauth-exchange' },
+        },
+      );
+      throw new UnauthorizedException({
+        code: 'AUTH_REAUTH_FAILED',
+        message: 'OAuth reauthentication failed',
+      });
+    }
+    await this.authAuditService.recordSuccess(
+      'auth.reauthentication_succeeded',
+      session.user,
+      { method: 'oauth', request },
+    );
+    return { token, expiresAt, method: 'oauth' as const };
+  }
+
   async completeFrontendOAuthCallback(
     callbackUrl: string,
     request?: Request,
   ): Promise<AuthSessionResponse> {
     const result = await this.handleOAuthCallback(callbackUrl);
-    if (result.flow !== 'login') {
-      throw new BadRequestException(
-        'OAuth share callbacks must use the share callback endpoint',
-      );
-    }
     return this.exchangeOAuthCode({ code: result.code }, request);
   }
 
@@ -408,6 +494,7 @@ export class AuthService {
     const code = await this.authRepository.findOAuthExchangeCode(codeHash);
     if (
       !code ||
+      code.flow !== 'login' ||
       code.usedAt ||
       new Date(code.expiresAt).getTime() < Date.now()
     ) {
@@ -421,217 +508,48 @@ export class AuthService {
       method: 'oauth',
       request,
     });
+    await this.notifyLogin(session.user, request);
     return session;
   }
 
-  async createPasskeyRegistrationOptions(authorization?: string) {
-    const session = await this.requireSession(authorization);
-    const passkey = await this.requirePasskeyConfigured();
-    const existing = await this.authRepository.listPasskeysForUser(
-      session.user.id,
-    );
-    const options = await generateRegistrationOptions({
-      rpName: passkey.rpName,
-      rpID: passkey.rpId,
-      userID: Buffer.from(session.user.id),
-      userName: session.user.email,
-      userDisplayName: session.user.displayName,
-      excludeCredentials: existing.map((credential) => ({
-        id: credential.credentialId,
-        transports: credential.transports as never,
-      })),
-      authenticatorSelection: {
-        residentKey: 'preferred',
-        userVerification: 'preferred',
-      },
-      attestationType: 'none',
-    });
-    await this.authRepository.createChallenge({
-      flow: 'passkey-registration',
-      challenge: options.challenge,
-      userId: session.user.id,
-      expiresAt: new Date(Date.now() + challengeTtlMs).toISOString(),
-    });
-    return options;
-  }
-
-  async verifyPasskeyRegistration(
-    dto: PasskeyRegistrationVerificationDto,
-    authorization?: string,
+  buildOAuthFrontendCallbackUrl(
+    code: string,
+    flow: 'login' | 'step-up' = 'login',
   ) {
-    const session = await this.requireSession(authorization);
-    const passkey = await this.requirePasskeyConfigured();
-    const challenge = await this.authRepository.findActiveChallenge({
-      flow: 'passkey-registration',
-      userId: session.user.id,
-    });
-    if (!challenge)
-      throw new UnauthorizedException('Passkey challenge expired');
-
-    const verification = await verifyRegistrationResponse({
-      response: dto.response as RegistrationResponseJSON,
-      expectedChallenge: challenge.challenge,
-      expectedOrigin: passkey.origin,
-      expectedRPID: passkey.rpId,
-      requireUserVerification: false,
-    });
-    if (!verification.verified || !verification.registrationInfo) {
-      throw new UnauthorizedException('Passkey registration failed');
-    }
-
-    const { credential, credentialBackedUp, credentialDeviceType } =
-      verification.registrationInfo;
-    const created = await this.authRepository.createPasskey({
-      userId: session.user.id,
-      credentialId: credential.id,
-      publicKey: Buffer.from(credential.publicKey).toString('base64url'),
-      counter: credential.counter,
-      transports: credential.transports ?? [],
-      deviceType: credentialDeviceType,
-      backedUp: credentialBackedUp,
-      name: dto.name?.trim() || 'Passkey',
-    });
-    await this.authRepository.markChallengeUsed(challenge.id);
-    return this.toPasskeyResponse(created);
-  }
-
-  async createPasskeyAuthenticationOptions(
-    dto: PasskeyAuthenticationOptionsDto,
-  ) {
-    const settings = await this.authRepository.getSettings();
-    if (!settings.passkeyEnabled) {
-      throw new ForbiddenException('Passkey login is disabled');
-    }
-    const passkey = await this.requirePasskeyConfigured();
-    const email = this.normalizeEmail(dto.email);
-    const user = await this.authRepository.findUserByEmail(email);
-    const credentials = user
-      ? await this.authRepository.listPasskeysForUser(user.id)
-      : [];
-    const options = await generateAuthenticationOptions({
-      rpID: passkey.rpId,
-      allowCredentials: credentials.map((credential) => ({
-        id: credential.credentialId,
-        transports: credential.transports as never,
-      })),
-      userVerification: 'preferred',
-    });
-    await this.authRepository.createChallenge({
-      flow: 'passkey-authentication',
-      challenge: options.challenge,
-      userId: user?.id ?? null,
-      email,
-      expiresAt: new Date(Date.now() + challengeTtlMs).toISOString(),
-    });
-    return options;
-  }
-
-  async verifyPasskeyAuthentication(
-    dto: PasskeyAuthenticationVerificationDto,
-    request?: Request,
-  ) {
-    const settings = await this.authRepository.getSettings();
-    if (!settings.passkeyEnabled) {
-      throw new ForbiddenException('Passkey login is disabled');
-    }
-    const passkey = await this.requirePasskeyConfigured();
-    const email = this.normalizeEmail(dto.email);
-    const challenge = await this.authRepository.findActiveChallenge({
-      flow: 'passkey-authentication',
-      email,
-    });
-    if (!challenge)
-      throw new UnauthorizedException('Passkey challenge expired');
-
-    const response = dto.response as AuthenticationResponseJSON;
-    const credential = await this.authRepository.findPasskeyByCredentialId(
-      response.id,
-    );
-    if (!credential || credential.userId !== challenge.userId) {
-      throw new UnauthorizedException('Passkey credential is invalid');
-    }
-
-    const verification = await verifyAuthenticationResponse({
-      response,
-      expectedChallenge: challenge.challenge,
-      expectedOrigin: passkey.origin,
-      expectedRPID: passkey.rpId,
-      credential: {
-        id: credential.credentialId,
-        publicKey: Buffer.from(credential.publicKey, 'base64url'),
-        counter: credential.counter,
-        transports: credential.transports as never,
-      },
-      requireUserVerification: false,
-    });
-    if (!verification.verified) {
-      throw new UnauthorizedException('Passkey authentication failed');
-    }
-
-    await this.authRepository.updatePasskeyCounter(
-      credential.id,
-      verification.authenticationInfo.newCounter,
-    );
-    await this.authRepository.markChallengeUsed(challenge.id);
-    const user = await this.authRepository.findUserById(credential.userId);
-    if (!user) throw new UnauthorizedException('Passkey user is unavailable');
-    const session = await this.createSession(user);
-    await this.recordAuthAudit('auth.login', session.user, {
-      method: 'passkey',
-      request,
-    });
-    return session;
-  }
-
-  async listPasskeys(authorization?: string) {
-    const session = await this.requireSession(authorization);
-    const passkeys = await this.authRepository.listPasskeysForUser(
-      session.user.id,
-    );
-    return passkeys.map((passkey) => this.toPasskeyResponse(passkey));
-  }
-
-  async deletePasskey(id: string, authorization?: string) {
-    const session = await this.requireSession(authorization);
-    await this.authRepository.deletePasskey(session.user.id, id);
-    return { ok: true };
-  }
-
-  buildOAuthFrontendCallbackUrl(code: string) {
-    const origin =
-      this.config.get<string>('api.corsOrigin') ?? 'http://localhost:13000';
-    const url = new URL('/login', origin.replace(/\/$/, ''));
-    url.searchParams.set('oauthCode', code);
-    return url.toString();
-  }
-
-  buildShareOAuthFrontendCallbackUrl(shareToken: string, sessionId: string) {
     const origin =
       this.config.get<string>('api.corsOrigin') ?? 'http://localhost:13000';
     const url = new URL(
-      `/share/s/${encodeURIComponent(shareToken)}`,
+      flow === 'step-up' ? '/settings' : '/login',
       origin.replace(/\/$/, ''),
     );
-    url.searchParams.set('shareAccessSession', sessionId);
-    url.searchParams.set('identityType', 'ica');
+    url.searchParams.set(
+      flow === 'step-up' ? 'oauthStepUpCode' : 'oauthCode',
+      code,
+    );
+    if (flow === 'step-up') url.searchParams.set('tab', 'security');
     return url.toString();
   }
 
   private async createOAuthStart(
-    flow: 'login' | 'share',
-    shareToken?: string,
+    providerId?: string,
+    binding?: {
+      flow: 'step-up';
+      userId: string;
+      sessionTokenHash: string;
+      purpose: string;
+    },
   ): Promise<OAuthStartResponse> {
     const settings = await this.authRepository.getSettings();
     if (!settings.oauthEnabled) {
       throw new ForbiddenException('OAuth login is disabled');
     }
-    const oauth = await this.settingsService.getOAuthSettings();
+    const oauth = await this.settingsService.getOAuthSettings(providerId);
     if (!this.settingsService.oauthConfigured(oauth)) {
       throw new ServiceUnavailableException('OAuth is not configured');
     }
     const { codeChallenge, codeVerifier, state } =
       await createOAuthRequestState();
-    const redirectUri = this.resolveOAuthRedirectUri(oauth, flow);
+    const redirectUri = this.resolveOAuthRedirectUri(oauth);
     const authorizationUrl = await this.createOAuthProviderAdapter(
       oauth,
     ).buildAuthorizationUrl({
@@ -642,8 +560,11 @@ export class AuthService {
     });
     await this.authRepository.createOAuthState({
       state,
-      flow,
-      shareToken: shareToken ?? null,
+      flow: binding?.flow ?? 'login',
+      shareToken: null,
+      userId: binding?.userId ?? null,
+      sessionTokenHash: binding?.sessionTokenHash ?? null,
+      purpose: binding?.purpose ?? null,
       codeVerifier,
       redirectUri,
       providerSnapshot: this.createOAuthProviderSnapshot(oauth, redirectUri),
@@ -671,31 +592,66 @@ export class AuthService {
   }
 
   private createOAuthProviderAdapter(oauth: OAuthSettings) {
-    return createOAuthProviderAdapter(oauth.providerProfile, {
+    return createOAuthProviderAdapter(oauth, {
       production: this.production,
     });
+  }
+
+  private assertOAuthCallbackTarget(url: URL, redirectUri: string) {
+    let expected: URL;
+    try {
+      expected = new URL(redirectUri);
+    } catch {
+      throw new UnauthorizedException('OAuth callback target is invalid');
+    }
+    if (
+      url.origin !== expected.origin ||
+      url.pathname !== expected.pathname ||
+      expected.username ||
+      expected.password ||
+      expected.hash ||
+      url.username ||
+      url.password ||
+      url.hash
+    ) {
+      throw new UnauthorizedException('OAuth callback target is invalid');
+    }
+    for (const [key, value] of expected.searchParams) {
+      if (!url.searchParams.getAll(key).includes(value)) {
+        throw new UnauthorizedException('OAuth callback target is invalid');
+      }
+    }
   }
 
   private createOAuthProviderSnapshot(
     oauth: OAuthSettings,
     redirectUri: string,
   ): OAuthProviderSnapshot {
-    return {
+    const snapshot: OAuthProviderSnapshot = {
       enabled: oauth.enabled,
+      providerKey: oauth.providerKey,
+      displayName: oauth.displayName,
       providerProfile: oauth.providerProfile,
       issuerUrl: oauth.issuerUrl,
+      authorizationUrl: oauth.authorizationUrl,
+      tokenUrl: oauth.tokenUrl,
+      userinfoUrl: oauth.userinfoUrl,
       clientId: oauth.clientId,
       audience: oauth.audience,
       scopes: oauth.scopes,
       redirectUri,
     };
+    if (oauth.id) snapshot.id = oauth.id;
+    return snapshot;
   }
 
   private async resolveOAuthStateProvider(
     providerSnapshot: OAuthProviderSnapshot | null,
     redirectUri: string,
   ): Promise<OAuthSettings> {
-    const currentSettings = await this.settingsService.getOAuthSettings();
+    const currentSettings = await this.settingsService.getOAuthSettings(
+      providerSnapshot?.id,
+    );
     if (!this.settingsService.oauthConfigured(currentSettings)) {
       throw new UnauthorizedException('OAuth state provider is invalid');
     }
@@ -712,6 +668,7 @@ export class AuthService {
       throw new UnauthorizedException('OAuth state provider is invalid');
     }
     return {
+      ...currentSettings,
       ...providerSnapshot,
       clientSecret: currentSettings.clientSecret,
       redirectUri: providerSnapshot.redirectUri || redirectUri,
@@ -723,24 +680,47 @@ export class AuthService {
     currentSettings: OAuthSettings,
   ) {
     return (
+      (!providerSnapshot.id || providerSnapshot.id === currentSettings.id) &&
+      providerSnapshot.providerKey === currentSettings.providerKey &&
       providerSnapshot.providerProfile === currentSettings.providerProfile &&
       providerSnapshot.issuerUrl === currentSettings.issuerUrl &&
+      providerSnapshot.authorizationUrl === currentSettings.authorizationUrl &&
+      providerSnapshot.tokenUrl === currentSettings.tokenUrl &&
+      providerSnapshot.userinfoUrl === currentSettings.userinfoUrl &&
       providerSnapshot.clientId === currentSettings.clientId
     );
   }
 
-  private resolveOAuthRedirectUri(
-    oauth: { redirectUri: string },
-    flow: 'login' | 'share',
+  private assertOAuthUserPolicy(
+    oauth: OAuthSettings,
+    oauthUser: {
+      email: string;
+      emailSource: 'provider' | 'derived';
+      emailVerified: boolean;
+    },
   ) {
-    if (flow === 'login' && oauth.redirectUri) return oauth.redirectUri;
+    if (
+      oauth.requireVerifiedEmail === true &&
+      (oauthUser.emailSource !== 'provider' || !oauthUser.emailVerified)
+    ) {
+      throw new ForbiddenException(
+        'OAuth provider did not return a verified email',
+      );
+    }
+    const allowedDomains = oauth.allowedEmailDomains ?? [];
+    if (allowedDomains.length === 0) return;
+    const domain = oauthUser.email.split('@').pop()?.trim().toLowerCase() ?? '';
+    if (!allowedDomains.includes(domain)) {
+      throw new ForbiddenException('OAuth email domain is not allowed');
+    }
+  }
+  private resolveOAuthRedirectUri(oauth: { redirectUri: string }) {
+    if (oauth.redirectUri) return oauth.redirectUri;
     const base = (
       this.config.get<string>('api.publicBaseUrl') ??
       'http://127.0.0.1:13001/api'
     ).replace(/\/$/, '');
-    return flow === 'share'
-      ? `${base}/shares/oauth/callback`
-      : `${base}/auth/oauth/callback`;
+    return `${base}/auth/oauth/callback`;
   }
 
   private async assertLocalAuthEnabled() {
@@ -826,9 +806,11 @@ export class AuthService {
     }
   }
 
-  private async requireSession(
-    authorization?: string,
-  ): Promise<{ user: AuthUserResponse; expiresAt: string }> {
+  private async requireSession(authorization?: string): Promise<{
+    tokenHash: string;
+    user: AuthUserResponse;
+    expiresAt: string;
+  }> {
     const token = this.extractBearerToken(authorization);
     if (!token) throw new UnauthorizedException('Authentication is required');
 
@@ -841,7 +823,11 @@ export class AuthService {
       throw new UnauthorizedException('Session has expired');
     }
 
-    return { user: session.user, expiresAt: session.expiresAt };
+    return {
+      tokenHash: session.tokenHash,
+      user: session.user,
+      expiresAt: session.expiresAt,
+    };
   }
 
   private async createSession(
@@ -870,6 +856,28 @@ export class AuthService {
     await this.authAuditService.recordSuccess(action, user, options);
   }
 
+  private async notifyLogin(user: AuthUserResponse, request?: Request) {
+    try {
+      await this.mailService.sendSecurityNotification({
+        email: user.email,
+        event: 'login',
+        locale: user.locale === 'zh' ? 'zh' : 'en',
+        occurredAt: new Date().toISOString(),
+        deviceName: request?.get('user-agent')?.trim() || 'Unknown device',
+        ipAddress:
+          request?.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+          request?.get('x-real-ip') ||
+          request?.ip ||
+          request?.socket.remoteAddress ||
+          'unknown',
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Login security notification failed: ${error instanceof Error ? error.name : 'unknown'}`,
+      );
+    }
+  }
+
   private async withConfigState(
     settings: AuthSettings,
   ): Promise<AuthSettingsResponse> {
@@ -896,30 +904,6 @@ export class AuthService {
       timezone: user.timezone,
       createdAt: user.createdAt,
     };
-  }
-
-  private toPasskeyResponse(passkey: {
-    id: string;
-    name: string;
-    transports: string[];
-    createdAt: string;
-    lastUsedAt: string | null;
-  }): PasskeyResponse {
-    return {
-      id: passkey.id,
-      name: passkey.name,
-      transports: passkey.transports,
-      createdAt: passkey.createdAt,
-      lastUsedAt: passkey.lastUsedAt,
-    };
-  }
-
-  private async requirePasskeyConfigured() {
-    const passkey = await this.settingsService.getPasskeySettings();
-    if (!this.settingsService.passkeyConfigured(passkey)) {
-      throw new ServiceUnavailableException('Passkey is not configured');
-    }
-    return passkey;
   }
 
   private normalizeEmail(email: string) {
@@ -982,18 +966,11 @@ export class AuthService {
   }
 
   private async hashPassword(password: string) {
-    const salt = randomBytes(16).toString('base64url');
-    const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
-    return `scrypt$${salt}$${derivedKey.toString('base64url')}`;
+    return hashPassword(password);
   }
 
   private async verifyPassword(password: string, passwordHash: string) {
-    const [algorithm, salt, expected] = passwordHash.split('$');
-    if (algorithm !== 'scrypt' || !salt || !expected) return false;
-    const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
-    const expectedBuffer = Buffer.from(expected, 'base64url');
-    if (derivedKey.length !== expectedBuffer.length) return false;
-    return timingSafeEqual(derivedKey, expectedBuffer);
+    return verifyPasswordHash(password, passwordHash);
   }
 
   private get production() {

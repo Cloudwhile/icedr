@@ -19,11 +19,15 @@ function formatSpeedLimit(
   } | null,
   t: DriveTranslator,
 ) {
-  return speedLimit ? `${speedLimit.value} ${speedLimit.unit}` : t("share.unlimited");
+  return speedLimit
+    ? `${speedLimit.value} ${speedLimit.unit}`
+    : t("share.unlimited");
 }
 
 function formatPolicyWaitSeconds(policy: ExternalSharePolicy) {
-  return policy.waitUnit === "minutes" ? policy.waitValue * 60 : policy.waitValue;
+  return policy.waitUnit === "minutes"
+    ? policy.waitValue * 60
+    : policy.waitValue;
 }
 
 export function buildAnonymousPolicyExperience(
@@ -31,33 +35,39 @@ export function buildAnonymousPolicyExperience(
   policy: ExternalSharePolicy,
   t: DriveTranslator,
 ): IdentityExperience {
-  const speedLimit = policy.speedValue > 0
-    ? {
-        value: policy.speedValue,
-        unit: policy.speedUnit,
-      }
-    : null;
+  const speedLimit =
+    policy.speedValue > 0
+      ? {
+          value: policy.speedValue,
+          unit: policy.speedUnit,
+        }
+      : null;
   return {
     hasSpeedLimit: Boolean(speedLimit),
-    label: anonymousPolicy === "public"
-      ? t("share.visitor.public")
-      : anonymousPolicy === "blocked"
-        ? t("share.visitor.blocked")
-        : t("share.visitor.emailVerified"),
+    label:
+      anonymousPolicy === "public"
+        ? t("share.visitor.public")
+        : anonymousPolicy === "blocked"
+          ? t("share.visitor.blocked")
+          : t("share.visitor.emailVerified"),
     sessionLabel: policy.downloadLimit || t("share.noDownloadLimit"),
     speedLabel: formatSpeedLimit(speedLimit, t),
     waitSeconds: formatPolicyWaitSeconds(policy),
   };
 }
 
-export function buildIcaPolicyExperience(
+export function buildOAuthPolicyExperience(
   authSettings: AuthSettings | null,
   t: DriveTranslator,
 ): IdentityExperience {
   return {
     hasSpeedLimit: true,
-    label: authSettings?.oauthConfigured ? t("share.visitor.icaOAuth") : t("share.visitor.icaOAuthUnavailable"),
-    sessionLabel: authSettings?.oauthConfigured ? t("share.oauthSession") : t("share.configurationRequired"),
+    label: authSettings?.oauthConfigured
+      ? t("share.visitor.oauth")
+      : t("share.visitor.oauthUnavailable"),
+    sessionLabel: authSettings?.oauthConfigured
+      ? t("share.oauthSession")
+      : t("share.configurationRequired"),
     speedLabel: t("share.policyLimit"),
     waitSeconds: 0,
   };

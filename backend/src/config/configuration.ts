@@ -83,6 +83,7 @@ export default () => {
     api: {
       port: apiPort,
       host: apiHost,
+      trustProxy: readBoolean(process.env.API_TRUST_PROXY, false),
       corsOrigin: readString(
         process.env.API_CORS_ORIGIN,
         'http://localhost:13000',
@@ -99,6 +100,12 @@ export default () => {
       audience: readString(process.env.ICA_OAUTH_AUDIENCE, 'icedr-api'),
       scopes: readOptionalString(process.env.ICA_OAUTH_SCOPES),
       redirectUri: readOptionalString(process.env.ICA_OAUTH_REDIRECT_URI),
+    },
+    auth: {
+      securitySecret: readString(
+        process.env.AUTH_SECURITY_SECRET,
+        'icedr-dev-auth-security-secret',
+      ),
     },
     database: {
       host: readString(process.env.DATABASE_HOST),
@@ -155,6 +162,54 @@ export default () => {
         readOptionalString(process.env.SHARE_EMAIL_PROVIDER) ??
         (isProduction() ? '' : 'dev-log'),
       visitorHashSecret: readString(process.env.SHARE_VISITOR_HASH_SECRET),
+      rateLimit: {
+        defaultProfile: readString(
+          process.env.SHARE_RATE_LIMIT_PROFILE,
+          'default',
+        ),
+        windowSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_WINDOW_SECONDS,
+          60,
+        ),
+        viewMax: readNumber(process.env.SHARE_RATE_LIMIT_VIEW_MAX, 120),
+        viewWindowSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_VIEW_WINDOW_SECONDS,
+          60,
+        ),
+        emailCodeMax: readNumber(
+          process.env.SHARE_RATE_LIMIT_EMAIL_CODE_MAX,
+          5,
+        ),
+        emailCodeWindowSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_EMAIL_CODE_WINDOW_SECONDS,
+          600,
+        ),
+        emailVerifyMax: readNumber(
+          process.env.SHARE_RATE_LIMIT_EMAIL_VERIFY_MAX,
+          5,
+        ),
+        emailVerifyWindowSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_EMAIL_VERIFY_WINDOW_SECONDS,
+          900,
+        ),
+        emailVerifyLockSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_EMAIL_VERIFY_LOCK_SECONDS,
+          900,
+        ),
+        downloadIntentMax: readNumber(
+          process.env.SHARE_RATE_LIMIT_DOWNLOAD_INTENT_MAX,
+          60,
+        ),
+        downloadIntentWindowSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_DOWNLOAD_INTENT_WINDOW_SECONDS,
+          60,
+        ),
+        downloadMax: readNumber(process.env.SHARE_RATE_LIMIT_DOWNLOAD_MAX, 60),
+        downloadWindowSeconds: readNumber(
+          process.env.SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS,
+          60,
+        ),
+      },
     },
     mail: {
       enabled: readBoolean(

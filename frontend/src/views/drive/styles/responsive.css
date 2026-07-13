@@ -58,12 +58,16 @@
     padding: 22px;
   }
 
-  .drive-module-stat-grid-links {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .drive-links-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .drive-module-stat-card-wide {
-    grid-column: 1 / -1;
+  .drive-links-summary-item:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .drive-links-summary-item:nth-child(n + 4) {
+    border-top: 1px solid #edf2f7;
   }
 
   .drive-links-board,
@@ -97,10 +101,6 @@
 }
 
 @media (max-width: 900px) {
-  .drive-module-stat-grid-links {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-  }
-
   .drive-links-side-stack,
   .drive-risk-grid,
   .drive-module-side-stack,
@@ -206,7 +206,7 @@
   }
 
   .drive-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(168px, 188px));
   }
 
   .drive-upload-hud-presence {
@@ -308,7 +308,34 @@
 }
 
 @media (max-width: 520px) {
-  .drive-module-stat-grid-links,
+  .drive-settings-tab-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    width: 100%;
+  }
+
+  .drive-settings-tab {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .drive-links-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-links-summary-item:nth-child(3n) {
+    border-right: 1px solid #edf2f7;
+  }
+
+  .drive-links-summary-item:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .drive-links-summary-item:nth-child(n + 3) {
+    border-top: 1px solid #edf2f7;
+  }
+
   .drive-settings-meta-grid,
   .drive-system-fact-grid,
   .drive-system-usage-grid,

@@ -1,9 +1,7 @@
 import {
   IsBoolean,
-  IsDefined,
   IsEmail,
   IsIn,
-  IsObject,
   IsOptional,
   IsString,
   Length,
@@ -16,6 +14,7 @@ export type AuthSettings = {
   localEnabled: boolean;
   oauthEnabled: boolean;
   passkeyEnabled: boolean;
+  minimumAuthenticationMethods: number;
   updatedAt: string;
 };
 
@@ -61,14 +60,6 @@ export type OAuthStartResponse = {
 
 export type OAuthExchangeResponse = AuthSessionResponse;
 
-export type PasskeyResponse = {
-  id: string;
-  name: string;
-  transports: string[];
-  createdAt: string;
-  lastUsedAt: string | null;
-};
-
 export class UpdateAuthSettingsDto {
   @IsBoolean()
   @IsOptional()
@@ -81,6 +72,10 @@ export class UpdateAuthSettingsDto {
   @IsBoolean()
   @IsOptional()
   passkeyEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn([1, 2])
+  minimumAuthenticationMethods?: number;
 }
 
 export class UpdateCurrentUserDto {
@@ -174,29 +169,4 @@ export class OAuthCallbackDto {
   @IsString()
   @Length(1, 2048)
   callbackUrl!: string;
-}
-
-export class PasskeyRegistrationVerificationDto {
-  @IsString()
-  @Length(1, 80)
-  @IsOptional()
-  name?: string;
-
-  @IsDefined()
-  @IsObject()
-  response!: unknown;
-}
-
-export class PasskeyAuthenticationOptionsDto {
-  @IsEmail()
-  email!: string;
-}
-
-export class PasskeyAuthenticationVerificationDto {
-  @IsEmail()
-  email!: string;
-
-  @IsDefined()
-  @IsObject()
-  response!: unknown;
 }

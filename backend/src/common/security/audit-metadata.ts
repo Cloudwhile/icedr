@@ -34,18 +34,7 @@ export function createVisitorAuditMetadata(request?: Request) {
 
 function getRequestIp(request?: Request) {
   if (!request) return undefined;
-  const forwardedFor = request.get('x-forwarded-for');
-  const forwardedIp = forwardedFor
-    ?.split(',')
-    .map((value) => value.trim())
-    .find(Boolean);
-  return (
-    forwardedIp ||
-    request.get('x-real-ip') ||
-    request.ip ||
-    request.socket.remoteAddress ||
-    undefined
-  );
+  return request.ip || request.socket.remoteAddress || undefined;
 }
 
 function removeEmptyAuditValues(input: Record<string, unknown>) {

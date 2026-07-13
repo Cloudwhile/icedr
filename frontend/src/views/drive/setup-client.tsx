@@ -1,9 +1,20 @@
-﻿"use client";
+"use client";
 
 import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
+import {
+  isValidEmailAddress,
+  isValidPasswordLength,
+  normalizeEmailAddress,
+} from "@/features/auth/auth-input-validation";
+import { validatePasskeySettingsInput } from "@/features/auth/passkey-settings-validation";
+import { validateOAuthDraft } from "@/extensions/oauth/provider-catalog";
+import {
+  validateMailSettingsDraft,
+  validateObjectStorageDraft,
+} from "@/features/settings/connection-input-validation";
 import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type StorageSettings, type StorageSettingsInput, type VerifyDatabaseInput, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
@@ -160,15 +171,28 @@ function SetupPage({
   const [remoteDatabaseTouched, setRemoteDatabaseTouched] = useState(false);
   const [site, setSite] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [oauth, setOAuth] = useState<OAuthSettings>({
+    id: "default",
     enabled: false,
+    providerKey: "oidc",
+    displayName: "Custom OIDC",
     providerProfile: "oidc",
     providerMode: "standard",
     issuerUrl: "",
+    authorizationUrl: "",
+    tokenUrl: "",
+    userinfoUrl: "",
     clientId: "",
     audience: "icedr-api",
     scopes: "openid email profile",
     redirectUri: "",
-    clientSecretConfigured: false
+    allowSignup: true,
+    linkByVerifiedEmail: true,
+    requireVerifiedEmail: true,
+    allowedEmailDomains: [],
+    clientSecretConfigured: false,
+    configured: false,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString()
   });
   const [oauthSecret, setOAuthSecret] = useState("");
   const [mail, setMail] = useState<MailSettings>(defaultMailSettings);
@@ -176,7 +200,6 @@ function SetupPage({
   const [mailTestEmail, setMailTestEmail] = useState("");
   const [mailTestEmailTouched, setMailTestEmailTouched] = useState(false);
   const [passkey, setPasskey] = useState<PasskeySettings>({
-    enabled: false,
     rpName: defaultPublicSiteSettings.siteName,
     rpId: "localhost",
     origin: "http://localhost:13000"
@@ -197,7 +220,6 @@ function SetupPage({
   const [stepIndex, setStepIndex] = useState(0);
   const currentSystemBaseUrl = useMemo(() => getCurrentSystemBaseUrl(), []);
   const defaultOAuthRedirectUri = useMemo(() => buildLoginCallbackUrl(currentSystemBaseUrl) || `${getApiBaseUrl()}/auth/oauth/callback`, [currentSystemBaseUrl]);
-  const oauthShareRedirectUri = useMemo(() => `${getApiBaseUrl()}/shares/oauth/callback`, []);
   const effectiveOAuthRedirectUri = oauth.redirectUri.trim() || defaultOAuthRedirectUri;
   const oauthCallbackBaseUrl = getCallbackBaseUrl(effectiveOAuthRedirectUri, currentSystemBaseUrl);
   useEffect(() => {
@@ -226,7 +248,6 @@ function SetupPage({
       setPasskey(setup.passkey);
       setMail(setup.mail);
       setOAuthEnabled(setup.oauth.enabled);
-      setPasskeyEnabled(setup.passkey.enabled);
       setDistributedStorageEnabled(setup.storage.distributedStorageEnabled);
       setObjectStorage({
         accessKeyId: setup.storage.accessKeyId,
@@ -247,14 +268,28 @@ function SetupPage({
     };
   }, [next, router, t]);
   const logoPreview = site.authLogoDataUrl || "/logo.png";
-  const adminComplete = Boolean(admin.email.trim() && admin.displayName.trim() && admin.password.length >= 8);
-  const oauthReady = !oauthEnabled || Boolean(oauth.issuerUrl.trim() && oauth.clientId.trim() && (oauth.providerProfile !== "icetowne-blog" || oauthSecret.trim() || oauth.clientSecretConfigured));
-  const passkeyReady = !passkeyEnabled || Boolean(passkey.rpId.trim() && passkey.origin.trim());
+  const adminComplete = Boolean(
+    admin.displayName.trim() &&
+    admin.displayName.trim().length <= 80 &&
+    isValidEmailAddress(admin.email) &&
+    isValidPasswordLength(admin.password),
+  );
+  const oauthValidation = validateOAuthDraft(
+    { ...oauth, redirectUri: effectiveOAuthRedirectUri },
+    oauthSecret,
+  );
+  const oauthReady = !oauthEnabled || oauthValidation.valid;
+  const passkeyValidation = validatePasskeySettingsInput(passkey);
+  const passkeyReady = !passkeyEnabled || passkeyValidation.valid;
   const authComplete = Boolean((localEnabled || oauthEnabled || passkeyEnabled) && oauthReady && passkeyReady);
   const brandComplete = Boolean(site.siteName.trim());
   const mailComplete = !mail.enabled || Boolean(mail.verifiedAt);
-  const objectStorageSecretReady = Boolean(objectStorageSecret.trim() || objectStorage.secretAccessKeyConfigured);
-  const objectStorageComplete = !distributedStorageEnabled || Boolean(objectStorage.endpoint.trim() && objectStorage.region.trim() && objectStorage.bucket.trim() && objectStorage.accessKeyId.trim() && objectStorageSecretReady);
+  const mailValidation = validateMailSettingsDraft(mail, mailPassword);
+  const objectStorageValidation = validateObjectStorageDraft(
+    { ...objectStorage, distributedStorageEnabled },
+    objectStorageSecret,
+  );
+  const objectStorageComplete = objectStorageValidation.valid;
   const remoteDatabaseDirty = Boolean(
     remoteDatabaseTouched &&
       (remoteDatabase.host.trim() ||
@@ -395,7 +430,18 @@ function SetupPage({
   };
   const testMail = () => {
     const recipientEmail = (mailTestEmail || admin.email).trim();
-    if (!mail.enabled || !recipientEmail || busy) return;
+    if (!mail.enabled || busy) return;
+    if (!mailValidation.valid) {
+      setStatus({
+        tone: "error",
+        message: t(mailValidation.errorKey ?? "admin.saveFailed"),
+      });
+      return;
+    }
+    if (!isValidEmailAddress(recipientEmail)) {
+      setStatus({ tone: "error", message: t("auth.emailInvalid") });
+      return;
+    }
     setBusy(true);
     setStatus(null);
     void updateSetupMailSettings(currentMailInput()).then(settings => {
@@ -426,6 +472,8 @@ function SetupPage({
     setOAuth(value => ({
       ...value,
       ...icetowneBlogOAuthPreset,
+      providerKey: "icetowne-blog",
+      displayName: "ICETOWNE BLOG",
       providerMode: "compatibility",
       redirectUri: buildLoginCallbackUrl(oauthCallbackBaseUrl)
     }));
@@ -437,7 +485,11 @@ function SetupPage({
     setStatus(null);
     const allowedDomains = domainText.split(/[\n,]/).map(domain => domain.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
     const input: CompleteSetupInput = {
-      admin,
+      admin: {
+        ...admin,
+        displayName: admin.displayName.trim(),
+        email: normalizeEmailAddress(admin.email),
+      },
       site,
       oauth: toOAuthSettingsInput({
         ...oauth,
@@ -447,10 +499,7 @@ function SetupPage({
           clientSecret: oauthSecret
         } : {})
       }),
-      passkey: {
-        ...passkey,
-        enabled: passkeyEnabled
-      },
+      passkey: passkeyValidation.normalized,
       mail: currentMailInput(),
       storage: currentStorageInput(),
       localEnabled,
@@ -621,21 +670,21 @@ function SetupPage({
 
             {currentStep.id === "admin" ? <SetupSection icon="user_avatar" palette={palette} title={t("setup.admin")}>
                 <div className="icedr-setup-form-grid">
-                  <AuthField label={t("auth.displayName")} palette={palette} required>
-                    <AuthInput palette={palette} value={admin.displayName} onChange={event => setAdmin(value => ({
+                  <AuthField errorText={admin.displayName && (!admin.displayName.trim() || admin.displayName.trim().length > 80) ? t(admin.displayName.trim() ? "auth.displayNameTooLong" : "auth.displayNameRequired") : undefined} invalid={Boolean(admin.displayName && (!admin.displayName.trim() || admin.displayName.trim().length > 80))} label={t("auth.displayName")} palette={palette} required>
+                    <AuthInput invalid={Boolean(admin.displayName && (!admin.displayName.trim() || admin.displayName.trim().length > 80))} maxLength={80} palette={palette} value={admin.displayName} onChange={event => setAdmin(value => ({
                   ...value,
                   displayName: event.target.value
                 }))} />
                   </AuthField>
-                  <AuthField label={t("auth.email")} palette={palette} required>
-                    <AuthInput palette={palette} type="email" value={admin.email} onChange={event => setAdmin(value => ({
+                  <AuthField errorText={admin.email && !isValidEmailAddress(admin.email) ? t("auth.emailInvalid") : undefined} invalid={Boolean(admin.email && !isValidEmailAddress(admin.email))} label={t("auth.email")} palette={palette} required>
+                    <AuthInput autoCapitalize="none" invalid={Boolean(admin.email && !isValidEmailAddress(admin.email))} maxLength={254} palette={palette} spellCheck={false} type="email" value={admin.email} onChange={event => setAdmin(value => ({
                   ...value,
                   email: event.target.value
                 }))} />
                   </AuthField>
                 </div>
-                <AuthField label={t("auth.password")} palette={palette} required>
-                  <AuthInput palette={palette} type="password" value={admin.password} onChange={event => setAdmin(value => ({
+                <AuthField errorText={admin.password && !isValidPasswordLength(admin.password) ? t("auth.passwordLengthInvalid") : undefined} invalid={Boolean(admin.password && !isValidPasswordLength(admin.password))} label={t("auth.password")} palette={palette} required>
+                  <AuthInput invalid={Boolean(admin.password && !isValidPasswordLength(admin.password))} maxLength={128} palette={palette} type="password" value={admin.password} onChange={event => setAdmin(value => ({
                 ...value,
                 password: event.target.value
               }))} />
@@ -652,6 +701,8 @@ function SetupPage({
                   <div className="icedr-setup-form-grid">
                     <SelectButton active={oauth.providerProfile === "oidc"} label={t("setup.providerOidc")} onClick={() => setOAuth(value => ({
                 ...value,
+                providerKey: "oidc",
+                displayName: "Custom OIDC",
                 providerProfile: "oidc",
                 providerMode: "standard"
               }))} palette={palette} />
@@ -704,17 +755,6 @@ function SetupPage({
                         </ToolButton>
                       </div>
                     </AuthField>
-                    <AuthField label={t("setup.oauthShareRedirectUri")} palette={palette}>
-                      <div className="icedr-setup-inline-field">
-                        <AuthInput palette={palette} readOnly value={oauthShareRedirectUri} style={{
-                    flex: "1 1 auto",
-                    minWidth: "0px"
-                  }} />
-                        <ToolButton label={t("setup.copyOAuthRedirectUri")} palette={palette} onClick={() => copyOAuthCallback(oauthShareRedirectUri)}>
-                          <LocalIcon name="copy" size={17} />
-                        </ToolButton>
-                      </div>
-                    </AuthField>
                     <AuthField label={t("setup.oauthSecret")} palette={palette}>
                       <AuthInput palette={palette} type="password" value={oauthSecret} placeholder={oauth.clientSecretConfigured ? t("setup.secretConfigured") : ""} onChange={event => setOAuthSecret(event.target.value)} />
                     </AuthField>
@@ -722,20 +762,20 @@ function SetupPage({
                 </> : null}
                 <ToggleRow checked={passkeyEnabled} label={t("admin.passkeyAuth")} onToggle={() => setPasskeyEnabled(value => !value)} palette={palette} />
                 {passkeyEnabled ? <div className="icedr-setup-form-grid" data-columns="3">
-                    <AuthField label={t("setup.rpName")} palette={palette}>
-                      <AuthInput palette={palette} value={passkey.rpName} onChange={event => setPasskey(value => ({
+                    <AuthField errorText={passkeyValidation.errors.rpName ? t(passkeyValidation.errors.rpName) : undefined} invalid={Boolean(passkeyValidation.errors.rpName)} label={t("setup.rpName")} palette={palette}>
+                      <AuthInput invalid={Boolean(passkeyValidation.errors.rpName)} maxLength={80} palette={palette} value={passkey.rpName} onChange={event => setPasskey(value => ({
                   ...value,
                   rpName: event.target.value
                 }))} />
                     </AuthField>
-                    <AuthField label={t("setup.rpId")} palette={palette}>
-                      <AuthInput palette={palette} value={passkey.rpId} onChange={event => setPasskey(value => ({
+                    <AuthField errorText={passkeyValidation.errors.rpId ? t(passkeyValidation.errors.rpId) : undefined} invalid={Boolean(passkeyValidation.errors.rpId)} label={t("setup.rpId")} palette={palette}>
+                      <AuthInput autoCapitalize="none" invalid={Boolean(passkeyValidation.errors.rpId)} maxLength={253} palette={palette} spellCheck={false} value={passkey.rpId} onChange={event => setPasskey(value => ({
                   ...value,
                   rpId: event.target.value
                 }))} />
                     </AuthField>
-                    <AuthField label={t("setup.origin")} palette={palette}>
-                      <AuthInput palette={palette} value={passkey.origin} onChange={event => setPasskey(value => ({
+                    <AuthField errorText={passkeyValidation.errors.origin ? t(passkeyValidation.errors.origin) : undefined} invalid={Boolean(passkeyValidation.errors.origin)} label={t("setup.origin")} palette={palette}>
+                      <AuthInput autoCapitalize="none" invalid={Boolean(passkeyValidation.errors.origin)} maxLength={2048} palette={palette} spellCheck={false} value={passkey.origin} onChange={event => setPasskey(value => ({
                   ...value,
                   origin: event.target.value
                 }))} />

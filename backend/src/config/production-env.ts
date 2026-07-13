@@ -65,6 +65,7 @@ const placeholderEnv = [
   ...setupOwnedProductionEnv,
   ...publicApiBaseUrlEnv,
   'SHARE_EMAIL_PROVIDER',
+  'AUTH_SECURITY_SECRET',
 ] as const;
 
 const genericPlaceholders = new Set([
@@ -150,6 +151,12 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
 
   if (hasValue(env.SMTP_FROM_EMAIL) && !isEmailAddress(env.SMTP_FROM_EMAIL)) {
     errors.push('SMTP_FROM_EMAIL must be a valid email address');
+  }
+
+  if (!hasValue(env.AUTH_SECURITY_SECRET)) {
+    errors.push('AUTH_SECURITY_SECRET is required in production');
+  } else if (env.AUTH_SECURITY_SECRET.trim().length < 32) {
+    errors.push('AUTH_SECURITY_SECRET must be at least 32 characters');
   }
 
   if (errors.length > 0) {

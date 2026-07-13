@@ -4,6 +4,10 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        ALPINE_MIRROR: ${ICEDR_DOCKER_ALPINE_MIRROR:-}
+        NPM_REGISTRY: ${ICEDR_DOCKER_NPM_REGISTRY:-}
+        COREPACK_NPM_REGISTRY: ${ICEDR_DOCKER_COREPACK_NPM_REGISTRY:-}
     container_name: icedr
     environment:
       NODE_ENV: production

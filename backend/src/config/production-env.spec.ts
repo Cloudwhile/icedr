@@ -7,6 +7,7 @@ import {
 const validProductionEnv: EnvironmentVariables = {
   NODE_ENV: 'production',
   APP_ENV: 'production',
+  AUTH_SECURITY_SECRET: 'icedr-production-auth-security-secret-2026',
   API_CORS_ORIGIN: 'https://drive.icedr.test',
   API_PUBLIC_BASE_URL: 'https://api.icedr.test/api',
   DATABASE_HOST: 'postgres',
@@ -61,6 +62,7 @@ describe('production environment validation', () => {
       validateProductionEnv({
         NODE_ENV: 'production',
         APP_ENV: 'production',
+        AUTH_SECURITY_SECRET: validProductionEnv.AUTH_SECURITY_SECRET,
       }),
     ).not.toThrow();
   });
@@ -70,6 +72,7 @@ describe('production environment validation', () => {
       validateProductionEnv({
         NODE_ENV: 'production',
         APP_ENV: 'production',
+        AUTH_SECURITY_SECRET: validProductionEnv.AUTH_SECURITY_SECRET,
         SMTP_ENABLED: 'false',
       }),
     ).not.toThrow();

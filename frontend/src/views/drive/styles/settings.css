@@ -612,7 +612,7 @@
 
 .drive-settings-tab-list {
   gap: 8px;
-  min-height: min(704px, calc(100dvh - 170px));
+  min-height: 0;
   padding: 14px;
 }
 

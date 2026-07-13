@@ -12,7 +12,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
 };
 
-test("smoke: creates a share, verifies email access, downloads, and sees audit", async ({ page }) => {
+test("smoke: creates a share, uses main auth for external access, downloads, and sees audit", async ({ page }) => {
   const state = await mockIcedrApi(page);
 
   await page.addInitScript(() => {
@@ -37,13 +37,10 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
 
   await page.locator('button[aria-label="More"]').last().click();
   await page.getByRole("menuitem", { name: "Download" }).click();
-  await page.getByPlaceholder("email@example.com").fill("reviewer@example.com");
-  await page.getByRole("button", { name: "Send code" }).click();
-  await page.getByPlaceholder("000000").fill("123456");
-  await page.getByRole("button", { name: "Verify code" }).click();
-  await expect(page.getByText("Verified. Downloads are available.")).toBeVisible();
-
-  await page.getByRole("button", { name: "Continue" }).click();
+  const useCurrentAccount = page.getByRole("button", { name: "Use current account" });
+  if (await useCurrentAccount.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await useCurrentAccount.click();
+  }
   const downloadResponsePromise = page.waitForResponse((response) =>
     response.request().method() === "GET" &&
     response.url().includes(`/shares/${shareToken}/items/${fileId}/download?downloadId=`) &&
@@ -51,7 +48,9 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
   );
   await page.getByRole("button", { name: "Download" }).last().click();
   const downloadResponse = await downloadResponsePromise;
+  expect(new URL(downloadResponse.url()).origin).toBe("http://127.0.0.1:13000");
   expect(downloadResponse.headers()["content-disposition"]).toContain(fileName);
+  expect(state.downloadIntentPurpose).toBe("download");
   expect(state.downloaded).toBe(true);
 
   await page.goto("/");
@@ -63,7 +62,7 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
   await expect(page).toHaveURL(/\/admin\/audit$/);
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   const auditRow = page.locator(".drive-audit-table .drive-audit-row").filter({
-    hasText: /Guest Visitor.*Download.*Share link.*reviewer@example.com downloaded File/,
+    hasText: /Smoke Admin.*Download.*Share link.*admin@example.com downloaded File/,
   });
   await expect(auditRow).toBeVisible();
   await expect(auditRow.locator(".drive-audit-actor-avatar")).toBeVisible();
@@ -75,6 +74,7 @@ test("smoke: creates a share, verifies email access, downloads, and sees audit",
 
 async function mockIcedrApi(page: Page) {
   const state = {
+    downloadIntentPurpose: "",
     downloaded: false,
     shareCreated: false,
   };
@@ -164,22 +164,25 @@ async function mockIcedrApi(page: Page) {
       return;
     }
 
-    if (method === "POST" && path === `/shares/${shareToken}/access-sessions/email-code`) {
-      await fulfillJson(route, {
-        configured: true,
-        delivery: "email",
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      });
-      return;
-    }
-
-    if (method === "POST" && path === `/shares/${shareToken}/access-sessions/verify-email`) {
+    if (method === "POST" && path === `/shares/${shareToken}/access-sessions/account`) {
       await fulfillJson(route, {
         availableAt: now,
         downloadLimit: "No download limit",
-        email: "reviewer@example.com",
+        email: "admin@example.com",
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        identityType: "email",
+        identityType: "ica",
+        policyDecision: {
+          bypassSpeedLimit: true,
+          bypassWait: true,
+          downloadLimit: "No download limit",
+          identityType: "ica",
+          maxDownloads: 0,
+          remainingDownloads: null,
+          requiresAccessSession: true,
+          requiresEmailVerification: true,
+          speedLimit: null,
+          waitSeconds: 0,
+        },
         sessionId: "share-session-smoke",
         shareToken,
         speedLimit: null,
@@ -202,13 +205,16 @@ async function mockIcedrApi(page: Page) {
     }
 
     if (method === "POST" && path === `/shares/${shareToken}/items/${fileId}/download-intents`) {
+      const requestBody = request.postDataJSON() as { purpose?: string };
+      state.downloadIntentPurpose = requestBody.purpose ?? "";
       await fulfillJson(route, {
         availableAt: now,
         downloadId: "download-smoke",
         downloadUrl: `/api/shares/${shareToken}/items/${fileId}/download?downloadId=download-smoke`,
         expiresAt: new Date(Date.now() + 60 * 1000).toISOString(),
         filename: fileName,
-        method: "backend-manifest",
+        method: "manifest",
+        purpose: "download",
         nodeId: fileId,
       });
       return;
@@ -291,11 +297,11 @@ function fileNode() {
   return {
     archivedAt: null,
     createdAt: now,
+    hasContent: true,
     id: fileId,
     kind: "doc",
     mimeType: "text/plain",
     name: fileName,
-    objectKey: "objects/smoke-roadmap.txt",
     owner: "Mina",
     parentNodeId: null,
     sizeBytes: 42,
@@ -306,8 +312,7 @@ function fileNode() {
 }
 
 function shareFileNode() {
-  const { objectKey: _objectKey, ...node } = fileNode();
-  return node;
+  return fileNode();
 }
 
 function registeredShare() {
@@ -363,16 +368,18 @@ function workspaceShareSettings() {
 function auditEvent() {
   return {
     action: "share.download_started",
-    actor: "visitor",
+    actor: "account",
     createdAt: now,
     id: "audit-download-smoke",
     metadata: {
-      actorEmail: "reviewer@example.com",
-      actorName: "Guest Visitor",
+      actorDisplayName: "Smoke Admin",
+      actorEmail: "admin@example.com",
+      actorName: "Smoke Admin",
+      actorUserId: "admin-user",
+      identityType: "ica",
       ip: "192.168.1.45",
       result: "success",
       source: "e2e",
-      visitorEmail: "reviewer@example.com",
     },
     nodeId: fileId,
     shareToken,

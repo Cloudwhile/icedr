@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const frontendDir = fileURLToPath(new URL("../", import.meta.url));
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const require = createRequire(import.meta.url);
+const playwrightCli = require.resolve("@playwright/test/cli");
+const viteCli = resolve(dirname(require.resolve("vite")), "../../bin/vite.js");
 const port = process.env.PLAYWRIGHT_PORT ?? "13000";
 const host = "127.0.0.1";
 const baseUrl = `http://${host}:${port}`;
@@ -13,20 +17,33 @@ let previewProcess = null;
 try {
   if (!(await serverReady())) {
     previewProcess = spawn(
-      pnpm,
-      ["exec", "vite", "preview", "--host", host, "--port", port],
+      process.execPath,
+      [
+        viteCli,
+        "preview",
+        "--host",
+        host,
+        "--port",
+        port,
+        "--strictPort",
+      ],
       {
         cwd: frontendDir,
         detached: process.platform !== "win32",
         env: process.env,
-        shell: process.platform === "win32",
-        stdio: "inherit",
+        stdio: "ignore",
+        windowsHide: true,
       },
     );
+    previewProcess.unref();
     await waitForServer();
   }
 
-  const exitCode = await runCommand(pnpm, ["exec", "playwright", "test", ...playwrightArgs]);
+  const exitCode = await runCommand(process.execPath, [
+    playwrightCli,
+    "test",
+    ...playwrightArgs,
+  ]);
   process.exitCode = exitCode;
 } finally {
   await stopPreview();
@@ -67,7 +84,6 @@ function runCommand(command, args) {
     const child = spawn(command, args, {
       cwd: frontendDir,
       env: process.env,
-      shell: process.platform === "win32",
       stdio: "inherit",
     });
     child.on("error", reject);
@@ -103,9 +119,23 @@ async function stopPreview() {
 
 function runDetached(command, args) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: "ignore" });
-    child.on("error", () => resolve());
-    child.on("exit", () => resolve());
+    const child = spawn(command, args, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish();
+    }, 5_000);
+    child.on("error", finish);
+    child.on("exit", finish);
   });
 }
 

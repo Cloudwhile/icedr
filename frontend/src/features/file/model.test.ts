@@ -9,7 +9,7 @@ const baseItem: DriveItem = {
   owner: "Mina",
   modifiedAt: new Date(0).toISOString(),
   mimeType: "text/plain",
-  objectKey: null,
+  hasContent: true,
   sizeBytes: 128,
   shared: true,
   starred: false,
@@ -22,7 +22,7 @@ describe("file model", () => {
   });
 
   it("falls back to folder only for keyless size-less directory records", () => {
-    expect(getItemKind({ ...baseItem, kind: undefined, name: "Shared Folder", mimeType: "", sizeBytes: null })).toBe("folder");
+    expect(getItemKind({ ...baseItem, kind: undefined, name: "Shared Folder", mimeType: "", hasContent: false, sizeBytes: null })).toBe("folder");
   });
 
   it("resolves public extension icon names from file metadata", () => {

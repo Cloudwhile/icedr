@@ -59,7 +59,7 @@ export function DrivePreviewMetadataPanel({
     versions: [],
   });
   const [activeTab, setActiveTab] = useState<"details" | "versions">("details");
-  const canLoadVersions = Boolean(item.objectKey && !item.archivedAt);
+  const canLoadVersions = Boolean(item.hasContent && !item.archivedAt);
   const versions = versionState.itemId === item.id ? versionState.versions : [];
   const versionError = versionState.itemId === item.id ? versionState.error : null;
   const rows = [

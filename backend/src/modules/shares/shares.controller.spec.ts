@@ -1,7 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
-import { AuthService } from '../auth/core/auth.service';
 import { SharesController } from './shares.controller';
 import { SharesService } from './shares.service';
 
@@ -37,11 +36,12 @@ describe('SharesController', () => {
       Promise.resolve({ user: accountUser }),
     );
     const requirePermission = jest.fn();
+    const listShares = jest.fn(() => Promise.resolve([]));
     const sharesService = {
       createVerifiedAccountAccessSession,
+      listShares,
       revokeShare,
     } as unknown as SharesService;
-    const authService = {} as unknown as AuthService;
     const adminGuard = {
       requireAdminSession,
       requirePermission,
@@ -50,8 +50,9 @@ describe('SharesController', () => {
 
     return {
       accountUser,
-      controller: new SharesController(sharesService, authService, adminGuard),
+      controller: new SharesController(sharesService, adminGuard),
       createVerifiedAccountAccessSession,
+      listShares,
       requireAdminSession,
       requirePermission,
       requireSession,
@@ -68,6 +69,20 @@ describe('SharesController', () => {
     expect(requireAdminSession).toHaveBeenCalledWith('Bearer admin');
     expect(requirePermission).not.toHaveBeenCalled();
     expect(revokeShare).toHaveBeenCalledWith('share-token', {});
+  });
+
+  it('scopes member share management lists to the current user', async () => {
+    const { controller, listShares, requirePermission } = createController();
+    requirePermission.mockResolvedValueOnce({
+      user: { id: 'user-member', role: 'member' },
+    });
+
+    await controller.listShares('workspace-default', 'Bearer member');
+
+    expect(listShares).toHaveBeenCalledWith('workspace-default', {
+      actorRole: 'member',
+      actorUserId: 'user-member',
+    });
   });
 
   it('does not revoke shares when admin session fails', async () => {

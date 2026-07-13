@@ -844,6 +844,90 @@ video.icedr-preview-media-object {
   color: var(--accent-hover, var(--foreground));
 }
 
+.icedr-upload-conflict-dialog {
+  width: min(460px, calc(100vw - 28px));
+}
+
+.icedr-upload-conflict-frame {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.icedr-upload-conflict-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.icedr-upload-conflict-title {
+  align-items: center;
+  display: inline-flex;
+  font-size: 15px;
+  font-weight: 760;
+  gap: 8px;
+  min-width: 0;
+}
+
+.icedr-upload-conflict-files {
+  border: 1px solid var(--upload-conflict-border, var(--border));
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+
+.icedr-upload-conflict-files span {
+  color: var(--upload-conflict-muted, var(--muted));
+  font-size: 13px;
+  min-width: 0;
+}
+
+.icedr-upload-conflict-options {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.icedr-upload-conflict-option {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--upload-conflict-border, var(--border));
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 720;
+  gap: 8px;
+  justify-content: flex-start;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.icedr-upload-conflict-option:hover {
+  background: var(--upload-conflict-hover, transparent);
+}
+
+.icedr-upload-conflict-option:focus-visible {
+  outline: 2px solid var(--upload-conflict-focus, var(--focus));
+  outline-offset: 2px;
+}
+
+.icedr-upload-conflict-option[data-tone="danger"] {
+  color: #d94b52;
+}
+
+.icedr-upload-conflict-option[data-tone="success"] {
+  color: #138a57;
+}
+
+@media (max-width: 520px) {
+  .icedr-upload-conflict-options {
+    grid-template-columns: 1fr;
+  }
+}
+
 @keyframes icedr-preview-rise {
   from {
     opacity: 0;

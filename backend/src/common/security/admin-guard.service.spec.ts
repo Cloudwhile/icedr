@@ -10,12 +10,16 @@ describe('AdminGuardService', () => {
   function createRepository(session: unknown) {
     const deleteSessionByTokenHash = jest.fn(() => Promise.resolve());
     const findSessionByTokenHash = jest.fn(() => Promise.resolve(session));
+    const getAuthenticationMethodStatus = jest.fn(() =>
+      Promise.resolve({ compliant: true }),
+    );
     return {
       deleteSessionByTokenHash,
       findSessionByTokenHash,
       repository: {
         deleteSessionByTokenHash,
         findSessionByTokenHash,
+        getAuthenticationMethodStatus,
       } as unknown as AuthRepository,
     };
   }
@@ -90,5 +94,30 @@ describe('AdminGuardService', () => {
     ).resolves.toMatchObject({
       user: { role: 'admin' },
     });
+  });
+
+  it('blocks protected mutations when the account is below the authentication policy', async () => {
+    const { repository } = createRepository(createSession('member'));
+    jest.spyOn(repository, 'getAuthenticationMethodStatus').mockResolvedValue({
+      compliant: false,
+      methodCount: 1,
+      minimumAuthenticationMethods: 2,
+      methods: {
+        password: true,
+        oauth: false,
+        passkey: false,
+        recoveryCodes: 0,
+      },
+    });
+    const guard = new AdminGuardService(repository);
+
+    await expect(
+      guard.requirePermission(`Bearer ${token}`, 'file', 'write'),
+    ).rejects.toMatchObject({
+      response: { code: 'AUTH_METHOD_POLICY_REQUIRED' },
+    });
+    await expect(
+      guard.requirePermission(`Bearer ${token}`, 'file', 'read'),
+    ).resolves.toMatchObject({ user: { role: 'member' } });
   });
 });

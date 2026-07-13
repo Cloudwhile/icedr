@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEmail,
   IsIn,
@@ -47,26 +49,53 @@ export type TranslationSettings = {
   bundles: TranslationBundle[];
 };
 
+export type OAuthProviderProfile = 'oidc' | 'oauth2' | 'icetowne-blog';
+export type OAuthProviderKey =
+  | 'google'
+  | 'github'
+  | 'microsoft'
+  | 'gitlab'
+  | 'oidc'
+  | 'icetowne-blog';
+
 export type OAuthSettings = {
+  id: string;
   enabled: boolean;
-  providerProfile: 'oidc' | 'icetowne-blog';
+  providerKey: OAuthProviderKey;
+  displayName: string;
+  providerProfile: OAuthProviderProfile;
   issuerUrl: string;
+  authorizationUrl: string;
+  tokenUrl: string;
+  userinfoUrl: string;
   clientId: string;
   clientSecret?: string;
   audience: string;
   scopes: string;
   redirectUri: string;
+  allowSignup: boolean;
+  linkByVerifiedEmail: boolean;
+  requireVerifiedEmail: boolean;
+  allowedEmailDomains: string[];
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type OAuthProviderMode = 'standard' | 'compatibility';
 
 export type OAuthSettingsResponse = Omit<OAuthSettings, 'clientSecret'> & {
   clientSecretConfigured: boolean;
+  configured: boolean;
   providerMode: OAuthProviderMode;
 };
 
+export type OAuthProviderListResponse = {
+  activeProvider: OAuthSettingsResponse | null;
+  configured: boolean;
+  providers: OAuthSettingsResponse[];
+};
+
 export type PasskeySettings = {
-  enabled: boolean;
   rpName: string;
   rpId: string;
   origin: string;
@@ -90,17 +119,25 @@ export type MailSettingsResponse = Omit<MailSettings, 'password'> & {
   passwordConfigured: boolean;
 };
 
-export type SetupStatusResponse = {
+type SetupStatusBase = {
   databaseAvailable: boolean;
-  needsSetup: boolean;
-  bootstrapCompleted: boolean;
-  databaseProfile: DatabaseProfile;
-  site: PublicSiteSettings;
-  oauth: OAuthSettingsResponse;
-  passkey: PasskeySettings;
-  mail: MailSettingsResponse;
-  storage: StorageSettingsResponse;
 };
+
+export type SetupStatusResponse =
+  | (SetupStatusBase & {
+      needsSetup: false;
+      bootstrapCompleted: true;
+    })
+  | (SetupStatusBase & {
+      needsSetup: true;
+      bootstrapCompleted: false;
+      databaseProfile: DatabaseProfile;
+      site: PublicSiteSettings;
+      oauth: OAuthSettingsResponse;
+      passkey: PasskeySettings;
+      mail: MailSettingsResponse;
+      storage: StorageSettingsResponse;
+    });
 
 export type AdminSettingsResponse = {
   site: PublicSiteSettings;
@@ -132,17 +169,43 @@ export class UpdateSiteSettingsDto {
 }
 
 export class UpdateOAuthSettingsDto {
+  @IsString()
+  @Length(1, 80)
+  @IsOptional()
+  id?: string;
+
   @IsBoolean()
   @IsOptional()
   enabled?: boolean;
 
-  @IsIn(['oidc', 'icetowne-blog'])
+  @IsIn(['google', 'github', 'microsoft', 'gitlab', 'oidc', 'icetowne-blog'])
+  @IsOptional()
+  providerKey?: OAuthSettings['providerKey'];
+
+  @IsString()
+  @Length(1, 120)
+  @IsOptional()
+  displayName?: string;
+
+  @IsIn(['oidc', 'oauth2', 'icetowne-blog'])
   @IsOptional()
   providerProfile?: OAuthSettings['providerProfile'];
 
   @IsString()
   @IsOptional()
   issuerUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  authorizationUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  tokenUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  userinfoUrl?: string;
 
   @IsString()
   @IsOptional()
@@ -163,13 +226,27 @@ export class UpdateOAuthSettingsDto {
   @IsString()
   @IsOptional()
   redirectUri?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  allowSignup?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  linkByVerifiedEmail?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  requireVerifiedEmail?: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(32)
+  @IsString({ each: true })
+  @IsOptional()
+  allowedEmailDomains?: string[];
 }
 
 export class UpdatePasskeySettingsDto {
-  @IsBoolean()
-  @IsOptional()
-  enabled?: boolean;
-
   @IsString()
   @Length(1, 80)
   @IsOptional()

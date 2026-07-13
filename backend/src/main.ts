@@ -7,6 +7,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { shouldExposeApiDocs } from './common/security/api-exposure-policy';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -14,6 +15,7 @@ async function bootstrap() {
   const port = config.get<number>('api.port') ?? 3001;
   const host = config.get<string>('api.host') ?? '127.0.0.1';
 
+  app.set('trust proxy', config.get<boolean>('api.trustProxy') ?? false);
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: config.get<string>('api.corsOrigin') ?? 'http://localhost:3000',
@@ -26,16 +28,18 @@ async function bootstrap() {
     }),
   );
 
-  const documentConfig = new DocumentBuilder()
-    .setTitle('ICEDR')
-    .setDescription(
-      'NestJS monolith for workspace drive, files, shares, and audit logs',
-    )
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, documentConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  if (shouldExposeApiDocs(config.get<boolean>('app.production') ?? false)) {
+    const documentConfig = new DocumentBuilder()
+      .setTitle('ICEDR')
+      .setDescription(
+        'NestJS monolith for workspace drive, files, shares, and audit logs',
+      )
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, documentConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
   configureFrontendStaticAssets(app);
 
   await app.listen(port, host);

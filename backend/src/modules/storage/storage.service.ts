@@ -17,11 +17,14 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  NotFoundException,
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, createWriteStream, type Dirent } from 'fs';
+import { Agent as HttpAgent } from 'node:http';
+import { Agent as HttpsAgent } from 'node:https';
 import {
   mkdir,
   readFile,
@@ -32,10 +35,11 @@ import {
   writeFile,
 } from 'fs/promises';
 import { dirname, relative, resolve, sep } from 'path';
-import type { Readable } from 'stream';
+import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
+import { createRestrictedLookup } from '../../common/security/outbound-http-policy';
 import { createAuditEvent } from '../logs/audit-events';
 import {
   StorageSettings,
@@ -50,6 +54,11 @@ import {
 import { StorageSettingsRepository } from './storage-settings.repository';
 import { StorageReconcileRepository } from './storage-reconcile.repository';
 import { getWorkspaceObjectPrefixes } from './storage-object-keys';
+import { validateStorageEndpoint } from './storage-endpoint-policy';
+import {
+  RangeNotSatisfiableException,
+  resolveObjectByteRange,
+} from './object-byte-range';
 
 export const STORAGE_SIGNER = 'STORAGE_SIGNER';
 
@@ -80,9 +89,28 @@ type StoragePhysicalCapacity = {
 type StorageUsageScope = 'workspace' | 'personal';
 type StorageUsageQuotaSource = StorageUsageResponse['quotaSource'];
 
+export type ObjectStreamResult = {
+  acceptRanges: 'bytes';
+  contentLength: number;
+  contentRange: string | null;
+  contentType: string;
+  etag: string | null;
+  lastModified: Date | null;
+  statusCode: 200 | 206;
+  stream: Readable;
+};
+
 @Injectable()
 export class StorageService {
   private readonly signer: Signer;
+  private readonly httpAgent = new HttpAgent({
+    keepAlive: true,
+    lookup: createRestrictedLookup(),
+  });
+  private readonly httpsAgent = new HttpsAgent({
+    keepAlive: true,
+    lookup: createRestrictedLookup(),
+  });
 
   constructor(
     private readonly config: ConfigService,
@@ -98,10 +126,18 @@ export class StorageService {
 
   private createClient(settings: ObjectStorageConnectionSettings) {
     this.assertConfigured(settings);
+    this.assertEndpointSafe(settings.endpoint);
     return new S3Client({
       region: settings.region,
       endpoint: settings.endpoint,
       forcePathStyle: settings.forcePathStyle,
+      requestHandler: {
+        connectionTimeout: 10_000,
+        httpAgent: this.httpAgent,
+        httpsAgent: this.httpsAgent,
+        requestTimeout: 30_000,
+        throwOnRequestTimeout: true,
+      },
       credentials: {
         accessKeyId: settings.accessKeyId,
         secretAccessKey: settings.secretAccessKey,
@@ -141,21 +177,14 @@ export class StorageService {
       enableConfiguredObjectStorage: false,
     });
     const nextDraft = this.applySettingsUpdate(current, dto);
-    const switchingToDistributed =
-      current.distributedStorageEnabled === false &&
-      nextDraft.distributedStorageEnabled === true;
     if (nextDraft.distributedStorageEnabled && !this.isConfigured(nextDraft)) {
       throw new ServiceUnavailableException(
         'Object storage must be configured before enabling distributed storage',
       );
     }
+    if (nextDraft.endpoint) this.assertEndpointSafe(nextDraft.endpoint);
     await this.assertStoragePolicyQuotaWithinCapacity(nextDraft);
     const next = await this.settingsRepository.update(nextDraft);
-
-    if (switchingToDistributed) {
-      await this.purgeLocalStorage();
-    }
-
     return this.withProfileState(next, await this.getPhysicalCapacity(next));
   }
 
@@ -166,6 +195,7 @@ export class StorageService {
       await this.getResolvedSettings(),
       dto,
     );
+    this.assertEndpointSafe(settings.endpoint);
     const bucket = this.getBucket(settings);
 
     try {
@@ -699,38 +729,117 @@ export class StorageService {
     );
   }
 
-  async createPresignedDownload(key: string, filename: string) {
-    if (this.isLocalObjectKey(key)) {
-      return {
-        key,
-        bucket: 'local',
-        method: 'GET' as const,
-        url: `/api/storage/local-files?objectKey=${encodeURIComponent(key)}&filename=${encodeURIComponent(filename)}`,
-        expiresInSeconds: 300,
-        expiresAt: new Date(Date.now() + 300000).toISOString(),
-      };
+  async openObjectStream(input: {
+    objectKey: string;
+    range?: string;
+  }): Promise<ObjectStreamResult> {
+    if (
+      input.objectKey.startsWith('local/') &&
+      !this.isLocalObjectKey(input.objectKey)
+    ) {
+      throw new BadRequestException('Local object key is invalid');
+    }
+    if (!this.isLocalObjectKey(input.objectKey)) {
+      return this.openDistributedObjectStream(input);
     }
 
-    const expiresInSeconds = 300;
-    const settings = await this.getResolvedSettings();
-    const bucket = this.getBucket(settings);
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      ResponseContentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
-    });
-    const signedUrl = await this.signer(this.createClient(settings), command, {
-      expiresIn: expiresInSeconds,
-    });
+    const filePath = this.resolveLocalObjectPath(input.objectKey);
+    let fileStat;
+    try {
+      fileStat = await stat(filePath);
+      if (!fileStat.isFile()) throw new Error('Not a file');
+    } catch {
+      throw new NotFoundException('Stored object not found');
+    }
+    const range = resolveObjectByteRange(input.range, fileStat.size);
 
     return {
-      key,
-      bucket,
-      method: 'GET' as const,
-      url: this.withPublicObjectEndpoint(signedUrl),
-      expiresInSeconds,
-      expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+      acceptRanges: 'bytes',
+      contentLength: range?.length ?? fileStat.size,
+      contentRange: range
+        ? `bytes ${range.start}-${range.end}/${fileStat.size}`
+        : null,
+      contentType: 'application/octet-stream',
+      etag: null,
+      lastModified: fileStat.mtime,
+      statusCode: range ? 206 : 200,
+      stream: createReadStream(filePath, range ?? undefined),
     };
+  }
+
+  private async openDistributedObjectStream(input: {
+    objectKey: string;
+    range?: string;
+  }): Promise<ObjectStreamResult> {
+    if (!input.objectKey.trim() || hasControlCharacter(input.objectKey)) {
+      throw new BadRequestException('Object key is invalid');
+    }
+    const settings = await this.getResolvedSettings();
+    const client = this.createClient(settings);
+    const bucket = this.getBucket(settings);
+
+    try {
+      let range = null;
+      let totalSize: number | null = null;
+      if (input.range?.trim()) {
+        const head = await client.send(
+          new HeadObjectCommand({ Bucket: bucket, Key: input.objectKey }),
+        );
+        totalSize = this.normalizeObjectSize(head.ContentLength);
+        range = resolveObjectByteRange(input.range, totalSize);
+      }
+      const response = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: input.objectKey,
+          Range: range ? `bytes=${range.start}-${range.end}` : undefined,
+        }),
+      );
+      const stream = this.toNodeReadable(response.Body);
+      const contentLength = range
+        ? range.length
+        : this.normalizeObjectSize(response.ContentLength);
+
+      return {
+        acceptRanges: 'bytes',
+        contentLength,
+        contentRange:
+          range && totalSize !== null
+            ? `bytes ${range.start}-${range.end}/${totalSize}`
+            : null,
+        contentType: response.ContentType || 'application/octet-stream',
+        etag: response.ETag ?? null,
+        lastModified: response.LastModified ?? null,
+        statusCode: range ? 206 : 200,
+        stream,
+      };
+    } catch (error) {
+      if (this.isNotFoundError(error)) {
+        throw new NotFoundException('Stored object not found');
+      }
+      if (
+        error instanceof BadRequestException ||
+        error instanceof RangeNotSatisfiableException
+      ) {
+        throw error;
+      }
+      throw new ServiceUnavailableException('Stored object could not be read');
+    }
+  }
+
+  private normalizeObjectSize(value: number | undefined) {
+    if (!Number.isSafeInteger(value) || value === undefined || value < 0) {
+      throw new ServiceUnavailableException('Stored object size is invalid');
+    }
+    return value;
+  }
+
+  private toNodeReadable(body: unknown) {
+    if (body instanceof Readable) return body;
+    if (body && typeof body === 'object' && Symbol.asyncIterator in body) {
+      return Readable.from(body as AsyncIterable<Uint8Array>);
+    }
+    throw new ServiceUnavailableException('Stored object body is unavailable');
   }
 
   async assertObjectExists(key: string) {
@@ -1015,19 +1124,6 @@ export class StorageService {
     return this.reconcileRepository.listTasks(limit);
   }
 
-  async getLocalDownload(objectKey: string, filename: string) {
-    if (!this.isLocalObjectKey(objectKey)) {
-      throw new BadRequestException('Local object key is invalid');
-    }
-    const filePath = this.resolveLocalObjectPath(objectKey);
-    await this.assertLocalObjectExists(objectKey);
-    return {
-      filename: filename || objectKey.split('/').at(-1) || 'download',
-      contentType: 'application/octet-stream',
-      stream: createReadStream(filePath),
-    };
-  }
-
   async readObjectText(objectKey: string, maxBytes = 1024 * 1024) {
     if (this.isLocalObjectKey(objectKey)) {
       const filePath = this.resolveLocalObjectPath(objectKey);
@@ -1086,6 +1182,18 @@ export class StorageService {
   private assertConfigured(settings: ObjectStorageConnectionSettings) {
     if (!this.isConfigured(settings)) {
       throw new ServiceUnavailableException('Object storage is not configured');
+    }
+  }
+
+  private assertEndpointSafe(endpoint: string) {
+    try {
+      validateStorageEndpoint(endpoint);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error
+          ? error.message
+          : 'Object storage endpoint is invalid',
+      );
     }
   }
 
@@ -1619,16 +1727,6 @@ export class StorageService {
     }
   }
 
-  private async purgeLocalStorage() {
-    await this.prisma.fileNode.deleteMany({
-      where: { objectKey: { startsWith: 'local/' } },
-    });
-    await rm(resolve(this.getLocalRoot()), {
-      recursive: true,
-      force: true,
-    });
-  }
-
   private addStorageBucket(
     buckets: Map<string, { bytes: number; count: number; label: string }>,
     id: string,
@@ -1747,4 +1845,11 @@ export class StorageService {
       maybeError.$metadata?.httpStatusCode === 404
     );
   }
+}
+
+function hasControlCharacter(value: string) {
+  return Array.from(value).some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f || code === 0x7f;
+  });
 }

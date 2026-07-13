@@ -4,6 +4,7 @@ function createTransferRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'transfer-test',
     workspaceId: 'workspace-default',
+    ownerUserId: 'user-a',
     nodeId: null,
     objectKey: 'uploads/test.bin',
     name: 'test.bin',
@@ -162,11 +163,12 @@ describe('TransfersRepository', () => {
     };
     const repository = new TransfersRepository(prisma as never);
 
-    const transfers = await repository.list('workspace-default', 50);
+    const transfers = await repository.list('workspace-default', 50, 'user-a');
 
     expect(capturedWhere).toEqual({
       transferType: 'upload',
       workspaceId: 'workspace-default',
+      ownerUserId: 'user-a',
     });
     expect(transfers).toHaveLength(1);
     expect(transfers[0]).toMatchObject({
@@ -210,6 +212,7 @@ describe('TransfersRepository', () => {
     const failed = await repository.failStaleRunning(
       cutoff,
       'workspace-default',
+      'user-a',
     );
 
     expect(capturedFindWhere).toEqual({
@@ -217,10 +220,12 @@ describe('TransfersRepository', () => {
       transferType: 'upload',
       updatedAt: { lt: cutoff },
       workspaceId: 'workspace-default',
+      ownerUserId: 'user-a',
     });
     expect(capturedUpdateWhere).toEqual({
       id: { in: ['transfer-upload'] },
       transferType: 'upload',
+      ownerUserId: 'user-a',
     });
     expect(failed[0]).toMatchObject({
       id: 'transfer-upload',

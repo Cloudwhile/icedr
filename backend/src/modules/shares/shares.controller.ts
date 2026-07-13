@@ -3,11 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  Head,
   Param,
   Post,
   Query,
   Res,
   Headers,
+  HttpException,
+  HttpStatus,
   Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -18,12 +21,12 @@ import {
   createVisitorAuditMetadata,
 } from '../../common/security/audit-metadata';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
-import { AuthService } from '../auth/core/auth.service';
 import {
-  SendShareEmailCodeDto,
-  VerifyShareEmailCodeDto,
-} from './share-access.dto';
-import { CreateShareDto } from './shares.dto';
+  applyDownloadErrorHeaders,
+  writeDownloadResponse,
+} from '../../common/http/download-response';
+import type { AuthUserResponse } from '../auth/core/auth.dto';
+import { CreateShareDownloadIntentDto, CreateShareDto } from './shares.dto';
 import { SharesService } from './shares.service';
 
 @ApiTags('shares')
@@ -31,7 +34,6 @@ import { SharesService } from './shares.service';
 export class SharesController {
   constructor(
     private readonly sharesService: SharesService,
-    private readonly authService: AuthService,
     private readonly adminGuard: AdminGuardService,
   ) {}
 
@@ -49,6 +51,10 @@ export class SharesController {
     return this.sharesService.createShare(
       dto,
       createRequestAuditMetadata(session, request),
+      {
+        actorRole: session.user.role,
+        actorUserId: session.user.id,
+      },
     );
   }
 
@@ -57,8 +63,15 @@ export class SharesController {
     @Query('workspaceId') workspaceId?: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'share', 'read');
-    return this.sharesService.listShares(workspaceId);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'share',
+      'read',
+    );
+    return this.sharesService.listShares(workspaceId, {
+      actorRole: session.user.role,
+      actorUserId: session.user.id,
+    });
   }
 
   @Get(':token')
@@ -86,32 +99,6 @@ export class SharesController {
     );
   }
 
-  @Post(':token/access-sessions/email-code')
-  sendEmailAccessCode(
-    @Param('token') token: string,
-    @Body() dto: SendShareEmailCodeDto,
-    @Req() request: Request,
-  ) {
-    return this.sharesService.sendEmailAccessCode(
-      token,
-      dto,
-      createVisitorAuditMetadata(request),
-    );
-  }
-
-  @Post(':token/access-sessions/verify-email')
-  verifyEmailAccessCode(
-    @Param('token') token: string,
-    @Body() dto: VerifyShareEmailCodeDto,
-    @Req() request: Request,
-  ) {
-    return this.sharesService.verifyEmailAccessCode(
-      token,
-      dto,
-      createVisitorAuditMetadata(request),
-    );
-  }
-
   @Post(':token/access-sessions/account')
   async createAccountAccessSession(
     @Param('token') token: string,
@@ -126,55 +113,11 @@ export class SharesController {
     );
   }
 
-  @Post(':token/access-sessions/oauth')
-  async createOAuthAccessSession(
-    @Param('token') token: string,
-    @Req() request: Request,
-  ) {
-    await this.sharesService.getShare(
-      token,
-      createVisitorAuditMetadata(request),
-    );
-    return this.authService.startOAuthShareAccess(token);
-  }
-
-  @Get(':token/oauth/start')
-  async startOAuthAccess(
-    @Param('token') token: string,
-    @Req() request: Request,
-  ) {
-    await this.sharesService.getShare(
-      token,
-      createVisitorAuditMetadata(request),
-    );
-    return this.authService.startOAuthShareAccess(token);
-  }
-
-  @Get('oauth/callback')
-  async oauthCallback(@Req() request: Request, @Res() response: Response) {
-    const result = await this.authService.handleOAuthCallback(
-      `${request.protocol}://${request.get('host')}${request.originalUrl}`,
-    );
-    if (result.flow !== 'share' || !result.shareToken) {
-      response.redirect(302, '/');
-      return;
-    }
-    const session = await this.sharesService.createVerifiedOAuthAccessSession(
-      result.shareToken,
-      result.user,
-      createRequestAuditMetadata({ user: result.user }, request),
-    );
-    const redirectTarget = this.authService.buildShareOAuthFrontendCallbackUrl(
-      result.shareToken,
-      session.sessionId,
-    );
-    response.redirect(302, redirectTarget);
-  }
-
   @Post(':token/items/:nodeId/download-intents')
   async createDownloadIntent(
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
+    @Body() dto: CreateShareDownloadIntentDto,
     @Headers('x-share-access-session') accessSessionId?: string,
     @Headers('authorization') authorization?: string,
     @Req() request?: Request,
@@ -185,6 +128,8 @@ export class SharesController {
       nodeId,
       accessSessionId,
       audit.metadata,
+      audit.user,
+      dto.purpose ?? 'download',
     );
   }
 
@@ -193,28 +138,32 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Query('downloadId') downloadId: string,
-    @Query('purpose') purpose: string | undefined,
+    @Headers('range') range: string | undefined,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const download = await this.sharesService.downloadSharedNode(
-      token,
-      nodeId,
-      downloadId,
-      createVisitorAuditMetadata(request),
-      { auditPurpose: purpose === 'preview' ? 'preview' : 'download' },
-    );
-    if (download.method === 'presigned-url') {
-      response.redirect(302, download.redirectUrl);
-      return;
+    try {
+      const download = await this.sharesService.downloadSharedNode(
+        token,
+        nodeId,
+        downloadId,
+        createVisitorAuditMetadata(request),
+        { range },
+      );
+      return writeDownloadResponse(download, request, response);
+    } catch (error) {
+      applyDownloadErrorHeaders(error, response);
+      throw error;
     }
+  }
 
-    response.setHeader('Content-Type', download.contentType);
-    response.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(download.filename)}"`,
+  @Head(':token/items/:nodeId/download')
+  rejectDownloadHead(@Res({ passthrough: true }) response: Response) {
+    response.setHeader('Allow', 'GET');
+    throw new HttpException(
+      'HEAD is not supported for download capabilities',
+      HttpStatus.METHOD_NOT_ALLOWED,
     );
-    return download.content;
   }
 
   @Post(':token/items/:nodeId/preview-intents')
@@ -231,6 +180,7 @@ export class SharesController {
       nodeId,
       accessSessionId,
       audit.metadata,
+      audit.user,
     );
   }
 
@@ -246,7 +196,11 @@ export class SharesController {
   private async resolveShareRequestAudit(
     authorization: string | undefined,
     request?: Request,
-  ): Promise<{ actor: AuditActor; metadata: Record<string, unknown> }> {
+  ): Promise<{
+    actor: AuditActor;
+    metadata: Record<string, unknown>;
+    user?: AuthUserResponse;
+  }> {
     if (!authorization) {
       return {
         actor: 'visitor',
@@ -259,6 +213,7 @@ export class SharesController {
       return {
         actor: 'account',
         metadata: createRequestAuditMetadata(session, request),
+        user: session.user,
       };
     } catch {
       return {
