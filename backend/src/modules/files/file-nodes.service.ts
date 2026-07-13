@@ -54,8 +54,8 @@ import {
 } from './file-preview-policy';
 import type { Readable } from 'stream';
 import {
+  createSuffixedFileName,
   getFileNameConflictKey,
-  maxFileNameLength,
   normalizeFileName,
 } from '../../common/security/file-name-policy';
 
@@ -707,16 +707,26 @@ export class FileNodesService {
       source.id,
       options,
     );
-    const name = dto.name
-      ? this.normalizeNodeName(dto.name)
-      : this.createCopyName(source.name);
-    await this.assertNoSiblingNameConflict({
-      name,
-      ownerUserId: source.ownerUserId ?? undefined,
-      parentNodeId,
-      spaceScope: source.spaceScope,
-      workspaceId: source.workspaceId,
-    });
+    let name: string;
+    if (dto.name) {
+      name = this.normalizeNodeName(dto.name);
+      await this.assertNoSiblingNameConflict({
+        name,
+        ownerUserId: source.ownerUserId ?? undefined,
+        parentNodeId,
+        spaceScope: source.spaceScope,
+        workspaceId: source.workspaceId,
+      });
+    } else {
+      const proposedName = createSuffixedFileName(source.name, ' copy');
+      const siblings = await this.listSiblingNodes({
+        ownerUserId: source.ownerUserId ?? undefined,
+        parentNodeId,
+        spaceScope: source.spaceScope,
+        workspaceId: source.workspaceId,
+      });
+      name = this.createAvailableSiblingFileName(proposedName, siblings);
+    }
     const node = await this.fileNodesRepository.copyTree(source, {
       name,
       parentNodeId,
@@ -1726,7 +1736,7 @@ export class FileNodesService {
       };
     }
 
-    throw new BadRequestException(
+    throw new ConflictException(
       'File node name conflicts with an existing item',
     );
   }
@@ -1758,11 +1768,8 @@ export class FileNodesService {
     );
     if (!siblingKeys.has(getFileNameConflictKey(fileName))) return fileName;
 
-    const { baseName, extension } = splitFileNameForDuplicate(fileName);
     for (let index = 2; index < 10000; index += 1) {
-      const candidate = this.normalizeNodeName(
-        createDuplicateFileName(baseName, extension, index),
-      );
+      const candidate = createSuffixedFileName(fileName, ` (${index})`);
       if (!siblingKeys.has(getFileNameConflictKey(candidate))) {
         return candidate;
       }
@@ -1794,7 +1801,7 @@ export class FileNodesService {
     ) {
       return conflicts[0];
     }
-    throw new BadRequestException(
+    throw new ConflictException(
       'File node name conflicts with an existing item',
     );
   }
@@ -1809,7 +1816,7 @@ export class FileNodesService {
   }) {
     const conflicts = await this.findSiblingNameConflicts(input);
     if (conflicts.length === 0) return;
-    throw new BadRequestException(
+    throw new ConflictException(
       'File node name conflicts with an existing item',
     );
   }
@@ -1870,14 +1877,6 @@ export class FileNodesService {
     ) {
       throw new BadRequestException('File type cannot be edited as text');
     }
-  }
-
-  private createCopyName(name: string) {
-    const dotIndex = name.lastIndexOf('.');
-    if (dotIndex > 0 && dotIndex < name.length - 1) {
-      return `${name.slice(0, dotIndex)} copy${name.slice(dotIndex)}`;
-    }
-    return `${name} copy`;
   }
 
   private async assertValidParent(
@@ -2010,31 +2009,6 @@ export class FileNodesService {
         return 'Preview is not supported for this file type';
     }
   }
-}
-
-function splitFileNameForDuplicate(name: string) {
-  const dotIndex = name.lastIndexOf('.');
-  if (dotIndex <= 0 || dotIndex === name.length - 1) {
-    return { baseName: name, extension: '' };
-  }
-  return {
-    baseName: name.slice(0, dotIndex),
-    extension: name.slice(dotIndex),
-  };
-}
-
-function createDuplicateFileName(
-  baseName: string,
-  extension: string,
-  index: number,
-) {
-  const suffix = ` (${index})`;
-  const maxBaseLength = Math.max(
-    1,
-    maxFileNameLength - [...extension].length - [...suffix].length,
-  );
-  const base = [...baseName].slice(0, maxBaseLength).join('').trim() || 'file';
-  return `${base}${suffix}${extension}`;
 }
 
 function resolveEffectiveQuotaBytes(

@@ -269,7 +269,10 @@ model FileNode {
   workspaceId  String    @map("workspace_id")
   spaceScope   String    @default("workspace") @map("space_scope")
   parentNodeId String?   @map("parent_node_id")
+  directoryKey String    @map("directory_key")
+  ownerScopeKey String   @map("owner_scope_key")
   name         String
+  nameKey      String    @map("name_key")
   kind         String
   mimeType     String    @map("mime_type")
   sizeBytes    BigInt?   @map("size_bytes")
@@ -289,6 +292,7 @@ model FileNode {
 
   @@index([workspaceId, spaceScope])
   @@index([ownerUserId])
+  @@unique([workspaceId, spaceScope, ownerScopeKey, directoryKey, nameKey], map: "file_nodes_scope_directory_name_key")
   @@map("file_nodes")
 }
 

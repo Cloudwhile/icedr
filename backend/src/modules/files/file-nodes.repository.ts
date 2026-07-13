@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from 'crypto';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAuditEvent, type AuditActor } from '../logs/audit-events';
 import { PrismaService } from '../../database/prisma.service';
@@ -31,6 +31,12 @@ import {
   resolveFilePreviewCapability,
   type PreviewRenderMode,
 } from './file-preview-policy';
+import {
+  createFileNodeStorageKeys,
+  createSuffixedFileName,
+  getFileNameConflictKey,
+  normalizeFileName,
+} from '../../common/security/file-name-policy';
 
 export type FileAuditAction =
   | 'file.folder_created'
@@ -147,34 +153,47 @@ export class FileNodesRepository {
     },
   ) {
     const now = new Date();
-    const row = await this.prisma.fileNode.create({
-      data: {
-        id: `node_${randomBytes(12).toString('base64url')}`,
-        workspaceId: dto.workspaceId,
-        spaceScope: dto.spaceScope ?? 'workspace',
-        parentNodeId: dto.parentNodeId ?? null,
-        name: dto.name,
-        kind: 'folder',
-        mimeType: 'inode/directory',
-        sizeBytes: null,
-        objectKey: null,
-        ownerName: dto.owner ?? '',
-        ownerUserId: dto.ownerUserId ?? null,
-        starred: false,
-        archivedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      },
+    const id = `node_${randomBytes(12).toString('base64url')}`;
+    const spaceScope = dto.spaceScope ?? 'workspace';
+    const storageKeys = createFileNodeStorageKeys({
+      archived: false,
+      id,
+      name: dto.name,
+      ownerUserId: dto.ownerUserId,
+      parentNodeId: dto.parentNodeId,
+      spaceScope,
     });
+    const row = await this.executeFileNodeWrite(() =>
+      this.prisma.fileNode.create({
+        data: {
+          id,
+          workspaceId: dto.workspaceId,
+          spaceScope,
+          parentNodeId: dto.parentNodeId ?? null,
+          ...storageKeys,
+          name: dto.name,
+          kind: 'folder',
+          mimeType: 'inode/directory',
+          sizeBytes: null,
+          objectKey: null,
+          ownerName: dto.owner ?? '',
+          ownerUserId: dto.ownerUserId ?? null,
+          starred: false,
+          archivedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
     return this.mapRow(row);
   }
 
   async rename(id: string, name: string) {
-    return this.updateNode(id, { name, updatedAt: new Date() });
+    return this.updateNodeIdentity(id, { name });
   }
 
   async move(id: string, parentNodeId: string | null) {
-    return this.updateNode(id, { parentNodeId, updatedAt: new Date() });
+    return this.updateNodeIdentity(id, { parentNodeId });
   }
 
   async updateSize(id: string, sizeBytes: number) {
@@ -238,28 +257,39 @@ export class FileNodesRepository {
             : null;
       const copiedName =
         row.id === source.id ? options.name?.trim() || row.name : row.name;
-      const copied = await this.prisma.fileNode.create({
-        data: {
-          id: copiedId,
-          workspaceId: row.workspaceId,
-          spaceScope: row.spaceScope,
-          parentNodeId: copiedParent,
-          name: copiedName,
-          kind: row.kind,
-          mimeType: row.mimeType,
-          sizeBytes:
-            row.sizeBytes === null || row.sizeBytes === undefined
-              ? null
-              : BigInt(row.sizeBytes),
-          objectKey: row.objectKey,
-          ownerName: row.owner,
-          ownerUserId: row.ownerUserId,
-          starred: false,
-          archivedAt: null,
-          createdAt: now,
-          updatedAt: now,
-        },
+      const storageKeys = createFileNodeStorageKeys({
+        archived: false,
+        id: copiedId,
+        name: copiedName,
+        ownerUserId: row.ownerUserId,
+        parentNodeId: copiedParent,
+        spaceScope: row.spaceScope,
       });
+      const copied = await this.executeFileNodeWrite(() =>
+        this.prisma.fileNode.create({
+          data: {
+            id: copiedId,
+            workspaceId: row.workspaceId,
+            spaceScope: row.spaceScope,
+            parentNodeId: copiedParent,
+            ...storageKeys,
+            name: copiedName,
+            kind: row.kind,
+            mimeType: row.mimeType,
+            sizeBytes:
+              row.sizeBytes === null || row.sizeBytes === undefined
+                ? null
+                : BigInt(row.sizeBytes),
+            objectKey: row.objectKey,
+            ownerName: row.owner,
+            ownerUserId: row.ownerUserId,
+            starred: false,
+            archivedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        }),
+      );
       copiedNodes.push(this.mapRow(copied));
     }
     return copiedNodes[0] ?? null;
@@ -291,19 +321,31 @@ export class FileNodesRepository {
     const paths = await this.buildPathsForRows(rows);
     const now = new Date();
 
-    await this.prisma.$transaction(
-      rows.map((row) =>
-        this.prisma.fileNode.update({
-          where: { id: row.id },
-          data: {
-            archivedAt: row.archivedAt ?? now,
-            archivedBy: actor?.trim() || row.archivedBy || 'workspace',
-            originalParentNodeId: row.originalParentNodeId ?? row.parentNodeId,
-            originalPath: row.originalPath ?? paths.get(row.id) ?? row.name,
-            updatedAt: now,
-          },
-        }),
-      ),
+    const archiveOperations = rows.map((row) => {
+      const storageKeys = createFileNodeStorageKeys({
+        archived: true,
+        id: row.id,
+        name: row.name,
+        ownerUserId: row.ownerUserId,
+        parentNodeId: row.parentNodeId,
+        spaceScope: row.spaceScope,
+      });
+
+      return this.prisma.fileNode.update({
+        where: { id: row.id },
+        data: {
+          ...storageKeys,
+          archivedAt: row.archivedAt ?? now,
+          archivedBy: actor?.trim() || row.archivedBy || 'workspace',
+          originalParentNodeId: row.originalParentNodeId ?? row.parentNodeId,
+          originalPath: row.originalPath ?? paths.get(row.id) ?? row.name,
+          updatedAt: now,
+        },
+      });
+    });
+
+    await this.executeFileNodeWrite(() =>
+      this.prisma.$transaction(archiveOperations),
     );
 
     return this.findById(id);
@@ -331,31 +373,47 @@ export class FileNodesRepository {
     const targetName = await this.resolveRestoreName({
       desiredName: options.name?.trim() || source.name,
       excludeIds: ids,
+      ownerUserId: source.ownerUserId,
       parentNodeId: targetParentNodeId ?? null,
       spaceScope: source.spaceScope as FileNodeSpaceScope,
       workspaceId: source.workspaceId,
     });
     const now = new Date();
 
-    await this.prisma.$transaction(
-      rowsToRestore.map((row) =>
-        this.prisma.fileNode.update({
-          where: { id: row.id },
-          data: {
-            ...(row.id === source.id
-              ? {
-                  name: targetName,
-                  parentNodeId: targetParentNodeId ?? null,
-                }
-              : {}),
-            archivedAt: null,
-            archivedBy: null,
-            originalParentNodeId: null,
-            originalPath: null,
-            updatedAt: now,
-          },
-        }),
-      ),
+    const restoreOperations = rowsToRestore.map((row) => {
+      const restoredName = row.id === source.id ? targetName : row.name;
+      const restoredParentNodeId =
+        row.id === source.id ? (targetParentNodeId ?? null) : row.parentNodeId;
+      const storageKeys = createFileNodeStorageKeys({
+        archived: false,
+        id: row.id,
+        name: restoredName,
+        ownerUserId: row.ownerUserId,
+        parentNodeId: restoredParentNodeId,
+        spaceScope: row.spaceScope,
+      });
+
+      return this.prisma.fileNode.update({
+        where: { id: row.id },
+        data: {
+          ...(row.id === source.id
+            ? {
+                name: restoredName,
+                parentNodeId: restoredParentNodeId,
+              }
+            : {}),
+          ...storageKeys,
+          archivedAt: null,
+          archivedBy: null,
+          originalParentNodeId: null,
+          originalPath: null,
+          updatedAt: now,
+        },
+      });
+    });
+
+    await this.executeFileNodeWrite(() =>
+      this.prisma.$transaction(restoreOperations),
     );
 
     return this.findById(id);
@@ -559,63 +617,100 @@ export class FileNodesRepository {
     const now = new Date();
     const parentNodeId = dto.parentNodeId ?? null;
     const spaceScope = dto.spaceScope ?? 'workspace';
-    const row = await this.prisma.$transaction(async (tx) => {
-      const existing = dto.conflictTargetNodeId
-        ? await tx.fileNode.findUnique({
-            where: { id: dto.conflictTargetNodeId },
-          })
-        : await tx.fileNode.findFirst({
-            where: {
-              archivedAt: null,
+    const requestedStorageKeys = createFileNodeStorageKeys({
+      archived: false,
+      id: dto.conflictTargetNodeId ?? '',
+      name: dto.fileName,
+      ownerUserId: dto.ownerUserId,
+      parentNodeId,
+      spaceScope,
+    });
+    const row = await this.executeFileNodeWrite(() =>
+      this.prisma.$transaction(async (tx) => {
+        const existing = dto.conflictTargetNodeId
+          ? await tx.fileNode.findFirst({
+              where: {
+                id: dto.conflictTargetNodeId,
+                archivedAt: null,
+                directoryKey: requestedStorageKeys.directoryKey,
+                nameKey: requestedStorageKeys.nameKey,
+                ownerScopeKey: requestedStorageKeys.ownerScopeKey,
+                parentNodeId,
+                spaceScope,
+                workspaceId: dto.workspaceId,
+              },
+            })
+          : null;
+        if (dto.conflictTargetNodeId && !existing?.objectKey) {
+          throw new ConflictException(
+            'Upload conflict target changed while the upload was running',
+          );
+        }
+
+        if (existing?.objectKey) {
+          if (dto.conflictStrategy !== 'overwrite') {
+            await this.createVersionForNode(tx, existing, {
+              remark: 'Replaced by upload',
+              uploadedBy: dto.owner ?? existing.ownerName,
+            });
+          }
+          const ownerUserId = dto.ownerUserId ?? existing.ownerUserId;
+          const storageKeys = createFileNodeStorageKeys({
+            archived: false,
+            id: existing.id,
+            name: dto.fileName,
+            ownerUserId,
+            parentNodeId: existing.parentNodeId,
+            spaceScope: existing.spaceScope,
+          });
+          return tx.fileNode.update({
+            where: { id: existing.id },
+            data: {
+              ...storageKeys,
+              kind: this.getKind(dto.fileName, dto.mimeType),
+              mimeType: dto.mimeType ?? 'application/octet-stream',
               name: dto.fileName,
-              parentNodeId,
-              spaceScope,
-              workspaceId: dto.workspaceId,
+              objectKey: dto.objectKey,
+              ownerUserId,
+              ownerName: dto.owner ?? existing.ownerName,
+              sizeBytes: BigInt(dto.sizeBytes),
+              updatedAt: now,
             },
           });
-
-      if (existing?.objectKey) {
-        if (dto.conflictStrategy !== 'overwrite') {
-          await this.createVersionForNode(tx, existing, {
-            remark: 'Replaced by upload',
-            uploadedBy: dto.owner ?? existing.ownerName,
-          });
         }
-        return tx.fileNode.update({
-          where: { id: existing.id },
+
+        const id = `node_${randomBytes(12).toString('base64url')}`;
+        const ownerUserId = dto.ownerUserId ?? null;
+        const storageKeys = createFileNodeStorageKeys({
+          archived: false,
+          id,
+          name: dto.fileName,
+          ownerUserId,
+          parentNodeId,
+          spaceScope,
+        });
+        return tx.fileNode.create({
           data: {
+            id,
+            workspaceId: dto.workspaceId,
+            spaceScope,
+            parentNodeId,
+            ...storageKeys,
+            name: dto.fileName,
             kind: this.getKind(dto.fileName, dto.mimeType),
             mimeType: dto.mimeType ?? 'application/octet-stream',
-            name: dto.fileName,
-            objectKey: dto.objectKey,
-            ownerUserId: dto.ownerUserId ?? existing.ownerUserId,
-            ownerName: dto.owner ?? existing.ownerName,
             sizeBytes: BigInt(dto.sizeBytes),
+            objectKey: dto.objectKey,
+            ownerUserId,
+            ownerName: dto.owner ?? '',
+            starred: false,
+            archivedAt: null,
+            createdAt: now,
             updatedAt: now,
           },
         });
-      }
-
-      return tx.fileNode.create({
-        data: {
-          id: `node_${randomBytes(12).toString('base64url')}`,
-          workspaceId: dto.workspaceId,
-          spaceScope,
-          parentNodeId,
-          name: dto.fileName,
-          kind: this.getKind(dto.fileName, dto.mimeType),
-          mimeType: dto.mimeType ?? 'application/octet-stream',
-          sizeBytes: BigInt(dto.sizeBytes),
-          objectKey: dto.objectKey,
-          ownerUserId: dto.ownerUserId ?? null,
-          ownerName: dto.owner ?? '',
-          starred: false,
-          archivedAt: null,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-    });
+      }),
+    );
     return this.mapRow(row);
   }
 
@@ -774,13 +869,25 @@ export class FileNodesRepository {
   private async resolveRestoreName(input: {
     desiredName: string;
     excludeIds: Set<string>;
+    ownerUserId: string | null;
     parentNodeId: string | null;
     spaceScope: FileNodeSpaceScope;
     workspaceId: string;
   }) {
+    const desiredName = normalizeFileName(input.desiredName);
+    const storageKeys = createFileNodeStorageKeys({
+      archived: false,
+      id: '',
+      name: desiredName,
+      ownerUserId: input.ownerUserId,
+      parentNodeId: input.parentNodeId,
+      spaceScope: input.spaceScope,
+    });
     const siblings = await this.prisma.fileNode.findMany({
       where: {
         archivedAt: null,
+        directoryKey: storageKeys.directoryKey,
+        ownerScopeKey: storageKeys.ownerScopeKey,
         parentNodeId: input.parentNodeId,
         spaceScope: input.spaceScope,
         workspaceId: input.workspaceId,
@@ -788,31 +895,17 @@ export class FileNodesRepository {
       },
       select: { name: true },
     });
-    const names = new Set(
-      siblings.map((sibling) => sibling.name.toLocaleLowerCase()),
+    const nameKeys = new Set(
+      siblings.map((sibling) => getFileNameConflictKey(sibling.name)),
     );
-    if (!names.has(input.desiredName.toLocaleLowerCase())) {
-      return input.desiredName;
+    if (!nameKeys.has(getFileNameConflictKey(desiredName))) {
+      return desiredName;
     }
-    const { baseName, extension } = this.splitName(input.desiredName);
-    let index = 2;
-    let candidate = `${baseName} (${index})${extension}`;
-    while (names.has(candidate.toLocaleLowerCase())) {
-      index += 1;
-      candidate = `${baseName} (${index})${extension}`;
+    for (let index = 2; index < 10000; index += 1) {
+      const candidate = createSuffixedFileName(desiredName, ` (${index})`);
+      if (!nameKeys.has(getFileNameConflictKey(candidate))) return candidate;
     }
-    return candidate;
-  }
-
-  private splitName(name: string) {
-    const dotIndex = name.lastIndexOf('.');
-    if (dotIndex <= 0 || dotIndex === name.length - 1) {
-      return { baseName: name, extension: '' };
-    }
-    return {
-      baseName: name.slice(0, dotIndex),
-      extension: name.slice(dotIndex),
-    };
+    throw new Error('Unable to create a non-conflicting restore name');
   }
 
   async recordAudit(
@@ -1282,6 +1375,52 @@ export class FileNodesRepository {
     return this.mapRow(row);
   }
 
+  private async updateNodeIdentity(
+    id: string,
+    input: { name?: string; parentNodeId?: string | null },
+  ): Promise<FileNodeResponse | null> {
+    const existing = await this.prisma.fileNode.findUnique({ where: { id } });
+    if (!existing) return null;
+    const name = input.name ?? existing.name;
+    const parentNodeId =
+      input.parentNodeId !== undefined
+        ? input.parentNodeId
+        : existing.parentNodeId;
+    const storageKeys = createFileNodeStorageKeys({
+      archived: Boolean(existing.archivedAt),
+      id: existing.id,
+      name,
+      ownerUserId: existing.ownerUserId,
+      parentNodeId,
+      spaceScope: existing.spaceScope,
+    });
+    const row = await this.executeFileNodeWrite(() =>
+      this.prisma.fileNode.update({
+        where: { id },
+        data: {
+          ...(input.name !== undefined ? { name } : {}),
+          ...(input.parentNodeId !== undefined ? { parentNodeId } : {}),
+          ...storageKeys,
+          updatedAt: new Date(),
+        },
+      }),
+    );
+    return this.mapRow(row);
+  }
+
+  private async executeFileNodeWrite<T>(write: () => Promise<T>) {
+    try {
+      return await write();
+    } catch (error) {
+      if (isFileNodeNameConstraintError(error)) {
+        throw new ConflictException(
+          'File node name conflicts with an existing item',
+        );
+      }
+      throw error;
+    }
+  }
+
   private mapRow(row: FileNode): FileNodeResponse {
     const mapped = {
       id: row.id,
@@ -1445,4 +1584,30 @@ export class FileNodesRepository {
     if (value === 'archive') return 'download-only';
     return 'metadata';
   }
+}
+
+function isFileNodeNameConstraintError(error: unknown) {
+  if (
+    !error ||
+    typeof error !== 'object' ||
+    !('code' in error) ||
+    error.code !== 'P2002'
+  ) {
+    return false;
+  }
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  if (typeof target === 'string') {
+    return target.includes('file_nodes_scope_directory_name_key');
+  }
+  if (!Array.isArray(target)) return false;
+  const normalizedFields = new Set(
+    target.map((field) => String(field).replaceAll('_', '').toLowerCase()),
+  );
+  return [
+    'workspaceid',
+    'spacescope',
+    'ownerscopekey',
+    'directorykey',
+    'namekey',
+  ].every((field) => normalizedFields.has(field));
 }

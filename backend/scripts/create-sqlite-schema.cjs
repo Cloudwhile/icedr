@@ -18,6 +18,10 @@ function createSqliteSchema(source) {
     .replace(
       /Json(\s+)@default\("(\{\}|\[\])"\)/g,
       (_match, spacing, value) => `Json${spacing}@default(dbgenerated("'${value}'"))`,
+    )
+    .replace(
+      /(\b(?:directoryKey|ownerScopeKey|nameKey)\s+String\s+)(@map\("(?:directory_key|owner_scope_key|name_key)"\))/g,
+      '$1@default("") $2',
     );
 }
 
@@ -33,5 +37,6 @@ if (require.main === module) {
 }
 
 module.exports = {
+  createSqliteSchema,
   writeSqliteSchema,
 };

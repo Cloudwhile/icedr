@@ -1675,7 +1675,9 @@ export class StorageService {
     return (
       key.startsWith('local/') &&
       !key.includes('\\') &&
-      !key.split('/').some((part) => part === '..' || part === '')
+      !key
+        .split('/')
+        .some((part) => part === '.' || part === '..' || part === '')
     );
   }
 
