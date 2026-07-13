@@ -162,11 +162,14 @@ function isLegacyUploadObjectKeyForPayload({
   return isSafeObjectKey(objectKey);
 }
 
+export function hasUnsafePathSegments(key: string) {
+  return key
+    .split('/')
+    .some((part) => part === '.' || part === '..' || part === '');
+}
+
 function isSafeObjectKey(key: string) {
-  return (
-    !key.includes('\\') &&
-    !key.split('/').some((part) => part === '.' || part === '..' || part === '')
-  );
+  return !key.includes('\\') && !hasUnsafePathSegments(key);
 }
 
 function encodeObjectKeySegment(value: string) {

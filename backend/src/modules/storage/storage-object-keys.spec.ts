@@ -1,6 +1,7 @@
 import {
   createFileObjectKey,
   getWorkspaceObjectPrefixes,
+  hasUnsafePathSegments,
   isUploadObjectKeyForPayload,
 } from './storage-object-keys';
 
@@ -176,6 +177,18 @@ describe('storage object keys', () => {
         workspaceId: '.',
       }),
     ).toBe(false);
+  });
+
+  it('detects unsafe path segments consistently', () => {
+    expect(hasUnsafePathSegments('local/workspaces/file.blob')).toBe(false);
+    for (const objectKey of [
+      'local/./file.blob',
+      'local/../file.blob',
+      'local//file.blob',
+      'local/file.blob/',
+    ]) {
+      expect(hasUnsafePathSegments(objectKey)).toBe(true);
+    }
   });
 
   it('returns current and legacy prefixes for workspace reconciliation', () => {

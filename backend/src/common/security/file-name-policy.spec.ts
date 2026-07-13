@@ -88,6 +88,9 @@ describe('file name policy', () => {
     expect(() =>
       normalizeFileName(`broken-${String.fromCharCode(0xdc00)}.txt`),
     ).toThrow();
+    expect(() =>
+      normalizeFileName(`broken-${String.fromCharCode(0xd800)}`),
+    ).toThrow();
   });
 
   it('keeps suffixes visible when an unusually long extension fills the limit', () => {

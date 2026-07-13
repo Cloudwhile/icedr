@@ -53,7 +53,10 @@ import {
 } from './storage-settings.dto';
 import { StorageSettingsRepository } from './storage-settings.repository';
 import { StorageReconcileRepository } from './storage-reconcile.repository';
-import { getWorkspaceObjectPrefixes } from './storage-object-keys';
+import {
+  getWorkspaceObjectPrefixes,
+  hasUnsafePathSegments,
+} from './storage-object-keys';
 import { validateStorageEndpoint } from './storage-endpoint-policy';
 import {
   RangeNotSatisfiableException,
@@ -1675,9 +1678,7 @@ export class StorageService {
     return (
       key.startsWith('local/') &&
       !key.includes('\\') &&
-      !key
-        .split('/')
-        .some((part) => part === '.' || part === '..' || part === '')
+      !hasUnsafePathSegments(key)
     );
   }
 

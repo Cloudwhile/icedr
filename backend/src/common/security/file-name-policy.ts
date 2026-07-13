@@ -164,6 +164,7 @@ function hasMalformedUnicode(value: string) {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code >= 0xd800 && code <= 0xdbff) {
+      if (index + 1 >= value.length) return true;
       const nextCode = value.charCodeAt(index + 1);
       if (nextCode < 0xdc00 || nextCode > 0xdfff) return true;
       index += 1;

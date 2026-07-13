@@ -70,6 +70,9 @@ describe("drive file name policy", () => {
     expect(
       validateDriveFileName(`broken-${String.fromCharCode(0xdc00)}.txt`),
     ).toMatchObject({ code: "invalid-characters", ok: false });
+    expect(
+      validateDriveFileName(`broken-${String.fromCharCode(0xd800)}`),
+    ).toMatchObject({ code: "invalid-characters", ok: false });
   });
 
   it("creates case-insensitive conflict keys", () => {
