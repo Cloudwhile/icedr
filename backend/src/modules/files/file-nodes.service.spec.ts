@@ -14,6 +14,7 @@ import {
 import { FileNodesRepository } from './file-nodes.repository';
 import { FileNodesService } from './file-nodes.service';
 import { resolveFilePreviewCapability } from './file-preview-policy';
+import { getFileNameConflictKey } from '../../common/security/file-name-policy';
 import {
   UploadSession,
   UploadSessionPart,
@@ -485,6 +486,23 @@ describe('FileNodesService', () => {
           error: null,
         });
       }),
+      copyTree: jest.fn(
+        (
+          source: FileNodeResponse,
+          input: { name: string; parentNodeId: string | null },
+        ) => {
+          const node = createNode({
+            ...source,
+            id: `copy_${nodes.length + 1}`,
+            name: input.name,
+            parentNodeId: input.parentNodeId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          nodes.push(node);
+          return Promise.resolve(node);
+        },
+      ),
       recordAudit: jest.fn((action: string) => {
         audits.set(action, (audits.get(action) ?? 0) + 1);
         return Promise.resolve();
@@ -674,6 +692,38 @@ describe('FileNodesService', () => {
     expect(nodes.some((node) => node.id === 'roadmap')).toBe(true);
   });
 
+  it('keeps repeated generated copy names unique and within the byte limit', async () => {
+    const sourceName = `${'界'.repeat(83)}ab.txt`;
+    expect(Buffer.byteLength(sourceName, 'utf8')).toBe(255);
+    const source = createNode({
+      id: 'long-name-source',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: sourceName,
+      kind: 'doc',
+      mimeType: 'text/plain',
+      sizeBytes: 32,
+      objectKey: 'uploads/workspace-default/root/long-name-source.txt',
+      owner: 'Workspace User',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
+    jest.spyOn(repository, 'findById').mockResolvedValue(source);
+
+    const first = await service.copyFileNode(source.id, {});
+    const second = await service.copyFileNode(source.id, {});
+
+    for (const copy of [first, second]) {
+      expect(copy.name.endsWith('.txt')).toBe(true);
+      expect(Buffer.byteLength(copy.name, 'utf8')).toBeLessThanOrEqual(255);
+    }
+    expect(
+      new Set([first.name, second.name].map(getFileNameConflictKey)).size,
+    ).toBe(2);
+  });
+
   it('creates upload intents and completes uploads into file nodes', async () => {
     const intent = await service.createUploadIntent({
       workspaceId: 'workspace-default',
@@ -709,8 +759,9 @@ describe('FileNodesService', () => {
     expect(intent.uploadedPartIndexes).toEqual([]);
     expect(partIntent.uploadUrl).toContain('s3://icedr-drive/');
     expect(intent.objectKey).toMatch(
-      /^workspaces\/workspace-default\/spaces\/workspace\/objects\/original\/\d{4}\/\d{2}\/[A-Za-z0-9_-]{16}\/Customer%20Notes\.pdf$/,
+      /^workspaces\/workspace-default\/spaces\/workspace\/objects\/original\/v2\/\d{4}\/\d{2}\/[A-Za-z0-9_-]{16}\.blob$/,
     );
+    expect(intent.objectKey).not.toContain('Customer');
     expect(storage.createMultipartUpload).toHaveBeenCalledWith(
       intent.objectKey,
       'application/pdf',
@@ -854,7 +905,7 @@ describe('FileNodesService', () => {
         mimeType: docxMimeType,
         fileSizeBytes: 4096,
       }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
   });
 
@@ -887,6 +938,40 @@ describe('FileNodesService', () => {
         name: 'icedr roadmap (2).docx',
       }),
     );
+  });
+
+  it('keeps generated upload conflict names within the UTF-8 byte limit', async () => {
+    const fileName = `${'界'.repeat(83)}.txt`;
+    const conflict = createNode({
+      id: 'multibyte-conflict',
+      workspaceId: 'workspace-default',
+      parentNodeId: null,
+      name: fileName,
+      kind: 'doc',
+      mimeType: 'text/plain',
+      sizeBytes: 32,
+      objectKey: 'uploads/workspace-default/root/multibyte-conflict.txt',
+      owner: 'Workspace User',
+      starred: false,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
+    jest
+      .spyOn(repository, 'list')
+      .mockResolvedValueOnce([conflict])
+      .mockResolvedValueOnce([conflict]);
+
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName,
+      conflictStrategy: 'rename',
+      mimeType: 'text/plain',
+      fileSizeBytes: 32,
+    });
+
+    expect(intent.fileName.endsWith(' (2).txt')).toBe(true);
+    expect(Buffer.byteLength(intent.fileName, 'utf8')).toBeLessThanOrEqual(255);
   });
 
   it('allows exact-name uploads to continue as file versions', async () => {

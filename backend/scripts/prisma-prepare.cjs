@@ -1,6 +1,7 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const Database = require('better-sqlite3');
 const { Client } = require('pg');
 const { writeSqliteSchema } = require('./create-sqlite-schema.cjs');
 
@@ -34,7 +35,9 @@ async function main() {
 
   loadWorkspaceEnv();
   if (shouldUseSqliteSource()) {
-    fs.mkdirSync(path.dirname(resolveSqliteFilePath()), { recursive: true });
+    const sqliteFilePath = resolveSqliteFilePath();
+    fs.mkdirSync(path.dirname(sqliteFilePath), { recursive: true });
+    prepareSqliteFileNodeNameKeys(sqliteFilePath);
     runPrismaOrExit('db', 'push', {
       schema: '../database/schema.sqlite.prisma',
       env: {
@@ -144,6 +147,69 @@ function resolveSqliteFilePath() {
   return path.isAbsolute(configured)
     ? configured
     : path.resolve(workspaceRoot, configured);
+}
+
+function prepareSqliteFileNodeNameKeys(filePath) {
+  const nativeBinding = process.env.BETTER_SQLITE3_NATIVE_BINDING?.trim();
+  const database = new Database(
+    filePath,
+    nativeBinding ? { nativeBinding } : undefined,
+  );
+  try {
+    const fileNodesTable = database
+      .prepare(
+        "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+      )
+      .get('file_nodes');
+    if (!fileNodesTable) return;
+
+    const columns = new Set(
+      database
+        .prepare('PRAGMA table_info("file_nodes")')
+        .all()
+        .map((column) => column.name),
+    );
+    const ensureColumn = (name, definition) => {
+      if (columns.has(name)) return;
+      database.exec(
+        `ALTER TABLE "file_nodes" ADD COLUMN "${name}" ${definition}`,
+      );
+      columns.add(name);
+    };
+
+    const prepareKeys = database.transaction(() => {
+      ensureColumn('space_scope', "TEXT NOT NULL DEFAULT 'workspace'");
+      ensureColumn('directory_key', "TEXT NOT NULL DEFAULT ''");
+      ensureColumn('owner_scope_key', "TEXT NOT NULL DEFAULT ''");
+      ensureColumn('name_key', "TEXT NOT NULL DEFAULT ''");
+      database
+        .prepare(
+          'UPDATE "file_nodes" SET "directory_key" = COALESCE("parent_node_id", \'\') WHERE "directory_key" = \'\'',
+        )
+        .run();
+      if (columns.has('space_scope') && columns.has('owner_user_id')) {
+        database
+          .prepare(
+            'UPDATE "file_nodes" SET "owner_scope_key" = CASE WHEN "space_scope" = \'personal\' THEN COALESCE("owner_user_id", \'\') ELSE \'\' END WHERE "owner_scope_key" = \'\'',
+          )
+          .run();
+      }
+      const nameKeyExpression = columns.has('archived_at')
+        ? 'CASE WHEN "archived_at" IS NULL THEN \'legacy:\' || "id" ELSE \'archived:\' || "id" END'
+        : '\'legacy:\' || "id"';
+      database
+        .prepare(
+          `UPDATE "file_nodes" SET "name_key" = ${nameKeyExpression} WHERE "name_key" = ''`,
+        )
+        .run();
+      database.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "file_nodes_scope_directory_name_key" ON "file_nodes"("workspace_id", "space_scope", "owner_scope_key", "directory_key", "name_key")',
+      );
+    });
+    prepareKeys();
+  } finally {
+    database.close();
+  }
 }
 
 async function assertExistingIcedrBaseline() {

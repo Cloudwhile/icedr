@@ -7,6 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaClient as SqlitePrismaClient } from '../generated/prisma-sqlite/client';
+import { createFileNodeStorageKeys } from '../common/security/file-name-policy';
 import {
   ActiveDatabaseSource,
   PostgresDatabaseSource,
@@ -18,6 +19,32 @@ import {
 } from './database-url';
 
 type ActivePrismaClient = PrismaClient | SqlitePrismaClient;
+
+type FileNodeNameKeyRow = {
+  archivedAt: Date | null;
+  directoryKey: string;
+  id: string;
+  name: string;
+  nameKey: string;
+  ownerScopeKey: string;
+  ownerUserId: string | null;
+  parentNodeId: string | null;
+  spaceScope: string;
+  workspaceId: string;
+};
+
+type FileNodeNameKeyModel = {
+  findMany: (input: {
+    select: Record<keyof FileNodeNameKeyRow, true>;
+  }) => Promise<FileNodeNameKeyRow[]>;
+  update: (input: {
+    data: Pick<
+      FileNodeNameKeyRow,
+      'directoryKey' | 'nameKey' | 'ownerScopeKey'
+    >;
+    where: { id: string };
+  }) => Promise<unknown>;
+};
 
 const copyModels = [
   'authSetting',
@@ -68,6 +95,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     await this.activeClient.$connect();
     if (this.activeSource.provider === 'sqlite') {
       await this.ensureSqliteRuntimeSchema();
+    }
+    await this.ensureFileNodeNameKeys();
+    if (this.activeSource.provider === 'sqlite') {
+      await this.ensureSqliteFileNodeNameIndex();
     }
   }
 
@@ -372,6 +403,21 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       "TEXT NOT NULL DEFAULT 'workspace'",
     );
     await this.ensureSqliteColumn(
+      'file_nodes',
+      'directory_key',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await this.ensureSqliteColumn(
+      'file_nodes',
+      'owner_scope_key',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await this.ensureSqliteColumn(
+      'file_nodes',
+      'name_key',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await this.ensureSqliteColumn(
       'upload_sessions',
       'space_scope',
       "TEXT NOT NULL DEFAULT 'workspace'",
@@ -381,6 +427,88 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     );
     await this.activeClient.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "auth_challenges_flow_expires_at_used_at_idx" ON "auth_challenges"("flow", "expires_at", "used_at")',
+    );
+  }
+
+  private async ensureFileNodeNameKeys() {
+    const model = this.activeClient.fileNode as unknown as FileNodeNameKeyModel;
+    const rows = await model.findMany({
+      select: {
+        archivedAt: true,
+        directoryKey: true,
+        id: true,
+        name: true,
+        nameKey: true,
+        ownerScopeKey: true,
+        ownerUserId: true,
+        parentNodeId: true,
+        spaceScope: true,
+        workspaceId: true,
+      },
+    });
+    const canonicalRows = rows.map((row) => {
+      try {
+        return {
+          row,
+          storageKeys: createFileNodeStorageKeys({
+            archived: Boolean(row.archivedAt),
+            id: row.id,
+            name: row.name,
+            ownerUserId: row.ownerUserId,
+            parentNodeId: row.parentNodeId,
+            spaceScope: row.spaceScope,
+          }),
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'invalid file name keys';
+        throw new Error(`File node ${row.id} cannot be migrated: ${message}`);
+      }
+    });
+    const activeKeys = new Map<string, string>();
+
+    for (const { row, storageKeys } of canonicalRows) {
+      if (row.archivedAt) continue;
+      const uniqueKey = JSON.stringify([
+        row.workspaceId,
+        row.spaceScope,
+        storageKeys.ownerScopeKey,
+        storageKeys.directoryKey,
+        storageKeys.nameKey,
+      ]);
+      const existingId = activeKeys.get(uniqueKey);
+      if (existingId) {
+        throw new Error(
+          `Duplicate active file names must be resolved before startup: ${existingId}, ${row.id}`,
+        );
+      }
+      activeKeys.set(uniqueKey, row.id);
+    }
+
+    const operations = canonicalRows
+      .filter(
+        ({ row, storageKeys }) =>
+          row.directoryKey !== storageKeys.directoryKey ||
+          row.ownerScopeKey !== storageKeys.ownerScopeKey ||
+          row.nameKey !== storageKeys.nameKey,
+      )
+      .map(({ row, storageKeys }) =>
+        model.update({
+          where: { id: row.id },
+          data: storageKeys,
+        }),
+      );
+    if (operations.length > 0) {
+      const transaction = this.activeClient.$transaction.bind(
+        this.activeClient,
+      ) as unknown as (operations: Promise<unknown>[]) => Promise<unknown>;
+      await transaction(operations);
+    }
+  }
+
+  private async ensureSqliteFileNodeNameIndex() {
+    await this.activeClient.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "file_nodes_scope_directory_name_key" ON "file_nodes"("workspace_id", "space_scope", "owner_scope_key", "directory_key", "name_key")',
     );
   }
 
@@ -457,14 +585,19 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         createMany: (args: {
           data: unknown[];
           skipDuplicates: boolean;
-        }) => Promise<unknown>;
+        }) => Promise<{ count: number }>;
       };
       const rows = await sourceModel.findMany();
       if (rows.length === 0) continue;
-      await targetModel.createMany({
+      const result = await targetModel.createMany({
         data: rows,
-        skipDuplicates: true,
+        skipDuplicates: false,
       });
+      if (result.count !== rows.length) {
+        throw new Error(
+          `Database migration copied ${result.count} of ${rows.length} ${model} rows`,
+        );
+      }
     }
   }
 }

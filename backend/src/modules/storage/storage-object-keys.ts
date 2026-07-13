@@ -5,6 +5,7 @@ const workspaceRoot = 'workspaces';
 const spacesGroup = 'spaces';
 const objectGroup = 'objects';
 const originalObjectType = 'original';
+const currentObjectKeyVersion = 'v2';
 const legacyUploadRoot = 'uploads';
 
 export type FileObjectSpaceScope = 'workspace' | 'personal';
@@ -29,17 +30,22 @@ export function createFileObjectKey(input: FileObjectKeyInput) {
   const now = input.now ?? new Date();
   const year = String(now.getUTCFullYear());
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const workspaceSegment = requireSafeObjectKeySegment(input.workspaceId);
+  const nonce = input.nonce ?? randomBytes(12).toString('base64url');
+  if (!/^[A-Za-z0-9_-]{16}$/.test(nonce)) {
+    throw new Error('Object key nonce is not valid');
+  }
   const key = [
     workspaceRoot,
-    encodeObjectKeySegment(input.workspaceId),
+    workspaceSegment,
     spacesGroup,
     normalizeSpaceScope(input.spaceScope),
     objectGroup,
     originalObjectType,
+    currentObjectKeyVersion,
     year,
     month,
-    input.nonce ?? randomBytes(12).toString('base64url'),
-    encodeObjectKeySegment(input.fileName),
+    `${nonce}.blob`,
   ].join('/');
 
   return input.distributedStorage ? key : `${localPrefix}/${key}`;
@@ -65,9 +71,35 @@ export function isLocalObjectKey(key: string) {
 
 export function isUploadObjectKeyForPayload(input: FileObjectKeyPayload) {
   return (
+    isVersionTwoFileObjectKeyForPayload(input) ||
     isCurrentFileObjectKeyForPayload(input) ||
     isLegacyUploadObjectKeyForPayload(input)
   );
+}
+
+function isVersionTwoFileObjectKeyForPayload({
+  objectKey,
+  spaceScope,
+  workspaceId,
+}: FileObjectKeyPayload) {
+  const parts = objectKey.split('/');
+  const offset = parts[0] === localPrefix ? 1 : 0;
+  if (parts.length !== offset + 10) return false;
+  if (
+    parts[offset] !== workspaceRoot ||
+    parts[offset + 1] !== encodeObjectKeySegment(workspaceId) ||
+    parts[offset + 2] !== spacesGroup ||
+    parts[offset + 3] !== normalizeSpaceScope(spaceScope) ||
+    parts[offset + 4] !== objectGroup ||
+    parts[offset + 5] !== originalObjectType ||
+    parts[offset + 6] !== currentObjectKeyVersion ||
+    !/^\d{4}$/.test(parts[offset + 7] ?? '') ||
+    !/^(0[1-9]|1[0-2])$/.test(parts[offset + 8] ?? '') ||
+    !/^[A-Za-z0-9_-]{16}\.blob$/.test(parts[offset + 9] ?? '')
+  ) {
+    return false;
+  }
+  return isSafeObjectKey(objectKey);
 }
 
 function isCurrentFileObjectKeyForPayload({
@@ -130,17 +162,28 @@ function isLegacyUploadObjectKeyForPayload({
   return isSafeObjectKey(objectKey);
 }
 
+export function hasUnsafePathSegments(key: string) {
+  return key
+    .split('/')
+    .some((part) => part === '.' || part === '..' || part === '');
+}
+
 function isSafeObjectKey(key: string) {
-  return (
-    !key.includes('\\') &&
-    !key.split('/').some((part) => part === '..' || part === '')
-  );
+  return !key.includes('\\') && !hasUnsafePathSegments(key);
 }
 
 function encodeObjectKeySegment(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return '';
   return encodeURIComponent(trimmed);
+}
+
+function requireSafeObjectKeySegment(value: string) {
+  const encoded = encodeObjectKeySegment(value);
+  if (!encoded || encoded === '.' || encoded === '..') {
+    throw new Error('Object key segment is not valid');
+  }
+  return encoded;
 }
 
 function normalizeSpaceScope(value?: string): FileObjectSpaceScope {
