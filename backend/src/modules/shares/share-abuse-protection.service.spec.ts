@@ -412,6 +412,109 @@ describe('ShareAbuseProtectionService', () => {
     );
   });
 
+  it('does not block requests while a single maintenance task runs', async () => {
+    const { consume, prune, pruneExpiredTransientShareState, service } =
+      createService();
+    let releaseMaintenance = () => undefined;
+    prune.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          releaseMaintenance = () => resolve(0);
+        }),
+    );
+
+    const first = service.consumeLookup({
+      metadata: { ip: '203.0.113.25' },
+      shareToken: 'guessed-token-a',
+    });
+    const second = service.consumeLookup({
+      metadata: { ip: '203.0.113.26' },
+      shareToken: 'guessed-token-b',
+    });
+    let firstOutcome = 'pending';
+    void first.then(
+      () => {
+        firstOutcome = 'resolved';
+      },
+      () => {
+        firstOutcome = 'rejected';
+      },
+    );
+
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(firstOutcome).toBe('resolved');
+      expect(consume).toHaveBeenCalledTimes(2);
+      expect(prune).toHaveBeenCalledTimes(1);
+      expect(pruneExpiredTransientShareState).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseMaintenance();
+      await Promise.all([first, second]);
+      await Promise.resolve();
+    }
+  });
+
+  it('keeps maintenance single-flight until every cleanup settles', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-18T00:00:00.000Z'));
+    const { prune, pruneExpiredTransientShareState, service } = createService();
+    let releaseTransientCleanup = () => undefined;
+    prune.mockRejectedValueOnce(new Error('rate-limit cleanup failed'));
+    pruneExpiredTransientShareState.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseTransientCleanup = resolve;
+        }),
+    );
+
+    try {
+      await service.consumeLookup({
+        metadata: { ip: '203.0.113.25' },
+        shareToken: 'guessed-token-a',
+      });
+      for (let index = 0; index < 20; index += 1) {
+        await Promise.resolve();
+      }
+
+      jest.setSystemTime(new Date('2026-07-18T01:00:01.000Z'));
+      await service.consumeLookup({
+        metadata: { ip: '203.0.113.26' },
+        shareToken: 'guessed-token-b',
+      });
+      await Promise.resolve();
+
+      expect(prune).toHaveBeenCalledTimes(1);
+      expect(pruneExpiredTransientShareState).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseTransientCleanup();
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps requests available when maintenance throws synchronously', async () => {
+    const { consume, prune, pruneExpiredTransientShareState, service } =
+      createService();
+    prune.mockImplementationOnce(() => {
+      throw new Error('maintenance failed');
+    });
+
+    await expect(
+      service.consumeLookup({
+        metadata: { ip: '203.0.113.25' },
+        shareToken: 'guessed-token',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(consume).toHaveBeenCalled();
+    expect(prune).toHaveBeenCalledTimes(1);
+    expect(pruneExpiredTransientShareState).toHaveBeenCalledTimes(1);
+  });
+
   it('audits unresolved denials with hashes instead of the guessed token', async () => {
     const { recordUnresolvedAudit, service } = createService();
 

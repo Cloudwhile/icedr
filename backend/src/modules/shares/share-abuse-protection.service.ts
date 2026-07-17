@@ -18,6 +18,7 @@ type ShareRiskMetadata = Record<string, unknown>;
 
 @Injectable()
 export class ShareAbuseProtectionService {
+  private maintenanceTask?: Promise<void>;
   private nextMaintenanceAt = 0;
 
   constructor(
@@ -34,7 +35,7 @@ export class ShareAbuseProtectionService {
     scope: ShareRateLimitScope;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     for (const dimension of this.createRateLimitDimensions(input)) {
       try {
         await this.rateLimits.consume({
@@ -85,7 +86,7 @@ export class ShareAbuseProtectionService {
     resolved?: boolean;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     const profile = resolveShareRateLimitProfile(undefined, this.config);
     const lookupDimensions = input.resolved
       ? this.createDimensions(input.shareToken, input.metadata).filter(
@@ -158,7 +159,7 @@ export class ShareAbuseProtectionService {
     resolved: boolean;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     const shareTokenHash = this.hashDimension('link', input.shareToken);
     const metadata = {
       ...input.metadata,
@@ -206,7 +207,7 @@ export class ShareAbuseProtectionService {
     rule: ShareEmailVerifyRateLimitRule;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     if (input.rule.max <= 0) return;
 
     for (const dimension of this.createEmailAbuseDimensions(
@@ -230,7 +231,7 @@ export class ShareAbuseProtectionService {
     rule: ShareEmailVerifyRateLimitRule;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     let lockedDimension: ShareRiskDimension | undefined;
     if (input.rule.max > 0) {
       for (const dimension of this.createEmailAbuseDimensions(
@@ -291,7 +292,7 @@ export class ShareAbuseProtectionService {
     metadata: ShareRiskMetadata;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     const dimensions = this.createDimensions(
       input.shareToken,
       input.metadata,
@@ -425,16 +426,22 @@ export class ShareAbuseProtectionService {
     }
   }
 
-  private async pruneExpiredStateIfDue(now = new Date()) {
-    if (now.getTime() < this.nextMaintenanceAt) return;
+  private pruneExpiredStateIfDue(now = new Date()) {
+    if (now.getTime() < this.nextMaintenanceAt || this.maintenanceTask) return;
     this.nextMaintenanceAt = now.getTime() + 60 * 60 * 1000;
     const cutoff = new Date(
       now.getTime() - this.getRateLimitRetentionSeconds() * 1000,
     );
-    await Promise.all([
-      this.rateLimits.prune({ cutoff }),
-      this.sharesRepository.pruneExpiredTransientShareState(now),
-    ]).catch(() => undefined);
+    this.maintenanceTask = Promise.allSettled([
+      Promise.resolve().then(() => this.rateLimits.prune({ cutoff })),
+      Promise.resolve().then(() =>
+        this.sharesRepository.pruneExpiredTransientShareState(now),
+      ),
+    ])
+      .then(() => undefined)
+      .finally(() => {
+        this.maintenanceTask = undefined;
+      });
   }
 
   private getRateLimitRetentionSeconds() {
