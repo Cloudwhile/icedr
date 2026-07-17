@@ -88,7 +88,7 @@ pnpm --filter frontend exec playwright install --with-deps chromium
 
 ## Configuration
 
-Start from `.env.example` for local development and `.env.production.example` for production. Production deployments should provide the public share URL, persistence, storage, cache, and SMTP values required by the selected runtime environment.
+Start from `.env.example` for local development and `.env.production.example` for production. Production requires separate `AUTH_SECURITY_SECRET` and `SHARE_VISITOR_HASH_SECRET` values of at least 32 characters. Deployments should also provide the public share URL, persistence, storage, cache, and SMTP values required by the selected runtime environment.
 
 Fresh data directories open the first-run setup page. Setup starts with local SQLite and local file storage, and the database step lets administrators keep SQLite or switch to PostgreSQL before completing bootstrap. SMTP is optional during first-run setup; it can stay disabled and be configured later from the administrator settings.
 
@@ -110,21 +110,25 @@ The Docker image contains the ICEDR web client and API in one container. Persist
 
 ```bash
 mkdir -p /opt/icedr/data
+umask 077
+printf 'AUTH_SECURITY_SECRET=%s\n' "$(openssl rand -hex 32)" > /opt/icedr/icedr.env
+printf 'SHARE_VISITOR_HASH_SECRET=%s\n' "$(openssl rand -hex 32)" >> /opt/icedr/icedr.env
+printf 'SMTP_ENABLED=false\n' >> /opt/icedr/icedr.env
 
 docker run -d \
   --name icedr \
   --restart unless-stopped \
   -p 13000:13000 \
   -v /opt/icedr/data:/workspace/backend/data \
+  --env-file /opt/icedr/icedr.env \
   -e NODE_ENV=production \
   -e APP_ENV=production \
   -e API_HOST=0.0.0.0 \
   -e API_PORT=13000 \
-  -e SMTP_ENABLED=false \
   corecherry/icedr-po:0.0.1-alpha.5
 ```
 
-Open `http://localhost:13000`, or replace `localhost` with the server address. A fresh data directory opens the first-run setup page.
+Generate the two secrets once, keep them distinct, and preserve `icedr.env` across restarts and upgrades. Open `http://localhost:13000`, or replace `localhost` with the server address. A fresh data directory opens the first-run setup page.
 
 ### Minimal Binary Deployment
 

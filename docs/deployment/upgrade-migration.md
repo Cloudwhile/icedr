@@ -11,6 +11,14 @@
 5. 在隔离环境恢复一次备份并试运行目标版本。
 6. 安排维护窗口，停止上传和配置变更。
 
+旧版本可能没有 `SHARE_VISITOR_HASH_SECRET`。升级前检查实际使用的环境文件：如果缺少该变量，生成一个与 `AUTH_SECURITY_SECRET` 不同的随机值，只写入一次，并将更新后的环境文件纳入受控备份。例如：
+
+```bash
+printf 'SHARE_VISITOR_HASH_SECRET=%s\n' "$(openssl rand -hex 32)" >> icedr.env
+```
+
+已有显式值时继续沿用，不要重新生成。首次补充该变量后，旧版本中按认证密钥生成的访客绑定临时会话和下载意图会失效。
+
 ## Docker 升级
 
 ```bash
@@ -19,7 +27,7 @@ docker stop icedr
 docker rm icedr
 ```
 
-使用原数据目录、原 `icedr.env` 和新镜像标签重新执行启动命令。不要重新生成 `AUTH_SECURITY_SECRET`。
+使用原数据目录、已完成上述检查的 `icedr.env` 和新镜像标签重新执行启动命令。不要重新生成已有的 `AUTH_SECURITY_SECRET` 或 `SHARE_VISITOR_HASH_SECRET`。
 
 启动后查看日志：
 

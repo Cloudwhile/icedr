@@ -25,6 +25,7 @@ docker pull corecherry/icedr-po:0.0.1-alpha.5
 sudo install -d -m 0750 -o "$USER" -g "$USER" /opt/icedr/data
 umask 077
 printf 'AUTH_SECURITY_SECRET=%s\n' "$(openssl rand -hex 32)" > /opt/icedr/icedr.env
+printf 'SHARE_VISITOR_HASH_SECRET=%s\n' "$(openssl rand -hex 32)" >> /opt/icedr/icedr.env
 printf 'SMTP_ENABLED=false\n' >> /opt/icedr/icedr.env
 ```
 
@@ -86,6 +87,7 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 13000
       AUTH_SECURITY_SECRET: ${AUTH_SECURITY_SECRET:?请在 .env 中设置安全密钥}
+      SHARE_VISITOR_HASH_SECRET: ${SHARE_VISITOR_HASH_SECRET:?请在 .env 中设置独立的访客哈希密钥}
       SMTP_ENABLED: "false"
     volumes:
       - ./data:/workspace/backend/data
@@ -95,6 +97,7 @@ services:
 
 ```dotenv
 AUTH_SECURITY_SECRET=替换为至少32字符的随机值
+SHARE_VISITOR_HASH_SECRET=替换为另一个至少32字符的随机值
 ```
 
 启动：
@@ -155,7 +158,7 @@ PUBLIC_SHARE_BASE_URL=https://drive.example.net/share/s
 
 ### 启动后立即退出
 
-查看 `docker logs icedr`。生产模式最常见原因是缺少 `AUTH_SECURITY_SECRET`、变量仍为占位值、端口无效或数据目录不可写。
+查看 `docker logs icedr`。生产模式最常见原因是缺少两个独立的安全密钥、变量仍为占位值、端口无效或数据目录不可写。
 
 ### 重启后再次进入初始化向导
 

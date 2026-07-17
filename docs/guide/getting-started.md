@@ -20,10 +20,11 @@ sudo chown -R "$USER":"$USER" /opt/icedr
 ```bash
 umask 077
 printf 'AUTH_SECURITY_SECRET=%s\n' "$(openssl rand -hex 32)" > /opt/icedr/icedr.env
+printf 'SHARE_VISITOR_HASH_SECRET=%s\n' "$(openssl rand -hex 32)" >> /opt/icedr/icedr.env
 printf 'SMTP_ENABLED=false\n' >> /opt/icedr/icedr.env
 ```
 
-`AUTH_SECURITY_SECRET` 必须长期保留。重新生成会使已有登录会话失效。
+两个密钥必须分别生成并长期保留。不要复用同一个值；重新生成会使已有登录会话或访客绑定的临时访问状态失效。
 
 启动容器：
 

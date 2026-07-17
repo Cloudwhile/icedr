@@ -21,6 +21,7 @@ ICEDR 保存账号、文件、分享和审计记录，应按业务数据系统�
 ## 密钥与凭据
 
 - 使用 `openssl rand -hex 32` 或同等级方式生成 `AUTH_SECURITY_SECRET`。
+- 单独生成 `SHARE_VISITOR_HASH_SECRET`，不得与认证密钥复用；两个值都应长期保存并在多实例间保持一致。
 - 数据库、对象存储、SMTP 和 OAuth 使用不同的专用凭据。
 - `.env` 权限设为 `0600`，不提交版本库。
 - 工单、截图和日志中隐藏密码、Secret、验证码、Cookie 和连接串。

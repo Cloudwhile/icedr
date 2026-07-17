@@ -27,7 +27,7 @@ describe('FileNodesRepository', () => {
   function createRepository(prisma: unknown) {
     const config = {
       get: jest.fn((key: string) =>
-        key === 'auth.securitySecret' ? secret : undefined,
+        key === 'share.visitorHashSecret' ? secret : undefined,
       ),
     } as unknown as ConfigService;
     return new FileNodesRepository(prisma as PrismaService, config);

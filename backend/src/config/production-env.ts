@@ -206,11 +206,17 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     errors.push('AUTH_SECURITY_SECRET must be at least 32 characters');
   }
 
-  if (
-    hasValue(env.SHARE_VISITOR_HASH_SECRET) &&
-    env.SHARE_VISITOR_HASH_SECRET.trim().length < 32
-  ) {
+  if (!hasValue(env.SHARE_VISITOR_HASH_SECRET)) {
+    errors.push('SHARE_VISITOR_HASH_SECRET is required in production');
+  } else if (env.SHARE_VISITOR_HASH_SECRET.trim().length < 32) {
     errors.push('SHARE_VISITOR_HASH_SECRET must be at least 32 characters');
+  } else if (
+    hasValue(env.AUTH_SECURITY_SECRET) &&
+    env.SHARE_VISITOR_HASH_SECRET.trim() === env.AUTH_SECURITY_SECRET.trim()
+  ) {
+    errors.push(
+      'SHARE_VISITOR_HASH_SECRET must differ from AUTH_SECURITY_SECRET',
+    );
   }
 
   if (errors.length > 0) {

@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolveShareVisitorHashSecret } from '../../common/security/share-visitor-hash-secret';
 import {
   ShareRateLimitExceededError,
   ShareRateLimitRepository,
@@ -488,16 +489,8 @@ export class ShareAbuseProtectionService {
   }
 
   private hashValue(namespace: string, value: string) {
-    return createHmac('sha256', this.resolveHashSecret())
+    return createHmac('sha256', resolveShareVisitorHashSecret(this.config))
       .update(`${namespace}\0${value}`)
       .digest('hex');
-  }
-
-  private resolveHashSecret() {
-    return (
-      this.config.get<string>('share.visitorHashSecret')?.trim() ||
-      this.config.get<string>('auth.securitySecret')?.trim() ||
-      'icedr-dev-share-visitor-hash-secret'
-    );
   }
 }

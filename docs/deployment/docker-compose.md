@@ -15,10 +15,11 @@ cd /opt/icedr
 umask 077
 printf 'ICEDR_VERSION=0.0.1-alpha.5\n' > .env
 printf 'AUTH_SECURITY_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env
+printf 'SHARE_VISITOR_HASH_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env
 printf 'ICEDR_HTTP_PORT=13000\n' >> .env
 ```
 
-不要在每次 `up` 前重新生成 `AUTH_SECURITY_SECRET`。它应稳定保存并受到与管理员凭据相当的保护。
+两个密钥必须分别生成、稳定保存，并受到与管理员凭据相当的保护。不要在每次 `up` 前重新生成或复用同一个值。
 
 ## 创建 `compose.yaml`
 
@@ -36,6 +37,7 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 13000
       AUTH_SECURITY_SECRET: ${AUTH_SECURITY_SECRET:?AUTH_SECURITY_SECRET 未设置}
+      SHARE_VISITOR_HASH_SECRET: ${SHARE_VISITOR_HASH_SECRET:?SHARE_VISITOR_HASH_SECRET 未设置}
       SMTP_ENABLED: "false"
     volumes:
       - ./data:/workspace/backend/data

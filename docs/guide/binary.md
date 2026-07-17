@@ -30,6 +30,7 @@ sudo install -m 0755 ./icedr_0.0.1-alpha.5_linux-x86_64 /opt/icedr/icedr
 ```bash
 umask 077
 AUTH_SECRET="$(openssl rand -hex 32)"
+SHARE_VISITOR_SECRET="$(openssl rand -hex 32)"
 sudo sh -c "printf '%s\n' \
   'NODE_ENV=production' \
   'APP_ENV=production' \
@@ -37,7 +38,8 @@ sudo sh -c "printf '%s\n' \
   'API_PORT=13000' \
   'ICEDR_DATA_DIR=/var/lib/icedr' \
   'SMTP_ENABLED=false' \
-  'AUTH_SECURITY_SECRET=$AUTH_SECRET' > /etc/icedr/icedr.env"
+  'AUTH_SECURITY_SECRET=$AUTH_SECRET' \
+  'SHARE_VISITOR_HASH_SECRET=$SHARE_VISITOR_SECRET' > /etc/icedr/icedr.env"
 sudo chmod 600 /etc/icedr/icedr.env
 ```
 
@@ -91,6 +93,9 @@ $env:ICEDR_DATA_DIR = "C:\ICEDR\data"
 $secretBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($secretBytes)
 $env:AUTH_SECURITY_SECRET = -join ($secretBytes | ForEach-Object { $_.ToString("x2") })
+$visitorSecretBytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($visitorSecretBytes)
+$env:SHARE_VISITOR_HASH_SECRET = -join ($visitorSecretBytes | ForEach-Object { $_.ToString("x2") })
 $env:SMTP_ENABLED = "false"
 & "C:\ICEDR\icedr_0.0.1-alpha.5_windows-x86_64.exe"
 ```
@@ -102,12 +107,22 @@ $env:SMTP_ENABLED = "false"
 ```bash
 mkdir -p "$HOME/Applications/icedr"
 chmod +x ./icedr_0.0.1-alpha.5_macos-arm64
-AUTH_SECURITY_SECRET="$(openssl rand -hex 32)" \
-  NODE_ENV=production \
-  APP_ENV=production \
-  SMTP_ENABLED=false \
-  ./icedr_0.0.1-alpha.5_macos-arm64
+ENV_FILE="$HOME/Applications/icedr/icedr.env"
+if [ ! -f "$ENV_FILE" ]; then
+  umask 077
+  {
+    printf 'AUTH_SECURITY_SECRET=%s\n' "$(openssl rand -hex 32)"
+    printf 'SHARE_VISITOR_HASH_SECRET=%s\n' "$(openssl rand -hex 32)"
+    printf 'NODE_ENV=production\nAPP_ENV=production\nSMTP_ENABLED=false\n'
+  } > "$ENV_FILE"
+fi
+set -a
+. "$ENV_FILE"
+set +a
+./icedr_0.0.1-alpha.5_macos-arm64
 ```
+
+保留并保护 `icedr.env`，后续启动继续加载同一文件，不要重新生成其中的两个密钥。
 
 如果系统阻止未签名程序，先核对 SHA256 和 Release 来源，再按 macOS 安全设置决定是否允许运行。
 

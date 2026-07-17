@@ -11,7 +11,7 @@ ICEDR 的完整数据由数据库、文件对象、运行配置和安全密钥�
 | SQLite + S3 / MinIO | SQLite 与运行元数据、对象存储副本、环境文件 |
 | PostgreSQL + S3 / MinIO | PostgreSQL 备份、对象存储副本、环境文件 |
 
-`AUTH_SECURITY_SECRET`、SMTP、数据库和对象存储凭据应进入受控密钥备份，不要放入普通公开压缩包。
+`AUTH_SECURITY_SECRET`、`SHARE_VISITOR_HASH_SECRET`、SMTP、数据库和对象存储凭据应进入受控密钥备份，不要放入普通公开压缩包。
 
 ## 一致性原则
 

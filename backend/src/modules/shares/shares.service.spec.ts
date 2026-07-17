@@ -548,7 +548,10 @@ describe('SharesService', () => {
 
   beforeEach(() => {
     sentCodes = new Map<string, string>();
-    configValues = {};
+    configValues = {
+      'share.visitorHashSecret':
+        'share-visitor-hash-secret-for-service-tests-2026',
+    };
     repository =
       new SharesRepositorySpecDouble() as unknown as SharesRepository;
     fileNodesService = {
