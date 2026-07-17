@@ -111,7 +111,7 @@ Redis 当前属于可选依赖。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `SHARE_VISITOR_HASH_SECRET` | 空 | 访客标识保护密钥，生产建议设置 |
+| `SHARE_VISITOR_HASH_SECRET` | 开发时随机生成 | 生产必填，至少 32 字符且不得与认证密钥相同 |
 | `SHARE_RATE_LIMIT_PROFILE` | `default` | `default`、`strict` 或 `relaxed` |
 | `SHARE_RATE_LIMIT_WINDOW_SECONDS` | 空 | 覆盖全部规则的统计窗口 |
 | `SHARE_RATE_LIMIT_VIEW_MAX` | 空 | 覆盖窗口内查看上限 |

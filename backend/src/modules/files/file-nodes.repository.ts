@@ -37,6 +37,7 @@ import {
   getFileNameConflictKey,
   normalizeFileName,
 } from '../../common/security/file-name-policy';
+import { resolveShareVisitorHashSecret } from '../../common/security/share-visitor-hash-secret';
 
 export type FileAuditAction =
   | 'file.folder_created'
@@ -1486,17 +1487,9 @@ export class FileNodesRepository {
   private hashVisitorValue(value: string | undefined) {
     const normalized = value?.trim();
     if (!normalized) return null;
-    return createHmac('sha256', this.resolveVisitorHashSecret())
+    return createHmac('sha256', resolveShareVisitorHashSecret(this.config))
       .update(normalized)
       .digest('hex');
-  }
-
-  private resolveVisitorHashSecret() {
-    return (
-      this.config.get<string>('share.visitorHashSecret')?.trim() ||
-      this.config.get<string>('auth.securitySecret')?.trim() ||
-      'icedr-dev-download-visitor-hash-secret'
-    );
   }
 
   private parseJsonRecord(value: unknown): Record<string, unknown> {

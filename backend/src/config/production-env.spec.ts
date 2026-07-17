@@ -8,6 +8,7 @@ const validProductionEnv: EnvironmentVariables = {
   NODE_ENV: 'production',
   APP_ENV: 'production',
   AUTH_SECURITY_SECRET: 'icedr-production-auth-security-secret-2026',
+  SHARE_VISITOR_HASH_SECRET: 'icedr-production-share-visitor-hash-secret-2026',
   API_CORS_ORIGIN: 'https://drive.icedr.test',
   API_PUBLIC_BASE_URL: 'https://api.icedr.test/api',
   DATABASE_HOST: 'postgres',
@@ -46,6 +47,27 @@ describe('production environment validation', () => {
     ).not.toThrow();
   });
 
+  it('generates one process-scoped visitor hash secret for development', () => {
+    const originalEnv = process.env;
+    process.env = {
+      NODE_ENV: 'development',
+      AUTH_SECURITY_SECRET: 'development-auth-secret',
+    };
+
+    try {
+      const first = configuration();
+      const second = configuration();
+
+      expect(first.share.visitorHashSecret).toBe(
+        second.share.visitorHashSecret,
+      );
+      expect(first.share.visitorHashSecret).toHaveLength(43);
+      expect(first.share.visitorHashSecret).not.toBe(first.auth.securitySecret);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
   it('rejects development-only flags in production', () => {
     expect(() =>
       validateProductionEnv({
@@ -63,6 +85,7 @@ describe('production environment validation', () => {
         NODE_ENV: 'production',
         APP_ENV: 'production',
         AUTH_SECURITY_SECRET: validProductionEnv.AUTH_SECURITY_SECRET,
+        SHARE_VISITOR_HASH_SECRET: validProductionEnv.SHARE_VISITOR_HASH_SECRET,
       }),
     ).not.toThrow();
   });
@@ -73,6 +96,7 @@ describe('production environment validation', () => {
         NODE_ENV: 'production',
         APP_ENV: 'production',
         AUTH_SECURITY_SECRET: validProductionEnv.AUTH_SECURITY_SECRET,
+        SHARE_VISITOR_HASH_SECRET: validProductionEnv.SHARE_VISITOR_HASH_SECRET,
         SMTP_ENABLED: 'false',
       }),
     ).not.toThrow();
@@ -203,6 +227,22 @@ describe('production environment validation', () => {
         SHARE_VISITOR_HASH_SECRET: 'short-share-secret',
       }),
     ).toThrow(/SHARE_VISITOR_HASH_SECRET.*at least 32 characters/s);
+  });
+
+  it('requires an independent visitor hash secret in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_VISITOR_HASH_SECRET: undefined,
+      }),
+    ).toThrow(/SHARE_VISITOR_HASH_SECRET.*required/s);
+
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_VISITOR_HASH_SECRET: validProductionEnv.AUTH_SECURITY_SECRET,
+      }),
+    ).toThrow(/SHARE_VISITOR_HASH_SECRET.*must differ/s);
   });
 
   it('accepts complete production settings through the app configuration', () => {

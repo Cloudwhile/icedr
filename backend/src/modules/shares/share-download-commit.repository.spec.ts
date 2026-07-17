@@ -223,4 +223,32 @@ describe('ShareDownloadCommitRepository', () => {
     ).resolves.toMatchObject({ status: 'committed' });
     expect(transaction).toHaveBeenCalledTimes(2);
   });
+
+  it('rechecks intent expiry after waiting to retry a conflict', async () => {
+    jest.useFakeTimers();
+    try {
+      const startedAt = new Date(activeShare.createdAt.getTime() + 1_000);
+      jest.setSystemTime(startedAt);
+      const tx = createTransactionClient(
+        createIntent({ expiresAt: new Date(startedAt.getTime() + 1) }),
+      );
+      const { repository, transaction } = createRepository(tx);
+      transaction.mockRejectedValueOnce(
+        Object.assign(new Error('write conflict'), { code: 'P2034' }),
+      );
+
+      const result = repository.commit({
+        downloadId: 'dl_test',
+        shareToken: 's_token',
+        nodeId: 'node-1',
+        metadataForDownloadCount: () => ({ nodeId: 'node-1' }),
+      });
+      await jest.runAllTimersAsync();
+
+      await expect(result).resolves.toEqual({ status: 'intent-unavailable' });
+      expect(transaction).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

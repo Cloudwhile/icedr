@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto';
 import type { ConfigService } from '@nestjs/config';
+import { resolveShareVisitorHashSecret } from '../../common/security/share-visitor-hash-secret';
 
 export type ShareVisitorFingerprint = {
   ip?: string;
@@ -19,7 +20,7 @@ export function hashShareVisitorValue(
 ) {
   const normalized = value?.trim();
   if (!normalized) return null;
-  return createHmac('sha256', resolveVisitorHashSecret(config))
+  return createHmac('sha256', resolveShareVisitorHashSecret(config))
     .update(normalized)
     .digest('hex');
 }
@@ -34,13 +35,5 @@ export function matchesShareVisitorFingerprint(
   return (
     (!stored.requestIpHash || stored.requestIpHash === requestIpHash) &&
     (!stored.userAgentHash || stored.userAgentHash === userAgentHash)
-  );
-}
-
-function resolveVisitorHashSecret(config: ConfigReader) {
-  return (
-    config.get<string>('share.visitorHashSecret')?.trim() ||
-    config.get<string>('auth.securitySecret')?.trim() ||
-    'icedr-dev-share-visitor-hash-secret'
   );
 }

@@ -25,6 +25,7 @@ API_PORT=13000
 
 # 必填：使用 openssl rand -hex 32 生成并长期保存
 AUTH_SECURITY_SECRET=<生成至少32字符的随机值>
+SHARE_VISITOR_HASH_SECRET=<生成另一个至少32字符的随机值>
 
 # 正式访问地址
 API_CORS_ORIGIN=https://drive.your-domain.tld
@@ -80,6 +81,7 @@ REDIS_PASSWORD=
 - `NODE_ENV=production` 和 `APP_ENV=production`。
 - 有效的 `API_HOST` 与 `API_PORT`。
 - 至少 32 字符的 `AUTH_SECURITY_SECRET`。
+- 至少 32 字符且与认证密钥不同的 `SHARE_VISITOR_HASH_SECRET`。
 - 持久化数据目录。
 - SMTP 关闭或提供完整有效的 SMTP 配置。
 
@@ -96,7 +98,7 @@ REDIS_PASSWORD=
 
 更换该值会使已有认证会话失效。需要轮换时，应安排用户重新登录并保留回滚方案。
 
-`SHARE_VISITOR_HASH_SECRET` 可用于外链访客标识保护。正式开放匿名分享时建议单独设置随机值，不与认证密钥复用。
+`SHARE_VISITOR_HASH_SECRET` 用于访客标识保护。生产环境必须设置与认证密钥不同的随机值，并在同一实例的所有进程中保持一致。更换该值会使已有访客绑定的临时会话和下载意图失效。开发环境留空时会在进程启动时生成临时值。
 
 ## 数据库
 

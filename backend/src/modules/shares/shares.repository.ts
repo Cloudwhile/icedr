@@ -25,14 +25,13 @@ import {
   matchesShareVisitorFingerprint,
   type ShareVisitorFingerprint,
 } from './share-visitor-fingerprint';
+import { retryPrismaSerializableTransaction } from './serializable-transaction-retry';
 
 export type { ShareVisitorFingerprint } from './share-visitor-fingerprint';
 
 type StoredShare = ShareResponse & {
   creatorUserId: string | null;
 };
-
-const SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS = 5;
 
 export type ShareStatus = 'active' | 'revoked' | 'expired';
 export type ShareRiskLevel = 'normal' | 'attention' | 'high';
@@ -384,28 +383,10 @@ export class SharesRepository {
   private async runSerializableTransaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await this.prisma.$transaction(operation, {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        });
-      } catch (error) {
-        if (
-          !this.isSerializableTransactionConflict(error) ||
-          attempt >= SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS
-        ) {
-          throw error;
-        }
-      }
-    }
-  }
-
-  private isSerializableTransactionConflict(error: unknown) {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2034'
+    return retryPrismaSerializableTransaction(() =>
+      this.prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
     );
   }
 

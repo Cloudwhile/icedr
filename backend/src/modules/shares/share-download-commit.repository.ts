@@ -11,8 +11,7 @@ import {
   type ShareVisitorFingerprint,
 } from './share-visitor-fingerprint';
 import type { ShareDownloadIntentRecord } from './shares.repository';
-
-const serializableTransactionMaxAttempts = 5;
+import { retryPrismaSerializableTransaction } from './serializable-transaction-retry';
 
 type DownloadStartedMetadataFactory = (
   downloadCount: number,
@@ -44,8 +43,8 @@ export class ShareDownloadCommitRepository {
   async commit(
     input: CommitShareDownloadIntentInput,
   ): Promise<CommitShareDownloadIntentResult> {
-    const now = new Date();
     return this.runSerializableTransaction(async (tx) => {
+      const now = new Date();
       const share = await tx.shareLink.findUnique({
         where: { token: input.shareToken },
         select: {
@@ -183,28 +182,10 @@ export class ShareDownloadCommitRepository {
   private async runSerializableTransaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await this.prisma.$transaction(operation, {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        });
-      } catch (error) {
-        if (
-          !this.isSerializableConflict(error) ||
-          attempt >= serializableTransactionMaxAttempts
-        ) {
-          throw error;
-        }
-      }
-    }
-  }
-
-  private isSerializableConflict(error: unknown) {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2034'
+    return retryPrismaSerializableTransaction(() =>
+      this.prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
     );
   }
 }

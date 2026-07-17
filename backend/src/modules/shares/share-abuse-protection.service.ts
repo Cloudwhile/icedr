@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolveShareVisitorHashSecret } from '../../common/security/share-visitor-hash-secret';
 import {
   ShareRateLimitExceededError,
   ShareRateLimitRepository,
@@ -15,9 +16,15 @@ import { resolveShareRateLimitProfile } from './share-rate-limit-policy';
 
 type ShareRiskDimension = 'link' | 'ip' | 'email' | 'user';
 type ShareRiskMetadata = Record<string, unknown>;
+const maintenanceTaskNames = [
+  'rate-limit state pruning',
+  'transient share state pruning',
+] as const;
 
 @Injectable()
 export class ShareAbuseProtectionService {
+  private readonly logger = new Logger(ShareAbuseProtectionService.name);
+  private maintenanceTask?: Promise<void>;
   private nextMaintenanceAt = 0;
 
   constructor(
@@ -34,7 +41,7 @@ export class ShareAbuseProtectionService {
     scope: ShareRateLimitScope;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     for (const dimension of this.createRateLimitDimensions(input)) {
       try {
         await this.rateLimits.consume({
@@ -85,7 +92,7 @@ export class ShareAbuseProtectionService {
     resolved?: boolean;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     const profile = resolveShareRateLimitProfile(undefined, this.config);
     const lookupDimensions = input.resolved
       ? this.createDimensions(input.shareToken, input.metadata).filter(
@@ -158,7 +165,7 @@ export class ShareAbuseProtectionService {
     resolved: boolean;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     const shareTokenHash = this.hashDimension('link', input.shareToken);
     const metadata = {
       ...input.metadata,
@@ -206,7 +213,7 @@ export class ShareAbuseProtectionService {
     rule: ShareEmailVerifyRateLimitRule;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     if (input.rule.max <= 0) return;
 
     for (const dimension of this.createEmailAbuseDimensions(
@@ -230,7 +237,7 @@ export class ShareAbuseProtectionService {
     rule: ShareEmailVerifyRateLimitRule;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     let lockedDimension: ShareRiskDimension | undefined;
     if (input.rule.max > 0) {
       for (const dimension of this.createEmailAbuseDimensions(
@@ -291,7 +298,7 @@ export class ShareAbuseProtectionService {
     metadata: ShareRiskMetadata;
     shareToken: string;
   }) {
-    await this.pruneExpiredStateIfDue();
+    this.pruneExpiredStateIfDue();
     const dimensions = this.createDimensions(
       input.shareToken,
       input.metadata,
@@ -425,16 +432,33 @@ export class ShareAbuseProtectionService {
     }
   }
 
-  private async pruneExpiredStateIfDue(now = new Date()) {
-    if (now.getTime() < this.nextMaintenanceAt) return;
+  private pruneExpiredStateIfDue(now = new Date()) {
+    if (now.getTime() < this.nextMaintenanceAt || this.maintenanceTask) return;
     this.nextMaintenanceAt = now.getTime() + 60 * 60 * 1000;
     const cutoff = new Date(
       now.getTime() - this.getRateLimitRetentionSeconds() * 1000,
     );
-    await Promise.all([
-      this.rateLimits.prune({ cutoff }),
-      this.sharesRepository.pruneExpiredTransientShareState(now),
-    ]).catch(() => undefined);
+    this.maintenanceTask = Promise.allSettled([
+      Promise.resolve().then(() => this.rateLimits.prune({ cutoff })),
+      Promise.resolve().then(() =>
+        this.sharesRepository.pruneExpiredTransientShareState(now),
+      ),
+    ])
+      .then((results) => {
+        for (const [index, result] of results.entries()) {
+          if (result.status !== 'rejected') continue;
+          const reason: unknown = result.reason;
+          this.logger.error(
+            `Share maintenance task failed: ${maintenanceTaskNames[index] ?? 'unknown task'}`,
+            reason instanceof Error
+              ? (reason.stack ?? reason.message)
+              : String(reason),
+          );
+        }
+      })
+      .finally(() => {
+        this.maintenanceTask = undefined;
+      });
   }
 
   private getRateLimitRetentionSeconds() {
@@ -481,16 +505,8 @@ export class ShareAbuseProtectionService {
   }
 
   private hashValue(namespace: string, value: string) {
-    return createHmac('sha256', this.resolveHashSecret())
+    return createHmac('sha256', resolveShareVisitorHashSecret(this.config))
       .update(`${namespace}\0${value}`)
       .digest('hex');
-  }
-
-  private resolveHashSecret() {
-    return (
-      this.config.get<string>('share.visitorHashSecret')?.trim() ||
-      this.config.get<string>('auth.securitySecret')?.trim() ||
-      'icedr-dev-share-visitor-hash-secret'
-    );
   }
 }

@@ -1,8 +1,11 @@
+import { randomBytes } from 'crypto';
 import {
   getAppEnv,
   isProductionEnv,
   validateProductionEnv,
 } from './production-env';
+
+const processVisitorHashSecret = randomBytes(32).toString('base64url');
 
 function readBoolean(value: string | undefined, defaultValue = false) {
   const next = readOptionalString(value);
@@ -168,7 +171,10 @@ export default () => {
       emailProvider:
         readOptionalString(process.env.SHARE_EMAIL_PROVIDER) ??
         (isProduction() ? '' : 'dev-log'),
-      visitorHashSecret: readString(process.env.SHARE_VISITOR_HASH_SECRET),
+      visitorHashSecret: readString(
+        process.env.SHARE_VISITOR_HASH_SECRET,
+        processVisitorHashSecret,
+      ),
       rateLimit: {
         defaultProfile: readString(
           process.env.SHARE_RATE_LIMIT_PROFILE,
