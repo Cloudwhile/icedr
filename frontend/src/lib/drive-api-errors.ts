@@ -16,6 +16,7 @@ export type DriveApiErrorScope = "form" | "global" | "share";
 export type DriveApiErrorMessage = {
   code?: string;
   message: string;
+  retryAfter?: number;
 };
 
 export class DriveApiError extends Error {
@@ -25,6 +26,7 @@ export class DriveApiError extends Error {
     message: string,
     readonly status?: number,
     readonly code?: string,
+    readonly retryAfter?: number,
   ) {
     super(message);
     this.name = "DriveApiError";
@@ -55,6 +57,7 @@ export async function readDriveApiError(response: Response, fallback = "Drive AP
     }
     const code = (body as { code?: unknown }).code;
     const message = (body as { message?: unknown }).message;
+    const retryAfter = (body as { retryAfter?: unknown }).retryAfter;
     const resolvedMessage = Array.isArray(message)
       ? message.filter((item): item is string => typeof item === "string").join("; ")
       : typeof message === "string"
@@ -63,6 +66,9 @@ export async function readDriveApiError(response: Response, fallback = "Drive AP
     return {
       message: resolvedMessage || fallback,
       code: typeof code === "string" ? code : undefined,
+      ...(typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter >= 0
+        ? { retryAfter }
+        : {}),
     };
   } catch {
     return { message: fallback, code: undefined };
@@ -73,7 +79,7 @@ export function createDriveApiResponseError(
   response: Response,
   apiError: DriveApiErrorMessage,
 ): DriveApiError {
-  return new DriveApiError(apiError.message, response.status, apiError.code);
+  return new DriveApiError(apiError.message, response.status, apiError.code, apiError.retryAfter);
 }
 
 export function normalizeDriveApiError(error: unknown, fallback = "Drive API request failed"): DriveApiError {

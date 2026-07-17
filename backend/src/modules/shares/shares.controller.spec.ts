@@ -23,6 +23,23 @@ describe('SharesController', () => {
     const createVerifiedAccountAccessSession = jest.fn(() =>
       Promise.resolve(accountSession),
     );
+    const sendEmailAccessCode = jest.fn(() =>
+      Promise.resolve({
+        configured: true,
+        delivery: 'email',
+        expiresAt: new Date(0).toISOString(),
+      }),
+    );
+    const verifyEmailAccessCode = jest.fn(() =>
+      Promise.resolve({
+        ...accountSession,
+        identityType: 'email',
+        sessionId: 'sas_email',
+      }),
+    );
+    const getPreviewStatus = jest.fn(() =>
+      Promise.resolve({ previewId: 'preview-test', status: 'ready' }),
+    );
     const requireAdminSession = jest.fn(() =>
       Promise.resolve({ user: { role: 'admin' } }),
     );
@@ -39,8 +56,11 @@ describe('SharesController', () => {
     const listShares = jest.fn(() => Promise.resolve([]));
     const sharesService = {
       createVerifiedAccountAccessSession,
+      getPreviewStatus,
       listShares,
       revokeShare,
+      sendEmailAccessCode,
+      verifyEmailAccessCode,
     } as unknown as SharesService;
     const adminGuard = {
       requireAdminSession,
@@ -52,11 +72,14 @@ describe('SharesController', () => {
       accountUser,
       controller: new SharesController(sharesService, adminGuard),
       createVerifiedAccountAccessSession,
+      getPreviewStatus,
       listShares,
       requireAdminSession,
       requirePermission,
       requireSession,
       revokeShare,
+      sendEmailAccessCode,
+      verifyEmailAccessCode,
     };
   }
 
@@ -126,6 +149,83 @@ describe('SharesController', () => {
         actorUserId: 'user_1',
         userAgent: 'spec-agent',
       }),
+    );
+  });
+
+  it('forwards visitor metadata when requesting an email access code', async () => {
+    const { controller, sendEmailAccessCode } = createController();
+    const request = {
+      get: jest.fn((name: string) =>
+        name.toLowerCase() === 'user-agent' ? 'spec-agent' : undefined,
+      ),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await controller.sendEmailAccessCode(
+      'share-token',
+      { email: 'visitor@example.test' },
+      request,
+    );
+
+    expect(sendEmailAccessCode).toHaveBeenCalledWith(
+      'share-token',
+      { email: 'visitor@example.test' },
+      {
+        ip: '203.0.113.25',
+        userAgent: 'spec-agent',
+      },
+    );
+  });
+
+  it('forwards visitor metadata when verifying an email access code', async () => {
+    const { controller, verifyEmailAccessCode } = createController();
+    const request = {
+      get: jest.fn((name: string) =>
+        name.toLowerCase() === 'user-agent' ? 'spec-agent' : undefined,
+      ),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await controller.verifyEmailAccessCode(
+      'share-token',
+      { code: '123456', email: 'visitor@example.test' },
+      request,
+    );
+
+    expect(verifyEmailAccessCode).toHaveBeenCalledWith(
+      'share-token',
+      { code: '123456', email: 'visitor@example.test' },
+      {
+        ip: '203.0.113.25',
+        userAgent: 'spec-agent',
+      },
+    );
+  });
+
+  it('forwards visitor metadata when polling preview status', async () => {
+    const { controller, getPreviewStatus } = createController();
+    const request = {
+      get: jest.fn((name: string) =>
+        name.toLowerCase() === 'user-agent' ? 'spec-agent' : undefined,
+      ),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await controller.getPreviewStatus(
+      'share-token',
+      'node-1',
+      'preview-test',
+      request,
+    );
+
+    expect(getPreviewStatus).toHaveBeenCalledWith(
+      'share-token',
+      'node-1',
+      'preview-test',
+      { ip: '203.0.113.25', userAgent: 'spec-agent' },
     );
   });
 });

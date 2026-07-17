@@ -105,22 +105,26 @@ Redis 当前属于可选依赖。
 
 ## 外链访问与限流
 
+除 `SHARE_RATE_LIMIT_PROFILE` 外，限流覆盖项留空时会使用所选 profile 的内置规则；仅在需要覆盖单项规则时填写。
+
+直接运行应用时使用下表变量名。使用仓库内 `deploy/docker-compose.yml` 时，宿主机 `.env` 需使用 `ICEDR_DOCKER_` 前缀，例如 `ICEDR_DOCKER_SHARE_RATE_LIMIT_PROFILE`；Compose 会将其映射为容器内变量。
+
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `SHARE_VISITOR_HASH_SECRET` | 空 | 访客标识保护密钥，生产建议设置 |
 | `SHARE_RATE_LIMIT_PROFILE` | `default` | `default`、`strict` 或 `relaxed` |
-| `SHARE_RATE_LIMIT_WINDOW_SECONDS` | `60` | 通用统计窗口 |
-| `SHARE_RATE_LIMIT_VIEW_MAX` | `120` | 窗口内查看上限 |
-| `SHARE_RATE_LIMIT_VIEW_WINDOW_SECONDS` | `60` | 查看统计窗口 |
-| `SHARE_RATE_LIMIT_EMAIL_CODE_MAX` | `5` | 验证码发送上限 |
-| `SHARE_RATE_LIMIT_EMAIL_CODE_WINDOW_SECONDS` | `600` | 验证码发送窗口 |
-| `SHARE_RATE_LIMIT_EMAIL_VERIFY_MAX` | `5` | 验证失败上限 |
-| `SHARE_RATE_LIMIT_EMAIL_VERIFY_WINDOW_SECONDS` | `900` | 验证失败统计窗口 |
-| `SHARE_RATE_LIMIT_EMAIL_VERIFY_LOCK_SECONDS` | `900` | 达到上限后的锁定时间 |
-| `SHARE_RATE_LIMIT_DOWNLOAD_INTENT_MAX` | `60` | 下载准备上限 |
-| `SHARE_RATE_LIMIT_DOWNLOAD_INTENT_WINDOW_SECONDS` | `60` | 下载准备统计窗口 |
-| `SHARE_RATE_LIMIT_DOWNLOAD_MAX` | `60` | 正式下载上限 |
-| `SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS` | `60` | 正式下载统计窗口 |
+| `SHARE_RATE_LIMIT_WINDOW_SECONDS` | 空 | 覆盖全部规则的统计窗口 |
+| `SHARE_RATE_LIMIT_VIEW_MAX` | 空 | 覆盖窗口内查看上限 |
+| `SHARE_RATE_LIMIT_VIEW_WINDOW_SECONDS` | 空 | 覆盖查看统计窗口 |
+| `SHARE_RATE_LIMIT_EMAIL_CODE_MAX` | 空 | 覆盖验证码发送上限 |
+| `SHARE_RATE_LIMIT_EMAIL_CODE_WINDOW_SECONDS` | 空 | 覆盖验证码发送窗口 |
+| `SHARE_RATE_LIMIT_EMAIL_VERIFY_MAX` | 空 | 覆盖验证失败上限 |
+| `SHARE_RATE_LIMIT_EMAIL_VERIFY_WINDOW_SECONDS` | 空 | 覆盖验证失败统计窗口 |
+| `SHARE_RATE_LIMIT_EMAIL_VERIFY_LOCK_SECONDS` | 空 | 覆盖达到上限后的锁定时间 |
+| `SHARE_RATE_LIMIT_DOWNLOAD_INTENT_MAX` | 空 | 覆盖下载准备上限 |
+| `SHARE_RATE_LIMIT_DOWNLOAD_INTENT_WINDOW_SECONDS` | 空 | 覆盖下载准备统计窗口 |
+| `SHARE_RATE_LIMIT_DOWNLOAD_MAX` | 空 | 覆盖正式下载上限 |
+| `SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS` | 空 | 覆盖正式下载统计窗口 |
 
 ## 更新检查
 

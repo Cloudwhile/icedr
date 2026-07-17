@@ -848,6 +848,24 @@
   width: 5px;
 }
 
+.external-share-feedback[data-tone="error"]::before {
+  background: #d64040;
+}
+
+.external-share-feedback[data-tone="error"]::after {
+  border: 0;
+  color: #ffffff;
+  content: "!";
+  font-size: 18px;
+  font-weight: 800;
+  height: auto;
+  left: 24px;
+  line-height: 1;
+  top: calc(50% - 9px);
+  transform: none;
+  width: auto;
+}
+
 @keyframes external-share-panel-in {
   from {
     opacity: 0;

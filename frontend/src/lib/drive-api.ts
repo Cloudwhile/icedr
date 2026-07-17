@@ -1053,6 +1053,31 @@ export function createShareAccountAccessSession(token: string) {
   );
 }
 
+export function sendShareEmailCode(token: string, email: string) {
+  return requestDriveApi<{
+    configured: boolean;
+    delivery: string;
+    expiresAt: string;
+  }>(`/shares/${encodeURIComponent(token)}/access-sessions/email-code`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function verifyShareEmailCode(
+  token: string,
+  email: string,
+  code: string,
+) {
+  return requestDriveApi<ShareAccessSession>(
+    `/shares/${encodeURIComponent(token)}/access-sessions/verify-email`,
+    {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    },
+  );
+}
+
 export function fetchIdentityConfig() {
   return requestDriveApi<IdentityConfigResponse>("/identity/oauth");
 }

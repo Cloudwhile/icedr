@@ -34,13 +34,13 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   await page.goto(`/share/s/${shareToken}`);
   await expect(page.getByText("External share")).toBeVisible();
   await expect(page.getByText(fileName).first()).toBeVisible();
+  await expect(page.getByText("admin@example.com").first()).toBeVisible();
 
   await page.locator('button[aria-label="More"]').last().click();
   await page.getByRole("menuitem", { name: "Download" }).click();
   const useCurrentAccount = page.getByRole("button", { name: "Use current account" });
-  if (await useCurrentAccount.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await useCurrentAccount.click();
-  }
+  await expect(useCurrentAccount).toBeVisible();
+  await useCurrentAccount.click();
   const downloadResponsePromise = page.waitForResponse((response) =>
     response.request().method() === "GET" &&
     response.url().includes(`/shares/${shareToken}/items/${fileId}/download?downloadId=`) &&
@@ -72,10 +72,38 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   await expect(page.locator(".drive-audit-table")).not.toContainText(fileId);
 });
 
-async function mockIcedrApi(page: Page) {
+test("smoke: verifies external share access with an email code", async ({ page }) => {
+  const state = await mockIcedrApi(page, { authenticated: false });
+
+  await page.goto(`/share/s/${shareToken}`);
+  await expect(page.getByText("External share")).toBeVisible();
+
+  await page.locator('button[aria-label="More"]').last().click();
+  await page.getByRole("menuitem", { name: "Download" }).click();
+
+  await page.getByRole("textbox", { name: "Enter your email to continue" }).fill("visitor@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByRole("textbox", { name: "Enter the 6-digit code" })).toBeVisible();
+  expect(state.emailCodeSentTo).toBe("visitor@example.com");
+
+  await page.getByRole("textbox", { name: "Enter the 6-digit code" }).fill("123456");
+  await page.getByRole("button", { name: "Verify code" }).click();
+  await expect(page.getByText("Email verified visitor verification succeeded")).toBeVisible();
+  expect(state.emailVerifiedFor).toBe("visitor@example.com");
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("button", { name: "Download" }).last()).toBeVisible();
+});
+
+async function mockIcedrApi(
+  page: Page,
+  options: { authenticated?: boolean } = {},
+) {
   const state = {
     downloadIntentPurpose: "",
     downloaded: false,
+    emailCodeSentTo: "",
+    emailVerifiedFor: "",
     shareCreated: false,
   };
 
@@ -101,6 +129,10 @@ async function mockIcedrApi(page: Page) {
     }
 
     if (method === "GET" && path === "/auth/me") {
+      if (options.authenticated === false) {
+        await fulfillJson(route, { message: "Unauthorized" }, 401);
+        return;
+      }
       await fulfillJson(route, {
         avatarUrl: null,
         createdAt: now,
@@ -160,6 +192,46 @@ async function mockIcedrApi(page: Page) {
       await fulfillJson(route, {
         ...registeredShare(),
         items: [shareFileNode()],
+      });
+      return;
+    }
+
+    if (method === "POST" && path === `/shares/${shareToken}/access-sessions/email-code`) {
+      const requestBody = request.postDataJSON() as { email: string };
+      state.emailCodeSentTo = requestBody.email;
+      await fulfillJson(route, {
+        configured: true,
+        delivery: "email",
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      });
+      return;
+    }
+
+    if (method === "POST" && path === `/shares/${shareToken}/access-sessions/verify-email`) {
+      const requestBody = request.postDataJSON() as { code: string; email: string };
+      state.emailVerifiedFor = requestBody.email;
+      await fulfillJson(route, {
+        availableAt: now,
+        downloadLimit: "No download limit",
+        email: requestBody.email,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        identityType: "email",
+        policyDecision: {
+          bypassSpeedLimit: false,
+          bypassWait: false,
+          downloadLimit: "No download limit",
+          identityType: "email",
+          maxDownloads: 0,
+          remainingDownloads: null,
+          requiresAccessSession: true,
+          requiresEmailVerification: true,
+          speedLimit: null,
+          waitSeconds: 0,
+        },
+        sessionId: "share-session-email",
+        shareToken,
+        speedLimit: null,
+        waitSeconds: 0,
       });
       return;
     }

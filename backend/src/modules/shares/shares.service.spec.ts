@@ -15,6 +15,15 @@ import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import { CreateShareDto, ShareResponse } from './shares.dto';
 import { ShareAccessSession } from './share-access.dto';
+import { ShareAbuseProtectionService } from './share-abuse-protection.service';
+import {
+  ShareDownloadCommitRepository,
+  type CommitShareDownloadIntentInput,
+} from './share-download-commit.repository';
+import {
+  ShareRateLimitExceededError,
+  ShareRateLimitRepository,
+} from './share-rate-limit.repository';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
 import { resolveShareDownloadPolicy } from './share-download-policy';
@@ -63,7 +72,12 @@ class SharesRepositorySpecDouble {
       shareToken: string;
     }
   >();
-  private accessSessions = new Map<string, ShareAccessSession>();
+  private accessSessions = new Map<
+    string,
+    ShareAccessSession & {
+      visitor?: { ip?: string; userAgent?: string };
+    }
+  >();
   private downloadIntents = new Map<
     string,
     {
@@ -72,6 +86,7 @@ class SharesRepositorySpecDouble {
       expiresAt: string;
       filename: string;
       identityType: 'anonymous' | 'email' | 'ica';
+      actorUserId?: string;
       email?: string;
       method: 'stream' | 'manifest';
       nodeId: string;
@@ -140,62 +155,21 @@ class SharesRepositorySpecDouble {
       target,
       metadata,
     });
+    return Promise.resolve();
   }
 
-  recordDownloadStarted(
-    token: string,
-    metadataForDownloadCount: (
-      downloadCount: number,
-    ) => Record<string, unknown> | null,
+  recordUnresolvedAudit(
+    action: string,
+    shareTokenHash: string,
+    metadata: Record<string, unknown> = {},
   ) {
-    const share = this.shares.get(token);
-    if (!share) {
-      return Promise.resolve({
-        downloadCount: 0,
-        expired: false,
-        missingShare: true,
-        recorded: false,
-        revoked: false,
-      });
-    }
-    const expiresAt =
-      new Date(share.createdAt).getTime() + share.expiresDays * 86400000;
-    if (share.revokedAt || expiresAt < Date.now()) {
-      return Promise.resolve({
-        downloadCount: 0,
-        expired: !share.revokedAt,
-        missingShare: false,
-        recorded: false,
-        revoked: Boolean(share.revokedAt),
-      });
-    }
-    const downloadCount = this.auditEvents.filter(
-      (event) =>
-        event.target === token && event.action === 'share.download_started',
-    ).length;
-    const metadata = metadataForDownloadCount(downloadCount);
-    if (!metadata) {
-      return Promise.resolve({
-        downloadCount,
-        expired: false,
-        missingShare: false,
-        recorded: false,
-        revoked: false,
-      });
-    }
     this.auditEvents.push({
-      action: 'share.download_started',
+      action,
       createdAt: new Date().toISOString(),
-      target: token,
-      metadata,
+      target: `share:${shareTokenHash.slice(0, 16)}`,
+      metadata: { ...metadata, shareTokenHash },
     });
-    return Promise.resolve({
-      downloadCount,
-      expired: false,
-      missingShare: false,
-      recorded: true,
-      revoked: false,
-    });
+    return Promise.resolve();
   }
 
   countAuditEvents(action: string) {
@@ -254,6 +228,7 @@ class SharesRepositorySpecDouble {
   consumeEmailAccessCode(input: {
     code: string;
     email: string;
+    maxAttempts: number;
     token: string;
   }) {
     const key = `${input.token}:${input.email.toLowerCase()}`;
@@ -270,13 +245,133 @@ class SharesRepositorySpecDouble {
     return Promise.resolve(code);
   }
 
-  createAccessSession(input: ShareAccessSession) {
+  createAccessSession(
+    input: ShareAccessSession & {
+      visitor?: { ip?: string; userAgent?: string };
+    },
+  ) {
     this.accessSessions.set(input.sessionId, input);
     return Promise.resolve(input);
   }
 
-  findAccessSession(sessionId: string) {
-    return Promise.resolve(this.accessSessions.get(sessionId) ?? null);
+  findAccessSession(
+    sessionId: string,
+    visitor?: { ip?: string; userAgent?: string },
+  ) {
+    const session = this.accessSessions.get(sessionId);
+    if (
+      !session ||
+      (session.visitor?.ip && session.visitor.ip !== visitor?.ip) ||
+      (session.visitor?.userAgent &&
+        session.visitor.userAgent !== visitor?.userAgent)
+    ) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(session);
+  }
+
+  recordShareViewed(
+    token: string,
+    maxViews: number,
+    metadata: Record<string, unknown> = {},
+  ) {
+    const share = this.shares.get(token);
+    if (!share) {
+      return Promise.resolve({
+        viewCount: 0,
+        expired: false,
+        missingShare: true,
+        recorded: false,
+        revoked: false,
+      });
+    }
+    const expiresAt =
+      new Date(share.createdAt).getTime() + share.expiresDays * 86400000;
+    if (share.revokedAt || expiresAt < Date.now()) {
+      return Promise.resolve({
+        viewCount: 0,
+        expired: !share.revokedAt,
+        missingShare: false,
+        recorded: false,
+        revoked: Boolean(share.revokedAt),
+      });
+    }
+    const viewCount = this.auditEvents.filter(
+      (event) => event.target === token && event.action === 'share.viewed',
+    ).length;
+    if (maxViews > 0 && viewCount >= maxViews) {
+      return Promise.resolve({
+        viewCount,
+        expired: false,
+        missingShare: false,
+        recorded: false,
+        revoked: false,
+      });
+    }
+    this.auditEvents.push({
+      action: 'share.viewed',
+      createdAt: new Date().toISOString(),
+      target: token,
+      metadata,
+    });
+    return Promise.resolve({
+      viewCount,
+      expired: false,
+      missingShare: false,
+      recorded: true,
+      revoked: false,
+    });
+  }
+
+  commit(input: CommitShareDownloadIntentInput) {
+    const share = this.shares.get(input.shareToken);
+    if (!share) {
+      return Promise.resolve({ status: 'share-missing' as const });
+    }
+    const expiresAt =
+      new Date(share.createdAt).getTime() + share.expiresDays * 86400000;
+    if (share.revokedAt) {
+      return Promise.resolve({ status: 'share-revoked' as const });
+    }
+    if (expiresAt < Date.now()) {
+      return Promise.resolve({ status: 'share-expired' as const });
+    }
+    const intent = this.findUsableDownloadIntent({
+      downloadId: input.downloadId,
+      nodeId: input.nodeId,
+      token: input.shareToken,
+    });
+    if (!intent) {
+      return Promise.resolve({ status: 'intent-unavailable' as const });
+    }
+    if (intent.purpose === 'download') {
+      const downloadCount = this.auditEvents.filter(
+        (event) =>
+          event.target === input.shareToken &&
+          event.action === 'share.download_started',
+      ).length;
+      const metadata = input.metadataForDownloadCount(downloadCount);
+      if (!metadata) {
+        return Promise.resolve({ status: 'download-limit-reached' as const });
+      }
+      this.auditEvents.push({
+        action: 'share.download_started',
+        createdAt: new Date().toISOString(),
+        target: input.shareToken,
+        metadata,
+      });
+      intent.consumedAt = new Date().toISOString();
+    }
+    intent.useCount += 1;
+    return Promise.resolve({ status: 'committed' as const, intent });
+  }
+
+  pruneExpiredTransientShareState() {
+    return Promise.resolve({
+      accessSessions: 0,
+      downloadIntents: 0,
+      emailCodes: 0,
+    });
   }
 
   createShareDownloadIntent(input: {
@@ -284,6 +379,7 @@ class SharesRepositorySpecDouble {
     expiresAt: string;
     filename: string;
     identityType: 'anonymous' | 'email' | 'ica';
+    actorUserId?: string;
     email?: string;
     method: 'stream' | 'manifest';
     nodeId: string;
@@ -298,7 +394,15 @@ class SharesRepositorySpecDouble {
     return Promise.resolve(this.downloadIntents.get(input.downloadId));
   }
 
-  openShareDownloadIntent(input: {
+  findShareDownloadIntent(input: {
+    downloadId: string;
+    nodeId: string;
+    token: string;
+  }) {
+    return Promise.resolve(this.findUsableDownloadIntent(input));
+  }
+
+  private findUsableDownloadIntent(input: {
     downloadId: string;
     nodeId: string;
     token: string;
@@ -312,13 +416,114 @@ class SharesRepositorySpecDouble {
       (intent.purpose === 'download' && intent.consumedAt) ||
       intent.useCount >= (intent.purpose === 'preview' ? 64 : 1)
     ) {
-      return Promise.resolve(null);
+      return null;
     }
-    intent.useCount += 1;
-    if (intent.purpose === 'download') {
-      intent.consumedAt = new Date().toISOString();
+    return intent;
+  }
+}
+
+class ShareRateLimitRepositorySpecDouble {
+  private readonly buckets = new Map<
+    string,
+    { count: number; windowStartedAt: number }
+  >();
+
+  consume(input: {
+    action: string;
+    scopeHash: string;
+    limit: number;
+    windowSeconds: number;
+  }) {
+    if (input.limit <= 0) return Promise.resolve();
+    const key = this.getKey(input.action, input.scopeHash);
+    const now = Date.now();
+    const current = this.buckets.get(key);
+    if (
+      !current ||
+      current.windowStartedAt + input.windowSeconds * 1000 <= now
+    ) {
+      this.buckets.set(key, { count: 1, windowStartedAt: now });
+      return Promise.resolve();
     }
-    return Promise.resolve(intent);
+    if (current.count >= input.limit) {
+      throw new ShareRateLimitExceededError(
+        Math.max(
+          1,
+          Math.ceil(
+            (current.windowStartedAt + input.windowSeconds * 1000 - now) / 1000,
+          ),
+        ),
+      );
+    }
+    current.count += 1;
+    return Promise.resolve();
+  }
+
+  increment(input: {
+    action: string;
+    scopeHash: string;
+    windowSeconds: number;
+  }) {
+    const key = this.getKey(input.action, input.scopeHash);
+    const now = Date.now();
+    const current = this.buckets.get(key);
+    if (
+      !current ||
+      current.windowStartedAt + input.windowSeconds * 1000 <= now
+    ) {
+      this.buckets.set(key, { count: 1, windowStartedAt: now });
+      return Promise.resolve(1);
+    }
+    current.count += 1;
+    return Promise.resolve(current.count);
+  }
+
+  activate(input: { action: string; scopeHash: string }) {
+    this.buckets.set(this.getKey(input.action, input.scopeHash), {
+      count: 1,
+      windowStartedAt: Date.now(),
+    });
+    return Promise.resolve();
+  }
+
+  getRetryAfter(input: {
+    action: string;
+    scopeHash: string;
+    durationSeconds: number;
+  }) {
+    const current = this.buckets.get(
+      this.getKey(input.action, input.scopeHash),
+    );
+    if (!current) return Promise.resolve(0);
+    return Promise.resolve(
+      Math.max(
+        0,
+        Math.ceil(
+          (current.windowStartedAt +
+            input.durationSeconds * 1000 -
+            Date.now()) /
+            1000,
+        ),
+      ),
+    );
+  }
+
+  clear(input: { actions: string[]; scopeHashes: string[] }) {
+    let deleted = 0;
+    for (const action of input.actions) {
+      for (const scopeHash of input.scopeHashes) {
+        if (this.buckets.delete(this.getKey(action, scopeHash))) deleted += 1;
+      }
+    }
+    return Promise.resolve(deleted);
+  }
+
+  async prune() {
+    return Promise.resolve(0);
+  }
+
+  private getKey(action: string, scopeHash: string) {
+    return `${action}:${scopeHash}`;
   }
 }
 
@@ -335,6 +540,7 @@ describe('SharesService', () => {
   let configService: Pick<ConfigService, 'get'>;
   let configValues: Record<string, unknown>;
   let sentCodes: Map<string, string>;
+  let abuseProtection: ShareAbuseProtectionService;
 
   afterEach(() => {
     jest.useRealTimers();
@@ -564,6 +770,11 @@ describe('SharesService', () => {
     configService = {
       get: jest.fn((key: string) => configValues[key]),
     };
+    abuseProtection = new ShareAbuseProtectionService(
+      new ShareRateLimitRepositorySpecDouble() as unknown as ShareRateLimitRepository,
+      repository,
+      configService as ConfigService,
+    );
     service = new SharesService(
       repository,
       fileNodesService as FileNodesService,
@@ -571,6 +782,8 @@ describe('SharesService', () => {
       workspacesService as WorkspacesService,
       mailService as MailService,
       configService as ConfigService,
+      abuseProtection,
+      repository as unknown as ShareDownloadCommitRepository,
     );
   });
 
@@ -598,9 +811,17 @@ describe('SharesService', () => {
   });
 
   it('throws not found for missing shares', async () => {
-    await expect(service.getShare('missing')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.getShare('missing', { ip: '203.0.113.30' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    const denied = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.access_denied');
+    expect(denied?.target).not.toContain('missing');
+    expect(denied?.metadata.ip).toBe('203.0.113.30');
+    expect(denied?.metadata.reason).toBe('not_found');
+    expect(denied?.metadata.shareTokenHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('revokes shares and rejects later visitor lookup', async () => {
@@ -785,6 +1006,101 @@ describe('SharesService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('applies abuse limits before rejecting a reached share view quota', async () => {
+    const consume = jest.spyOn(abuseProtection, 'consume');
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, maxViews: 1 },
+    });
+    const visitor = { ip: '203.0.113.40', userAgent: 'Spec Browser' };
+
+    await service.getShare(created.token, visitor);
+    await expect(service.getShare(created.token, visitor)).rejects.toThrow(
+      'Share view limit has been reached',
+    );
+
+    expect(consume).toHaveBeenCalledTimes(2);
+  });
+
+  it('rate limits preview byte streams before opening storage', async () => {
+    configValues['share.rateLimit.downloadMax'] = 1;
+    configValues['share.rateLimit.downloadWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+      {},
+      undefined,
+      'preview',
+    );
+
+    await service.downloadSharedNode(
+      created.token,
+      'roadmap',
+      intent.downloadId,
+    );
+    await expectRateLimited(
+      service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
+    );
+    expect(storageService.openObjectStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not consume a download capability while the request is rate limited', async () => {
+    jest.useFakeTimers();
+    const startedAt = new Date('2026-07-15T00:00:00.000Z');
+    jest.setSystemTime(startedAt);
+    configValues['share.rateLimit.downloadMax'] = 1;
+    configValues['share.rateLimit.downloadWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const first = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    await service.downloadSharedNode(
+      created.token,
+      'roadmap',
+      first.downloadId,
+    );
+    const second = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+
+    await expectRateLimited(
+      service.downloadSharedNode(created.token, 'roadmap', second.downloadId),
+    );
+    jest.setSystemTime(new Date(startedAt.getTime() + 61_000));
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', second.downloadId),
+    ).resolves.toMatchObject({ method: 'stream' });
+  });
+
+  it('audits invalid download capabilities as denied access', async () => {
+    const created = await service.createShare(createDto());
+
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', 'missing-intent', {
+        ip: '203.0.113.31',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    const denied = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find((event) => event.action === 'share.access_denied');
+    expect(denied?.metadata.downloadIdHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(denied?.metadata).toMatchObject({
+      ip: '203.0.113.31',
+      nodeId: 'roadmap',
+      reason: 'download_intent_invalid',
+    });
+    expect(JSON.stringify(denied)).not.toContain('missing-intent');
+  });
+
   it('returns a unified download policy and policy decisions for email visitors', async () => {
     const created = await service.createShare({
       ...createDto(),
@@ -893,6 +1209,45 @@ describe('SharesService', () => {
         competingIntent.downloadId,
       ),
     ).rejects.toThrow('Share download limit has been reached');
+
+    const storedShare = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).findByToken(created.token);
+    expect(storedShare).toBeDefined();
+    storedShare!.policy.maxDownloads = 2;
+    storedShare!.downloadPolicy = resolveShareDownloadPolicy(
+      storedShare!.policy,
+    );
+    await expect(
+      service.downloadSharedNode(
+        created.token,
+        'roadmap',
+        competingIntent.downloadId,
+      ),
+    ).resolves.toMatchObject({ method: 'stream' });
+  });
+
+  it('keeps a download intent reusable when storage preparation fails', async () => {
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    jest
+      .mocked(storageService.openObjectStream)
+      .mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
+    ).rejects.toThrow('storage unavailable');
+    await expect(
+      repository.countAuditEvents('share.download_started'),
+    ).resolves.toBe(0);
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
+    ).resolves.toMatchObject({ method: 'stream' });
   });
 
   it('rechecks share state while recording download starts', async () => {
@@ -905,20 +1260,29 @@ describe('SharesService', () => {
     );
     const repositoryDouble =
       repository as unknown as SharesRepositorySpecDouble;
-    const recordDownloadStarted =
-      repositoryDouble.recordDownloadStarted.bind(repositoryDouble);
-    jest
-      .spyOn(repositoryDouble, 'recordDownloadStarted')
-      .mockImplementation((token, metadataForDownloadCount) => {
-        const share = repositoryDouble.findByToken(token);
-        if (share) share.revokedAt = new Date().toISOString();
-        return recordDownloadStarted(token, metadataForDownloadCount);
-      });
+    const commit = repositoryDouble.commit.bind(repositoryDouble);
+    const preparedStream = Readable.from(['test']);
+    jest.mocked(storageService.openObjectStream).mockResolvedValueOnce({
+      acceptRanges: 'bytes',
+      contentLength: 4,
+      contentRange: null,
+      contentType: 'application/octet-stream',
+      etag: null,
+      lastModified: null,
+      statusCode: 200,
+      stream: preparedStream,
+    });
+    jest.spyOn(repositoryDouble, 'commit').mockImplementation((input) => {
+      const share = repositoryDouble.findByToken(input.shareToken);
+      if (share) share.revokedAt = new Date().toISOString();
+      return commit(input);
+    });
 
     await expect(
       service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
     ).rejects.toThrow('Share link is revoked');
-    expect(storageService.openObjectStream).not.toHaveBeenCalled();
+    expect(storageService.openObjectStream).toHaveBeenCalledTimes(1);
+    expect(preparedStream.destroyed).toBe(true);
     await expect(
       repository.countAuditEvents('share.download_started'),
     ).resolves.toBe(0);
@@ -1005,25 +1369,41 @@ describe('SharesService', () => {
   });
 
   it('enforces share email rules for main account access', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
     const created = await service.createShare({
       ...createDto(),
       policy: { ...createDto().policy, allowedDomain: 'company.example' },
     });
-
-    await expect(
+    const visitor = { ip: '203.0.113.47', userAgent: 'Spec Browser' };
+    const accountUser = {
+      id: 'user_main',
+      avatarUrl: null,
+      displayName: 'Main User',
+      email: 'main@example.test',
+    };
+    const request = () =>
       service.createDownloadIntent(
         created.token,
         'roadmap',
         undefined,
-        {},
-        {
-          id: 'user_main',
-          avatarUrl: null,
-          displayName: 'Main User',
-          email: 'main@example.test',
-        },
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+        visitor,
+        accountUser,
+      );
+
+    await expect(request()).rejects.toBeInstanceOf(ForbiddenException);
+    const denied = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find(
+      (event) =>
+        event.action === 'share.access_denied' &&
+        event.metadata.reason === 'email_not_allowed',
+    );
+    expect(denied?.metadata).toMatchObject({
+      actorUserId: 'user_main',
+      ip: visitor.ip,
+    });
+    await expectRateLimited(request());
   });
 
   it('returns backend manifest downloads for folders without object keys', async () => {
@@ -1072,26 +1452,58 @@ describe('SharesService', () => {
   });
 
   it('requires a real access session for gated downloads', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
     const created = await service.createShare({
       ...createDto(),
       policy: { ...createDto().policy, waitValue: 15 },
     });
+    const visitor = { ip: '203.0.113.48', userAgent: 'Spec Browser' };
+    const request = () =>
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        undefined,
+        visitor,
+      );
 
-    await expect(
-      service.createDownloadIntent(created.token, 'roadmap'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(request()).rejects.toBeInstanceOf(ForbiddenException);
+    expect(
+      (repository as unknown as SharesRepositorySpecDouble).auditEvents.find(
+        (event) =>
+          event.action === 'share.access_denied' &&
+          event.metadata.reason === 'access_session_required',
+      )?.metadata,
+    ).toMatchObject({ ip: visitor.ip });
+    await expectRateLimited(request());
   });
 
   it('rejects gated downloads before access session wait time has elapsed', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
     const created = await service.createShare({
       ...createDto(),
       policy: { ...createDto().policy, waitValue: 15 },
     });
     const session = await createEmailSession(created.token);
+    const visitor = { ip: '203.0.113.49', userAgent: 'Spec Browser' };
+    const request = () =>
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        session.sessionId,
+        visitor,
+      );
 
-    await expect(
-      service.createDownloadIntent(created.token, 'roadmap', session.sessionId),
-    ).rejects.toThrow('wait time has not elapsed');
+    await expect(request()).rejects.toThrow('wait time has not elapsed');
+    expect(
+      (repository as unknown as SharesRepositorySpecDouble).auditEvents.find(
+        (event) =>
+          event.action === 'share.access_denied' &&
+          event.metadata.reason === 'access_session_wait',
+      )?.metadata.accessSessionIdHash,
+    ).toMatch(/^[a-f0-9]{64}$/);
+    await expectRateLimited(request());
   });
 
   it('sends email access codes and rejects invalid codes', async () => {
@@ -1150,6 +1562,56 @@ describe('SharesService', () => {
     });
   });
 
+  it('rate limits rejected email rules before attempting delivery', async () => {
+    configValues['share.rateLimit.emailCodeMax'] = 1;
+    configValues['share.rateLimit.emailCodeWindowSeconds'] = 60;
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, allowedDomain: 'example.com' },
+    });
+    const visitor = { ip: '203.0.113.41', userAgent: 'Spec Browser' };
+    const request = () =>
+      service.sendEmailAccessCode(
+        created.token,
+        { email: 'visitor@blocked.test' },
+        visitor,
+      );
+
+    await expect(request()).rejects.toBeInstanceOf(ForbiddenException);
+    const denied = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find(
+      (event) =>
+        event.action === 'share.access_denied' &&
+        event.metadata.reason === 'email_not_allowed',
+    );
+    expect(denied).toBeDefined();
+    await expectRateLimited(request());
+    expect(mailService.sendShareAccessCode).not.toHaveBeenCalled();
+  });
+
+  it('rate limits account access session creation', async () => {
+    configValues['share.rateLimit.viewMax'] = 1;
+    configValues['share.rateLimit.viewWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const user = {
+      id: 'user_rate_limited',
+      avatarUrl: null,
+      displayName: 'Rate Limited User',
+      email: 'account@example.test',
+    };
+    const visitor = { ip: '203.0.113.42', userAgent: 'Spec Browser' };
+
+    await service.createVerifiedAccountAccessSession(
+      created.token,
+      user,
+      visitor,
+    );
+    await expectRateLimited(
+      service.createVerifiedAccountAccessSession(created.token, user, visitor),
+    );
+  });
+
   it('temporarily locks email code verification after repeated failures', async () => {
     configValues['share.rateLimit.emailVerifyMax'] = 1;
     configValues['share.rateLimit.emailVerifyWindowSeconds'] = 60;
@@ -1159,13 +1621,17 @@ describe('SharesService', () => {
     const email = 'reviewer@example.com';
     await service.sendEmailAccessCode(created.token, { email }, visitor);
 
-    await expect(
+    const thresholdError = await expectRateLimited(
       service.verifyEmailAccessCode(
         created.token,
         { email, code: '000000' },
         visitor,
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    );
+    expect(thresholdError.getResponse()).toMatchObject({
+      code: 'SHARE_EMAIL_VERIFICATION_LOCKED',
+      retryAfter: 300,
+    });
     await expectRateLimited(
       service.verifyEmailAccessCode(
         created.token,
@@ -1201,14 +1667,90 @@ describe('SharesService', () => {
       repository as unknown as SharesRepositorySpecDouble
     ).auditEvents.find((event) => event.action === 'share.rate_limited');
     expect(rateLimitedAudit?.metadata).toMatchObject({
-      identityType: 'email',
       nodeId: 'roadmap',
-      visitorEmail: 'reviewer@example.com',
+      purpose: 'download',
       rateLimit: {
+        dimension: 'link',
         limit: 1,
         scope: 'download-intent',
       },
     });
+    const risk = rateLimitedAudit?.metadata.risk as
+      | Record<string, unknown>
+      | undefined;
+    expect(risk?.shareTokenHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('rate limits disabled download attempts before policy validation', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
+    const created = await service.createShare({
+      ...createDto(),
+      allowDownload: false,
+    });
+    const visitor = { ip: '203.0.113.43', userAgent: 'Spec Browser' };
+    const accountUser = {
+      id: 'user_policy_probe',
+      avatarUrl: null,
+      displayName: 'Policy Probe',
+      email: 'probe@example.test',
+    };
+    const request = () =>
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        undefined,
+        visitor,
+        accountUser,
+      );
+
+    await expect(request()).rejects.toBeInstanceOf(ForbiddenException);
+    await expectRateLimited(request());
+  });
+
+  it('binds persisted email access sessions to the creating visitor', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 2;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const email = 'bound@example.test';
+    const visitor = { ip: '203.0.113.44', userAgent: 'Bound Browser' };
+    await service.sendEmailAccessCode(created.token, { email }, visitor);
+    const code = sentCodes.get(email);
+    expect(code).toBeDefined();
+    const session = await service.verifyEmailAccessCode(
+      created.token,
+      { email, code: code! },
+      visitor,
+    );
+
+    await expect(
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        session.sessionId,
+        visitor,
+      ),
+    ).resolves.toMatchObject({ purpose: 'download' });
+    const rejectedRequest = () =>
+      service.createDownloadIntent(
+        created.token,
+        'roadmap',
+        session.sessionId,
+        { ...visitor, userAgent: 'Different Browser' },
+      );
+    await expect(rejectedRequest()).rejects.toThrow(
+      'Share access session is invalid',
+    );
+    const denied = (
+      repository as unknown as SharesRepositorySpecDouble
+    ).auditEvents.find(
+      (event) =>
+        event.action === 'share.access_denied' &&
+        event.metadata.reason === 'access_session_invalid',
+    );
+    expect(denied?.metadata.accessSessionIdHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(denied)).not.toContain(session.sessionId);
+    await expectRateLimited(rejectedRequest());
   });
 
   it('keeps email sessions and download intents usable across service instances', async () => {
@@ -1225,6 +1767,8 @@ describe('SharesService', () => {
       workspacesService as WorkspacesService,
       mailService as MailService,
       configService as ConfigService,
+      abuseProtection,
+      repository as unknown as ShareDownloadCommitRepository,
     );
     const session = await restartedService.verifyEmailAccessCode(
       created.token,
@@ -1346,6 +1890,71 @@ describe('SharesService', () => {
     ).resolves.toBe(1);
   });
 
+  it('rate limits preview intent creation before invoking the preview adapter', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const visitor = { ip: '203.0.113.45', userAgent: 'Spec Browser' };
+
+    await service.createPreviewIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+      visitor,
+    );
+    await expectRateLimited(
+      service.createPreviewIntent(
+        created.token,
+        'roadmap',
+        session.sessionId,
+        visitor,
+      ),
+    );
+
+    expect(fileNodesService.createPreviewIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it('rate limits rejected preview identities before invoking the preview adapter', async () => {
+    configValues['share.rateLimit.downloadIntentMax'] = 1;
+    configValues['share.rateLimit.downloadIntentWindowSeconds'] = 60;
+    const created = await service.createShare({
+      ...createDto(),
+      policy: { ...createDto().policy, waitValue: 15 },
+    });
+    const visitor = { ip: '203.0.113.50', userAgent: 'Spec Browser' };
+    const request = () =>
+      service.createPreviewIntent(created.token, 'roadmap', undefined, visitor);
+
+    await expect(request()).rejects.toBeInstanceOf(ForbiddenException);
+    await expectRateLimited(request());
+    expect(fileNodesService.createPreviewIntent).not.toHaveBeenCalled();
+  });
+
+  it('rate limits preview status polling', async () => {
+    configValues['share.rateLimit.viewMax'] = 1;
+    configValues['share.rateLimit.viewWindowSeconds'] = 60;
+    const created = await service.createShare(createDto());
+    const visitor = { ip: '203.0.113.46', userAgent: 'Spec Browser' };
+
+    await service.getPreviewStatus(
+      created.token,
+      'roadmap',
+      'preview-test',
+      visitor,
+    );
+    await expectRateLimited(
+      service.getPreviewStatus(
+        created.token,
+        'roadmap',
+        'preview-test',
+        visitor,
+      ),
+    );
+
+    expect(fileNodesService.getPreviewStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects archived file nodes inside a share scope', async () => {
     jest.spyOn(fileNodesService, 'getFileNode').mockResolvedValueOnce(
       createNode({
@@ -1397,5 +2006,6 @@ describe('SharesService', () => {
     }
     expect(caught).toBeInstanceOf(HttpException);
     expect((caught as HttpException).getStatus()).toBe(429);
+    return caught as HttpException;
   }
 });

@@ -9,8 +9,10 @@ import { showAppToast } from "@/components/ui/app-toast-store";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
+import { isValidEmailAddress } from "@/features/auth/auth-input-validation";
 import { canOpenFilePreview } from "@/features/file/open-with";
-import { createShareAccountAccessSession, fetchCurrentUser, getDriveApiErrorMessage, isAuthExpiredApiError, resolvePublicSiteName, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
+import { formatShareEmailCooldownMessage, resolveShareEmailAccessError, type ShareEmailAccessAction, type ShareEmailAccessCooldown } from "@/features/share/email-access-errors";
+import { createShareAccountAccessSession, fetchCurrentUser, getDriveApiErrorMessage, isAuthExpiredApiError, resolvePublicSiteName, sendShareEmailCode, verifyShareEmailCode, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
 import { ThemeActions } from "./drive-shell";
 import { ItemIcon, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
 import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
@@ -27,9 +29,18 @@ const buttonTypeAttr: {
   type: "button"
 };
 type ShareMode = "single-file" | "multi-file" | "folder";
-type VisitorStage = "choose" | "verified" | "waiting" | "download";
+type VisitorStage = "choose" | "email" | "code" | "verified" | "waiting" | "download";
 type VisitorAccessAction = "download" | "preview";
+type AuthMethod = "account" | "email";
 type VisitorLevel = "anonymous" | "email" | "ica";
+type ExternalShareFeedback = {
+  message: string;
+  tone: "error" | "info" | "success";
+};
+type EmailAccessStatus = {
+  message: string;
+  tone: "error" | "info" | "success";
+};
 type DriveTranslator = ReturnType<typeof useTranslations>;
 type IdentityExperience = {
   hasSpeedLimit: boolean;
@@ -261,12 +272,17 @@ function ExternalSharePreview({
   const router = useRouter();
   const [stage, setStage] = useState<VisitorStage>("choose");
   const [visitorLevel, setVisitorLevel] = useState<VisitorLevel>("anonymous");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("email");
+  const [emailStatus, setEmailStatus] = useState<EmailAccessStatus | null>(null);
+  const [emailCooldowns, setEmailCooldowns] = useState<Partial<Record<ShareEmailAccessAction, ShareEmailAccessCooldown>>>({});
   const [remaining, setRemaining] = useState(0);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [accessItem, setAccessItem] = useState<DriveItem | null>(null);
   const [accessAction, setAccessAction] = useState<VisitorAccessAction>("download");
   const [authOpen, setAuthOpen] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<ExternalShareFeedback | null>(null);
   const [accessSessionId, setAccessSessionId] = useState<string | null>(null);
   const [accessSession, setAccessSession] = useState<ShareAccessSession | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -280,6 +296,17 @@ function ExternalSharePreview({
   const shareContentCount = collection.allowedIds.size;
   const experience = getSharePolicyExperience(registeredShare, visitorLevel, accessSession, t);
   const verified = stage === "verified" || stage === "waiting" || stage === "download";
+  const sendCooldownSeconds = emailCooldowns.send?.remainingSeconds ?? 0;
+  const verifyCooldownSeconds = emailCooldowns.verify?.remainingSeconds ?? 0;
+  const activeEmailCooldown = stage === "code"
+    ? emailCooldowns.verify ?? emailCooldowns.send
+    : emailCooldowns.send;
+  const visibleEmailStatus: EmailAccessStatus | null = activeEmailCooldown
+    ? {
+        message: formatShareEmailCooldownMessage(activeEmailCooldown, t),
+        tone: "error",
+      }
+    : emailStatus;
   const accessSessionRequired = getShareAccessRequired(registeredShare);
   const primaryAccessItem = getPrimaryShareAccessItem(visibleItems, sourceItems, registeredShare);
   const primaryAccessAction: VisitorAccessAction | null = registeredShare.allowDownload ? "download" : registeredShare.allowPreview ? "preview" : null;
@@ -303,6 +330,25 @@ function ExternalSharePreview({
     const timer = window.setTimeout(() => setFeedback(null), 2200);
     return () => window.clearTimeout(timer);
   }, [feedback]);
+  const hasEmailCooldown = Boolean(emailCooldowns.send || emailCooldowns.verify);
+  useEffect(() => {
+    if (!hasEmailCooldown) return;
+    const timer = window.setInterval(() => {
+      setEmailCooldowns((current) => {
+        const next: Partial<Record<ShareEmailAccessAction, ShareEmailAccessCooldown>> = {};
+        for (const action of ["send", "verify"] as const) {
+          const cooldown = current[action];
+          if (!cooldown || cooldown.remainingSeconds <= 1) continue;
+          next[action] = {
+            ...cooldown,
+            remainingSeconds: cooldown.remainingSeconds - 1,
+          };
+        }
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [hasEmailCooldown]);
   useEffect(() => {
     let cancelled = false;
     void fetchCurrentUser().then(user => {
@@ -314,30 +360,65 @@ function ExternalSharePreview({
       cancelled = true;
     };
   }, []);
-  useEffect(() => {
-    if (!currentUser || accessSessionId || accessSession?.identityType === "ica") return;
-    let cancelled = false;
-    void createShareAccountAccessSession(registeredShare.token).then(session => {
-      if (cancelled) return;
+  const sendCode = () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!accessItem || !isValidEmailAddress(normalizedEmail) || sendCooldownSeconds > 0) return;
+    setAuthBusy(true);
+    setEmail(normalizedEmail);
+    setCode("");
+    setEmailStatus(null);
+    void sendShareEmailCode(registeredShare.token, normalizedEmail).then(() => {
+      setStage("code");
+      setEmailStatus({ message: t("share.codeSent"), tone: "success" });
+    }).catch((error) => {
+      const result = resolveShareEmailAccessError(error, "send", t);
+      if (result.cooldown) {
+        setEmailCooldowns((current) => ({ ...current, send: result.cooldown }));
+        setEmailStatus(null);
+      } else {
+        setEmailStatus({ message: result.message, tone: result.tone });
+      }
+    }).finally(() => setAuthBusy(false));
+  };
+  const verifyCode = () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!accessItem || !isValidEmailAddress(normalizedEmail) || code.length !== 6 || verifyCooldownSeconds > 0) return;
+    setAuthBusy(true);
+    setEmailStatus(null);
+    void verifyShareEmailCode(registeredShare.token, normalizedEmail, code).then(session => {
       setAccessSessionId(session.sessionId);
       setAccessSession(session);
-      setVisitorLevel("ica");
+      setVisitorLevel("email");
+      setEmailCooldowns({});
       setRemaining(session.waitSeconds);
-      setStage(session.waitSeconds > 0 ? "verified" : "download");
-    }).catch(() => {
-      if (!cancelled) setCurrentUser(null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessSession?.identityType, accessSessionId, currentUser, registeredShare.token]);
+      setStage("verified");
+    }).catch((error) => {
+      const result = resolveShareEmailAccessError(error, "verify", t);
+      if (result.cooldown) {
+        setEmailCooldowns((current) => ({ ...current, verify: result.cooldown }));
+        setEmailStatus(null);
+      } else {
+        setEmailStatus({ message: result.message, tone: result.tone });
+      }
+    }).finally(() => setAuthBusy(false));
+  };
+  const changeEmail = () => {
+    setCode("");
+    setEmailStatus(null);
+    setStage("email");
+  };
+  const updateEmail = (value: string) => {
+    setEmail(value);
+    setCode("");
+    setEmailStatus(null);
+  };
   const goUp = () => setFolderId(getRegisteredShareParent(registeredShare, folderId, sourceItems));
   const redirectToLogin = () => {
     router.push(`/login?next=${encodeURIComponent(`/share/s/${registeredShare.token}`)}`);
   };
   const requestVisitorAction = (item: DriveItem, action: VisitorAccessAction) => {
     if (action === "download" && !registeredShare.allowDownload) {
-      setFeedback(t("share.downloadBlocked"));
+      setFeedback({ message: t("share.downloadBlocked"), tone: "error" });
       return;
     }
     if (action === "preview" && !registeredShare.allowPreview) {
@@ -369,14 +450,14 @@ function ExternalSharePreview({
       setStage("download");
       return;
     }
-    if (!currentUser) {
-      redirectToLogin();
-      return;
-    }
     setAuthOpen(true);
+    setCode("");
+    setEmailStatus(null);
     if (!accessSessionId) setAccessSession(null);
     setRemaining(experience.waitSeconds);
-    setStage("choose");
+    const nextAuthMethod: AuthMethod = currentUser ? "account" : "email";
+    setAuthMethod(nextAuthMethod);
+    setStage(nextAuthMethod === "account" ? "choose" : "email");
   };
   const authenticateAccount = () => {
     if (!accessItem) return;
@@ -389,6 +470,9 @@ function ExternalSharePreview({
       setAccessSessionId(session.sessionId);
       setAccessSession(session);
       setVisitorLevel("ica");
+      setEmail(currentUser.email);
+      setEmailStatus(null);
+      setEmailCooldowns({});
       setRemaining(session.waitSeconds);
       setStage(session.waitSeconds > 0 ? "verified" : "download");
     }).catch((error) => {
@@ -396,8 +480,21 @@ function ExternalSharePreview({
         redirectToLogin();
         return;
       }
-      setFeedback(getDriveApiErrorMessage(error, t, { fallbackKey: "share.icaUnavailable", scope: "share" }));
+      setFeedback({
+        message: getDriveApiErrorMessage(error, t, { fallbackKey: "share.icaUnavailable", scope: "share" }),
+        tone: "error",
+      });
     }).finally(() => setAuthBusy(false));
+  };
+  const selectAuthMethod = (method: AuthMethod) => {
+    setAuthMethod(method);
+    setCode("");
+    setEmailStatus(null);
+    setAccessSessionId(null);
+    setAccessSession(null);
+    setVisitorLevel("anonymous");
+    setRemaining(0);
+    setStage(method === "email" ? "email" : "choose");
   };
   const continueToDownload = () => {
     const currentWait = remaining;
@@ -416,7 +513,7 @@ function ExternalSharePreview({
       return;
     }
     const actionPromise = accessAction === "download" ? downloadSharedDriveItem(registeredShare.token, accessItem, accessSessionId ?? undefined).then(() => {
-      setFeedback(t("app.downloaded"));
+      setFeedback({ message: t("app.downloaded"), tone: "success" });
     }) : createSharedPreviewIntent(registeredShare.token, accessItem.id, accessSessionId ?? undefined).then(intent => {
       if (!intent.capability.supported) {
         showAppToast({
@@ -432,10 +529,13 @@ function ExternalSharePreview({
       });
     });
     void actionPromise.then(() => setAuthOpen(false)).catch((error) => {
-      setFeedback(getDriveApiErrorMessage(error, t, {
-        fallbackKey: accessAction === "download" ? "share.downloadFailed" : "preview.notConfigured",
-        scope: "share",
-      }));
+      setFeedback({
+        message: getDriveApiErrorMessage(error, t, {
+          fallbackKey: accessAction === "download" ? "share.downloadFailed" : "preview.notConfigured",
+          scope: "share",
+        }),
+        tone: "error",
+      });
     });
   };
   return <div className="external-share-preview" style={{
@@ -499,16 +599,16 @@ function ExternalSharePreview({
           expiresLabel={expiresLabel}
           onStartAccess={primaryAccessItem && primaryAccessAction ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction) : undefined}
           registeredShare={registeredShare}
-          selectedEmail={currentUser?.email ?? ""}
+          selectedEmail={email || currentUser?.email || ""}
           totalItems={shareContentCount}
           totalSize={totalSize}
           verified={verified}
         />
       </div>
 
-      <ShareAuthDialog action={accessAction} accessExperience={experience} accessItem={accessItem} locale={locale} accountConfigured={Boolean(currentUser)} busy={authBusy} onAccountAuth={authenticateAccount} onClose={() => setAuthOpen(false)} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} sourceItems={sourceItems} stage={stage} />
+      <ShareAuthDialog action={accessAction} accessExperience={experience} accessItem={accessItem} authMethod={authMethod} code={code} email={email} emailStatus={visibleEmailStatus} locale={locale} accountConfigured={Boolean(currentUser)} busy={authBusy} onAccountAuth={authenticateAccount} onChangeEmail={changeEmail} onCodeChange={(value) => { setCode(value); setEmailStatus(null); }} onClose={() => setAuthOpen(false)} onEmailChange={updateEmail} onMethodChange={selectAuthMethod} onResendCode={sendCode} onSendCode={sendCode} onVerifyCode={verifyCode} onContinue={continueToDownload} onComplete={completeVisitorAction} open={authOpen} palette={palette} remaining={remaining} sendCooldownSeconds={sendCooldownSeconds} sourceItems={sourceItems} stage={stage} verifyCooldownSeconds={verifyCooldownSeconds} />
       <SharePreviewDialog accessSessionId={accessSessionId} onClose={() => setPreview(null)} open={Boolean(preview)} palette={palette} preview={preview} locale={locale} shareToken={registeredShare.token} />
-      {feedback ? <div className="icedr-r-right external-share-feedback" style={{
+      {feedback ? <div aria-live={feedback.tone === "error" ? "assertive" : "polite"} className="icedr-r-right external-share-feedback" data-tone={feedback.tone} role={feedback.tone === "error" ? "alert" : "status"} style={{
       display: "flex",
       position: "fixed",
       "--r-right-base": "12px",
@@ -531,7 +631,7 @@ function ExternalSharePreview({
         fontSize: "13px",
         fontWeight: "600"
       }}>
-            {feedback}
+            {feedback.message}
           </span>
         </div> : null}
     </div>;

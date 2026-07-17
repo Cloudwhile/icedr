@@ -205,9 +205,15 @@ describe('StorageService', () => {
         objectKey,
         range: 'bytes=2-5',
       });
+      expect((result.stream as Readable & { pending?: boolean }).pending).toBe(
+        false,
+      );
       const chunks: Buffer[] = [];
       for await (const chunk of result.stream) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const value: unknown = chunk;
+        if (typeof value === 'string' || value instanceof Uint8Array) {
+          chunks.push(Buffer.from(value));
+        }
       }
 
       expect(Buffer.concat(chunks).toString('utf8')).toBe('2345');
@@ -259,7 +265,10 @@ describe('StorageService', () => {
     });
     const chunks: Buffer[] = [];
     for await (const chunk of result.stream) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const value: unknown = chunk;
+      if (typeof value === 'string' || value instanceof Uint8Array) {
+        chunks.push(Buffer.from(value));
+      }
     }
 
     expect(Buffer.concat(chunks).toString('utf8')).toBe('2345');
