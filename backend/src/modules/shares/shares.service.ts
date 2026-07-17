@@ -436,6 +436,12 @@ export class SharesService {
     ) {
       throw new BadRequestException('File type is not available for preview');
     }
+    if (
+      pendingIntent.purpose === 'download' &&
+      share.downloadPolicy.maxDownloads > 0
+    ) {
+      await this.resolveDownloadDecision(share, pendingIntent.identityType);
+    }
     const preparedDownload =
       pendingIntent.method === 'stream' && node.objectKey
         ? await this.prepareSharedObjectDownload(

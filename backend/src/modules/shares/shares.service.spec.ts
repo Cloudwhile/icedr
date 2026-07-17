@@ -1212,6 +1212,7 @@ describe('SharesService', () => {
         competingIntent.downloadId,
       ),
     ).rejects.toThrow('Share download limit has been reached');
+    expect(storageService.openObjectStream).toHaveBeenCalledTimes(1);
 
     const storedShare = (
       repository as unknown as SharesRepositorySpecDouble
@@ -1228,6 +1229,48 @@ describe('SharesService', () => {
         competingIntent.downloadId,
       ),
     ).resolves.toMatchObject({ method: 'stream' });
+    expect(storageService.openObjectStream).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the final commit authoritative when quota changes after preflight', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: {
+        ...createDto().policy,
+        downloadLimit: '1',
+        maxDownloads: 1,
+      },
+    });
+    const session = await createEmailSession(created.token);
+    const intent = await service.createDownloadIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const preparedStream = Readable.from(['test']);
+    jest.mocked(storageService.openObjectStream).mockResolvedValueOnce({
+      acceptRanges: 'bytes',
+      contentLength: 4,
+      contentRange: null,
+      contentType: 'application/octet-stream',
+      etag: null,
+      lastModified: null,
+      statusCode: 200,
+      stream: preparedStream,
+    });
+    jest
+      .spyOn(repository as unknown as SharesRepositorySpecDouble, 'commit')
+      .mockResolvedValueOnce({ status: 'download-limit-reached' });
+
+    await expect(
+      service.downloadSharedNode(created.token, 'roadmap', intent.downloadId),
+    ).rejects.toThrow('Share download limit has been reached');
+
+    expect(storageService.openObjectStream).toHaveBeenCalledTimes(1);
+    expect(preparedStream.destroyed).toBe(true);
+    await expect(
+      repository.countAuditEvents('share.download_started'),
+    ).resolves.toBe(0);
   });
 
   it('keeps a download intent reusable when storage preparation fails', async () => {
