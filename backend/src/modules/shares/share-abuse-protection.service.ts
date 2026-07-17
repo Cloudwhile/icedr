@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto';
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { resolveShareVisitorHashSecret } from '../../common/security/share-visitor-hash-secret';
 import {
@@ -16,9 +16,14 @@ import { resolveShareRateLimitProfile } from './share-rate-limit-policy';
 
 type ShareRiskDimension = 'link' | 'ip' | 'email' | 'user';
 type ShareRiskMetadata = Record<string, unknown>;
+const maintenanceTaskNames = [
+  'rate-limit state pruning',
+  'transient share state pruning',
+] as const;
 
 @Injectable()
 export class ShareAbuseProtectionService {
+  private readonly logger = new Logger(ShareAbuseProtectionService.name);
   private maintenanceTask?: Promise<void>;
   private nextMaintenanceAt = 0;
 
@@ -439,7 +444,18 @@ export class ShareAbuseProtectionService {
         this.sharesRepository.pruneExpiredTransientShareState(now),
       ),
     ])
-      .then(() => undefined)
+      .then((results) => {
+        for (const [index, result] of results.entries()) {
+          if (result.status !== 'rejected') continue;
+          const reason: unknown = result.reason;
+          this.logger.error(
+            `Share maintenance task failed: ${maintenanceTaskNames[index] ?? 'unknown task'}`,
+            reason instanceof Error
+              ? (reason.stack ?? reason.message)
+              : String(reason),
+          );
+        }
+      })
       .finally(() => {
         this.maintenanceTask = undefined;
       });

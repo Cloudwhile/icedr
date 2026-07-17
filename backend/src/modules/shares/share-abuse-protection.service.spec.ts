@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import {
@@ -19,6 +19,14 @@ type RecordUnresolvedAuditArgs = Parameters<
 >;
 
 describe('ShareAbuseProtectionService', () => {
+  const loggerError = jest
+    .spyOn(Logger.prototype, 'error')
+    .mockImplementation(() => undefined);
+
+  afterAll(() => {
+    loggerError.mockRestore();
+  });
+
   function createService() {
     const consume = jest.fn<Promise<void>, [ConsumeInput]>(() =>
       Promise.resolve(),
@@ -75,6 +83,12 @@ describe('ShareAbuseProtectionService', () => {
       recordUnresolvedAudit,
       service: new ShareAbuseProtectionService(rateLimits, shares, config),
     };
+  }
+
+  async function flushPromiseQueue() {
+    for (let index = 0; index < 20; index += 1) {
+      await Promise.resolve();
+    }
   }
 
   it('consumes independent link, IP, email, and user buckets', async () => {
@@ -475,9 +489,7 @@ describe('ShareAbuseProtectionService', () => {
         metadata: { ip: '203.0.113.25' },
         shareToken: 'guessed-token-a',
       });
-      for (let index = 0; index < 20; index += 1) {
-        await Promise.resolve();
-      }
+      await flushPromiseQueue();
 
       jest.setSystemTime(new Date('2026-07-18T01:00:01.000Z'));
       await service.consumeLookup({
@@ -490,8 +502,7 @@ describe('ShareAbuseProtectionService', () => {
       expect(pruneExpiredTransientShareState).toHaveBeenCalledTimes(1);
     } finally {
       releaseTransientCleanup();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushPromiseQueue();
       jest.useRealTimers();
     }
   });
@@ -509,10 +520,35 @@ describe('ShareAbuseProtectionService', () => {
         shareToken: 'guessed-token',
       }),
     ).resolves.toBeUndefined();
+    await flushPromiseQueue();
 
     expect(consume).toHaveBeenCalled();
     expect(prune).toHaveBeenCalledTimes(1);
     expect(pruneExpiredTransientShareState).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs every failed background maintenance task', async () => {
+    loggerError.mockClear();
+    const { prune, pruneExpiredTransientShareState, service } = createService();
+    prune.mockRejectedValueOnce(new Error('rate-limit cleanup failed'));
+    pruneExpiredTransientShareState.mockRejectedValueOnce(
+      new Error('transient cleanup failed'),
+    );
+
+    await expect(
+      service.consumeLookup({
+        metadata: { ip: '203.0.113.25' },
+        shareToken: 'guessed-token',
+      }),
+    ).resolves.toBeUndefined();
+    await flushPromiseQueue();
+
+    expect(loggerError.mock.calls.map(([message]) => String(message))).toEqual(
+      expect.arrayContaining([
+        'Share maintenance task failed: rate-limit state pruning',
+        'Share maintenance task failed: transient share state pruning',
+      ]),
+    );
   });
 
   it('audits unresolved denials with hashes instead of the guessed token', async () => {
