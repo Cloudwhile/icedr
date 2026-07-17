@@ -27,6 +27,7 @@ import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
 import {
   mkdir,
+  open,
   readFile,
   readdir,
   rm,
@@ -747,14 +748,23 @@ export class StorageService {
     }
 
     const filePath = this.resolveLocalObjectPath(input.objectKey);
+    let fileHandle;
     let fileStat;
     try {
-      fileStat = await stat(filePath);
+      fileHandle = await open(filePath, 'r');
+      fileStat = await fileHandle.stat();
       if (!fileStat.isFile()) throw new Error('Not a file');
     } catch {
+      await fileHandle?.close().catch(() => undefined);
       throw new NotFoundException('Stored object not found');
     }
-    const range = resolveObjectByteRange(input.range, fileStat.size);
+    let range;
+    try {
+      range = resolveObjectByteRange(input.range, fileStat.size);
+    } catch (error) {
+      await fileHandle.close().catch(() => undefined);
+      throw error;
+    }
 
     return {
       acceptRanges: 'bytes',
@@ -766,7 +776,10 @@ export class StorageService {
       etag: null,
       lastModified: fileStat.mtime,
       statusCode: range ? 206 : 200,
-      stream: createReadStream(filePath, range ?? undefined),
+      stream: fileHandle.createReadStream({
+        ...(range ?? {}),
+        autoClose: true,
+      }),
     };
   }
 

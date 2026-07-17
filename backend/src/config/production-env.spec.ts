@@ -142,6 +142,69 @@ describe('production environment validation', () => {
     ).toThrow(/API_PUBLIC_BASE_URL.*PUBLIC_SHARE_BASE_URL/s);
   });
 
+  it('accepts supported share rate-limit settings in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_VISITOR_HASH_SECRET:
+          'icedr-production-share-visitor-hash-secret-2026',
+        SHARE_RATE_LIMIT_PROFILE: 'strict',
+        SHARE_RATE_LIMIT_WINDOW_SECONDS: '60',
+        SHARE_RATE_LIMIT_VIEW_MAX: '0',
+        SHARE_RATE_LIMIT_VIEW_WINDOW_SECONDS: '120',
+        SHARE_RATE_LIMIT_EMAIL_CODE_MAX: '5',
+        SHARE_RATE_LIMIT_EMAIL_CODE_WINDOW_SECONDS: '600',
+        SHARE_RATE_LIMIT_EMAIL_VERIFY_MAX: '5',
+        SHARE_RATE_LIMIT_EMAIL_VERIFY_WINDOW_SECONDS: '900',
+        SHARE_RATE_LIMIT_EMAIL_VERIFY_LOCK_SECONDS: '900',
+        SHARE_RATE_LIMIT_DOWNLOAD_INTENT_MAX: '60',
+        SHARE_RATE_LIMIT_DOWNLOAD_INTENT_WINDOW_SECONDS: '60',
+        SHARE_RATE_LIMIT_DOWNLOAD_MAX: '60',
+        SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS: '60',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects unsupported share rate-limit profiles in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_RATE_LIMIT_PROFILE: 'custom',
+      }),
+    ).toThrow(/SHARE_RATE_LIMIT_PROFILE/s);
+  });
+
+  it('rejects invalid explicit share rate-limit numbers in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_RATE_LIMIT_VIEW_MAX: '-1',
+        SHARE_RATE_LIMIT_EMAIL_CODE_MAX: '1.5',
+        SHARE_RATE_LIMIT_DOWNLOAD_MAX: '2147483648',
+        SHARE_RATE_LIMIT_WINDOW_SECONDS: '0',
+        SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS: 'not-a-number',
+      }),
+    ).toThrow(
+      /SHARE_RATE_LIMIT_VIEW_MAX.*SHARE_RATE_LIMIT_EMAIL_CODE_MAX.*SHARE_RATE_LIMIT_DOWNLOAD_MAX.*SHARE_RATE_LIMIT_WINDOW_SECONDS.*SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS/s,
+    );
+  });
+
+  it('rejects weak or placeholder visitor hash secrets in production', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_VISITOR_HASH_SECRET: 'replace-me',
+      }),
+    ).toThrow(/SHARE_VISITOR_HASH_SECRET/s);
+
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SHARE_VISITOR_HASH_SECRET: 'short-share-secret',
+      }),
+    ).toThrow(/SHARE_VISITOR_HASH_SECRET.*at least 32 characters/s);
+  });
+
   it('accepts complete production settings through the app configuration', () => {
     const originalEnv = process.env;
     process.env = { ...validProductionEnv };

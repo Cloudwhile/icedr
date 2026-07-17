@@ -3,8 +3,6 @@ import {
   BadRequestException,
   ForbiddenException,
   GoneException,
-  HttpException,
-  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -32,7 +30,9 @@ import type {
   SharePolicyDto,
   ShareResponse,
 } from './shares.dto';
-import { SharesRepository, type ShareAuditAction } from './shares.repository';
+import { SharesRepository } from './shares.repository';
+import { ShareAbuseProtectionService } from './share-abuse-protection.service';
+import { ShareDownloadCommitRepository } from './share-download-commit.repository';
 import {
   normalizePolicyDomain,
   normalizePolicyEmailAllowlist,
@@ -40,13 +40,7 @@ import {
   toSharePolicyAuditMetadata,
   type ShareDownloadPolicyDecision,
 } from './share-download-policy';
-import {
-  resolveShareRateLimitProfile,
-  type ShareEmailVerifyRateLimitRule,
-  type ShareRateLimitProfile,
-  type ShareRateLimitRule,
-  type ShareRateLimitScope,
-} from './share-rate-limit-policy';
+import { resolveShareRateLimitProfile } from './share-rate-limit-policy';
 
 type AuditMetadata = Record<string, unknown>;
 type VisitorAuditMetadata = AuditMetadata & {
@@ -61,14 +55,6 @@ type ShareCreatorAccess = {
   actorRole?: string;
   actorUserId?: string;
 };
-type RateLimitMetadataKey =
-  | 'actorUserId'
-  | 'identityType'
-  | 'ip'
-  | 'nodeId'
-  | 'userAgent'
-  | 'visitorEmail';
-
 @Injectable()
 export class SharesService {
   constructor(
@@ -78,6 +64,8 @@ export class SharesService {
     private readonly workspacesService: WorkspacesService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly abuseProtection: ShareAbuseProtectionService,
+    private readonly downloadCommits: ShareDownloadCommitRepository,
   ) {}
 
   async createShare(
@@ -105,19 +93,17 @@ export class SharesService {
     dto: SendShareEmailCodeDto,
     visitor: VisitorAuditMetadata = {},
   ) {
-    const share = await this.requireActiveShare(token);
-    this.assertEmailAllowed(share, dto.email);
+    const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     const auditMetadata = this.getEmailAccessAuditMetadata(dto.email, visitor);
-    await this.assertShareRateLimit({
-      countedAction: 'share.access_code_sent',
-      matchKeys: ['visitorEmail', 'ip'],
+    await this.abuseProtection.consume({
       metadata: auditMetadata,
-      profile: rateLimitProfile,
+      profileName: rateLimitProfile.name,
       rule: rateLimitProfile.emailCode,
       scope: 'email-code',
-      share,
+      shareToken: share.token,
     });
+    await this.assertEmailAllowedAndAudit(share, dto.email, auditMetadata);
     const code = this.createEmailCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     await this.mailService.sendShareAccessCode({
@@ -151,28 +137,34 @@ export class SharesService {
     dto: VerifyShareEmailCodeDto,
     visitor: VisitorAuditMetadata = {},
   ) {
-    const share = await this.requireActiveShare(token);
+    const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
-    await this.assertEmailVerificationNotLocked(
-      share,
-      rateLimitProfile,
-      dto.email,
-      visitor,
-    );
+    const auditMetadata = this.getEmailAccessAuditMetadata(dto.email, visitor);
+    await this.abuseProtection.assertEmailVerificationNotLocked({
+      metadata: auditMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.emailVerify,
+      shareToken: share.token,
+    });
     const pending = await this.sharesRepository.consumeEmailAccessCode({
       token,
       email: dto.email,
       code: dto.code,
+      maxAttempts: rateLimitProfile.emailVerify.max,
     });
     if (!pending) {
-      await this.recordEmailAccessCodeFailure(
-        share,
-        rateLimitProfile,
-        dto.email,
-        visitor,
-      );
+      await this.abuseProtection.recordEmailVerificationFailure({
+        metadata: auditMetadata,
+        profileName: rateLimitProfile.name,
+        rule: rateLimitProfile.emailVerify,
+        shareToken: share.token,
+      });
       throw new ForbiddenException('Email access code is invalid or expired');
     }
+    await this.abuseProtection.clearEmailVerificationState({
+      metadata: auditMetadata,
+      shareToken: share.token,
+    });
 
     const session = await this.createAccessSession(
       share,
@@ -201,8 +193,23 @@ export class SharesService {
     user: AccountAuditUser,
     visitor: VisitorAuditMetadata = {},
   ) {
-    const share = await this.requireActiveShare(token);
-    this.assertEmailAllowed(share, user.email);
+    const share = await this.requireActiveShare(token, {
+      ...visitor,
+      actorUserId: user.id,
+    });
+    const auditMetadata = {
+      ...this.getAccountAuditMetadata(user),
+      ...visitor,
+    };
+    const rateLimitProfile = this.getShareRateLimitProfile(share);
+    await this.abuseProtection.consume({
+      metadata: auditMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.view,
+      scope: 'access-session',
+      shareToken: share.token,
+    });
+    await this.assertEmailAllowedAndAudit(share, user.email, auditMetadata);
     const session = await this.createAccessSession(
       share,
       'ica',
@@ -213,10 +220,9 @@ export class SharesService {
       'share.access_session_created',
       token,
       {
-        ...this.getAccountAuditMetadata(user),
+        ...auditMetadata,
         identityType: 'ica',
         policyDecision: toSharePolicyAuditMetadata(session.policyDecision),
-        ...visitor,
       },
       { actor: 'account' },
     );
@@ -237,21 +243,33 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     options: { actor?: AuditActor } = {},
   ): Promise<ShareDetailResponse> {
-    const share = await this.requireActiveShare(token);
-    await this.assertShareViewLimit(share);
+    const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
-    await this.assertShareRateLimit({
-      countedAction: 'share.viewed',
-      matchKeys: ['actorUserId', 'ip', 'userAgent'],
+    await this.abuseProtection.consume({
       metadata: visitor,
-      profile: rateLimitProfile,
+      profileName: rateLimitProfile.name,
       rule: rateLimitProfile.view,
       scope: 'view',
-      share,
+      shareToken: share.token,
     });
-    await this.sharesRepository.recordAudit('share.viewed', token, visitor, {
-      actor: options.actor,
-    });
+    const viewRecord = await this.sharesRepository.recordShareViewed(
+      token,
+      share.policy.maxViews ?? 0,
+      visitor,
+      { actor: options.actor },
+    );
+    if (viewRecord.missingShare) {
+      throw new NotFoundException('Share link not found');
+    }
+    if (viewRecord.revoked) {
+      throw new GoneException('Share link is revoked');
+    }
+    if (viewRecord.expired) {
+      throw new GoneException('Share link is expired');
+    }
+    if (!viewRecord.recorded) {
+      throw new GoneException('Share view limit has been reached');
+    }
     return this.withShareItems(share);
   }
 
@@ -276,17 +294,30 @@ export class SharesService {
     accountUser?: AccountAuditUser,
     purpose: DownloadIntentPurpose = 'download',
   ) {
-    const { share, node } = await this.requireShareNode(token, nodeId, purpose);
-    if (purpose === 'preview' && !node.previewCapability.supported) {
-      throw new BadRequestException('File type is not available for preview');
-    }
+    const share = await this.requireActiveShare(token, { ...visitor, nodeId });
+    const rateLimitProfile = this.getShareRateLimitProfile(share);
+    const requestMetadata = {
+      ...(accountUser ? this.getAccountAuditMetadata(accountUser) : {}),
+      nodeId,
+      ...(accountUser ? { email: accountUser.email, identityType: 'ica' } : {}),
+      purpose,
+      ...visitor,
+    };
+    await this.abuseProtection.consume({
+      dimensions: ['link', 'ip', 'user'],
+      metadata: requestMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.downloadIntent,
+      scope: 'download-intent',
+      shareToken: share.token,
+    });
     const accessSession = await this.resolveShareAccessIdentity(
       share,
       accessSessionId,
       accountUser,
+      requestMetadata,
     );
     const identityType = accessSession?.identityType ?? 'anonymous';
-    const rateLimitProfile = this.getShareRateLimitProfile(share);
     const auditMetadata = {
       ...this.getShareIdentityAuditMetadata(accessSession),
       nodeId,
@@ -295,21 +326,18 @@ export class SharesService {
       purpose,
       ...visitor,
     };
-    await this.assertShareRateLimit({
-      countedAction: 'share.download_intent_created',
-      matchKeys: [
-        'actorUserId',
-        'visitorEmail',
-        'ip',
-        'nodeId',
-        'identityType',
-      ],
+    await this.abuseProtection.consume({
+      dimensions: ['email'],
       metadata: auditMetadata,
-      profile: rateLimitProfile,
+      profileName: rateLimitProfile.name,
       rule: rateLimitProfile.downloadIntent,
       scope: 'download-intent',
-      share,
+      shareToken: share.token,
     });
+    const node = await this.requireNodeInShare(share, nodeId, purpose);
+    if (purpose === 'preview' && !node.previewCapability.supported) {
+      throw new BadRequestException('File type is not available for preview');
+    }
     const policyDecision = await this.resolveDownloadDecision(
       share,
       identityType,
@@ -358,54 +386,82 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     options: { range?: string } = {},
   ) {
-    const intent = await this.sharesRepository.openShareDownloadIntent({
+    const share = await this.requireActiveShare(token, visitor);
+    const pendingIntent = await this.sharesRepository.findShareDownloadIntent({
       downloadId,
       token,
       nodeId,
       visitor,
     });
-    if (!intent) {
+    if (!pendingIntent) {
+      await this.abuseProtection.consumeLookup({
+        metadata: visitor,
+        resolved: true,
+        shareToken: token,
+      });
+      await this.abuseProtection.recordDenied({
+        identifiers: { downloadId },
+        metadata: { ...visitor, nodeId },
+        reason: 'download_intent_invalid',
+        resolved: true,
+        shareToken: token,
+      });
       throw new NotFoundException('Download intent not found');
     }
 
-    const { share, node } = await this.requireShareNode(
-      token,
+    const rateLimitProfile = this.getShareRateLimitProfile(share);
+    const auditMetadata = {
+      ...this.getShareIdentityAuditMetadata(pendingIntent),
       nodeId,
-      intent.purpose,
+      identityType: pendingIntent.identityType,
+      email: pendingIntent.email,
+      purpose: pendingIntent.purpose,
+      ...visitor,
+    };
+    await this.abuseProtection.consume({
+      metadata: auditMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.download,
+      scope: 'download',
+      shareToken: share.token,
+    });
+    const node = await this.requireNodeInShare(
+      share,
+      nodeId,
+      pendingIntent.purpose,
     );
-    if (intent.purpose === 'preview' && !node.previewCapability.supported) {
+    if (
+      pendingIntent.purpose === 'preview' &&
+      !node.previewCapability.supported
+    ) {
       throw new BadRequestException('File type is not available for preview');
     }
-    if (intent.purpose === 'download') {
-      const rateLimitProfile = this.getShareRateLimitProfile(share);
-      const auditMetadata = {
-        ...this.getShareIdentityAuditMetadata(intent),
+    const preparedDownload =
+      pendingIntent.method === 'stream' && node.objectKey
+        ? await this.prepareSharedObjectDownload(
+            node,
+            pendingIntent.purpose,
+            options.range,
+          )
+        : {
+            method: 'manifest' as const,
+            filename: `${node.name}.txt`,
+            contentType: 'text/plain; charset=utf-8',
+            content: this.buildDownloadManifest(node),
+            purpose: pendingIntent.purpose,
+          };
+
+    let commitResult;
+    try {
+      commitResult = await this.downloadCommits.commit({
+        downloadId,
+        shareToken: token,
         nodeId,
-        identityType: intent.identityType,
-        email: intent.email,
-        ...visitor,
-      };
-      await this.assertShareRateLimit({
-        countedAction: 'share.download_started',
-        matchKeys: [
-          'actorUserId',
-          'visitorEmail',
-          'ip',
-          'nodeId',
-          'identityType',
-        ],
-        metadata: auditMetadata,
-        profile: rateLimitProfile,
-        rule: rateLimitProfile.download,
-        scope: 'download',
-        share,
-      });
-      const downloadRecord = await this.sharesRepository.recordDownloadStarted(
-        token,
-        (downloadCount) => {
+        visitor,
+        metadataForDownloadCount: (downloadCount) => {
           const policyDecision = this.getDownloadDecisionForCount(
             share,
-            intent.identityType,
+            pendingIntent.identityType,
             downloadCount,
           );
           if (policyDecision.remainingDownloads === 0) return null;
@@ -416,42 +472,64 @@ export class SharesService {
             ),
           };
         },
-      );
-      if (downloadRecord.missingShare) {
+      });
+    } catch (error) {
+      this.destroyPreparedDownload(preparedDownload);
+      throw error;
+    }
+
+    if (commitResult.status !== 'committed') {
+      this.destroyPreparedDownload(preparedDownload);
+      if (commitResult.status === 'share-missing') {
         throw new NotFoundException('Share link not found');
       }
-      if (downloadRecord.revoked) {
+      if (commitResult.status === 'share-revoked') {
         throw new GoneException('Share link is revoked');
       }
-      if (downloadRecord.expired) {
+      if (commitResult.status === 'share-expired') {
         throw new GoneException('Share link is expired');
       }
-      if (!downloadRecord.recorded) {
+      if (commitResult.status === 'download-limit-reached') {
         throw new GoneException('Share download limit has been reached');
       }
-    }
-
-    if (intent.method === 'stream' && node.objectKey) {
-      const object = await this.storageService.openObjectStream({
-        objectKey: node.objectKey,
-        range: options.range,
+      await this.abuseProtection.recordDenied({
+        identifiers: { downloadId },
+        metadata: { ...visitor, nodeId },
+        reason: 'download_intent_unavailable',
+        resolved: true,
+        shareToken: token,
       });
-      return {
-        ...object,
-        contentType: node.mimeType || object.contentType,
-        method: 'stream' as const,
-        filename: node.name,
-        purpose: intent.purpose,
-      };
+      throw new NotFoundException('Download intent not found');
     }
 
+    return preparedDownload;
+  }
+
+  private async prepareSharedObjectDownload(
+    node: FileNodeResponse,
+    purpose: DownloadIntentPurpose,
+    range?: string,
+  ) {
+    if (!node.objectKey) {
+      throw new NotFoundException('File object not found');
+    }
+    const object = await this.storageService.openObjectStream({
+      objectKey: node.objectKey,
+      range,
+    });
     return {
-      method: 'manifest' as const,
-      filename: `${node.name}.txt`,
-      contentType: 'text/plain; charset=utf-8',
-      content: this.buildDownloadManifest(node),
-      purpose: intent.purpose,
+      ...object,
+      contentType: node.mimeType || object.contentType,
+      method: 'stream' as const,
+      filename: node.name,
+      purpose,
     };
+  }
+
+  private destroyPreparedDownload(
+    download: { stream: { destroy: () => unknown } } | { content: string },
+  ) {
+    if ('stream' in download) download.stream.destroy();
   }
 
   async createPreviewIntent(
@@ -461,18 +539,50 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     accountUser?: AccountAuditUser,
   ) {
-    const { share } = await this.requireShareNode(token, nodeId, 'preview');
+    const share = await this.requireActiveShare(token, { ...visitor, nodeId });
+    const rateLimitProfile = this.getShareRateLimitProfile(share);
+    const requestMetadata = {
+      ...(accountUser ? this.getAccountAuditMetadata(accountUser) : {}),
+      nodeId,
+      ...(accountUser ? { email: accountUser.email, identityType: 'ica' } : {}),
+      purpose: 'preview',
+      ...visitor,
+    };
+    await this.abuseProtection.consume({
+      dimensions: ['link', 'ip', 'user'],
+      metadata: requestMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.downloadIntent,
+      scope: 'download-intent',
+      shareToken: share.token,
+    });
     const accessSession = await this.resolveShareAccessIdentity(
       share,
       accessSessionId,
       accountUser,
+      requestMetadata,
     );
-    const intent = await this.fileNodesService.createPreviewIntent(nodeId);
-    await this.sharesRepository.recordAudit('share.preview_requested', token, {
+    const auditMetadata = {
       ...this.getShareIdentityAuditMetadata(accessSession),
       nodeId,
       identityType: accessSession?.identityType ?? 'anonymous',
       ...visitor,
+    };
+    await this.abuseProtection.consume({
+      dimensions: ['email'],
+      metadata: auditMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.downloadIntent,
+      scope: 'download-intent',
+      shareToken: share.token,
+    });
+    const node = await this.requireNodeInShare(share, nodeId, 'preview');
+    if (!node.previewCapability.supported) {
+      throw new BadRequestException('File type is not available for preview');
+    }
+    const intent = await this.fileNodesService.createPreviewIntent(nodeId);
+    await this.sharesRepository.recordAudit('share.preview_requested', token, {
+      ...auditMetadata,
     });
 
     return {
@@ -482,18 +592,71 @@ export class SharesService {
     };
   }
 
-  async getPreviewStatus(token: string, nodeId: string, previewId: string) {
-    await this.requireShareNode(token, nodeId, 'preview');
+  async getPreviewStatus(
+    token: string,
+    nodeId: string,
+    previewId: string,
+    visitor: VisitorAuditMetadata = {},
+  ) {
+    const share = await this.requireActiveShare(token, { ...visitor, nodeId });
+    const rateLimitProfile = this.getShareRateLimitProfile(share);
+    await this.abuseProtection.consume({
+      metadata: { ...visitor, nodeId },
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.view,
+      scope: 'preview-status',
+      shareToken: share.token,
+    });
+    await this.requireNodeInShare(share, nodeId, 'preview');
     return this.fileNodesService.getPreviewStatus(nodeId, previewId, {
       actorRole: 'admin',
     });
   }
 
-  private async requireActiveShare(token: string) {
+  private async requireActiveShare(
+    token: string,
+    visitor: VisitorAuditMetadata = {},
+  ) {
     const share = await this.sharesRepository.findByToken(token);
-    if (!share) throw new NotFoundException('Share link not found');
-    if (share.revokedAt) throw new GoneException('Share link is revoked');
+    if (!share) {
+      await this.abuseProtection.consumeLookup({
+        metadata: visitor,
+        shareToken: token,
+      });
+      await this.abuseProtection.recordDenied({
+        metadata: visitor,
+        reason: 'not_found',
+        resolved: false,
+        shareToken: token,
+      });
+      throw new NotFoundException('Share link not found');
+    }
+    if (share.revokedAt) {
+      await this.abuseProtection.consumeLookup({
+        metadata: visitor,
+        resolved: true,
+        shareToken: token,
+      });
+      await this.abuseProtection.recordDenied({
+        metadata: visitor,
+        reason: 'revoked',
+        resolved: true,
+        shareToken: token,
+      });
+      throw new GoneException('Share link is revoked');
+    }
     if (this.isExpiredShare(share)) {
+      await this.abuseProtection.consumeLookup({
+        metadata: visitor,
+        resolved: true,
+        shareToken: token,
+      });
+      await this.abuseProtection.recordDenied({
+        metadata: visitor,
+        reason: 'expired',
+        resolved: true,
+        shareToken: token,
+      });
       throw new GoneException('Share link is expired');
     }
     return share;
@@ -670,8 +833,21 @@ export class SharesService {
     token: string,
     nodeId: string,
     action: 'download' | 'preview',
+    visitor: VisitorAuditMetadata = {},
   ): Promise<{ share: ShareResponse; node: FileNodeResponse }> {
-    const share = await this.requireActiveShare(token);
+    const share = await this.requireActiveShare(token, {
+      ...visitor,
+      nodeId,
+    });
+    const node = await this.requireNodeInShare(share, nodeId, action);
+    return { share, node };
+  }
+
+  private async requireNodeInShare(
+    share: ShareResponse,
+    nodeId: string,
+    action: 'download' | 'preview',
+  ) {
     if (!share.allowedItemIds.includes(nodeId)) {
       throw new ForbiddenException('File node is outside this share scope');
     }
@@ -685,31 +861,52 @@ export class SharesService {
     const node = await this.fileNodesService.getFileNode(nodeId);
     if (!node) throw new NotFoundException('File node not found');
     if (node.archivedAt) throw new GoneException('File node is archived');
-    return { share, node };
+    return node;
   }
 
   private async resolveShareAccessIdentity(
     share: ShareResponse,
     accessSessionId?: string,
     accountUser?: AccountAuditUser,
+    visitor: VisitorAuditMetadata = {},
   ): Promise<ShareAccessSession | null> {
     if (accountUser) {
+      await this.assertEmailAllowedAndAudit(share, accountUser.email, visitor);
       return this.createAccountAccessIdentity(share, accountUser);
     }
     if (share.downloadPolicy.requiresAccessSession || accessSessionId) {
       if (!accessSessionId) {
+        await this.recordAccessIdentityDenied(
+          share,
+          'access_session_required',
+          visitor,
+        );
         throw new ForbiddenException('Share access session is required');
       }
-      const session =
-        await this.sharesRepository.findAccessSession(accessSessionId);
+      const session = await this.sharesRepository.findAccessSession(
+        accessSessionId,
+        visitor,
+      );
       if (
         !session ||
         session.shareToken !== share.token ||
         new Date(session.expiresAt).getTime() < Date.now()
       ) {
+        await this.recordAccessIdentityDenied(
+          share,
+          'access_session_invalid',
+          visitor,
+          accessSessionId,
+        );
         throw new ForbiddenException('Share access session is invalid');
       }
       if (new Date(session.availableAt).getTime() > Date.now()) {
+        await this.recordAccessIdentityDenied(
+          share,
+          'access_session_wait',
+          visitor,
+          accessSessionId,
+        );
         throw new ForbiddenException('Share access wait time has not elapsed');
       }
       return session;
@@ -721,7 +918,6 @@ export class SharesService {
     share: ShareResponse,
     user: AccountAuditUser,
   ): ShareAccessSession {
-    this.assertEmailAllowed(share, user.email);
     const policyDecision = resolveShareDownloadDecision({
       downloadCount: 0,
       identityType: 'ica',
@@ -731,6 +927,7 @@ export class SharesService {
       sessionId: `auth_${user.id}`,
       shareToken: share.token,
       identityType: 'ica',
+      actorUserId: user.id,
       email: user.email,
       availableAt: new Date().toISOString(),
       waitSeconds: policyDecision.waitSeconds,
@@ -739,6 +936,21 @@ export class SharesService {
       policyDecision,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     };
+  }
+
+  private recordAccessIdentityDenied(
+    share: ShareResponse,
+    reason: string,
+    metadata: VisitorAuditMetadata,
+    accessSessionId?: string,
+  ) {
+    return this.abuseProtection.recordDenied({
+      ...(accessSessionId ? { identifiers: { accessSessionId } } : {}),
+      metadata,
+      reason,
+      resolved: true,
+      shareToken: share.token,
+    });
   }
 
   private assertEmailAllowed(share: ShareResponse, email: string) {
@@ -753,6 +965,24 @@ export class SharesService {
     if (!allowedDomain) return;
     if (!normalizedEmail.endsWith(`@${allowedDomain}`)) {
       throw new ForbiddenException('Email domain is not allowed');
+    }
+  }
+
+  private async assertEmailAllowedAndAudit(
+    share: ShareResponse,
+    email: string,
+    metadata: VisitorAuditMetadata,
+  ) {
+    try {
+      this.assertEmailAllowed(share, email);
+    } catch (error) {
+      await this.abuseProtection.recordDenied({
+        metadata,
+        reason: 'email_not_allowed',
+        resolved: true,
+        shareToken: share.token,
+      });
+      throw error;
     }
   }
 
@@ -853,19 +1083,24 @@ export class SharesService {
 
   private getShareIdentityAuditMetadata(
     identity?: {
+      actorUserId?: string;
       email?: string;
       identityType?: ShareAccessIdentityType;
     } | null,
   ) {
+    const actorUserId = identity?.actorUserId?.trim();
+    const actorMetadata = actorUserId ? { actorUserId } : {};
     const normalizedEmail = identity?.email?.trim();
     if (identity?.identityType === 'ica' && !normalizedEmail) {
       return {
+        ...actorMetadata,
         actorName: 'ICEDR account',
         identityType: identity.identityType,
       };
     }
-    if (!normalizedEmail) return {};
+    if (!normalizedEmail) return actorMetadata;
     return {
+      ...actorMetadata,
       actorEmail: normalizedEmail,
       actorName: normalizedEmail,
       visitorEmail: normalizedEmail,
@@ -888,213 +1123,6 @@ export class SharesService {
 
   private getShareRateLimitProfile(share: ShareResponse) {
     return resolveShareRateLimitProfile(share.policy, this.configService);
-  }
-
-  private async assertShareRateLimit(input: {
-    countedAction: ShareAuditAction;
-    matchKeys: RateLimitMetadataKey[];
-    metadata: AuditMetadata;
-    profile: ShareRateLimitProfile;
-    rule: ShareRateLimitRule;
-    scope: ShareRateLimitScope;
-    share: ShareResponse;
-  }) {
-    if (input.rule.max <= 0) return;
-    const now = Date.now();
-    const since = new Date(now - input.rule.windowSeconds * 1000);
-    const events = await this.sharesRepository.listRecentShareAuditEvents(
-      input.share.token,
-      since,
-    );
-    const matchingEvents = events.filter(
-      (event) =>
-        event.action === input.countedAction &&
-        this.auditMetadataMatches(
-          event.metadata,
-          input.metadata,
-          input.matchKeys,
-        ),
-    );
-    if (matchingEvents.length < input.rule.max) return;
-
-    const retryAfterSeconds = this.getRetryAfterSeconds(
-      matchingEvents.map((event) => event.createdAt),
-      input.rule.windowSeconds,
-      now,
-    );
-    await this.sharesRepository.recordAudit(
-      'share.rate_limited',
-      input.share.token,
-      {
-        ...input.metadata,
-        rateLimit: {
-          limit: input.rule.max,
-          profile: input.profile.name,
-          retryAfterSeconds,
-          scope: input.scope,
-          windowSeconds: input.rule.windowSeconds,
-        },
-      },
-    );
-    throw this.createRateLimitException('Share access rate limit exceeded');
-  }
-
-  private async assertEmailVerificationNotLocked(
-    share: ShareResponse,
-    profile: ShareRateLimitProfile,
-    email: string,
-    visitor: VisitorAuditMetadata,
-  ) {
-    const rule = profile.emailVerify;
-    if (rule.max <= 0) return;
-    const now = Date.now();
-    const metadata = this.getEmailAccessAuditMetadata(email, visitor);
-    const since = new Date(
-      now - Math.max(rule.windowSeconds, rule.lockSeconds) * 1000,
-    );
-    const events = await this.sharesRepository.listRecentShareAuditEvents(
-      share.token,
-      since,
-    );
-    const failures = events.filter((event) => {
-      if (event.action !== 'share.access_code_failed') return false;
-      if (
-        !this.auditMetadataMatches(event.metadata, metadata, [
-          'visitorEmail',
-          'ip',
-        ])
-      ) {
-        return false;
-      }
-      return (
-        new Date(event.createdAt).getTime() >= now - rule.windowSeconds * 1000
-      );
-    });
-    if (failures.length < rule.max) return;
-
-    const newestFailureAt = Math.max(
-      ...failures.map((event) => new Date(event.createdAt).getTime()),
-    );
-    const retryAfterSeconds = Math.ceil(
-      (newestFailureAt + rule.lockSeconds * 1000 - now) / 1000,
-    );
-    if (retryAfterSeconds <= 0) return;
-
-    await this.recordEmailAccessCodeLocked(
-      share,
-      profile,
-      rule,
-      retryAfterSeconds,
-      metadata,
-    );
-    throw this.createRateLimitException(
-      'Email access code verification is temporarily locked',
-    );
-  }
-
-  private async recordEmailAccessCodeFailure(
-    share: ShareResponse,
-    profile: ShareRateLimitProfile,
-    email: string,
-    visitor: VisitorAuditMetadata,
-  ) {
-    const metadata = this.getEmailAccessAuditMetadata(email, visitor);
-    await this.sharesRepository.recordAudit(
-      'share.access_code_failed',
-      share.token,
-      {
-        ...metadata,
-        rateLimit: this.getEmailVerifyRateLimitMetadata(
-          profile,
-          profile.emailVerify,
-        ),
-      },
-    );
-  }
-
-  private async recordEmailAccessCodeLocked(
-    share: ShareResponse,
-    profile: ShareRateLimitProfile,
-    rule: ShareEmailVerifyRateLimitRule,
-    retryAfterSeconds: number,
-    metadata: AuditMetadata,
-  ) {
-    await this.sharesRepository.recordAudit(
-      'share.access_code_locked',
-      share.token,
-      {
-        ...metadata,
-        rateLimit: {
-          ...this.getEmailVerifyRateLimitMetadata(profile, rule),
-          retryAfterSeconds,
-        },
-      },
-    );
-  }
-
-  private getEmailVerifyRateLimitMetadata(
-    profile: ShareRateLimitProfile,
-    rule: ShareEmailVerifyRateLimitRule,
-  ) {
-    return {
-      failureLimit: rule.max,
-      lockSeconds: rule.lockSeconds,
-      profile: profile.name,
-      scope: 'email-verify',
-      windowSeconds: rule.windowSeconds,
-    };
-  }
-
-  private auditMetadataMatches(
-    actual: Record<string, unknown>,
-    expected: Record<string, unknown>,
-    matchKeys: RateLimitMetadataKey[],
-  ) {
-    const comparableKeys = matchKeys.filter(
-      (key) => this.getComparableAuditValue(expected[key]) !== null,
-    );
-    if (comparableKeys.length === 0) return true;
-    return comparableKeys.every(
-      (key) =>
-        this.getComparableAuditValue(actual[key]) ===
-        this.getComparableAuditValue(expected[key]),
-    );
-  }
-
-  private getComparableAuditValue(value: unknown) {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim().toLowerCase();
-    return trimmed ? trimmed : null;
-  }
-
-  private getRetryAfterSeconds(
-    createdAtValues: string[],
-    windowSeconds: number,
-    now: number,
-  ) {
-    const oldestCreatedAt = Math.min(
-      ...createdAtValues.map((createdAt) => new Date(createdAt).getTime()),
-    );
-    return Math.max(
-      1,
-      Math.ceil((oldestCreatedAt + windowSeconds * 1000 - now) / 1000),
-    );
-  }
-
-  private createRateLimitException(message: string) {
-    return new HttpException(message, HttpStatus.TOO_MANY_REQUESTS);
-  }
-
-  private async assertShareViewLimit(share: ShareResponse) {
-    const maxViews = Math.max(0, Math.trunc(share.policy.maxViews ?? 0));
-    if (maxViews <= 0) return;
-    const viewCount = await this.sharesRepository.countShareAuditEvents(
-      share.token,
-      'share.viewed',
-    );
-    if (viewCount >= maxViews) {
-      throw new GoneException('Share view limit has been reached');
-    }
   }
 
   private async resolveDownloadDecision(

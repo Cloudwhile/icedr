@@ -26,6 +26,7 @@ export type ShareAccessSession = {
   sessionId: string;
   shareToken: string;
   identityType: ShareAccessIdentityType;
+  actorUserId?: string;
   email?: string;
   availableAt: string;
   waitSeconds: number;

@@ -2,9 +2,11 @@
 
 import { Modal } from "@heroui/react";
 import { MotionPresence } from "@/components/ui/motion";
+import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
+import { isValidEmailAddress } from "@/features/auth/auth-input-validation";
 import { formatFileSize, sumDriveItemSizes, type DriveItem, type Locale, type Palette } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
-import { AuthPrimaryButton, AuthStatusNotice } from "./auth-form-primitives";
+import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
 
 type AccessPolicyExperience = {
@@ -16,46 +18,76 @@ type AccessPolicyExperience = {
 };
 
 type VisitorAccessAction = "download" | "preview";
-type VisitorStage = "choose" | "verified" | "waiting" | "download";
+type AuthMethod = "account" | "email";
+type VisitorStage = "choose" | "email" | "code" | "verified" | "waiting" | "download";
 
 export function ShareAuthDialog({
   accessExperience,
   accessItem,
   action,
   accountConfigured,
+  authMethod,
   busy,
+  code,
+  email,
+  emailStatus,
   locale,
   onAccountAuth,
+  onChangeEmail,
+  onCodeChange,
   onClose,
   onComplete,
   onContinue,
+  onEmailChange,
+  onMethodChange,
+  onResendCode,
+  onSendCode,
+  onVerifyCode,
   open,
   palette,
   remaining,
+  sendCooldownSeconds,
   sourceItems,
   stage,
+  verifyCooldownSeconds,
 }: {
   accessExperience: AccessPolicyExperience;
   accessItem: DriveItem | null;
   action: VisitorAccessAction;
   accountConfigured: boolean;
+  authMethod: AuthMethod;
   busy: boolean;
+  code: string;
+  email: string;
+  emailStatus: AuthNoticeStatus | null;
   locale: Locale;
   onAccountAuth: () => void;
+  onChangeEmail: () => void;
+  onCodeChange: (value: string) => void;
   onClose: () => void;
   onComplete: () => void;
   onContinue: () => void;
+  onEmailChange: (value: string) => void;
+  onMethodChange: (method: AuthMethod) => void;
+  onResendCode: () => void;
+  onSendCode: () => void;
+  onVerifyCode: () => void;
   open: boolean;
   palette: Palette;
   remaining: number;
+  sendCooldownSeconds: number;
   sourceItems: DriveItem[];
   stage: VisitorStage;
+  verifyCooldownSeconds: number;
 }) {
   const t = useTranslations();
   const experience: AccessPolicyExperience = {
     ...accessExperience,
     waitSeconds: remaining,
   };
+  const canSendCode = Boolean(accessItem) && isValidEmailAddress(email.trim()) && !busy && sendCooldownSeconds <= 0;
+  const canVerifyCode = Boolean(accessItem) && code.length === 6 && !busy && verifyCooldownSeconds <= 0;
+  const showAuthMethodSelector = stage === "choose" || stage === "email" || stage === "code";
   const actionLabel = action === "download" ? t("actions.download") : t("share.openPreview");
 
   return (
@@ -135,7 +167,32 @@ export function ShareAuthDialog({
                 />
               </div>
 
-              <MotionPresence show={stage === "choose"} preset="surface">
+              {showAuthMethodSelector ? (
+                <SegmentedToolGroup
+                  ariaLabel={`${t("share.accountLogin")} / ${t("share.temporaryEmail")}`}
+                  onChange={onMethodChange}
+                  options={[
+                    {
+                      icon: <LocalIcon name="user_check" size={17} />,
+                      label: t("share.accountLogin"),
+                      value: "account",
+                    },
+                    {
+                      icon: <LocalIcon name="mail" size={17} />,
+                      label: t("share.temporaryEmail"),
+                      value: "email",
+                    },
+                  ]}
+                  palette={palette}
+                  value={authMethod}
+                />
+              ) : null}
+
+              {authMethod === "email" && emailStatus ? (
+                <AuthStatusNotice palette={palette} status={emailStatus} />
+              ) : null}
+
+              <MotionPresence show={authMethod === "account" && stage === "choose"} preset="surface">
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   <AuthStatusNotice
                     palette={palette}
@@ -148,13 +205,85 @@ export function ShareAuthDialog({
                     <AuthPrimaryButton
                       icon="key"
                       palette={palette}
-                      disabled={!accountConfigured || busy}
+                      disabled={busy}
                       busy={busy}
                       onClick={onAccountAuth}
                     >
-                      {t("share.useIcaIdentity")}
+                      {accountConfigured ? t("share.useIcaIdentity") : t("auth.login")}
                     </AuthPrimaryButton>
                   </div>
+                </div>
+              </MotionPresence>
+
+              <MotionPresence show={authMethod === "email" && stage === "email"} preset="surface">
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <AuthField label={t("share.emailPrompt")} palette={palette} required>
+                    <AuthInput
+                      autoComplete="email"
+                      palette={palette}
+                      placeholder={t("share.emailPlaceholder")}
+                      type="email"
+                      value={email}
+                      onChange={(event) => onEmailChange(event.target.value)}
+                    />
+                  </AuthField>
+                  <AuthPrimaryButton
+                    icon="mail"
+                    palette={palette}
+                    disabled={!canSendCode}
+                    busy={busy}
+                    onClick={onSendCode}
+                  >
+                    {busy ? t("auth.working") : t("share.sendCode")}
+                  </AuthPrimaryButton>
+                </div>
+              </MotionPresence>
+
+              <MotionPresence show={authMethod === "email" && stage === "code"} preset="surface">
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <AuthField label={t("share.codePrompt")} palette={palette} required>
+                    <AuthInput
+                      autoComplete="one-time-code"
+                      inputMode="numeric"
+                      palette={palette}
+                      placeholder="000000"
+                      value={code}
+                      onChange={(event) =>
+                        onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                    />
+                  </AuthField>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                    <ToolButton
+                      label={t("auth.changeResetEmail")}
+                      palette={palette}
+                      disabled={busy}
+                      onClick={onChangeEmail}
+                      size="sm"
+                      visual="surface"
+                    >
+                      <LocalIcon name="arrow_left" size={15} />
+                    </ToolButton>
+                    <ToolButton
+                      label={t("auth.resendCode")}
+                      palette={palette}
+                      disabled={busy || sendCooldownSeconds > 0}
+                      onClick={onResendCode}
+                      size="sm"
+                      visual="surface"
+                    >
+                      <LocalIcon name="refresh" size={15} />
+                    </ToolButton>
+                  </div>
+                  <AuthPrimaryButton
+                    icon="key"
+                    palette={palette}
+                    disabled={!canVerifyCode}
+                    busy={busy}
+                    onClick={onVerifyCode}
+                  >
+                    {busy ? t("auth.working") : t("share.verifyCode")}
+                  </AuthPrimaryButton>
                 </div>
               </MotionPresence>
 

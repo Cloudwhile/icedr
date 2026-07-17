@@ -538,7 +538,15 @@ function EmptyModuleState({
   );
 }
 
+const failedAuditActions = new Set([
+  "share.access_code_failed",
+  "share.access_code_locked",
+  "share.access_denied",
+  "share.rate_limited",
+]);
+
 export function getAuditResult(row: AuditEventResponse) {
+  if (failedAuditActions.has(row.action)) return "failed";
   const value = row.metadata.result;
   const status = row.metadata.status;
   const values = [value, status, row.action]

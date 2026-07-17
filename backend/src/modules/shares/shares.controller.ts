@@ -26,6 +26,10 @@ import {
   writeDownloadResponse,
 } from '../../common/http/download-response';
 import type { AuthUserResponse } from '../auth/core/auth.dto';
+import {
+  SendShareEmailCodeDto,
+  VerifyShareEmailCodeDto,
+} from './share-access.dto';
 import { CreateShareDownloadIntentDto, CreateShareDto } from './shares.dto';
 import { SharesService } from './shares.service';
 
@@ -96,6 +100,32 @@ export class SharesController {
     return this.sharesService.revokeShare(
       token,
       createRequestAuditMetadata(session, request),
+    );
+  }
+
+  @Post(':token/access-sessions/email-code')
+  sendEmailAccessCode(
+    @Param('token') token: string,
+    @Body() dto: SendShareEmailCodeDto,
+    @Req() request: Request,
+  ) {
+    return this.sharesService.sendEmailAccessCode(
+      token,
+      dto,
+      createVisitorAuditMetadata(request),
+    );
+  }
+
+  @Post(':token/access-sessions/verify-email')
+  verifyEmailAccessCode(
+    @Param('token') token: string,
+    @Body() dto: VerifyShareEmailCodeDto,
+    @Req() request: Request,
+  ) {
+    return this.sharesService.verifyEmailAccessCode(
+      token,
+      dto,
+      createVisitorAuditMetadata(request),
     );
   }
 
@@ -189,8 +219,14 @@ export class SharesController {
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Query('previewId') previewId: string,
+    @Req() request: Request,
   ) {
-    return this.sharesService.getPreviewStatus(token, nodeId, previewId);
+    return this.sharesService.getPreviewStatus(
+      token,
+      nodeId,
+      previewId,
+      createVisitorAuditMetadata(request),
+    );
   }
 
   private async resolveShareRequestAudit(

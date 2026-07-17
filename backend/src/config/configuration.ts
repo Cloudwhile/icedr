@@ -24,6 +24,13 @@ function readOptionalNumber(value: string | undefined) {
   return Number.isFinite(next) && next >= 0 ? next : null;
 }
 
+function readOptionalFiniteNumber(value: string | undefined) {
+  const trimmed = readOptionalString(value);
+  if (!trimmed) return undefined;
+  const next = Number(trimmed);
+  return Number.isFinite(next) ? next : undefined;
+}
+
 function readOptionalString(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
@@ -167,47 +174,41 @@ export default () => {
           process.env.SHARE_RATE_LIMIT_PROFILE,
           'default',
         ),
-        windowSeconds: readNumber(
+        windowSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_WINDOW_SECONDS,
-          60,
         ),
-        viewMax: readNumber(process.env.SHARE_RATE_LIMIT_VIEW_MAX, 120),
-        viewWindowSeconds: readNumber(
+        viewMax: readOptionalFiniteNumber(
+          process.env.SHARE_RATE_LIMIT_VIEW_MAX,
+        ),
+        viewWindowSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_VIEW_WINDOW_SECONDS,
-          60,
         ),
-        emailCodeMax: readNumber(
+        emailCodeMax: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_EMAIL_CODE_MAX,
-          5,
         ),
-        emailCodeWindowSeconds: readNumber(
+        emailCodeWindowSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_EMAIL_CODE_WINDOW_SECONDS,
-          600,
         ),
-        emailVerifyMax: readNumber(
+        emailVerifyMax: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_EMAIL_VERIFY_MAX,
-          5,
         ),
-        emailVerifyWindowSeconds: readNumber(
+        emailVerifyWindowSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_EMAIL_VERIFY_WINDOW_SECONDS,
-          900,
         ),
-        emailVerifyLockSeconds: readNumber(
+        emailVerifyLockSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_EMAIL_VERIFY_LOCK_SECONDS,
-          900,
         ),
-        downloadIntentMax: readNumber(
+        downloadIntentMax: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_DOWNLOAD_INTENT_MAX,
-          60,
         ),
-        downloadIntentWindowSeconds: readNumber(
+        downloadIntentWindowSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_DOWNLOAD_INTENT_WINDOW_SECONDS,
-          60,
         ),
-        downloadMax: readNumber(process.env.SHARE_RATE_LIMIT_DOWNLOAD_MAX, 60),
-        downloadWindowSeconds: readNumber(
+        downloadMax: readOptionalFiniteNumber(
+          process.env.SHARE_RATE_LIMIT_DOWNLOAD_MAX,
+        ),
+        downloadWindowSeconds: readOptionalFiniteNumber(
           process.env.SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS,
-          60,
         ),
       },
     },

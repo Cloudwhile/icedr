@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createDriveApiResponseError,
   DriveApiError,
   getDriveApiErrorMessage,
   readDriveApiError,
@@ -29,6 +30,49 @@ describe("drive api errors", () => {
       code: "TEST_CODE",
       message: "first; second",
     });
+  });
+
+  it("preserves a finite non-negative retry delay from structured API errors", async () => {
+    const response = new Response(
+      JSON.stringify({
+        code: "SHARE_RATE_LIMITED",
+        message: "Share access rate limit exceeded",
+        retryAfter: 42,
+      }),
+      { headers: { "content-type": "application/json" }, status: 429 },
+    );
+
+    const apiError = await readDriveApiError(response);
+    const error = createDriveApiResponseError(response, apiError);
+
+    expect(apiError).toEqual({
+      code: "SHARE_RATE_LIMITED",
+      message: "Share access rate limit exceeded",
+      retryAfter: 42,
+    });
+    expect(error).toMatchObject({
+      code: "SHARE_RATE_LIMITED",
+      message: "Share access rate limit exceeded",
+      retryAfter: 42,
+      status: 429,
+    });
+  });
+
+  it.each([
+    ["negative", "-1"],
+    ["non-finite", "1e400"],
+    ["non-number", '"42"'],
+  ])("ignores a %s retry delay", async (_label, retryAfter) => {
+    const response = new Response(
+      `{"message":"Too many requests","retryAfter":${retryAfter}}`,
+      { headers: { "content-type": "application/json" }, status: 429 },
+    );
+
+    const apiError = await readDriveApiError(response);
+    const error = createDriveApiResponseError(response, apiError);
+
+    expect(apiError).not.toHaveProperty("retryAfter");
+    expect(error.retryAfter).toBeUndefined();
   });
 
   it("detects HTML responses", async () => {

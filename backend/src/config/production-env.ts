@@ -65,8 +65,30 @@ const placeholderEnv = [
   ...setupOwnedProductionEnv,
   ...publicApiBaseUrlEnv,
   'SHARE_EMAIL_PROVIDER',
+  'SHARE_VISITOR_HASH_SECRET',
   'AUTH_SECURITY_SECRET',
 ] as const;
+
+const shareRateLimitMaxEnv = [
+  'SHARE_RATE_LIMIT_VIEW_MAX',
+  'SHARE_RATE_LIMIT_EMAIL_CODE_MAX',
+  'SHARE_RATE_LIMIT_EMAIL_VERIFY_MAX',
+  'SHARE_RATE_LIMIT_DOWNLOAD_INTENT_MAX',
+  'SHARE_RATE_LIMIT_DOWNLOAD_MAX',
+] as const;
+
+const shareRateLimitDurationEnv = [
+  'SHARE_RATE_LIMIT_WINDOW_SECONDS',
+  'SHARE_RATE_LIMIT_VIEW_WINDOW_SECONDS',
+  'SHARE_RATE_LIMIT_EMAIL_CODE_WINDOW_SECONDS',
+  'SHARE_RATE_LIMIT_EMAIL_VERIFY_WINDOW_SECONDS',
+  'SHARE_RATE_LIMIT_EMAIL_VERIFY_LOCK_SECONDS',
+  'SHARE_RATE_LIMIT_DOWNLOAD_INTENT_WINDOW_SECONDS',
+  'SHARE_RATE_LIMIT_DOWNLOAD_WINDOW_SECONDS',
+] as const;
+
+const shareRateLimitProfiles = new Set(['default', 'strict', 'relaxed']);
+const maxShareRateLimitValue = 2_147_483_647;
 
 const genericPlaceholders = new Set([
   '...',
@@ -149,6 +171,31 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     }
   }
 
+  if (
+    hasValue(env.SHARE_RATE_LIMIT_PROFILE) &&
+    !shareRateLimitProfiles.has(normalize(env.SHARE_RATE_LIMIT_PROFILE))
+  ) {
+    errors.push('SHARE_RATE_LIMIT_PROFILE must be default, strict, or relaxed');
+  }
+
+  for (const name of shareRateLimitMaxEnv) {
+    const value = env[name];
+    if (hasValue(value) && !isIntegerInRange(value, 0)) {
+      errors.push(
+        `${name} must be an integer between 0 and ${maxShareRateLimitValue}`,
+      );
+    }
+  }
+
+  for (const name of shareRateLimitDurationEnv) {
+    const value = env[name];
+    if (hasValue(value) && !isIntegerInRange(value, 1)) {
+      errors.push(
+        `${name} must be an integer between 1 and ${maxShareRateLimitValue}`,
+      );
+    }
+  }
+
   if (hasValue(env.SMTP_FROM_EMAIL) && !isEmailAddress(env.SMTP_FROM_EMAIL)) {
     errors.push('SMTP_FROM_EMAIL must be a valid email address');
   }
@@ -157,6 +204,13 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     errors.push('AUTH_SECURITY_SECRET is required in production');
   } else if (env.AUTH_SECURITY_SECRET.trim().length < 32) {
     errors.push('AUTH_SECURITY_SECRET must be at least 32 characters');
+  }
+
+  if (
+    hasValue(env.SHARE_VISITOR_HASH_SECRET) &&
+    env.SHARE_VISITOR_HASH_SECRET.trim().length < 32
+  ) {
+    errors.push('SHARE_VISITOR_HASH_SECRET must be at least 32 characters');
   }
 
   if (errors.length > 0) {
@@ -259,6 +313,16 @@ function isPort(value: string) {
   if (!/^\d+$/.test(value.trim())) return false;
   const port = Number(value);
   return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+function isIntegerInRange(value: string, minimum: number) {
+  if (!/^\d+$/.test(value.trim())) return false;
+  const next = Number(value);
+  return (
+    Number.isSafeInteger(next) &&
+    next >= minimum &&
+    next <= maxShareRateLimitValue
+  );
 }
 
 function isEmailAddress(value: string) {

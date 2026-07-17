@@ -6,6 +6,9 @@ import { MailModule } from '../admin/mail/mail.module';
 import { StorageModule } from '../storage/storage.module';
 import { WorkspacesModule } from '../admin/workspaces/workspaces.module';
 import { SharesController } from './shares.controller';
+import { ShareAbuseProtectionService } from './share-abuse-protection.service';
+import { ShareDownloadCommitRepository } from './share-download-commit.repository';
+import { ShareRateLimitRepository } from './share-rate-limit.repository';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
 
@@ -19,6 +22,12 @@ import { SharesService } from './shares.service';
     WorkspacesModule,
   ],
   controllers: [SharesController],
-  providers: [SharesRepository, SharesService],
+  providers: [
+    ShareAbuseProtectionService,
+    ShareDownloadCommitRepository,
+    ShareRateLimitRepository,
+    SharesRepository,
+    SharesService,
+  ],
 })
 export class SharesModule {}

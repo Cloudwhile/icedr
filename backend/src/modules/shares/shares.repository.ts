@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAuditEvent, type AuditActor } from '../logs/audit-events';
@@ -20,13 +20,19 @@ import {
   resolveShareDownloadPolicy,
   type ShareDownloadPolicyDecision,
 } from './share-download-policy';
+import {
+  hashShareVisitorValue,
+  matchesShareVisitorFingerprint,
+  type ShareVisitorFingerprint,
+} from './share-visitor-fingerprint';
+
+export type { ShareVisitorFingerprint } from './share-visitor-fingerprint';
 
 type StoredShare = ShareResponse & {
   creatorUserId: string | null;
 };
-type DownloadStartedMetadataFactory = (
-  downloadCount: number,
-) => Record<string, unknown> | null;
+
+const SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS = 5;
 
 export type ShareStatus = 'active' | 'revoked' | 'expired';
 export type ShareRiskLevel = 'normal' | 'attention' | 'high';
@@ -49,17 +55,13 @@ export type ShareAuditAction =
   | 'share.access_session_created'
   | 'share.access_code_failed'
   | 'share.access_code_locked'
+  | 'share.access_denied'
   | 'share.rate_limited';
 
 export type ShareAuditEventSummary = {
   action: ShareAuditAction;
   createdAt: string;
   metadata: Record<string, unknown>;
-};
-
-export type ShareVisitorFingerprint = {
-  ip?: string;
-  userAgent?: string;
 };
 
 export type ShareDownloadIntentRecord = {
@@ -111,7 +113,12 @@ type CreateDownloadIntentInput = {
   visitor?: ShareVisitorFingerprint;
 };
 
-const shareEmailCodeMaxAttempts = 5;
+type OpenShareDownloadIntentInput = {
+  downloadId: string;
+  token: string;
+  nodeId: string;
+  visitor?: ShareVisitorFingerprint;
+};
 
 @Injectable()
 export class SharesRepository {
@@ -244,11 +251,47 @@ export class SharesRepository {
     });
   }
 
-  async recordDownloadStarted(
-    shareToken: string,
-    metadataForDownloadCount: DownloadStartedMetadataFactory,
+  async recordUnresolvedAudit(
+    action: ShareAuditAction,
+    shareTokenHash: string,
+    metadata: Record<string, unknown> = {},
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const event = createAuditEvent({
+      action,
+      actor: 'visitor',
+      target: `share:${shareTokenHash.slice(0, 16)}`,
+      workspaceId: null,
+      shareToken: null,
+      metadata: {
+        source: 'shares-service',
+        ...metadata,
+        shareTokenHash,
+      },
+    });
+
+    await this.prisma.auditEvent.create({
+      data: {
+        id: event.id,
+        action: event.action,
+        actor: event.actor,
+        target: event.target,
+        workspaceId: event.workspaceId,
+        shareToken: event.shareToken,
+        nodeId: event.nodeId,
+        metadata: event.metadata as Prisma.InputJsonValue,
+        createdAt: new Date(event.createdAt),
+      },
+    });
+  }
+
+  async recordShareViewed(
+    shareToken: string,
+    maxViews: number,
+    metadata: Record<string, unknown> = {},
+    options: { actor?: AuditActor } = {},
+  ) {
+    const normalizedMaxViews = Math.max(0, Math.trunc(maxViews));
+    return this.runSerializableTransaction(async (tx) => {
       const lockedShare = await tx.shareLink.findUnique({
         where: { token: shareToken },
         select: {
@@ -260,7 +303,7 @@ export class SharesRepository {
       });
       if (!lockedShare) {
         return {
-          downloadCount: 0,
+          viewCount: 0,
           expired: false,
           missingShare: true,
           recorded: false,
@@ -272,7 +315,7 @@ export class SharesRepository {
         Math.max(0, Math.trunc(Number(lockedShare.expiresDays))) * 86400000;
       if (lockedShare.revokedAt || expiresAt < Date.now()) {
         return {
-          downloadCount: 0,
+          viewCount: 0,
           expired: !lockedShare.revokedAt,
           missingShare: false,
           recorded: false,
@@ -280,16 +323,18 @@ export class SharesRepository {
         };
       }
 
-      const downloadCount = await tx.auditEvent.count({
-        where: {
-          action: 'share.download_started',
-          shareToken,
-        },
-      });
-      const metadata = metadataForDownloadCount(downloadCount);
-      if (!metadata) {
+      const viewCount =
+        normalizedMaxViews > 0
+          ? await tx.auditEvent.count({
+              where: {
+                action: 'share.viewed',
+                shareToken,
+              },
+            })
+          : 0;
+      if (normalizedMaxViews > 0 && viewCount >= normalizedMaxViews) {
         return {
-          downloadCount,
+          viewCount,
           expired: false,
           missingShare: false,
           recorded: false,
@@ -298,8 +343,12 @@ export class SharesRepository {
       }
 
       const event = createAuditEvent({
-        action: 'share.download_started',
-        actor: this.resolveShareAuditActor('share.download_started', metadata),
+        action: 'share.viewed',
+        actor: this.resolveShareAuditActor(
+          'share.viewed',
+          metadata,
+          options.actor,
+        ),
         target: shareToken,
         workspaceId: lockedShare.workspaceId,
         shareToken,
@@ -323,13 +372,41 @@ export class SharesRepository {
       });
 
       return {
-        downloadCount,
+        viewCount,
         expired: false,
         missingShare: false,
         recorded: true,
         revoked: false,
       };
     });
+  }
+
+  private async runSerializableTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(operation, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (error) {
+        if (
+          !this.isSerializableTransactionConflict(error) ||
+          attempt >= SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS
+        ) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  private isSerializableTransactionConflict(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2034'
+    );
   }
 
   async countAuditEvents(action?: ShareAuditAction) {
@@ -403,8 +480,11 @@ export class SharesRepository {
           input.code,
         ),
         expiresAt: new Date(input.expiresAt),
-        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
-        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
+        requestIpHash: hashShareVisitorValue(this.config, input.visitor?.ip),
+        userAgentHash: hashShareVisitorValue(
+          this.config,
+          input.visitor?.userAgent,
+        ),
       },
     });
     return this.mapEmailCode(row);
@@ -414,8 +494,10 @@ export class SharesRepository {
     token: string;
     email: string;
     code: string;
+    maxAttempts: number;
   }) {
     const normalizedEmail = this.normalizeEmail(input.email);
+    const maxAttempts = Math.max(0, Math.trunc(input.maxAttempts));
     const row = await this.prisma.shareEmailCode.findFirst({
       where: {
         shareToken: input.token,
@@ -427,7 +509,7 @@ export class SharesRepository {
       !row ||
       row.consumedAt ||
       row.expiresAt.getTime() < Date.now() ||
-      row.attemptCount >= shareEmailCodeMaxAttempts
+      (maxAttempts > 0 && row.attemptCount >= maxAttempts)
     ) {
       return null;
     }
@@ -438,8 +520,13 @@ export class SharesRepository {
       input.code,
     );
     if (row.codeHash !== codeHash) {
-      await this.prisma.shareEmailCode.update({
-        where: { id: row.id },
+      await this.prisma.shareEmailCode.updateMany({
+        where: {
+          id: row.id,
+          consumedAt: null,
+          expiresAt: { gte: new Date() },
+          ...(maxAttempts > 0 ? { attemptCount: { lt: maxAttempts } } : {}),
+        },
         data: { attemptCount: { increment: 1 }, updatedAt: new Date() },
       });
       return null;
@@ -447,7 +534,12 @@ export class SharesRepository {
 
     const consumedAt = new Date();
     const result = await this.prisma.shareEmailCode.updateMany({
-      where: { id: row.id, consumedAt: null },
+      where: {
+        id: row.id,
+        consumedAt: null,
+        expiresAt: { gte: consumedAt },
+        ...(maxAttempts > 0 ? { attemptCount: { lt: maxAttempts } } : {}),
+      },
       data: { consumedAt, updatedAt: consumedAt },
     });
     if (result.count !== 1) return null;
@@ -477,18 +569,26 @@ export class SharesRepository {
           : Prisma.JsonNull,
         policyDecision: input.policyDecision,
         expiresAt: new Date(input.expiresAt),
-        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
-        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
+        requestIpHash: hashShareVisitorValue(this.config, input.visitor?.ip),
+        userAgentHash: hashShareVisitorValue(
+          this.config,
+          input.visitor?.userAgent,
+        ),
       },
     });
     return this.mapAccessSession(row);
   }
 
-  async findAccessSession(sessionId: string) {
+  async findAccessSession(
+    sessionId: string,
+    visitor?: ShareVisitorFingerprint,
+  ) {
     const row = await this.prisma.shareAccessSession.findUnique({
       where: { id: sessionId },
     });
-    return row ? this.mapAccessSession(row) : null;
+    return row && matchesShareVisitorFingerprint(this.config, row, visitor)
+      ? this.mapAccessSession(row)
+      : null;
   }
 
   async createShareDownloadIntent(
@@ -505,53 +605,19 @@ export class SharesRepository {
         identityType: input.identityType,
         email: input.email ? this.normalizeEmail(input.email) : null,
         expiresAt: new Date(input.expiresAt),
-        requestIpHash: this.hashVisitorValue(input.visitor?.ip),
-        userAgentHash: this.hashVisitorValue(input.visitor?.userAgent),
+        requestIpHash: hashShareVisitorValue(this.config, input.visitor?.ip),
+        userAgentHash: hashShareVisitorValue(
+          this.config,
+          input.visitor?.userAgent,
+        ),
       },
     });
     return this.mapDownloadIntent(row);
   }
 
-  async openShareDownloadIntent(input: {
-    downloadId: string;
-    token: string;
-    nodeId: string;
-    visitor?: ShareVisitorFingerprint;
-  }) {
-    const row = await this.prisma.shareDownloadIntent.findUnique({
-      where: { id: input.downloadId },
-    });
-    if (
-      !row ||
-      row.shareToken !== input.token ||
-      row.nodeId !== input.nodeId ||
-      row.expiresAt.getTime() < Date.now() ||
-      (row.purpose === 'download' && row.consumedAt) ||
-      (row.purpose !== 'download' && row.purpose !== 'preview') ||
-      row.useCount >= this.getDownloadIntentUseLimit(row.purpose) ||
-      !this.matchesVisitorFingerprint(row, input.visitor)
-    ) {
-      return null;
-    }
-
-    const consumedAt = row.purpose === 'download' ? new Date() : null;
-    const result = await this.prisma.shareDownloadIntent.updateMany({
-      where: {
-        id: row.id,
-        consumedAt: null,
-        useCount: { lt: this.getDownloadIntentUseLimit(row.purpose) },
-      },
-      data: {
-        consumedAt: consumedAt ?? undefined,
-        useCount: { increment: 1 },
-      },
-    });
-    if (result.count !== 1) return null;
-    return this.mapDownloadIntent({
-      ...row,
-      consumedAt,
-      useCount: row.useCount + 1,
-    });
+  async findShareDownloadIntent(input: OpenShareDownloadIntentInput) {
+    const row = await this.findUsableDownloadIntentRow(input);
+    return row ? this.mapDownloadIntent(row) : null;
   }
 
   async pruneExpiredTransientShareState(now = new Date()) {
@@ -736,16 +802,25 @@ export class SharesRepository {
     return purpose === 'preview' ? 64 : 1;
   }
 
-  private matchesVisitorFingerprint(
-    row: Pick<ShareDownloadIntent, 'requestIpHash' | 'userAgentHash'>,
-    visitor?: ShareVisitorFingerprint,
+  private async findUsableDownloadIntentRow(
+    input: OpenShareDownloadIntentInput,
   ) {
-    const requestIpHash = this.hashVisitorValue(visitor?.ip);
-    const userAgentHash = this.hashVisitorValue(visitor?.userAgent);
-    return (
-      (!row.requestIpHash || row.requestIpHash === requestIpHash) &&
-      (!row.userAgentHash || row.userAgentHash === userAgentHash)
-    );
+    const row = await this.prisma.shareDownloadIntent.findUnique({
+      where: { id: input.downloadId },
+    });
+    if (
+      !row ||
+      row.shareToken !== input.token ||
+      row.nodeId !== input.nodeId ||
+      row.expiresAt.getTime() < Date.now() ||
+      (row.purpose === 'download' && row.consumedAt) ||
+      (row.purpose !== 'download' && row.purpose !== 'preview') ||
+      row.useCount >= this.getDownloadIntentUseLimit(row.purpose) ||
+      !matchesShareVisitorFingerprint(this.config, row, input.visitor)
+    ) {
+      return null;
+    }
+    return row;
   }
 
   private parseSpeedLimit(value: Prisma.JsonValue) {
@@ -855,23 +930,6 @@ export class SharesRepository {
     return createHash('sha256')
       .update(`share-email-code:${token}:${email}:${code.trim()}`)
       .digest('hex');
-  }
-
-  private hashVisitorValue(value: string | undefined) {
-    const normalized = value?.trim();
-    if (!normalized) return null;
-    return createHmac('sha256', this.resolveVisitorHashSecret())
-      .update(normalized)
-      .digest('hex');
-  }
-
-  private resolveVisitorHashSecret() {
-    return (
-      this.config.get<string>('share.visitorHashSecret')?.trim() ||
-      this.config.get<string>('storage.secretAccessKey')?.trim() ||
-      this.config.get<string>('database.password')?.trim() ||
-      'icedr-dev-share-visitor-hash-secret'
-    );
   }
 
   private parseJsonArray(value: unknown) {

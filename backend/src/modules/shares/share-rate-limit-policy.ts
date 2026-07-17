@@ -3,10 +3,12 @@ import type { SharePolicyDto } from './shares.dto';
 
 export type ShareRateLimitScope =
   | 'view'
+  | 'access-session'
   | 'email-code'
   | 'email-verify'
   | 'download-intent'
-  | 'download';
+  | 'download'
+  | 'preview-status';
 
 export type ShareRateLimitRule = {
   max: number;

@@ -84,6 +84,7 @@ export const auditedActivityActions = [
   'share.access_code_sent',
   'share.access_code_failed',
   'share.access_code_locked',
+  'share.access_denied',
   'share.access_session_created',
   'share.rate_limited',
   'share.preview_requested',
