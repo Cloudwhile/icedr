@@ -7,6 +7,7 @@ import { ProgressMeter } from "@/components/ui/progress-meter";
 import { LocalIcon } from "@/components/ui/app-icon";
 import { useTranslations } from "@/i18n/react";
 import { formatFileSize, type Locale, type Palette } from "@/features/file/model";
+import { getTaskLifecycleGroup, resolveTaskLifecycleStatus } from "@/features/file/task-lifecycle";
 import type { TransferRow } from "@/views/drive/drive-types";
 
 type DriveUploadHudProps = {
@@ -15,8 +16,6 @@ type DriveUploadHudProps = {
   palette: Palette;
   rows: TransferRow[];
 };
-
-const visibleUploadStatuses = new Set<TransferRow["status"]>(["queued", "running", "paused"]);
 
 function clampProgress(value: number | null | undefined) {
   if (!Number.isFinite(value ?? NaN)) return 0;
@@ -43,7 +42,7 @@ function getMetricLine(row: TransferRow, locale: Locale, t: ReturnType<typeof us
     return `${loaded} / ${total}`;
   }
 
-  return t(`transfers.${row.status}`);
+  return t(`transfers.${resolveTaskLifecycleStatus(row)}`);
 }
 
 export function DriveUploadHud({
@@ -54,13 +53,16 @@ export function DriveUploadHud({
 }: DriveUploadHudProps) {
   const t = useTranslations();
   const activeRows = useMemo(
-    () => rows.filter((row) => visibleUploadStatuses.has(row.status)).slice(0, 6),
+    () => rows.filter((row) => {
+      const lifecycleGroup = getTaskLifecycleGroup(row);
+      return lifecycleGroup === "active" || lifecycleGroup === "paused";
+    }).slice(0, 6),
     [rows],
   );
   const canRenderPortal = typeof document !== "undefined";
   const primaryRow = activeRows[0];
   const overallProgress = getOverallProgress(activeRows);
-  const primaryMetric = primaryRow ? getMetricLine(primaryRow, locale, t) : t("transfers.queued");
+  const primaryMetric = primaryRow ? getMetricLine(primaryRow, locale, t) : t("transfers.pending");
 
   const hud = (
     <MotionPresence className="drive-upload-hud-presence" preset="toast" show={activeRows.length > 0}>
@@ -80,7 +82,7 @@ export function DriveUploadHud({
         >
           <div className="drive-upload-hud-topline">
             <span className="drive-upload-hud-icon">
-              <LocalIcon name={primaryRow?.status === "paused" ? "pause" : "upload"} size={16} />
+              <LocalIcon name={primaryRow && resolveTaskLifecycleStatus(primaryRow) === "paused" ? "pause" : "upload"} size={16} />
             </span>
             <div className="drive-upload-hud-title">
               <span className="icedr-truncate">{primaryRow?.name ?? t("transfers.uploadActiveTitle", { count: activeRows.length })}</span>

@@ -58,6 +58,27 @@ describe("drive api errors", () => {
     });
   });
 
+  it("preserves the current transfer status from a state conflict", async () => {
+    const response = new Response(
+      JSON.stringify({
+        code: "TRANSFER_STATE_CONFLICT",
+        currentStatus: "paused",
+        message: "Transfer status changed before the update was applied",
+      }),
+      { headers: { "content-type": "application/json" }, status: 409 },
+    );
+
+    const apiError = await readDriveApiError(response);
+    const error = createDriveApiResponseError(response, apiError);
+
+    expect(apiError.currentStatus).toBe("paused");
+    expect(error).toMatchObject({
+      code: "TRANSFER_STATE_CONFLICT",
+      currentStatus: "paused",
+      status: 409,
+    });
+  });
+
   it.each([
     ["negative", "-1"],
     ["non-finite", "1e400"],
@@ -102,6 +123,21 @@ describe("drive api errors", () => {
         { scope: "share" },
       ),
     ).toBe("errors.shareRateLimited");
+  });
+
+  it("prefers structured transfer failure messages in workspace and share scopes", () => {
+    const error = new DriveApiError(
+      "Download preparation failed",
+      409,
+      "DOWNLOAD_FAILED",
+    );
+
+    expect(getDriveApiErrorMessage(error, t)).toBe(
+      "transfers.failureReason.DOWNLOAD_FAILED",
+    );
+    expect(getDriveApiErrorMessage(error, t, { scope: "share" })).toBe(
+      "transfers.failureReason.DOWNLOAD_FAILED",
+    );
   });
 
   it("keeps backend reasons when no mapped message exists", () => {

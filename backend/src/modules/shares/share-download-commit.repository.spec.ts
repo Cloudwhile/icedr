@@ -14,10 +14,16 @@ type AuditCreateInput = {
 type IntentUpdateInput = {
   where: {
     id: string;
+    claimToken: string;
+    expiresAt: { gt: Date };
     useCount: { lt: number };
   };
   data: {
+    claimToken: null;
+    claimedAt: null;
     consumedAt?: Date;
+    failureCode: null;
+    updatedAt: Date;
     useCount: { increment: number };
   };
 };
@@ -38,17 +44,22 @@ function baseIntent() {
     id: 'dl_test',
     shareToken: 's_token',
     nodeId: 'node-1',
+    actorUserId: 'user-1',
     filename: 'file.txt',
     method: 'stream',
     purpose: 'download',
     identityType: 'email',
     email: 'visitor@example.test',
+    claimToken: 'claim-good',
+    claimedAt: new Date(),
+    failureCode: null,
     expiresAt: new Date(Date.now() + 60_000),
     consumedAt: null,
     useCount: 0,
     requestIpHash: null,
     userAgentHash: null,
     createdAt: new Date(),
+    updatedAt: new Date(),
   };
 }
 
@@ -105,6 +116,7 @@ describe('ShareDownloadCommitRepository', () => {
 
     await expect(
       repository.commit({
+        claimToken: 'claim-good',
         downloadId: 'dl_test',
         shareToken: 's_token',
         nodeId: 'node-1',
@@ -121,6 +133,7 @@ describe('ShareDownloadCommitRepository', () => {
     const { repository } = createRepository(tx);
 
     const result = await repository.commit({
+      claimToken: 'claim-good',
       downloadId: 'dl_test',
       shareToken: 's_token',
       nodeId: 'node-1',
@@ -134,8 +147,16 @@ describe('ShareDownloadCommitRepository', () => {
     if (result.status !== 'committed') throw new Error('Commit failed');
     expect(typeof result.intent.consumedAt).toBe('string');
     expect(result.intent.useCount).toBe(1);
+    expect(result.intent.lifecycle.status).toBe('completed');
 
     expect(tx.shareDownloadIntent.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.shareDownloadIntent.updateMany.mock.calls[0]?.[0]).toMatchObject({
+      where: {
+        claimToken: 'claim-good',
+        expiresAt: { gt: expect.any(Date) as unknown },
+      },
+      data: { claimToken: null, claimedAt: null },
+    });
     expect(tx.auditEvent.create.mock.calls[0]?.[0].data).toMatchObject({
       action: 'share.download_started',
       actor: 'account',
@@ -144,6 +165,56 @@ describe('ShareDownloadCommitRepository', () => {
     expect(
       tx.shareDownloadIntent.updateMany.mock.invocationCallOrder[0],
     ).toBeLessThan(tx.auditEvent.create.mock.invocationCallOrder[0]);
+  });
+
+  it('rejects an incorrect claim token without consuming the intent', async () => {
+    const tx = createTransactionClient();
+    const { repository } = createRepository(tx);
+
+    await expect(
+      repository.commit({
+        claimToken: 'claim-wrong',
+        downloadId: 'dl_test',
+        shareToken: 's_token',
+        nodeId: 'node-1',
+        metadataForDownloadCount: () => ({ nodeId: 'node-1' }),
+      }),
+    ).resolves.toEqual({ status: 'intent-unavailable' });
+
+    expect(tx.auditEvent.count).not.toHaveBeenCalled();
+    expect(tx.shareDownloadIntent.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('commits after the lease duration when the worker still owns the token', async () => {
+    jest.useFakeTimers();
+    try {
+      const now = new Date('2026-07-18T08:00:00.000Z');
+      jest.setSystemTime(now);
+      const tx = createTransactionClient(
+        createIntent({ claimedAt: new Date(now.getTime() - 60_000) }),
+      );
+      const { repository } = createRepository(tx);
+
+      await expect(
+        repository.commit({
+          claimToken: 'claim-good',
+          downloadId: 'dl_test',
+          shareToken: 's_token',
+          nodeId: 'node-1',
+          metadataForDownloadCount: () => ({ nodeId: 'node-1' }),
+        }),
+      ).resolves.toMatchObject({ status: 'committed' });
+      expect(tx.shareDownloadIntent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            claimToken: 'claim-good',
+          }) as unknown,
+        }) as unknown,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('rejects a visitor fingerprint mismatch before claiming', async () => {
@@ -161,6 +232,7 @@ describe('ShareDownloadCommitRepository', () => {
 
     await expect(
       repository.commit({
+        claimToken: 'claim-good',
         downloadId: 'dl_test',
         shareToken: 's_token',
         nodeId: 'node-1',
@@ -182,6 +254,7 @@ describe('ShareDownloadCommitRepository', () => {
 
     await expect(
       repository.commit({
+        claimToken: 'claim-good',
         downloadId: 'dl_test',
         shareToken: 's_token',
         nodeId: 'node-1',
@@ -201,9 +274,36 @@ describe('ShareDownloadCommitRepository', () => {
       useCount: { lt: 64 },
     });
     expect(update?.data).toEqual({
+      claimToken: null,
+      claimedAt: null,
       consumedAt: undefined,
+      failureCode: null,
+      updatedAt: expect.any(Date) as unknown,
       useCount: { increment: 1 },
     });
+  });
+
+  it('rejects an intent exactly at the expiry boundary', async () => {
+    jest.useFakeTimers();
+    try {
+      const now = new Date('2026-07-18T08:00:00.000Z');
+      jest.setSystemTime(now);
+      const tx = createTransactionClient(createIntent({ expiresAt: now }));
+      const { repository } = createRepository(tx);
+
+      await expect(
+        repository.commit({
+          claimToken: 'claim-good',
+          downloadId: 'dl_test',
+          shareToken: 's_token',
+          nodeId: 'node-1',
+          metadataForDownloadCount: () => ({ nodeId: 'node-1' }),
+        }),
+      ).resolves.toEqual({ status: 'intent-unavailable' });
+      expect(tx.shareDownloadIntent.updateMany).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('retries a serializable write conflict', async () => {
@@ -215,6 +315,7 @@ describe('ShareDownloadCommitRepository', () => {
 
     await expect(
       repository.commit({
+        claimToken: 'claim-good',
         downloadId: 'dl_test',
         shareToken: 's_token',
         nodeId: 'node-1',
@@ -238,6 +339,7 @@ describe('ShareDownloadCommitRepository', () => {
       );
 
       const result = repository.commit({
+        claimToken: 'claim-good',
         downloadId: 'dl_test',
         shareToken: 's_token',
         nodeId: 'node-1',

@@ -6,7 +6,6 @@ import { PrismaService } from '../../database/prisma.service';
 import {
   Prisma,
   type ShareAccessSession as StoredShareAccessSession,
-  type ShareDownloadIntent,
   type ShareEmailCode,
   type ShareLink,
 } from '../../generated/prisma/client';
@@ -15,7 +14,6 @@ import {
   ShareAccessIdentityType,
   ShareAccessSession,
 } from './share-access.dto';
-import type { DownloadIntentPurpose } from '../files/file-nodes.dto';
 import {
   resolveShareDownloadPolicy,
   type ShareDownloadPolicyDecision,
@@ -26,6 +24,18 @@ import {
   type ShareVisitorFingerprint,
 } from './share-visitor-fingerprint';
 import { retryPrismaSerializableTransaction } from './serializable-transaction-retry';
+import {
+  ShareDownloadIntentRepository,
+  type CreateShareDownloadIntentInput,
+  type OpenShareDownloadIntentInput,
+  type UpdateShareDownloadIntentClaimInput,
+} from './share-download-intent.repository';
+import type { ShareDownloadIntentRecord } from './share-download-intent.mapper';
+
+export {
+  mapShareDownloadIntentRecord,
+  type ShareDownloadIntentRecord,
+} from './share-download-intent.mapper';
 
 export type { ShareVisitorFingerprint } from './share-visitor-fingerprint';
 
@@ -63,20 +73,6 @@ export type ShareAuditEventSummary = {
   metadata: Record<string, unknown>;
 };
 
-export type ShareDownloadIntentRecord = {
-  downloadId: string;
-  token: string;
-  nodeId: string;
-  filename: string;
-  expiresAt: string;
-  method: 'stream' | 'manifest';
-  purpose: DownloadIntentPurpose;
-  identityType: ShareAccessIdentityType;
-  email?: string;
-  consumedAt: string | null;
-  useCount: number;
-};
-
 type CreateEmailCodeInput = {
   token: string;
   email: string;
@@ -99,31 +95,12 @@ type CreateAccessSessionInput = {
   visitor?: ShareVisitorFingerprint;
 };
 
-type CreateDownloadIntentInput = {
-  downloadId: string;
-  token: string;
-  nodeId: string;
-  filename: string;
-  expiresAt: string;
-  method: ShareDownloadIntentRecord['method'];
-  purpose: DownloadIntentPurpose;
-  identityType: ShareAccessIdentityType;
-  email?: string;
-  visitor?: ShareVisitorFingerprint;
-};
-
-type OpenShareDownloadIntentInput = {
-  downloadId: string;
-  token: string;
-  nodeId: string;
-  visitor?: ShareVisitorFingerprint;
-};
-
 @Injectable()
 export class SharesRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly downloadIntents: ShareDownloadIntentRepository,
   ) {}
 
   async create(
@@ -312,7 +289,7 @@ export class SharesRepository {
       const expiresAt =
         new Date(lockedShare.createdAt).getTime() +
         Math.max(0, Math.trunc(Number(lockedShare.expiresDays))) * 86400000;
-      if (lockedShare.revokedAt || expiresAt < Date.now()) {
+      if (lockedShare.revokedAt || expiresAt <= Date.now()) {
         return {
           viewCount: 0,
           expired: !lockedShare.revokedAt,
@@ -489,7 +466,7 @@ export class SharesRepository {
     if (
       !row ||
       row.consumedAt ||
-      row.expiresAt.getTime() < Date.now() ||
+      row.expiresAt.getTime() <= Date.now() ||
       (maxAttempts > 0 && row.attemptCount >= maxAttempts)
     ) {
       return null;
@@ -505,7 +482,7 @@ export class SharesRepository {
         where: {
           id: row.id,
           consumedAt: null,
-          expiresAt: { gte: new Date() },
+          expiresAt: { gt: new Date() },
           ...(maxAttempts > 0 ? { attemptCount: { lt: maxAttempts } } : {}),
         },
         data: { attemptCount: { increment: 1 }, updatedAt: new Date() },
@@ -518,7 +495,7 @@ export class SharesRepository {
       where: {
         id: row.id,
         consumedAt: null,
-        expiresAt: { gte: consumedAt },
+        expiresAt: { gt: consumedAt },
         ...(maxAttempts > 0 ? { attemptCount: { lt: maxAttempts } } : {}),
       },
       data: { consumedAt, updatedAt: consumedAt },
@@ -573,50 +550,45 @@ export class SharesRepository {
   }
 
   async createShareDownloadIntent(
-    input: CreateDownloadIntentInput,
+    input: CreateShareDownloadIntentInput,
   ): Promise<ShareDownloadIntentRecord> {
-    const row = await this.prisma.shareDownloadIntent.create({
-      data: {
-        id: input.downloadId,
-        shareToken: input.token,
-        nodeId: input.nodeId,
-        filename: input.filename,
-        method: input.method,
-        purpose: input.purpose,
-        identityType: input.identityType,
-        email: input.email ? this.normalizeEmail(input.email) : null,
-        expiresAt: new Date(input.expiresAt),
-        requestIpHash: hashShareVisitorValue(this.config, input.visitor?.ip),
-        userAgentHash: hashShareVisitorValue(
-          this.config,
-          input.visitor?.userAgent,
-        ),
-      },
-    });
-    return this.mapDownloadIntent(row);
+    return this.downloadIntents.create(input);
   }
 
   async findShareDownloadIntent(input: OpenShareDownloadIntentInput) {
-    const row = await this.findUsableDownloadIntentRow(input);
-    return row ? this.mapDownloadIntent(row) : null;
+    return this.downloadIntents.find(input);
+  }
+
+  async claimShareDownloadIntent(input: OpenShareDownloadIntentInput) {
+    return this.downloadIntents.claim(input);
+  }
+
+  async failShareDownloadIntentClaim(
+    input: UpdateShareDownloadIntentClaimInput,
+  ) {
+    return this.downloadIntents.failClaim(input);
+  }
+
+  async releaseShareDownloadIntentClaim(
+    input: UpdateShareDownloadIntentClaimInput,
+  ) {
+    return this.downloadIntents.releaseClaim(input);
   }
 
   async pruneExpiredTransientShareState(now = new Date()) {
     const [emailCodes, accessSessions, downloadIntents] = await Promise.all([
       this.prisma.shareEmailCode.deleteMany({
-        where: { expiresAt: { lt: now } },
+        where: { expiresAt: { lte: now } },
       }),
       this.prisma.shareAccessSession.deleteMany({
-        where: { expiresAt: { lt: now } },
+        where: { expiresAt: { lte: now } },
       }),
-      this.prisma.shareDownloadIntent.deleteMany({
-        where: { expiresAt: { lt: now } },
-      }),
+      this.downloadIntents.pruneExpired(now),
     ]);
     return {
       emailCodes: emailCodes.count,
       accessSessions: accessSessions.count,
-      downloadIntents: downloadIntents.count,
+      downloadIntents,
     };
   }
 
@@ -714,7 +686,7 @@ export class SharesRepository {
     if (share.revokedAt) return 'revoked';
     const expiresAt =
       new Date(share.createdAt).getTime() + share.expiresDays * 86400000;
-    return expiresAt < Date.now() ? 'expired' : 'active';
+    return expiresAt <= Date.now() ? 'expired' : 'active';
   }
 
   private getRiskLevel(
@@ -759,49 +731,6 @@ export class SharesRepository {
       }),
       expiresAt: row.expiresAt.toISOString(),
     };
-  }
-
-  private mapDownloadIntent(
-    row: ShareDownloadIntent,
-  ): ShareDownloadIntentRecord {
-    return {
-      downloadId: row.id,
-      token: row.shareToken,
-      nodeId: row.nodeId,
-      filename: row.filename,
-      method: row.method as ShareDownloadIntentRecord['method'],
-      purpose: row.purpose as DownloadIntentPurpose,
-      identityType: row.identityType as ShareAccessIdentityType,
-      ...(row.email ? { email: row.email } : {}),
-      expiresAt: row.expiresAt.toISOString(),
-      consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
-      useCount: row.useCount,
-    };
-  }
-
-  private getDownloadIntentUseLimit(purpose: string) {
-    return purpose === 'preview' ? 64 : 1;
-  }
-
-  private async findUsableDownloadIntentRow(
-    input: OpenShareDownloadIntentInput,
-  ) {
-    const row = await this.prisma.shareDownloadIntent.findUnique({
-      where: { id: input.downloadId },
-    });
-    if (
-      !row ||
-      row.shareToken !== input.token ||
-      row.nodeId !== input.nodeId ||
-      row.expiresAt.getTime() < Date.now() ||
-      (row.purpose === 'download' && row.consumedAt) ||
-      (row.purpose !== 'download' && row.purpose !== 'preview') ||
-      row.useCount >= this.getDownloadIntentUseLimit(row.purpose) ||
-      !matchesShareVisitorFingerprint(this.config, row, input.visitor)
-    ) {
-      return null;
-    }
-    return row;
   }
 
   private parseSpeedLimit(value: Prisma.JsonValue) {

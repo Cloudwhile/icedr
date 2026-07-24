@@ -13,6 +13,10 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import type {
+  TransferTaskLifecycle,
+  TransferTaskStatus,
+} from '../../common/transfers/transfer-task-state';
+import type {
   FilePreviewCapability,
   PreviewRenderMode,
 } from './file-preview-policy';
@@ -42,11 +46,12 @@ export type FileNodeTypeFilter =
   | 'video'
   | 'archive'
   | 'other';
-export type FileNodePreviewStatus =
+export type LegacyFileNodePreviewStatus =
   | 'pending'
   | 'ready'
   | 'unsupported'
   | 'failed';
+export type FileNodePreviewStatus = TransferTaskStatus;
 export type FileNodePreviewType = FileNodeKind | 'metadata' | PreviewRenderMode;
 export type UploadConflictStrategy =
   | 'overwrite'
@@ -424,11 +429,14 @@ export type FileNodeContentResponse = {
 export type PreviewIntentResponse = {
   previewId: string;
   nodeId: string;
+  actorUserId: string | null;
   status: FileNodePreviewStatus;
+  legacyPreviewStatus: LegacyFileNodePreviewStatus;
   previewType: FileNodePreviewType;
   renderMode: PreviewRenderMode;
   statusUrl: string;
   capability: FilePreviewCapability;
+  lifecycle: TransferTaskLifecycle;
   error?: string | null;
 };
 
@@ -441,6 +449,7 @@ export type DownloadIntentResponse = {
   availableAt: string;
   expiresAt: string;
   downloadUrl: string;
+  lifecycle: TransferTaskLifecycle;
 };
 
 export type FileVersionResponse = {
@@ -499,6 +508,7 @@ export type UploadIntentResponse = {
   chunkSizeBytes?: number;
   uploadedBytes?: number;
   uploadedPartIndexes?: number[];
+  lifecycle: TransferTaskLifecycle;
 };
 
 export type UploadPartIntentResponse = {

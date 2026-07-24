@@ -13,7 +13,6 @@ import {
   FileNodeResponse,
   type DownloadIntentPurpose,
 } from '../files/file-nodes.dto';
-import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import type { AuditActor } from '../logs/audit-events';
 import type { AuthUserResponse } from '../auth/core/auth.dto';
@@ -32,13 +31,12 @@ import type {
 } from './shares.dto';
 import { SharesRepository } from './shares.repository';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
-import { ShareDownloadCommitRepository } from './share-download-commit.repository';
+import { ShareDownloadService } from './share-download.service';
 import {
   normalizePolicyDomain,
   normalizePolicyEmailAllowlist,
   resolveShareDownloadDecision,
   toSharePolicyAuditMetadata,
-  type ShareDownloadPolicyDecision,
 } from './share-download-policy';
 import { resolveShareRateLimitProfile } from './share-rate-limit-policy';
 
@@ -60,12 +58,11 @@ export class SharesService {
   constructor(
     private readonly sharesRepository: SharesRepository,
     private readonly fileNodesService: FileNodesService,
-    private readonly storageService: StorageService,
+    private readonly shareDownloads: ShareDownloadService,
     private readonly workspacesService: WorkspacesService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly abuseProtection: ShareAbuseProtectionService,
-    private readonly downloadCommits: ShareDownloadCommitRepository,
   ) {}
 
   async createShare(
@@ -294,89 +291,14 @@ export class SharesService {
     accountUser?: AccountAuditUser,
     purpose: DownloadIntentPurpose = 'download',
   ) {
-    const share = await this.requireActiveShare(token, { ...visitor, nodeId });
-    const rateLimitProfile = this.getShareRateLimitProfile(share);
-    const requestMetadata = {
-      ...(accountUser ? this.getAccountAuditMetadata(accountUser) : {}),
+    return this.shareDownloads.createDownloadIntent(
+      token,
       nodeId,
-      ...(accountUser ? { email: accountUser.email, identityType: 'ica' } : {}),
-      purpose,
-      ...visitor,
-    };
-    await this.abuseProtection.consume({
-      dimensions: ['link', 'ip', 'user'],
-      metadata: requestMetadata,
-      profileName: rateLimitProfile.name,
-      rule: rateLimitProfile.downloadIntent,
-      scope: 'download-intent',
-      shareToken: share.token,
-    });
-    const accessSession = await this.resolveShareAccessIdentity(
-      share,
       accessSessionId,
-      accountUser,
-      requestMetadata,
-    );
-    const identityType = accessSession?.identityType ?? 'anonymous';
-    const auditMetadata = {
-      ...this.getShareIdentityAuditMetadata(accessSession),
-      nodeId,
-      identityType,
-      email: accessSession?.email,
-      purpose,
-      ...visitor,
-    };
-    await this.abuseProtection.consume({
-      dimensions: ['email'],
-      metadata: auditMetadata,
-      profileName: rateLimitProfile.name,
-      rule: rateLimitProfile.downloadIntent,
-      scope: 'download-intent',
-      shareToken: share.token,
-    });
-    const node = await this.requireNodeInShare(share, nodeId, purpose);
-    if (purpose === 'preview' && !node.previewCapability.supported) {
-      throw new BadRequestException('File type is not available for preview');
-    }
-    const policyDecision = await this.resolveDownloadDecision(
-      share,
-      identityType,
-    );
-    const downloadId = `dl_${randomBytes(12).toString('base64url')}`;
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
-    const method = node.objectKey ? 'stream' : 'manifest';
-    await this.sharesRepository.createShareDownloadIntent({
-      downloadId,
-      token,
-      nodeId,
-      filename: node.name,
-      expiresAt,
-      method,
-      purpose,
-      identityType,
-      email: accessSession?.email,
       visitor,
-    });
-    await this.sharesRepository.recordAudit(
-      'share.download_intent_created',
-      token,
-      {
-        ...auditMetadata,
-        policyDecision: toSharePolicyAuditMetadata(policyDecision),
-      },
-    );
-
-    return {
-      downloadId,
-      method,
+      accountUser,
       purpose,
-      filename: node.name,
-      availableAt: new Date().toISOString(),
-      expiresAt,
-      policyDecision,
-      downloadUrl: `/api/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(nodeId)}/download?downloadId=${encodeURIComponent(downloadId)}`,
-    };
+    );
   }
 
   async downloadSharedNode(
@@ -386,156 +308,13 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     options: { range?: string } = {},
   ) {
-    const share = await this.requireActiveShare(token, visitor);
-    const pendingIntent = await this.sharesRepository.findShareDownloadIntent({
-      downloadId,
+    return this.shareDownloads.downloadSharedNode(
       token,
       nodeId,
+      downloadId,
       visitor,
-    });
-    if (!pendingIntent) {
-      await this.abuseProtection.consumeLookup({
-        metadata: visitor,
-        resolved: true,
-        shareToken: token,
-      });
-      await this.abuseProtection.recordDenied({
-        identifiers: { downloadId },
-        metadata: { ...visitor, nodeId },
-        reason: 'download_intent_invalid',
-        resolved: true,
-        shareToken: token,
-      });
-      throw new NotFoundException('Download intent not found');
-    }
-
-    const rateLimitProfile = this.getShareRateLimitProfile(share);
-    const auditMetadata = {
-      ...this.getShareIdentityAuditMetadata(pendingIntent),
-      nodeId,
-      identityType: pendingIntent.identityType,
-      email: pendingIntent.email,
-      purpose: pendingIntent.purpose,
-      ...visitor,
-    };
-    await this.abuseProtection.consume({
-      metadata: auditMetadata,
-      profileName: rateLimitProfile.name,
-      rule: rateLimitProfile.download,
-      scope: 'download',
-      shareToken: share.token,
-    });
-    const node = await this.requireNodeInShare(
-      share,
-      nodeId,
-      pendingIntent.purpose,
+      options,
     );
-    if (
-      pendingIntent.purpose === 'preview' &&
-      !node.previewCapability.supported
-    ) {
-      throw new BadRequestException('File type is not available for preview');
-    }
-    if (
-      pendingIntent.purpose === 'download' &&
-      share.downloadPolicy.maxDownloads > 0
-    ) {
-      await this.resolveDownloadDecision(share, pendingIntent.identityType);
-    }
-    const preparedDownload =
-      pendingIntent.method === 'stream' && node.objectKey
-        ? await this.prepareSharedObjectDownload(
-            node,
-            pendingIntent.purpose,
-            options.range,
-          )
-        : {
-            method: 'manifest' as const,
-            filename: `${node.name}.txt`,
-            contentType: 'text/plain; charset=utf-8',
-            content: this.buildDownloadManifest(node),
-            purpose: pendingIntent.purpose,
-          };
-
-    let commitResult;
-    try {
-      commitResult = await this.downloadCommits.commit({
-        downloadId,
-        shareToken: token,
-        nodeId,
-        visitor,
-        metadataForDownloadCount: (downloadCount) => {
-          const policyDecision = this.getDownloadDecisionForCount(
-            share,
-            pendingIntent.identityType,
-            downloadCount,
-          );
-          if (policyDecision.remainingDownloads === 0) return null;
-          return {
-            ...auditMetadata,
-            policyDecision: toSharePolicyAuditMetadata(
-              this.toStartedPolicyDecision(policyDecision),
-            ),
-          };
-        },
-      });
-    } catch (error) {
-      this.destroyPreparedDownload(preparedDownload);
-      throw error;
-    }
-
-    if (commitResult.status !== 'committed') {
-      this.destroyPreparedDownload(preparedDownload);
-      if (commitResult.status === 'share-missing') {
-        throw new NotFoundException('Share link not found');
-      }
-      if (commitResult.status === 'share-revoked') {
-        throw new GoneException('Share link is revoked');
-      }
-      if (commitResult.status === 'share-expired') {
-        throw new GoneException('Share link is expired');
-      }
-      if (commitResult.status === 'download-limit-reached') {
-        throw new GoneException('Share download limit has been reached');
-      }
-      await this.abuseProtection.recordDenied({
-        identifiers: { downloadId },
-        metadata: { ...visitor, nodeId },
-        reason: 'download_intent_unavailable',
-        resolved: true,
-        shareToken: token,
-      });
-      throw new NotFoundException('Download intent not found');
-    }
-
-    return preparedDownload;
-  }
-
-  private async prepareSharedObjectDownload(
-    node: FileNodeResponse,
-    purpose: DownloadIntentPurpose,
-    range?: string,
-  ) {
-    if (!node.objectKey) {
-      throw new NotFoundException('File object not found');
-    }
-    const object = await this.storageService.openObjectStream({
-      objectKey: node.objectKey,
-      range,
-    });
-    return {
-      ...object,
-      contentType: node.mimeType || object.contentType,
-      method: 'stream' as const,
-      filename: node.name,
-      purpose,
-    };
-  }
-
-  private destroyPreparedDownload(
-    download: { stream: { destroy: () => unknown } } | { content: string },
-  ) {
-    if ('stream' in download) download.stream.destroy();
   }
 
   async createPreviewIntent(
@@ -586,7 +365,11 @@ export class SharesService {
     if (!node.previewCapability.supported) {
       throw new BadRequestException('File type is not available for preview');
     }
-    const intent = await this.fileNodesService.createPreviewIntent(nodeId);
+    const intent = await this.fileNodesService.createPreviewIntent(nodeId, {
+      actorRole: 'admin',
+      actorUserId: accessSession?.actorUserId,
+      auditMetadata: { ...auditMetadata, shareToken: share.token },
+    });
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
       ...auditMetadata,
     });
@@ -798,7 +581,7 @@ export class SharesService {
 
   private isExpiredShare(share: ShareResponse) {
     return (
-      new Date(share.createdAt).getTime() + share.expiresDays * 86400000 <
+      new Date(share.createdAt).getTime() + share.expiresDays * 86400000 <=
       Date.now()
     );
   }
@@ -896,7 +679,7 @@ export class SharesService {
       if (
         !session ||
         session.shareToken !== share.token ||
-        new Date(session.expiresAt).getTime() < Date.now()
+        new Date(session.expiresAt).getTime() <= Date.now()
       ) {
         await this.recordAccessIdentityDenied(
           share,
@@ -1089,7 +872,7 @@ export class SharesService {
 
   private getShareIdentityAuditMetadata(
     identity?: {
-      actorUserId?: string;
+      actorUserId?: string | null;
       email?: string;
       identityType?: ShareAccessIdentityType;
     } | null,
@@ -1129,63 +912,5 @@ export class SharesService {
 
   private getShareRateLimitProfile(share: ShareResponse) {
     return resolveShareRateLimitProfile(share.policy, this.configService);
-  }
-
-  private async resolveDownloadDecision(
-    share: ShareResponse,
-    identityType: ShareAccessIdentityType,
-  ) {
-    const downloadCount = await this.sharesRepository.countShareAuditEvents(
-      share.token,
-      'share.download_started',
-    );
-    const decision = this.getDownloadDecisionForCount(
-      share,
-      identityType,
-      downloadCount,
-    );
-    this.assertDownloadLimitAvailable(decision);
-    return decision;
-  }
-
-  private getDownloadDecisionForCount(
-    share: ShareResponse,
-    identityType: ShareAccessIdentityType,
-    downloadCount: number,
-  ) {
-    return resolveShareDownloadDecision({
-      downloadCount,
-      identityType,
-      share,
-    });
-  }
-
-  private assertDownloadLimitAvailable(decision: ShareDownloadPolicyDecision) {
-    if (decision.remainingDownloads === 0) {
-      throw new GoneException('Share download limit has been reached');
-    }
-  }
-
-  private toStartedPolicyDecision(decision: ShareDownloadPolicyDecision) {
-    return {
-      ...decision,
-      remainingDownloads:
-        decision.remainingDownloads === null
-          ? null
-          : Math.max(0, decision.remainingDownloads - 1),
-    };
-  }
-
-  private buildDownloadManifest(node: FileNodeResponse) {
-    return [
-      ['name', node.name],
-      ['nodeId', node.id],
-      ['owner', node.owner],
-      ['kind', node.kind],
-      ['mimeType', node.mimeType],
-      ['sizeBytes', node.sizeBytes ?? 'folder'],
-    ]
-      .map((row) => row.join('\t'))
-      .join('\n');
   }
 }

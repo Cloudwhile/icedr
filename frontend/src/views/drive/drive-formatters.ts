@@ -1,13 +1,15 @@
 import type { useTranslations } from "@/i18n/react";
 import { formatFileSize, getIntlLocale, type Locale } from "@/features/file/model";
+import { resolveTaskLifecycleStatus } from "@/features/file/task-lifecycle";
 import type { StorageSettings, SystemOverview } from "@/lib/drive-api";
 import type { TransferRow } from "./drive-types";
 
 type DriveTranslator = ReturnType<typeof useTranslations>;
 
 export function getTransferMetricLine(row: TransferRow, locale: Locale, t: DriveTranslator) {
-  if (row.status === "completed") return row.totalBytes ? formatFileSize(row.totalBytes, locale) : null;
-  if (row.status === "failed" || row.status === "canceled") return null;
+  const status = resolveTaskLifecycleStatus(row);
+  if (status === "completed") return row.totalBytes ? formatFileSize(row.totalBytes, locale) : null;
+  if (status === "failed" || status === "expired" || status === "canceled") return null;
 
   const parts: string[] = [];
   parts.push(t("transfers.speedValue", {

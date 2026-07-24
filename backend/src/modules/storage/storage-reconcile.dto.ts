@@ -6,6 +6,10 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import type {
+  TransferTaskLifecycle,
+  TransferTaskStatus,
+} from '../../common/transfers/transfer-task-state';
 
 export type BlobReconcileIssue = {
   objectKey: string;
@@ -15,12 +19,17 @@ export type BlobReconcileIssue = {
   reason: 'missing-object' | 'orphan-object' | 'stale-upload';
 };
 
-export type BlobReconcileTaskStatus = 'completed' | 'failed';
+export type BlobReconcileTaskStatus = Extract<
+  TransferTaskStatus,
+  'running' | 'completed' | 'failed'
+>;
 
 export type BlobReconcileTaskResponse = {
   id: string;
   workspaceId: string | null;
+  actorUserId: string | null;
   status: BlobReconcileTaskStatus;
+  lifecycle: TransferTaskLifecycle;
   cleanup: boolean;
   staleUploadMinutes: number;
   missingObjects: BlobReconcileIssue[];
@@ -36,7 +45,7 @@ export type BlobReconcileTaskResponse = {
     deletedObjects: number;
   };
   startedAt: string;
-  finishedAt: string;
+  finishedAt: string | null;
 };
 
 export class RunBlobReconcileDto {

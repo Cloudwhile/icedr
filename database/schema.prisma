@@ -292,6 +292,7 @@ model FileNode {
 
   @@index([workspaceId, spaceScope])
   @@index([ownerUserId])
+  @@index([objectKey], map: "file_nodes_object_key_idx")
   @@unique([workspaceId, spaceScope, ownerScopeKey, directoryKey, nameKey], map: "file_nodes_scope_directory_name_key")
   @@map("file_nodes")
 }
@@ -311,30 +312,40 @@ model FileVersion {
 
   @@unique([nodeId, versionNumber])
   @@index([nodeId])
+  @@index([objectKey], map: "file_versions_object_key_idx")
   @@map("file_versions")
 }
 
 model PreviewArtifact {
   id               String   @id
   nodeId           String   @map("node_id")
+  actorUserId      String?  @map("actor_user_id")
   sourceObjectKey  String?  @map("source_object_key")
   previewObjectKey String?  @map("preview_object_key")
   previewType      String   @map("preview_type")
   status           String
+  failureCode      String?  @map("failure_code")
   error            String?
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
+  @@index([sourceObjectKey], map: "preview_artifacts_source_object_key_idx")
+  @@index([previewObjectKey], map: "preview_artifacts_preview_object_key_idx")
   @@map("preview_artifacts")
 }
 
 model FileDownloadIntent {
   id            String    @id
   nodeId        String    @map("node_id")
+  actorUserId   String?   @map("actor_user_id")
   versionId     String?   @map("version_id")
   filename      String
   method        String
   purpose       String    @default("download")
+  claimToken    String?   @map("claim_token")
+  claimedAt     DateTime? @map("claimed_at") @db.Timestamptz
+  failureCode   String?   @map("failure_code")
   auditMetadata Json      @default("{}") @map("audit_metadata")
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz
   consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
@@ -342,6 +353,7 @@ model FileDownloadIntent {
   requestIpHash String?   @map("request_ip_hash")
   userAgentHash String?   @map("user_agent_hash")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime? @map("updated_at") @db.Timestamptz
 
   @@index([nodeId, versionId])
   @@index([expiresAt])
@@ -351,6 +363,7 @@ model FileDownloadIntent {
 model UploadSession {
   id                String   @id
   transferId        String   @map("transfer_id")
+  nodeId              String?  @map("node_id")
   ownerUserId       String?  @map("owner_user_id")
   workspaceId       String   @map("workspace_id")
   spaceScope        String   @default("workspace") @map("space_scope")
@@ -364,12 +377,20 @@ model UploadSession {
   sizeBytes         BigInt   @map("size_bytes")
   chunkSizeBytes    Int      @map("chunk_size_bytes")
   status            String
+  failureCode         String?   @map("failure_code")
+  expiresAt           DateTime? @map("expires_at") @db.Timestamptz
+  completionToken     String?   @map("completion_token")
+  completionStartedAt DateTime? @map("completion_started_at") @db.Timestamptz
+  storageFinalizedAt  DateTime? @map("storage_finalized_at") @db.Timestamptz
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   parts UploadSessionPart[]
 
   @@index([ownerUserId])
+  @@index([transferId], map: "upload_sessions_transfer_id_idx")
+  @@index([completionStartedAt], map: "upload_sessions_completion_started_at_idx")
+  @@index([objectKey], map: "upload_sessions_object_key_idx")
   @@map("upload_sessions")
 }
 
@@ -414,10 +435,13 @@ model TransferTask {
   transferType String   @map("transfer_type")
   progress     Decimal  @db.Decimal(5, 1)
   status       String
+  failureCode  String?   @map("failure_code")
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@index([ownerUserId])
+  @@index([objectKey], map: "transfer_tasks_object_key_idx")
   @@map("transfer_tasks")
 }
 
@@ -495,17 +519,22 @@ model ShareDownloadIntent {
   id            String    @id
   shareToken    String    @map("share_token")
   nodeId        String    @map("node_id")
+  actorUserId   String?   @map("actor_user_id")
   filename      String
   method        String
   purpose       String    @default("download")
   identityType  String    @default("anonymous") @map("identity_type")
   email         String?
+  claimToken    String?   @map("claim_token")
+  claimedAt     DateTime? @map("claimed_at") @db.Timestamptz
+  failureCode   String?   @map("failure_code")
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz
   consumedAt    DateTime? @map("consumed_at") @db.Timestamptz
   useCount      Int       @default(0) @map("use_count")
   requestIpHash String?   @map("request_ip_hash")
   userAgentHash String?   @map("user_agent_hash")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime? @map("updated_at") @db.Timestamptz
 
   share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
 
@@ -531,7 +560,9 @@ model AuditEvent {
 model BlobReconcileTask {
   id                 String   @id
   workspaceId        String?  @map("workspace_id")
+  actorUserId        String?  @map("actor_user_id")
   status             String
+  failureCode        String?  @map("failure_code")
   cleanup            Boolean
   staleUploadMinutes Int      @map("stale_upload_minutes")
   missingObjects     Json     @default("[]") @map("missing_objects")

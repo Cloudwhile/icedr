@@ -7,14 +7,16 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import {
+  transferTaskFailureCodes,
+  transferTaskStatuses,
+  type TransferTaskFailureCode,
+  type TransferTaskLifecycle,
+  type TransferTaskStatus,
+} from '../../../common/transfers/transfer-task-state';
 
 export type TransferType = 'upload';
-export type TransferStatus =
-  | 'running'
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'canceled';
+export type TransferStatus = TransferTaskStatus;
 
 export class ListTransfersQueryDto {
   @IsString()
@@ -29,8 +31,16 @@ export class ListTransfersQueryDto {
 }
 
 export class UpdateTransferDto {
-  @IsIn(['running', 'paused', 'completed', 'failed', 'canceled'])
+  @IsIn(['running', 'paused', 'failed', 'canceled'])
   status!: TransferStatus;
+
+  @IsIn(transferTaskStatuses)
+  @IsOptional()
+  expectedStatus?: TransferTaskStatus;
+
+  @IsIn(transferTaskFailureCodes)
+  @IsOptional()
+  failureCode?: TransferTaskFailureCode;
 
   @IsNumber({ maxDecimalPlaces: 1 })
   @Min(0)
@@ -49,6 +59,9 @@ export type TransferResponse = {
   type: TransferType;
   progress: number;
   status: TransferStatus;
+  failureCode: TransferTaskFailureCode | null;
+  expiresAt: string | null;
+  lifecycle: TransferTaskLifecycle;
   createdAt: string;
   updatedAt: string;
 };

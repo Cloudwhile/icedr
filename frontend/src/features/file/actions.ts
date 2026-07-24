@@ -4,32 +4,42 @@ import {
   validateDriveFileName,
 } from "@/features/file/file-name-policy";
 import {
+  canPatchTask,
+  createTaskStatusCasQueue,
+  isTaskLifecycleStatus,
+  type TaskPatchStatus,
+} from "@/features/file/task-lifecycle";
+import {
   buildApiUrl,
-  createBatchFileDownloadIntents,
-  createFileDownloadIntent,
-  createFileVersionDownloadIntent,
   createDriveApiResponseError,
+  DriveApiError,
+  fetchTransfers,
   getApiBaseUrl,
   getAuthHeaders,
   readDriveApiError,
   updateTransfer,
   type DriveSpaceScope,
   type FileNodeResponse,
-  type FilePreviewCapability,
-  type PreviewRenderMode,
-  type ShareDownloadPolicyDecision,
+  type TransferTaskLifecycle,
+  type TransferTaskStatus,
 } from "@/lib/drive-api";
 
-type DownloadIntentResponse = {
-  downloadId: string;
-  downloadUrl: string;
-  filename: string;
-  method: "stream" | "manifest";
-  purpose: "download" | "preview";
-  availableAt: string;
-  expiresAt: string;
-  policyDecision?: ShareDownloadPolicyDecision;
-};
+export {
+  assertDownloadIntentUsable,
+  createSharedDriveItemBlobUrl,
+  createWorkspaceDriveItemBlobUrl,
+  createWorkspaceDriveItemSourceUrl,
+  downloadSharedDriveItem,
+  downloadWorkspaceDriveItem,
+  downloadWorkspaceDriveItems,
+  downloadWorkspaceFileVersion,
+} from "./download-actions";
+export {
+  createFilePreviewIntent,
+  createSharedPreviewIntent,
+  fetchPreviewIntentStatus,
+} from "./preview-intents";
+export type { PreviewIntentResponse } from "./preview-intents";
 
 type UploadIntentResponse = {
   conflictStrategy: UploadConflictStrategy;
@@ -41,11 +51,18 @@ type UploadIntentResponse = {
   headers: Record<string, string>;
   expiresInSeconds: number;
   expiresAt: string;
+  lifecycle?: TransferTaskLifecycle;
+  status?: TransferTaskStatus | "queued" | "idle" | "cancelled";
   sessionId?: string;
   chunkSizeBytes?: number;
   uploadedBytes?: number;
   uploadedPartIndexes?: number[];
 };
+
+export type UploadIntentExpirySource = Pick<
+  UploadIntentResponse,
+  "expiresAt" | "lifecycle" | "status" | "uploadMethod"
+>;
 
 export type UploadConflictStrategy = "overwrite" | "rename" | "skip" | "version";
 
@@ -110,30 +127,9 @@ export function isUploadDriveFileControlError(error: unknown) {
   return error instanceof UploadDriveFileControlError;
 }
 
-export type PreviewIntentResponse = {
-  previewId: string;
-  nodeId: string;
-  status: "pending" | "ready" | "unsupported" | "failed";
-  previewType: string;
-  renderMode: PreviewRenderMode;
-  statusUrl: string;
-  capability: FilePreviewCapability;
-  error?: string | null;
-};
-
 function getOrigin() {
   if (typeof window === "undefined") return "";
   return window.location.origin;
-}
-
-function openDownloadUrl(url: string) {
-  if (typeof document === "undefined") return;
-
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
 }
 
 export function createPreviewUrl(itemId: DriveItem["id"]) {
@@ -163,66 +159,6 @@ export async function copyTextToClipboard(text: string) {
   textarea.remove();
 }
 
-export async function downloadSharedDriveItem(token: string, item: DriveItem, accessSessionId?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json", ...getAuthHeaders() };
-  if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
-  const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ purpose: "download" }),
-  });
-  if (!intentResponse.ok) throw await createDriveFetchError(intentResponse, "Download intent failed");
-
-  const intent = (await intentResponse.json()) as DownloadIntentResponse;
-  openDownloadUrl(buildApiUrl(intent.downloadUrl));
-}
-
-export async function createSharedDriveItemBlobUrl(token: string, item: DriveItem, accessSessionId?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json", ...getAuthHeaders() };
-  if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
-  const intentResponse = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ purpose: "preview" }),
-  });
-  if (!intentResponse.ok) throw await createDriveFetchError(intentResponse, "Download intent failed");
-
-  const intent = (await intentResponse.json()) as DownloadIntentResponse;
-  const response = await fetch(buildApiUrl(intent.downloadUrl));
-  if (!response.ok) throw await createDriveFetchError(response, "Download failed");
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
-
-export async function downloadWorkspaceDriveItem(item: DriveItem, workspaceId?: string) {
-  const intent = await createFileDownloadIntent(item.id, workspaceId, "download");
-  openDownloadUrl(buildApiUrl(intent.downloadUrl));
-}
-
-export async function downloadWorkspaceDriveItems(items: DriveItem[]) {
-  const batch = await createBatchFileDownloadIntents(items.map((item) => item.id));
-  batch.succeeded.forEach((intent) => openDownloadUrl(buildApiUrl(intent.downloadUrl)));
-  return batch;
-}
-
-export async function downloadWorkspaceFileVersion(item: DriveItem, versionId: string) {
-  const intent = await createFileVersionDownloadIntent(item.id, versionId);
-  openDownloadUrl(buildApiUrl(intent.downloadUrl));
-}
-
-export async function createWorkspaceDriveItemBlobUrl(item: DriveItem, workspaceId?: string) {
-  const intent = await createFileDownloadIntent(item.id, workspaceId, "preview");
-  const response = await fetch(buildApiUrl(intent.downloadUrl));
-  if (!response.ok) throw await createDriveFetchError(response, "Download failed");
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
-
-export async function createWorkspaceDriveItemSourceUrl(item: DriveItem, workspaceId?: string) {
-  const intent = await createFileDownloadIntent(item.id, workspaceId, "preview");
-  return buildApiUrl(intent.downloadUrl);
-}
-
 export function createUploadDriveFileTask({
   conflictStrategy = "version",
   file,
@@ -246,13 +182,16 @@ export function createUploadDriveFileTask({
   let activeCompletionAbort: AbortController | null = null;
   let activePromise: Promise<FileNodeResponse> | null = null;
   let activeRequest: XMLHttpRequest | null = null;
+  let activeResumePromise: Promise<FileNodeResponse> | null = null;
   let controlReason: "paused" | "canceled" | null = null;
+  let controlRevision = 0;
   let intent: UploadIntentResponse | null = null;
   let lastLoadedBytes = 0;
   let lastTransferSyncAt = 0;
   let lastTransferSyncProgress = 0;
   let lastProgress = 0;
   let status: UploadDriveFileTaskStatus = "idle";
+  let transferStatusCasQueue: ReturnType<typeof createTaskStatusCasQueue> | null = null;
   let uploadedPartIndexes = new Set<number>();
   let uploadStartedAt = getMonotonicNow();
   const resumeKey = createUploadResumeKey({ file, parentNodeId, spaceScope, workspaceId });
@@ -264,12 +203,26 @@ export function createUploadDriveFileTask({
     return Math.min(1, loadedBytes / file.size) * 95;
   };
 
+  const syncTransfer = (nextStatus: TaskPatchStatus, progress = lastProgress) => {
+    const currentIntent = intent;
+    const currentCasQueue = transferStatusCasQueue;
+    if (!currentIntent || !currentCasQueue) return Promise.resolve();
+
+    if (!canPatchTask(currentIntent)) {
+      return nextStatus === "running"
+        ? Promise.reject(new Error("Upload transfer can no longer be resumed"))
+        : Promise.resolve();
+    }
+    return currentCasQueue.enqueue(nextStatus, progress).then(() => undefined);
+  };
+
   const emitProgress = (
     loadedBytes: number,
     progress: number,
     nextStatus: UploadDriveFileProgress["status"] = "running",
   ) => {
     if (!intent) return;
+    if (nextStatus === "running" && controlReason) return;
     const elapsedSeconds = Math.max((getMonotonicNow() - uploadStartedAt) / 1000, 0.001);
     const speedBytesPerSecond = nextStatus === "running" && loadedBytes > 0 ? loadedBytes / elapsedSeconds : null;
     const remainingSeconds =
@@ -299,17 +252,12 @@ export function createUploadDriveFileTask({
     ) {
       lastTransferSyncAt = now;
       lastTransferSyncProgress = normalizedProgress;
-      void updateTransfer(intent.transferId, { status: "running", progress: normalizedProgress }).catch(() => undefined);
+      void syncTransfer("running", normalizedProgress).catch(() => undefined);
     }
   };
 
-  const syncTransfer = (nextStatus: UploadDriveFileProgress["status"], progress = lastProgress) => {
-    if (!intent) return Promise.resolve();
-    return updateTransfer(intent.transferId, { status: nextStatus, progress }).catch(() => undefined);
-  };
-
   const createIntent = async () => {
-    if (intent && (intent.uploadMethod === "chunked" || intent.uploadMethod === "object-multipart" || !isUploadIntentExpired(intent))) return intent;
+    if (intent && isUploadIntentReusable(intent)) return intent;
     if (intent) {
       emitProgress(lastLoadedBytes, lastProgress, "failed");
       await syncTransfer("failed", lastProgress);
@@ -335,12 +283,33 @@ export function createUploadDriveFileTask({
     }
 
     intent = (await intentResponse.json()) as UploadIntentResponse;
+    const currentIntent = intent;
+    transferStatusCasQueue = createTaskStatusCasQueue({
+      commit: (patch) => updateTransfer(currentIntent.transferId, patch),
+      fallbackStatus: "running",
+      resolveConflict: (error) => resolveTransferConflict(error, currentIntent.transferId),
+      source: currentIntent,
+    });
+    if (!isUploadIntentReusable(currentIntent)) {
+      emitProgress(lastLoadedBytes, lastProgress, "failed");
+      await syncTransfer("failed", lastProgress);
+      throw new Error("Upload intent expired");
+    }
     uploadedPartIndexes = new Set(intent.uploadedPartIndexes ?? []);
     lastTransferSyncAt = 0;
     lastTransferSyncProgress = 0;
     lastLoadedBytes = Math.min(file.size, intent.uploadedBytes ?? getUploadedPartBytes(uploadedPartIndexes, file, intent.chunkSizeBytes));
     lastProgress = normalizeProgress(getUploadProgress(lastLoadedBytes));
     uploadStartedAt = getMonotonicNow();
+    if (controlReason) {
+      const controlledStatus = controlReason;
+      emitProgress(lastLoadedBytes, lastProgress, controlledStatus);
+      await syncTransfer(controlledStatus, lastProgress);
+      if (controlledStatus === "canceled" && currentIntent.sessionId) {
+        void cancelUploadSession(currentIntent.sessionId);
+      }
+      throw new UploadDriveFileControlError(controlledStatus);
+    }
     emitProgress(lastLoadedBytes, lastProgress);
     return intent;
   };
@@ -351,9 +320,30 @@ export function createUploadDriveFileTask({
   };
 
   const executeUpload = async (): Promise<FileNodeResponse> => {
+    if (status === "completed") throw new Error("Upload already completed");
+    if (status === "canceled") throw new UploadDriveFileControlError("canceled");
+    const previousStatus = status;
     status = "running";
     controlReason = null;
     const currentIntent = await createIntent();
+    if (
+      previousStatus === "failed"
+      || previousStatus === "paused"
+      || (transferStatusCasQueue && transferStatusCasQueue.getStatus() !== "running")
+    ) {
+      try {
+        await syncTransfer("running", lastProgress);
+      } catch (error) {
+        if (controlReason) throw new UploadDriveFileControlError(controlReason);
+        if (previousStatus === "paused") {
+          controlReason = "paused";
+          status = "paused";
+        } else {
+          status = "failed";
+        }
+        throw error;
+      }
+    }
     throwIfControlled();
 
     try {
@@ -385,7 +375,7 @@ export function createUploadDriveFileTask({
         throw new UploadDriveFileControlError(controlledStatus);
       }
       emitProgress(lastLoadedBytes, lastProgress, "failed");
-      await updateTransfer(currentIntent.transferId, { status: "failed", progress: lastProgress }).catch(() => undefined);
+      await syncTransfer("failed", lastProgress);
       throw error instanceof Error ? error : new Error("Object upload failed");
     }
 
@@ -419,7 +409,7 @@ export function createUploadDriveFileTask({
         throw new UploadDriveFileControlError(controlReason);
       }
       emitProgress(file.size, lastProgress, "failed");
-      await updateTransfer(currentIntent.transferId, { status: "failed", progress: lastProgress }).catch(() => undefined);
+      await syncTransfer("failed", lastProgress);
       throw error;
     }
     activeCompletionAbort = null;
@@ -427,7 +417,7 @@ export function createUploadDriveFileTask({
 
     if (!completionResponse.ok) {
       emitProgress(file.size, 96, "failed");
-      await updateTransfer(currentIntent.transferId, { status: "failed", progress: 96 }).catch(() => undefined);
+      await syncTransfer("failed", 96);
       const error = await createDriveFetchError(completionResponse, "Upload completion failed");
       throw error;
     }
@@ -449,12 +439,13 @@ export function createUploadDriveFileTask({
   return {
     cancel: () => {
       if (status === "completed" || status === "canceled") return;
+      controlRevision += 1;
       controlReason = "canceled";
       status = "canceled";
       activeRequest?.abort();
       activeCompletionAbort?.abort();
       emitProgress(lastLoadedBytes, lastProgress, "canceled");
-      void syncTransfer("canceled", lastProgress);
+      void syncTransfer("canceled", lastProgress).catch(() => undefined);
       if (intent?.sessionId) {
         void cancelUploadSession(intent.sessionId);
       }
@@ -467,22 +458,33 @@ export function createUploadDriveFileTask({
     }),
     pause: () => {
       if (status !== "running") return;
+      controlRevision += 1;
       controlReason = "paused";
       status = "paused";
       activeRequest?.abort();
       activeCompletionAbort?.abort();
       emitProgress(lastLoadedBytes, lastProgress, "paused");
-      void syncTransfer("paused", lastProgress);
+      void syncTransfer("paused", lastProgress).catch(() => undefined);
     },
     resume: () => {
+      if (activeResumePromise) return activeResumePromise;
       if (status !== "paused") return start();
-      controlReason = null;
-      status = "running";
-      void syncTransfer("running", lastProgress);
-      if (activePromise) {
-        return activePromise.catch(() => undefined).then(() => start());
-      }
-      return start();
+      const resumeRevision = ++controlRevision;
+      const waitForPausedUpload = activePromise
+        ? activePromise.catch(() => undefined)
+        : Promise.resolve();
+      const resumePromise = waitForPausedUpload.then(() => {
+        if (controlRevision !== resumeRevision || status !== "paused") {
+          throw new UploadDriveFileControlError(status === "canceled" ? "canceled" : "paused");
+        }
+        activeResumePromise = null;
+        return start();
+      }).catch((error) => {
+        activeResumePromise = null;
+        throw error;
+      });
+      activeResumePromise = resumePromise;
+      return resumePromise;
     },
     start,
   };
@@ -556,6 +558,14 @@ export function createUploadDriveFileTask({
       eTag: uploaded.eTag ?? undefined,
       sizeBytes: chunk.size,
     });
+  }
+
+  async function resolveTransferConflict(error: unknown, transferId: string) {
+    if (!(error instanceof DriveApiError) || error.code !== "TRANSFER_STATE_CONFLICT") return null;
+    if (isTaskLifecycleStatus(error.currentStatus)) return { status: error.currentStatus };
+
+    const transfers = await fetchTransfers({ workspaceId, limit: 500 });
+    return transfers.find((transfer) => transfer.id === transferId) ?? null;
   }
 }
 
@@ -806,28 +816,14 @@ function getMonotonicNow() {
   return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
-function isUploadIntentExpired(intent: UploadIntentResponse) {
-  const expiresAt = new Date(intent.expiresAt).getTime();
-  return Number.isFinite(expiresAt) && expiresAt - Date.now() < 30000;
-}
-
-export async function createFilePreviewIntent(itemId: DriveItem["id"]) {
-  const response = await fetch(`${getApiBaseUrl()}/file-nodes/${encodeURIComponent(itemId)}/preview-intents`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-  });
-  if (!response.ok) throw new Error("Preview intent failed");
-  return (await response.json()) as PreviewIntentResponse;
-}
-
-export async function createSharedPreviewIntent(token: string, itemId: DriveItem["id"], accessSessionId?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json", ...getAuthHeaders() };
-  if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
-
-  const response = await fetch(`${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}/preview-intents`, {
-    method: "POST",
-    headers,
-  });
-  if (!response.ok) throw new Error("Shared preview intent failed");
-  return (await response.json()) as PreviewIntentResponse;
+export function isUploadIntentReusable(
+  intent: UploadIntentExpirySource,
+  nowMs = Date.now(),
+) {
+  if (!canPatchTask(intent, new Date(nowMs))) return false;
+  const deadlines = [intent.expiresAt, intent.lifecycle?.expiresAt]
+    .filter((expiresAt): expiresAt is string => typeof expiresAt === "string" && expiresAt.length > 0)
+    .map(expiresAt => new Date(expiresAt).getTime());
+  return deadlines.length > 0
+    && deadlines.every(expiresAtMs => Number.isFinite(expiresAtMs) && expiresAtMs - nowMs > 30000);
 }

@@ -10,7 +10,10 @@ import {
   matchesShareVisitorFingerprint,
   type ShareVisitorFingerprint,
 } from './share-visitor-fingerprint';
-import type { ShareDownloadIntentRecord } from './shares.repository';
+import {
+  mapShareDownloadIntentRecord,
+  type ShareDownloadIntentRecord,
+} from './shares.repository';
 import { retryPrismaSerializableTransaction } from './serializable-transaction-retry';
 
 type DownloadStartedMetadataFactory = (
@@ -18,6 +21,7 @@ type DownloadStartedMetadataFactory = (
 ) => Record<string, unknown> | null;
 
 export type CommitShareDownloadIntentInput = {
+  claimToken: string;
   downloadId: string;
   metadataForDownloadCount: DownloadStartedMetadataFactory;
   nodeId: string;
@@ -59,7 +63,7 @@ export class ShareDownloadCommitRepository {
       const expiresAt =
         share.createdAt.getTime() +
         Math.max(0, Math.trunc(Number(share.expiresDays))) * 86400000;
-      if (expiresAt < now.getTime()) return { status: 'share-expired' };
+      if (expiresAt <= now.getTime()) return { status: 'share-expired' };
 
       const intent = await tx.shareDownloadIntent.findUnique({
         where: { id: input.downloadId },
@@ -87,12 +91,17 @@ export class ShareDownloadCommitRepository {
           id: intent.id,
           shareToken: input.shareToken,
           nodeId: input.nodeId,
-          expiresAt: { gte: now },
+          claimToken: input.claimToken,
+          expiresAt: { gt: now },
           useCount: { lt: useLimit },
           ...(intent.purpose === 'download' ? { consumedAt: null } : {}),
         },
         data: {
+          claimToken: null,
+          claimedAt: null,
           consumedAt: consumedAt ?? undefined,
+          failureCode: null,
+          updatedAt: now,
           useCount: { increment: 1 },
         },
       });
@@ -134,7 +143,11 @@ export class ShareDownloadCommitRepository {
         status: 'committed',
         intent: this.mapIntent({
           ...intent,
+          claimToken: null,
+          claimedAt: null,
           consumedAt,
+          failureCode: null,
+          updatedAt: now,
           useCount: intent.useCount + 1,
         }),
       };
@@ -150,7 +163,8 @@ export class ShareDownloadCommitRepository {
       intent &&
       intent.shareToken === input.shareToken &&
       intent.nodeId === input.nodeId &&
-      intent.expiresAt.getTime() >= now.getTime() &&
+      intent.claimToken === input.claimToken &&
+      intent.expiresAt.getTime() > now.getTime() &&
       (intent.purpose === 'download' || intent.purpose === 'preview') &&
       !(intent.purpose === 'download' && intent.consumedAt) &&
       intent.useCount < this.getUseLimit(intent.purpose) &&
@@ -163,20 +177,7 @@ export class ShareDownloadCommitRepository {
   }
 
   private mapIntent(intent: ShareDownloadIntent): ShareDownloadIntentRecord {
-    return {
-      downloadId: intent.id,
-      token: intent.shareToken,
-      nodeId: intent.nodeId,
-      filename: intent.filename,
-      method: intent.method as ShareDownloadIntentRecord['method'],
-      purpose: intent.purpose as ShareDownloadIntentRecord['purpose'],
-      identityType:
-        intent.identityType as ShareDownloadIntentRecord['identityType'],
-      ...(intent.email ? { email: intent.email } : {}),
-      expiresAt: intent.expiresAt.toISOString(),
-      consumedAt: intent.consumedAt ? intent.consumedAt.toISOString() : null,
-      useCount: intent.useCount,
-    };
+    return mapShareDownloadIntentRecord(intent);
   }
 
   private async runSerializableTransaction<T>(

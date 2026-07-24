@@ -1,52 +1,37 @@
 import { randomBytes } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import type {
-  UploadSession as PrismaUploadSession,
-  UploadSessionPart as PrismaUploadSessionPart,
-} from '../../generated/prisma/client';
+import type { TransferTaskFailureCode } from '../../common/transfers/transfer-task-state';
+import { UploadSessionCompletionStore } from './upload-session-completion';
+import { UploadSessionLifecycleStore } from './upload-session-lifecycle';
+import { UploadSessionPartsStore } from './upload-session-parts';
+import {
+  mapUploadSession,
+  type UploadCompletionClaim,
+  type UploadPartInput,
+  type UploadPartWriteClaim,
+  type UploadSessionStatus,
+} from './upload-session-types';
 
-export type UploadSessionStatus =
-  | 'running'
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'canceled';
-
-export type UploadSession = {
-  id: string;
-  transferId: string;
-  ownerUserId: string | null;
-  workspaceId: string;
-  spaceScope: 'workspace' | 'personal';
-  conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
-  objectKey: string;
-  multipartUploadId: string | null;
-  resumeKey: string | null;
-  fileName: string;
-  parentNodeId: string | null;
-  mimeType: string;
-  sizeBytes: number;
-  chunkSizeBytes: number;
-  status: UploadSessionStatus;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type UploadSessionPart = {
-  sessionId: string;
-  partIndex: number;
-  startByte: number;
-  endByte: number;
-  sizeBytes: number;
-  eTag: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+export type {
+  UploadCompletionClaim,
+  UploadPartWriteClaim,
+  UploadSession,
+  UploadSessionPart,
+  UploadSessionStatus,
+} from './upload-session-types';
 
 @Injectable()
 export class UploadSessionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly completion: UploadSessionCompletionStore;
+  private readonly lifecycle: UploadSessionLifecycleStore;
+  private readonly parts: UploadSessionPartsStore;
+
+  constructor(private readonly prisma: PrismaService) {
+    this.completion = new UploadSessionCompletionStore(prisma);
+    this.lifecycle = new UploadSessionLifecycleStore(prisma);
+    this.parts = new UploadSessionPartsStore(prisma);
+  }
 
   async create(input: {
     chunkSizeBytes: number;
@@ -60,6 +45,7 @@ export class UploadSessionsRepository {
     sizeBytes: number;
     spaceScope?: 'workspace' | 'personal';
     conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
+    expiresAt: Date;
     transferId: string;
     workspaceId: string;
   }) {
@@ -68,6 +54,7 @@ export class UploadSessionsRepository {
       data: {
         id,
         transferId: input.transferId,
+        nodeId: null,
         ownerUserId: input.ownerUserId ?? null,
         workspaceId: input.workspaceId,
         spaceScope: input.spaceScope ?? 'workspace',
@@ -81,9 +68,14 @@ export class UploadSessionsRepository {
         sizeBytes: BigInt(input.sizeBytes),
         chunkSizeBytes: input.chunkSizeBytes,
         status: 'running',
+        failureCode: null,
+        expiresAt: input.expiresAt,
+        completionToken: null,
+        completionStartedAt: null,
+        storageFinalizedAt: null,
       },
     });
-    return this.mapSession(row);
+    return mapUploadSession(row);
   }
 
   async findReusable(input: {
@@ -96,6 +88,7 @@ export class UploadSessionsRepository {
     conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
     workspaceId: string;
   }) {
+    const now = new Date();
     const row = await this.prisma.uploadSession.findFirst({
       where: {
         workspaceId: input.workspaceId,
@@ -107,116 +100,123 @@ export class UploadSessionsRepository {
         parentNodeId: input.parentNodeId ?? null,
         sizeBytes: BigInt(input.sizeBytes),
         status: { in: ['running', 'paused', 'failed'] },
+        completionToken: null,
+        storageFinalizedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: { createdAt: 'desc' },
     });
-    return row ? this.mapSession(row) : null;
+    return row ? mapUploadSession(row) : null;
   }
 
   async findById(id: string) {
     const row = await this.prisma.uploadSession.findUnique({ where: { id } });
-    return row ? this.mapSession(row) : null;
+    return row ? mapUploadSession(row) : null;
   }
 
-  async listParts(sessionId: string) {
-    const rows = await this.prisma.uploadSessionPart.findMany({
-      where: { sessionId },
-      orderBy: { partIndex: 'asc' },
-    });
-    return rows.map((row) => this.mapPart(row));
+  listParts(sessionId: string) {
+    return this.parts.list(sessionId);
   }
 
-  async upsertPart(input: {
-    eTag?: string | null;
-    endByte: number;
-    partIndex: number;
-    sessionId: string;
-    sizeBytes: number;
-    startByte: number;
-  }) {
-    const row = await this.prisma.uploadSessionPart.upsert({
-      where: {
-        sessionId_partIndex: {
-          sessionId: input.sessionId,
-          partIndex: input.partIndex,
-        },
-      },
-      create: {
-        sessionId: input.sessionId,
-        partIndex: input.partIndex,
-        startByte: BigInt(input.startByte),
-        endByte: BigInt(input.endByte),
-        sizeBytes: BigInt(input.sizeBytes),
-        eTag: input.eTag ?? null,
-      },
-      update: {
-        startByte: BigInt(input.startByte),
-        endByte: BigInt(input.endByte),
-        sizeBytes: BigInt(input.sizeBytes),
-        eTag: input.eTag ?? null,
-        updatedAt: new Date(),
-      },
-    });
-    await this.touchSession(input.sessionId);
-    return this.mapPart(row);
+  upsertPart(input: UploadPartInput) {
+    return this.parts.upsert(input);
   }
 
-  async updateStatus(id: string, status: UploadSessionStatus) {
-    const existing = await this.prisma.uploadSession.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!existing) return null;
-    const row = await this.prisma.uploadSession.update({
-      where: { id },
-      data: {
-        status,
-        updatedAt: new Date(),
-      },
-    });
-    return this.mapSession(row);
+  claimPartWrite(id: string): Promise<UploadPartWriteClaim | null> {
+    return this.parts.claimWrite(id);
   }
 
-  private async touchSession(id: string) {
-    await this.prisma.uploadSession.update({
-      where: { id },
-      data: { updatedAt: new Date() },
-    });
+  commitPartWrite(writeToken: string, input: UploadPartInput) {
+    return this.parts.commitWrite(writeToken, input);
   }
 
-  private mapSession(row: PrismaUploadSession): UploadSession {
-    return {
-      id: row.id,
-      transferId: row.transferId,
-      ownerUserId: row.ownerUserId,
-      workspaceId: row.workspaceId,
-      spaceScope: row.spaceScope as 'workspace' | 'personal',
-      conflictStrategy:
-        row.conflictStrategy as UploadSession['conflictStrategy'],
-      objectKey: row.objectKey,
-      multipartUploadId: row.multipartUploadId,
-      resumeKey: row.resumeKey,
-      fileName: row.fileName,
-      parentNodeId: row.parentNodeId,
-      mimeType: row.mimeType,
-      sizeBytes: Number(row.sizeBytes),
-      chunkSizeBytes: row.chunkSizeBytes,
-      status: row.status as UploadSessionStatus,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
+  releasePartWrite(id: string, writeToken: string) {
+    return this.parts.releaseWrite(id, writeToken);
   }
 
-  private mapPart(row: PrismaUploadSessionPart): UploadSessionPart {
-    return {
-      sessionId: row.sessionId,
-      partIndex: row.partIndex,
-      startByte: Number(row.startByte),
-      endByte: Number(row.endByte),
-      sizeBytes: Number(row.sizeBytes),
-      eTag: row.eTag,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
+  setLegacyExpiry(id: string, expiresAt: Date) {
+    return this.lifecycle.setLegacyExpiry(id, expiresAt);
+  }
+
+  updateStatus(
+    id: string,
+    status: UploadSessionStatus,
+    options: {
+      expiresAt?: Date;
+      expectedStatus?: UploadSessionStatus;
+      failureCode?: TransferTaskFailureCode | null;
+      nodeId?: string | null;
+    } = {},
+  ) {
+    return this.lifecycle.updateStatus(id, status, options);
+  }
+
+  resumeSession(
+    id: string,
+    expectedStatus: UploadSessionStatus,
+    progress: number,
+  ) {
+    return this.lifecycle.resume(id, expectedStatus, progress);
+  }
+
+  claimCompletion(
+    id: string,
+    expectedStatus: Extract<UploadSessionStatus, 'running' | 'failed'>,
+  ): Promise<UploadCompletionClaim | null> {
+    return this.completion.claim(id, expectedStatus);
+  }
+
+  refreshCompletionClaim(id: string, completionToken: string) {
+    return this.completion.refresh(id, completionToken);
+  }
+
+  markStorageFinalized(id: string, completionToken: string) {
+    return this.completion.markStorageFinalized(id, completionToken);
+  }
+
+  persistCompletionNode(id: string, completionToken: string, nodeId: string) {
+    return this.completion.persistNode(id, completionToken, nodeId);
+  }
+
+  completeCompletionClaim(
+    id: string,
+    completionToken: string,
+    nodeId: string,
+    auditMetadata: Record<string, unknown> = {},
+  ) {
+    return this.completion.complete(id, completionToken, nodeId, auditMetadata);
+  }
+
+  transitionFailureState(
+    id: string,
+    status: Extract<UploadSessionStatus, 'failed' | 'expired'>,
+    options: {
+      auditMetadata?: Record<string, unknown>;
+      failureCode?: TransferTaskFailureCode;
+    } = {},
+  ) {
+    return this.lifecycle.transitionFailure(id, status, options);
+  }
+
+  failCompletionClaim(
+    id: string,
+    completionToken: string,
+    failureCode: TransferTaskFailureCode = 'UPLOAD_FAILED',
+    auditMetadata: Record<string, unknown> = {},
+  ) {
+    return this.completion.fail(
+      id,
+      completionToken,
+      failureCode,
+      auditMetadata,
+    );
+  }
+
+  cancelSession(
+    id: string,
+    expectedStatus: UploadSessionStatus,
+    auditMetadata: Record<string, unknown> = {},
+  ) {
+    return this.lifecycle.cancel(id, expectedStatus, auditMetadata);
   }
 }

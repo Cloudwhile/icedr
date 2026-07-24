@@ -15,6 +15,7 @@ export type DriveApiErrorScope = "form" | "global" | "share";
 
 export type DriveApiErrorMessage = {
   code?: string;
+  currentStatus?: string;
   message: string;
   retryAfter?: number;
 };
@@ -27,6 +28,7 @@ export class DriveApiError extends Error {
     readonly status?: number,
     readonly code?: string,
     readonly retryAfter?: number,
+    readonly currentStatus?: string,
   ) {
     super(message);
     this.name = "DriveApiError";
@@ -56,6 +58,7 @@ export async function readDriveApiError(response: Response, fallback = "Drive AP
       return { message: fallback, code: undefined };
     }
     const code = (body as { code?: unknown }).code;
+    const currentStatus = (body as { currentStatus?: unknown }).currentStatus;
     const message = (body as { message?: unknown }).message;
     const retryAfter = (body as { retryAfter?: unknown }).retryAfter;
     const resolvedMessage = Array.isArray(message)
@@ -66,6 +69,7 @@ export async function readDriveApiError(response: Response, fallback = "Drive AP
     return {
       message: resolvedMessage || fallback,
       code: typeof code === "string" ? code : undefined,
+      ...(typeof currentStatus === "string" ? { currentStatus } : {}),
       ...(typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter >= 0
         ? { retryAfter }
         : {}),
@@ -79,7 +83,13 @@ export function createDriveApiResponseError(
   response: Response,
   apiError: DriveApiErrorMessage,
 ): DriveApiError {
-  return new DriveApiError(apiError.message, response.status, apiError.code, apiError.retryAfter);
+  return new DriveApiError(
+    apiError.message,
+    response.status,
+    apiError.code,
+    apiError.retryAfter,
+    apiError.currentStatus,
+  );
 }
 
 export function normalizeDriveApiError(error: unknown, fallback = "Drive API request failed"): DriveApiError {
@@ -106,6 +116,8 @@ export function getDriveApiErrorMessageKey(
   error: DriveApiError,
   scope: DriveApiErrorScope,
 ): string | null {
+  const transferFailureKey = getTransferFailureMessageKey(error.code);
+  if (transferFailureKey) return transferFailureKey;
   if (scope === "share") return getShareErrorMessageKey(error);
   if (scope === "form") return getFormErrorMessageKey(error);
 
@@ -134,6 +146,24 @@ export function getDriveApiErrorMessageKey(
       return null;
   }
 }
+
+function getTransferFailureMessageKey(code?: string) {
+  if (!code || !transferFailureCodes.has(code)) return null;
+  return `transfers.failureReason.${code}`;
+}
+
+const transferFailureCodes = new Set([
+  "TRANSFER_FAILED",
+  "TRANSFER_EXPIRED",
+  "TRANSFER_STALLED",
+  "UPLOAD_FAILED",
+  "UPLOAD_SESSION_EXPIRED",
+  "DOWNLOAD_INTENT_EXPIRED",
+  "DOWNLOAD_FAILED",
+  "PREVIEW_UNSUPPORTED",
+  "PREVIEW_TOO_LARGE",
+  "STORAGE_RECONCILE_FAILED",
+]);
 
 export function isAuthExpiredApiError(error: unknown): boolean {
   return error instanceof DriveApiError && error.kind === "auth-expired";

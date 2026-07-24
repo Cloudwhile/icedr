@@ -1,0 +1,403 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const updateTransferMock = vi.hoisted(() => vi.fn<(
+  id: string,
+  input: { status: string },
+) => Promise<{ status: string }>>());
+
+vi.mock("@/lib/drive-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/drive-api")>();
+  return {
+    ...actual,
+    updateTransfer: updateTransferMock,
+  };
+});
+
+import {
+  assertDownloadIntentUsable,
+  createUploadDriveFileTask,
+  fetchPreviewIntentStatus,
+  isUploadIntentReusable,
+} from "./actions";
+
+const uploadMethods = [
+  "presigned-url",
+  "backend-local",
+  "chunked",
+  "object-multipart",
+] as const;
+
+describe("upload intent lifecycle", () => {
+  beforeEach(() => {
+    FakeXMLHttpRequest.requests = [];
+    updateTransferMock.mockReset();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each(uploadMethods)("does not reuse an expired %s intent", (uploadMethod) => {
+    const now = Date.parse("2026-07-18T00:00:00.000Z");
+    expect(isUploadIntentReusable({
+      expiresAt: "2026-07-18T00:00:00.000Z",
+      uploadMethod,
+    }, now)).toBe(false);
+  });
+
+  it.each(uploadMethods)("does not reuse a %s intent whose canonical deadline elapsed", (uploadMethod) => {
+    const now = Date.parse("2026-07-18T00:00:00.000Z");
+    expect(isUploadIntentReusable({
+      expiresAt: "2026-07-18T01:00:00.000Z",
+      lifecycle: createLifecycle("running", "2026-07-18T00:00:00.000Z"),
+      uploadMethod,
+    }, now)).toBe(false);
+  });
+
+  it("does not reuse an intent whose canonical lifecycle is expired", () => {
+    const now = Date.parse("2026-07-18T00:00:00.000Z");
+    expect(isUploadIntentReusable({
+      expiresAt: "2026-07-18T01:00:00.000Z",
+      lifecycle: {
+        ...createLifecycle("running", "2026-07-18T01:00:00.000Z"),
+        status: "expired",
+      },
+      uploadMethod: "presigned-url",
+    }, now)).toBe(false);
+  });
+
+  it("fails closed for an invalid deadline and keeps a safety window", () => {
+    const now = Date.parse("2026-07-18T00:00:00.000Z");
+    expect(isUploadIntentReusable({
+      expiresAt: "not-a-date",
+      uploadMethod: "presigned-url",
+    }, now)).toBe(false);
+    expect(isUploadIntentReusable({
+      expiresAt: "2026-07-18T00:00:30.000Z",
+      uploadMethod: "presigned-url",
+    }, now)).toBe(false);
+    expect(isUploadIntentReusable({
+      expiresAt: "2026-07-18T00:00:30.001Z",
+      uploadMethod: "presigned-url",
+    }, now)).toBe(true);
+  });
+
+  it.each(uploadMethods)("rejects a newly returned expired %s intent before upload I/O", async (uploadMethod) => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      conflictStrategy: "rename",
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+      expiresInSeconds: 0,
+      fileName: "expired.txt",
+      headers: {},
+      objectKey: "objects/expired.txt",
+      transferId: `transfer-${uploadMethod}`,
+      uploadMethod,
+      uploadUrl: "https://storage.example/upload",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["expired"], "expired.txt", { type: "text/plain" }),
+      workspaceId: "workspace-1",
+    });
+
+    await expect(task.start()).rejects.toThrow("Upload intent expired");
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("does not start retry upload I/O until the failed-to-running CAS is confirmed", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const intent = {
+      conflictStrategy: "rename" as const,
+      expiresAt,
+      expiresInSeconds: 3600,
+      fileName: "retry.txt",
+      headers: {},
+      lifecycle: createLifecycle("running", expiresAt),
+      objectKey: "objects/retry.txt",
+      transferId: "transfer-retry",
+      uploadMethod: "presigned-url" as const,
+      uploadUrl: "https://storage.example/upload",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json(intent));
+      }
+      if (url.endsWith("/file-nodes/upload-completions")) {
+        return Promise.resolve(Response.json({ id: "node-retry" }));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const runningConfirmation = createDeferred<{ status: string }>();
+    let blockNextRunning = true;
+    updateTransferMock.mockImplementation((_id, input) => {
+      if (input.status === "running" && blockNextRunning) {
+        blockNextRunning = false;
+        return runningConfirmation.promise;
+      }
+      return Promise.resolve({ status: input.status });
+    });
+
+    const task = createUploadDriveFileTask({
+      file: new File(["retry"], "retry.txt", { type: "text/plain" }),
+      workspaceId: "workspace-1",
+    });
+    const firstAttempt = task.start();
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    const firstFailure = expect(firstAttempt).rejects.toThrow("Object upload failed");
+    FakeXMLHttpRequest.requests[0]?.fail();
+    await firstFailure;
+
+    const retry = task.start();
+    await vi.waitFor(() => expect(updateTransferMock).toHaveBeenCalledWith(
+      "transfer-retry",
+      expect.objectContaining({ expectedStatus: "failed", status: "running" }),
+    ));
+    expect(FakeXMLHttpRequest.requests).toHaveLength(1);
+
+    runningConfirmation.resolve({ status: "running" });
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(2));
+    FakeXMLHttpRequest.requests[1]?.succeed();
+    await expect(retry).resolves.toEqual({ id: "node-retry" });
+  });
+
+  it("does not resume upload I/O until the paused-to-running CAS is confirmed", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const intent = {
+      conflictStrategy: "rename" as const,
+      expiresAt,
+      expiresInSeconds: 3600,
+      fileName: "resume.txt",
+      headers: {},
+      lifecycle: createLifecycle("running", expiresAt),
+      objectKey: "objects/resume.txt",
+      transferId: "transfer-resume",
+      uploadMethod: "presigned-url" as const,
+      uploadUrl: "https://storage.example/upload",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json(intent));
+      }
+      if (url.endsWith("/file-nodes/upload-completions")) {
+        return Promise.resolve(Response.json({ id: "node-resume" }));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const runningConfirmation = createDeferred<{ status: string }>();
+    let blockRunning = false;
+    updateTransferMock.mockImplementation((_id, input) => {
+      if (input.status === "running" && blockRunning) {
+        blockRunning = false;
+        return runningConfirmation.promise;
+      }
+      return Promise.resolve({ status: input.status });
+    });
+
+    const task = createUploadDriveFileTask({
+      file: new File(["resume"], "resume.txt", { type: "text/plain" }),
+      workspaceId: "workspace-1",
+    });
+    const firstAttempt = task.start();
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    const pausedAttempt = expect(firstAttempt).rejects.toMatchObject({ control: "paused" });
+    task.pause();
+    await pausedAttempt;
+
+    blockRunning = true;
+    const resumed = task.resume();
+    await vi.waitFor(() => expect(updateTransferMock).toHaveBeenCalledWith(
+      "transfer-resume",
+      expect.objectContaining({ expectedStatus: "paused", status: "running" }),
+    ));
+    expect(FakeXMLHttpRequest.requests).toHaveLength(1);
+
+    runningConfirmation.resolve({ status: "running" });
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(2));
+    FakeXMLHttpRequest.requests[1]?.succeed();
+    await expect(resumed).resolves.toEqual({ id: "node-resume" });
+  });
+});
+
+describe("download intent lifecycle", () => {
+  it("rejects a canonical failed intent with its structured failure code", () => {
+    const intent = {
+      expiresAt: "2026-07-18T01:00:00.000Z",
+      lifecycle: {
+        ...createLifecycle("failed", "2026-07-18T01:00:00.000Z"),
+        errorCode: "DOWNLOAD_FAILED" as const,
+        errorMessage: "Download preparation failed",
+        retryable: true,
+      },
+    };
+
+    expect(() => assertDownloadIntentUsable(
+      intent,
+      new Date("2026-07-18T00:00:00.000Z"),
+    )).toThrow(expect.objectContaining({
+      code: "DOWNLOAD_FAILED",
+      message: "Download preparation failed",
+    }));
+  });
+
+  it("rejects an elapsed completed intent before opening its URL", () => {
+    expect(() => assertDownloadIntentUsable({
+      expiresAt: "2026-07-18T00:00:00.000Z",
+      lifecycle: createLifecycle("completed", "2026-07-18T00:00:00.000Z"),
+    }, new Date("2026-07-18T00:00:01.000Z"))).toThrow(expect.objectContaining({
+      code: "DOWNLOAD_INTENT_EXPIRED",
+    }));
+  });
+
+  it.each(["running", "paused", "completed", "canceled"] as const)(
+    "does not open an explicitly %s download intent",
+    (status) => {
+      expect(() => assertDownloadIntentUsable({
+        expiresAt: "2026-07-18T01:00:00.000Z",
+        lifecycle: createLifecycle(status, "2026-07-18T01:00:00.000Z"),
+      }, new Date("2026-07-18T00:00:00.000Z"))).toThrow(expect.objectContaining({
+        code: "DOWNLOAD_FAILED",
+      }));
+    },
+  );
+
+  it("accepts a newly created canonical pending intent", () => {
+    expect(() => assertDownloadIntentUsable({
+      expiresAt: "2026-07-18T01:00:00.000Z",
+      lifecycle: createLifecycle("pending", "2026-07-18T01:00:00.000Z"),
+    }, new Date("2026-07-18T00:00:00.000Z"))).not.toThrow();
+  });
+
+  it("keeps a fresh legacy ready intent compatible", () => {
+    expect(() => assertDownloadIntentUsable({
+      expiresAt: "2026-07-18T01:00:00.000Z",
+      status: "ready",
+    }, new Date("2026-07-18T00:00:00.000Z"))).not.toThrow();
+  });
+
+  it("keeps a fresh pre-lifecycle download intent compatible", () => {
+    expect(() => assertDownloadIntentUsable({
+      expiresAt: "2026-07-18T01:00:00.000Z",
+    }, new Date("2026-07-18T00:00:00.000Z"))).not.toThrow();
+  });
+});
+
+describe("preview intent lifecycle", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("polls the advertised status URL with the required preview id", async () => {
+    const intent = createPreviewIntent("pending");
+    const completed = createPreviewIntent("completed");
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(completed));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchPreviewIntentStatus(intent)).resolves.toEqual(completed);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/preview/status?previewId=preview-1"),
+      expect.objectContaining({ signal: undefined }),
+    );
+  });
+});
+
+class FakeXMLHttpRequest {
+  static requests: FakeXMLHttpRequest[] = [];
+
+  onabort: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onload: (() => void) | null = null;
+  ontimeout: (() => void) | null = null;
+  responseText = "";
+  status = 0;
+  timeout = 0;
+  upload = { onprogress: null as ((event: ProgressEvent) => void) | null };
+
+  constructor() {
+    FakeXMLHttpRequest.requests.push(this);
+  }
+
+  abort() {
+    this.onabort?.();
+  }
+
+  fail() {
+    this.onerror?.();
+  }
+
+  getResponseHeader() {
+    return null;
+  }
+
+  open() {}
+
+  send() {}
+
+  setRequestHeader() {}
+
+  succeed() {
+    this.status = 200;
+    this.onload?.();
+  }
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function createLifecycle(
+  status: "canceled" | "completed" | "failed" | "paused" | "pending" | "running",
+  expiresAt: string,
+) {
+  return {
+    createdAt: "2026-07-18T00:00:00.000Z",
+    errorCode: null,
+    errorMessage: null,
+    expiresAt,
+    retryable: false,
+    status,
+    updatedAt: "2026-07-18T00:00:00.000Z",
+  };
+}
+
+function createPreviewIntent(status: "completed" | "pending") {
+  return {
+    capability: {
+      downloadOnly: false,
+      maxPreviewBytes: null,
+      reason: "previewable" as const,
+      renderMode: "text" as const,
+      sanitized: false,
+      supported: true,
+    },
+    lifecycle: {
+      ...createLifecycle(status === "completed" ? "completed" : "running", "2026-07-18T01:00:00.000Z"),
+      status,
+    },
+    nodeId: "node-1",
+    previewId: "preview-1",
+    previewType: "text",
+    renderMode: "text" as const,
+    status,
+    statusUrl: "/api/file-nodes/node-1/preview/status",
+  };
+}
