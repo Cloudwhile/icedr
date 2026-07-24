@@ -38,7 +38,11 @@ describe('SharesController', () => {
       }),
     );
     const getPreviewStatus = jest.fn(() =>
-      Promise.resolve({ previewId: 'preview-test', status: 'ready' }),
+      Promise.resolve({
+        previewId: 'preview-test',
+        status: 'completed',
+        legacyPreviewStatus: 'ready',
+      }),
     );
     const requireAdminSession = jest.fn(() =>
       Promise.resolve({ user: { role: 'admin' } }),
