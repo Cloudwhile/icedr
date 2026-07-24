@@ -127,6 +127,10 @@ export default defineConfig({
             text: "环境变量速查表",
             link: "/reference/environment-variables",
           },
+          {
+            text: "传输任务状态机",
+            link: "/reference/transfer-state-machine",
+          },
           { text: "错误码参考", link: "/reference/error-codes" },
           { text: "发布与校验", link: "/reference/releases" },
           { text: "安全部署建议", link: "/reference/security" },

@@ -34,6 +34,26 @@
 | `PASSKEY_CEREMONY_UNAVAILABLE` | 浏览器无法开始 Passkey 流程 | 检查 HTTPS、RP ID、Origin 和浏览器支持 |
 | `PASSKEY_VERIFICATION_FAILED` | Passkey 验证未通过 | 使用正确设备，检查系统时间和站点 Origin |
 
+## 传输与预览业务错误码
+
+任务响应通过 `lifecycle.errorCode` 返回结构化失败原因。`lifecycle.retryable` 由错误码计算；它表示重新执行同一操作可能成功，不表示已经到期或结束的任务可以原地恢复。
+
+| 错误码 | 可重试 | 含义与处理方式 |
+| --- | --- | --- |
+| `TRANSFER_FAILED` | 是 | 通用传输失败；检查网络和存储状态后重试 |
+| `TRANSFER_EXPIRED` | 是 | 通用传输已过期；创建新任务后重试 |
+| `TRANSFER_STALLED` | 是 | 运行中的任务长时间没有更新；确认服务状态后重试 |
+| `UPLOAD_FAILED` | 是 | 上传会话执行失败；确认文件仍可读取后重试 |
+| `UPLOAD_SESSION_EXPIRED` | 是 | 上传会话已过期；创建新上传会话，不要继续旧分片 |
+| `DOWNLOAD_INTENT_EXPIRED` | 是 | 下载意图已过期；重新申请下载地址 |
+| `DOWNLOAD_FAILED` | 是 | 下载准备失败；确认文件与存储服务可用后重试 |
+| `PREVIEW_UNSUPPORTED` | 否 | 文件格式不支持预览；改为下载原文件 |
+| `PREVIEW_TOO_LARGE` | 否 | 文件超过该类型的预览限制；改为下载原文件 |
+| `STORAGE_RECONCILE_FAILED` | 是 | 存储对象校验任务失败；排除数据库或存储故障后重试 |
+| `TRANSFER_STATE_CONFLICT` | 重新读取 | 并发更新与当前任务状态冲突；读取最新状态，不要覆盖终态 |
+
+`TRANSFER_STATE_CONFLICT` 出现在 `409` 响应中，不会作为持久化任务的 `lifecycle.errorCode`。完整状态与转移规则见 [传输任务状态机](/reference/transfer-state-machine)。
+
 ## 外链错误判断
 
 ### `403` 与 `410` 的区别
