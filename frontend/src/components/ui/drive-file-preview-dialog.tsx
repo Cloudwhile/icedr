@@ -2,10 +2,11 @@
 
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import { DrivePreviewMetadataPanel, type PreviewMediaMetadata } from "./drive-preview-metadata-panel";
 import { AppDialogShell } from "./app-dialog-shell";
+import { PreviewLifecycleBoundary } from "./preview-lifecycle-boundary";
 import { showAppToast } from "./app-toast-store";
 import { cn } from "./cn";
 import { ItemIcon, LocalIcon } from "./app-icon";
@@ -33,6 +34,7 @@ import {
 } from "@/features/file/open-with";
 import {
   createFilePreviewIntent,
+  fetchPreviewIntentStatus,
   copyTextToClipboard,
   createPreviewUrl,
   createWorkspaceDriveItemBlobUrl,
@@ -41,6 +43,11 @@ import {
   type PreviewIntentResponse,
 } from "@/features/file/actions";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
+import { usePreviewLifecycle } from "@/features/file/use-preview-lifecycle";
+import {
+  getPreviewStatusMessageKey,
+  getPreviewTitleMessageKey,
+} from "@/features/file/preview-status";
 import { fetchFileNode, fetchFileNodeContent, updateFileNodeContent } from "@/lib/drive-api";
 
 const mediaDetailsPreferenceKey = "icedr.preview.mediaDetailsOpen";
@@ -72,10 +79,6 @@ export function DriveFilePreviewDialog({
   const timeZone = useTimeZone();
   const targetItemId = item?.id ?? itemId ?? null;
   const [resolvedItem, setResolvedItem] = useState<{ itemId: string; item: DriveItem | null } | null>(null);
-  const [resolvedPreviewIntent, setResolvedPreviewIntent] = useState<{
-    itemId: string;
-    intent: PreviewIntentResponse | null;
-  } | null>(null);
   const [mediaDetailsOpen, setMediaDetailsOpen] = useState(() => readMediaDetailsPreference());
   const activeItem = item ?? (resolvedItem?.itemId === targetItemId ? resolvedItem.item : null);
   const itemResolved = Boolean(item) || (Boolean(targetItemId) && resolvedItem?.itemId === targetItemId);
@@ -83,6 +86,21 @@ export function DriveFilePreviewDialog({
   const effectiveWorkspaceId = workspaceId ?? activeItem?.workspaceId ?? undefined;
   const effectiveOpenWith = activeItem ? resolveFileOpenWith(activeItem, openWith ?? null) : null;
   const workspacePreview = isWorkspacePreview(activeItem, effectiveOpenWith);
+  const previewItemId = open && activeItem && previewAvailable ? activeItem.id : null;
+  const createPreviewLifecycleIntent = useCallback((signal: AbortSignal) => {
+    if (!previewItemId) return Promise.reject(new Error("Preview item is unavailable"));
+    return createFilePreviewIntent(previewItemId, { signal });
+  }, [previewItemId]);
+  const pollPreviewLifecycleIntent = useCallback(
+    (intent: PreviewIntentResponse, signal: AbortSignal) => fetchPreviewIntentStatus(intent, { signal }),
+    [],
+  );
+  const previewLifecycle = usePreviewLifecycle({
+    createIntent: createPreviewLifecycleIntent,
+    enabled: Boolean(previewItemId),
+    identity: previewItemId,
+    pollIntent: pollPreviewLifecycleIntent,
+  });
 
   useEffect(() => {
     if (!open || item || !targetItemId) return;
@@ -100,21 +118,6 @@ export function DriveFilePreviewDialog({
   }, [item, open, targetItemId]);
 
   useEffect(() => {
-    if (!open || !activeItem || !previewAvailable) return;
-    let cancelled = false;
-    void createFilePreviewIntent(activeItem.id)
-      .then((intent) => {
-        if (!cancelled) setResolvedPreviewIntent({ itemId: activeItem.id, intent });
-      })
-      .catch(() => {
-        if (!cancelled) setResolvedPreviewIntent({ itemId: activeItem.id, intent: null });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeItem, open, previewAvailable]);
-
-  useEffect(() => {
     if (!open || !activeItem || previewAvailable) return;
     showAppToast({
       dedupeKey: `preview-no-artifact-${activeItem.id}`,
@@ -129,8 +132,7 @@ export function DriveFilePreviewDialog({
     writeMediaDetailsPreference(nextOpen);
   };
 
-  const previewIntent =
-    resolvedPreviewIntent && resolvedPreviewIntent.itemId === activeItem?.id ? resolvedPreviewIntent.intent : null;
+  const previewIntent = previewLifecycle.intent;
   const sizeLabel = activeItem ? formatFileSize(sumDriveItemSizes([activeItem], [activeItem]), locale) : "--";
   const downloadActiveItem = () => {
     if (!activeItem) return;
@@ -219,20 +221,28 @@ export function DriveFilePreviewDialog({
         <div className={cn("icedr-file-preview-body", workspacePreview && "icedr-file-preview-body-media")}>
           <div className="icedr-file-preview-stage">
             {activeItem ? (
-              <DriveFilePreviewContent
-                key={activeItem.id}
-                item={activeItem}
-                locale={locale}
-                onSaved={onSaved}
-                onMediaDetailsClose={() => updateMediaDetailsOpen(false)}
-                onMediaDetailsOpen={() => updateMediaDetailsOpen(true)}
-                openWith={openWith ?? null}
+              <PreviewLifecycleBoundary
+                error={previewLifecycle.error}
+                intent={previewIntent}
+                loading={previewLifecycle.loading}
+                onRetry={previewLifecycle.retry}
                 palette={palette}
-                mediaDetailsOpen={mediaDetailsOpen}
-                previewIntent={previewIntent}
-                timeZone={timeZone}
-                workspaceId={effectiveWorkspaceId ?? null}
-              />
+              >
+                <DriveFilePreviewContent
+                  key={activeItem.id}
+                  item={activeItem}
+                  locale={locale}
+                  onSaved={onSaved}
+                  onMediaDetailsClose={() => updateMediaDetailsOpen(false)}
+                  onMediaDetailsOpen={() => updateMediaDetailsOpen(true)}
+                  openWith={openWith ?? null}
+                  palette={palette}
+                  mediaDetailsOpen={mediaDetailsOpen}
+                  previewIntent={previewIntent}
+                  timeZone={timeZone}
+                  workspaceId={effectiveWorkspaceId ?? null}
+                />
+              </PreviewLifecycleBoundary>
             ) : itemResolved ? (
               <PreviewStatusPane
                 icon="info"
@@ -303,11 +313,8 @@ function DriveFilePreviewContent({
   const kind = getItemKind(previewItem);
   const extension = getItemExtension(previewItem);
   const size = formatFileSize(sumDriveItemSizes([previewItem], [previewItem]), locale);
-  const statusLabel = previewCapability?.downloadOnly
-    ? t("preview.downloadOnlyHint")
-    : previewIntent
-      ? t(`preview.apiStatus.${previewIntent.status}`)
-      : t("preview.notConfigured");
+  const statusLabel = t(getPreviewStatusMessageKey(previewIntent, previewCapability));
+  const previewTitle = t(getPreviewTitleMessageKey(previewIntent, previewCapability));
   const openWith = resolveFileOpenWith(previewItem, requestedOpenWith);
   const [textState, setTextState] = useState<{ content: string; itemId: string | null }>({ content: "", itemId: null });
   const [mediaState, setMediaState] = useState<{ error: boolean; itemId: string | null; openWith: string; url: string | null }>({
@@ -453,7 +460,7 @@ function DriveFilePreviewContent({
           { label: t("preview.status"), value: statusLabel },
         ]}
         palette={palette}
-        title={previewCapability?.downloadOnly || previewIntent?.status === "unsupported" ? t("preview.unsupportedHint") : t("preview.officeHint")}
+        title={previewTitle}
       />
     );
 

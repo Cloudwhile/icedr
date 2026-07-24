@@ -643,6 +643,38 @@ video.icedr-preview-media-object {
   min-width: 240px;
 }
 
+.icedr-preview-lifecycle {
+  align-items: center;
+  color: var(--preview-muted, var(--muted));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  margin-inline: auto;
+  min-height: 320px;
+  padding: 24px;
+  text-align: center;
+  width: min(520px, 100%);
+}
+
+.icedr-preview-lifecycle strong {
+  color: var(--preview-text, var(--ink));
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.icedr-preview-lifecycle > span:not(.icedr-preview-lifecycle-icon) {
+  line-height: 1.55;
+  max-width: 440px;
+}
+
+.icedr-preview-lifecycle-icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 40px;
+}
+
 .icedr-preview-document-frame,
 .icedr-preview-document-shell {
   animation: icedr-preview-rise var(--motion-base) var(--motion-ease-emphasized) both;

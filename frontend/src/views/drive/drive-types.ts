@@ -1,6 +1,13 @@
-import type { DriveSpaceScope, TransferResponse } from "@/lib/drive-api";
+import type {
+  DriveSpaceScope,
+  TransferResponse,
+  TransferTaskFailureCode,
+  TransferTaskLifecycle,
+  TransferTaskStatus,
+} from "@/lib/drive-api";
 
-export type TransferStatus = TransferResponse["status"] | "queued";
+export type TransferStatus = TransferTaskStatus;
+export type TransferStatusSource = TransferStatus | "queued" | "idle";
 
 export type TransferMetrics = {
   loadedBytes: number;
@@ -9,13 +16,19 @@ export type TransferMetrics = {
   totalBytes: number;
 };
 
-export type TransferRow = Omit<TransferResponse, "status"> & {
+type TransferRowBase = Omit<
+  TransferResponse,
+  "status" | "failureCode" | "expiresAt" | "lifecycle"
+> & {
   errorMessage?: string | null;
-  status: TransferStatus;
+  expiresAt?: string | null;
+  failureCode?: TransferTaskFailureCode | null;
+  lifecycle?: TransferTaskLifecycle;
+  status: TransferStatusSource;
 } & Partial<TransferMetrics>;
 
-export type UploadTelemetry = Omit<TransferResponse, "status"> & {
-  errorMessage?: string | null;
+export type TransferRow = TransferRowBase;
+
+export type UploadTelemetry = TransferRowBase & {
   spaceScope?: DriveSpaceScope;
-  status: TransferStatus;
 } & TransferMetrics;

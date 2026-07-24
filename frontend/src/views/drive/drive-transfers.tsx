@@ -6,6 +6,13 @@ import { MotionList } from "@/components/ui/motion";
 import { ProgressMeter } from "@/components/ui/progress-meter";
 import { useLocale, useTranslations } from "@/i18n/react";
 import { formatFileSize, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
+import {
+  canExecuteTaskRetry,
+  getTaskLifecycleGroup,
+  getTaskLifecycleFailureMessageKey,
+  resolveTaskLifecycleErrorMessage,
+  resolveTaskLifecycleStatus,
+} from "@/features/file/task-lifecycle";
 import type { TransferRow, TransferStatus } from "./drive-types";
 import { formatRemainingTime } from "./drive-formatters";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
@@ -21,7 +28,7 @@ export type TransfersModuleProps = {
   rows: TransferRow[];
 };
 
-type TransferFilter = "all" | "completed" | "failed" | "paused" | "uploading";
+type TransferFilter = "all" | "attention" | "canceled" | "completed" | "paused" | "uploading";
 type TransferSectionId = Exclude<TransferFilter, "all">;
 
 type TransferSection = {
@@ -48,13 +55,14 @@ export function TransfersModule({
   const [uploadSpeedLimit, setUploadSpeedLimit] = useState("unlimited");
   const [autoClearCompleted, setAutoClearCompleted] = useState(false);
   const controllableTransferIdSet = useMemo(() => new Set(controllableTransferIds), [controllableTransferIds]);
-  const uploadingRows = rows.filter((row) => row.status === "queued" || row.status === "running");
-  const completedRows = rows.filter((row) => row.status === "completed");
-  const failedRows = rows.filter((row) => row.status === "failed" || row.status === "canceled");
-  const pausedRows = rows.filter((row) => row.status === "paused");
+  const uploadingRows = rows.filter((row) => getTaskLifecycleGroup(row) === "active");
+  const completedRows = rows.filter((row) => getTaskLifecycleGroup(row) === "completed");
+  const attentionRows = rows.filter((row) => getTaskLifecycleGroup(row) === "attention");
+  const canceledRows = rows.filter((row) => getTaskLifecycleGroup(row) === "canceled");
+  const pausedRows = rows.filter((row) => getTaskLifecycleGroup(row) === "paused");
   const speedSamples = useMemo(
     () => rows
-      .filter((row) => row.status === "running" && row.speedBytesPerSecond && row.speedBytesPerSecond > 0)
+      .filter((row) => resolveTaskLifecycleStatus(row) === "running" && row.speedBytesPerSecond && row.speedBytesPerSecond > 0)
       .slice(0, 8)
       .map((row) => ({
         id: row.id,
@@ -80,7 +88,8 @@ export function TransfersModule({
     { icon: "upload", id: "uploading", rows: uploadingRows, title: t("transfers.activeUploads") },
     { icon: "pause", id: "paused", rows: pausedRows, title: t("transfers.paused") },
     { icon: "tick", id: "completed", rows: completedRows, title: t("transfers.completed") },
-    { icon: "exclamation", id: "failed", rows: failedRows, title: t("transfers.failed") },
+    { icon: "exclamation", id: "attention", rows: attentionRows, title: t("transfers.needsAttention") },
+    { icon: "stop", id: "canceled", rows: canceledRows, title: t("transfers.canceled") },
   ];
   const visibleSections = sections
     .filter((section) => statusFilter === "all" || section.id === statusFilter)
@@ -90,7 +99,8 @@ export function TransfersModule({
     { count: rows.length, label: t("transfers.allUploads"), value: "all" },
     { count: uploadingRows.length, label: t("transfers.activeUploads"), value: "uploading" },
     { count: completedRows.length, label: t("transfers.completed"), value: "completed" },
-    { count: failedRows.length, label: t("transfers.failed"), value: "failed" },
+    { count: attentionRows.length, label: t("transfers.needsAttention"), value: "attention" },
+    { count: canceledRows.length, label: t("transfers.canceled"), value: "canceled" },
     { count: pausedRows.length, label: t("transfers.paused"), value: "paused" },
   ];
 
@@ -135,11 +145,11 @@ export function TransfersModule({
           value={String(completedRows.length)}
         />
         <MetricCard
-          caption={t("transfers.failedRecords", { count: failedRows.length })}
+          caption={t("transfers.failedRecords", { count: attentionRows.length })}
           icon="exclamation"
-          label={t("transfers.failed")}
+          label={t("transfers.needsAttention")}
           tone="danger"
-          value={String(failedRows.length)}
+          value={String(attentionRows.length)}
         />
         <MetricCard
           caption={t("transfers.loadedSize", { size: formatFileSize(loadedBytes || null, locale) })}
@@ -213,8 +223,8 @@ export function TransfersModule({
               <ProgressMeter ariaLabel={t("transfers.activeProgress")} color={palette.primary} palette={palette} value={activeProgress} />
             </div>
             <div className="drive-module-side-list drive-transfer-settings-summary">
-              <InfoRow label={t("transfers.running")} value={String(uploadingRows.filter((row) => row.status === "running").length)} />
-              <InfoRow label={t("transfers.queued")} value={String(uploadingRows.filter((row) => row.status === "queued").length)} />
+              <InfoRow label={t("transfers.running")} value={String(uploadingRows.filter((row) => resolveTaskLifecycleStatus(row) === "running").length)} />
+              <InfoRow label={t("transfers.pending")} value={String(uploadingRows.filter((row) => resolveTaskLifecycleStatus(row) === "pending").length)} />
               <InfoRow label={t("transfers.paused")} value={String(pausedRows.length)} />
               <InfoRow label={t("transfers.loaded")} value={formatFileSize(loadedBytes || null, locale)} />
               <InfoRow label={t("transfers.totalSize")} value={formatFileSize(totalBytes || null, locale)} />
@@ -336,10 +346,15 @@ function TransferTableRow({
   row: TransferRow;
 }) {
   const t = useTranslations();
-  const canPause = controllable && row.status === "running";
-  const canResume = controllable && row.status === "paused";
-  const canRetry = controllable && row.status === "failed";
-  const canCancel = controllable && (row.status === "queued" || row.status === "running" || row.status === "paused");
+  const status = resolveTaskLifecycleStatus(row);
+  const errorMessage = resolveTaskLifecycleErrorMessage(row);
+  const failureReason = status === "failed" || status === "expired"
+    ? errorMessage ?? t(getTaskLifecycleFailureMessageKey(row))
+    : null;
+  const canPause = controllable && status === "running";
+  const canResume = controllable && status === "paused";
+  const canRetry = canExecuteTaskRetry(row, controllable);
+  const canCancel = controllable && (status === "pending" || status === "running" || status === "paused");
   const canDelete = Boolean(onDeleteTransfer);
   const progressColor = getTransferProgressColor(row, palette);
   const totalLabel = formatFileSize(row.totalBytes ?? row.loadedBytes ?? null, locale);
@@ -347,11 +362,11 @@ function TransferTableRow({
   const remainingLabel = row.remainingSeconds !== undefined && row.remainingSeconds !== null ? formatRemainingTime(row.remainingSeconds, t) : "--";
 
   return (
-    <div data-motion-row data-status={row.status} className="drive-module-table-row drive-transfer-row">
+    <div data-motion-row data-status={status} className="drive-module-table-row drive-transfer-row">
       <TransferFileIcon palette={palette} row={row} />
       <div className="drive-module-row-copy">
         <span className="drive-module-row-title icedr-truncate">{row.name}</span>
-        {row.status === "failed" && row.errorMessage ? <span className="drive-transfer-row-error icedr-truncate">{row.errorMessage}</span> : null}
+        {failureReason ? <span className="drive-transfer-row-error icedr-truncate">{failureReason}</span> : null}
       </div>
 
       <span className="drive-transfer-size-cell icedr-truncate">{totalLabel}</span>
@@ -368,8 +383,8 @@ function TransferTableRow({
 
       <span className="drive-transfer-speed-cell icedr-truncate">{speedLabel}</span>
       <span className="drive-transfer-time-cell icedr-truncate">{remainingLabel}</span>
-      <StatusPill palette={palette} tone={getTransferStatusTone(row.status)}>
-        {t(`transfers.${row.status}`)}
+      <StatusPill palette={palette} tone={getTransferStatusTone(status)}>
+        {t(`transfers.${status}`)}
       </StatusPill>
 
       <div className="drive-transfer-actions">
@@ -432,12 +447,13 @@ function MetricCard({
 
 function TransferFileIcon({ palette, row }: { palette: Palette; row: TransferRow }) {
   const item = createTransferDriveItem(row);
+  const status = resolveTaskLifecycleStatus(row);
 
   return (
-    <span className="drive-transfer-file-icon" data-status={row.status}>
+    <span className="drive-transfer-file-icon" data-status={status}>
       <ItemIcon item={item} palette={palette} size={24} />
       <span className="drive-transfer-status-mark" aria-hidden="true">
-        {row.status === "completed" ? <AnimatedCheckMark size={10} strokeWidth={2.8} /> : <LocalIcon name={getTransferIcon(row)} size={10} />}
+        {status === "completed" ? <AnimatedCheckMark size={10} strokeWidth={2.8} /> : <LocalIcon name={getTransferIcon(row)} size={10} />}
       </span>
     </span>
   );
@@ -526,7 +542,7 @@ function createTransferDriveItem(row: TransferRow): DriveItem {
   return {
     colorKey: "primary",
     id: row.nodeId ?? row.id,
-    modifiedAt: row.updatedAt ?? row.createdAt,
+    modifiedAt: row.lifecycle?.updatedAt ?? row.updatedAt ?? row.createdAt,
     name: row.name,
     hasContent: row.hasContent,
     owner: "",
@@ -559,10 +575,11 @@ function EmptyModuleState({
 }
 
 function getTransferIcon(row: TransferRow): LocalIconName {
-  if (row.status === "failed") return "exclamation";
-  if (row.status === "queued") return "clock";
-  if (row.status === "paused") return "pause";
-  if (row.status === "canceled") return "stop";
+  const status = resolveTaskLifecycleStatus(row);
+  if (status === "failed" || status === "expired") return "exclamation";
+  if (status === "pending") return "clock";
+  if (status === "paused") return "pause";
+  if (status === "canceled") return "stop";
   return "upload";
 }
 
@@ -634,14 +651,16 @@ function buildTransferSpeedOption(values: number[], palette: Palette, locale: Lo
 }
 
 function getTransferProgressColor(row: TransferRow, palette: Palette) {
-  if (row.status === "failed" || row.status === "canceled") return palette.danger;
-  if (row.status === "completed") return palette.success;
-  if (row.status === "paused") return palette.warning;
+  const status = resolveTaskLifecycleStatus(row);
+  if (status === "failed" || status === "expired") return palette.danger;
+  if (status === "canceled") return palette.subtle;
+  if (status === "completed") return palette.success;
+  if (status === "paused") return palette.warning;
   return palette.primary;
 }
 
 function getTransferStatusTone(status: TransferStatus) {
-  if (status === "failed" || status === "canceled") return "risk" as const;
+  if (status === "failed" || status === "expired") return "risk" as const;
   if (status === "completed") return "secure" as const;
   if (status === "running") return "accent" as const;
   return "neutral" as const;

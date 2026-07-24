@@ -134,6 +134,14 @@
   background: #07090d;
 }
 
+.icedr-file-preview-dialog-media .icedr-preview-lifecycle {
+  color: #a8b3c4;
+}
+
+.icedr-file-preview-dialog-media .icedr-preview-lifecycle strong {
+  color: #f8fafc;
+}
+
 .icedr-file-preview-dialog-media .icedr-preview-media-layout {
   grid-template-columns: minmax(0, 1fr) minmax(310px, 340px);
   position: relative;

@@ -37,6 +37,7 @@
   padding: 0 2px 9px;
   position: relative;
   transition: color 150ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease), opacity 150ms var(--drive-ui-ease);
+  white-space: nowrap;
 }
 
 .drive-transfers-module .drive-transfer-tabs button:hover {
@@ -269,9 +270,12 @@
   color: var(--drive-ui-success);
 }
 
-.drive-transfers-module .drive-transfer-section[data-section="failed"] .drive-transfer-section-header svg,
-.drive-transfers-module .drive-transfer-section[data-section="canceled"] .drive-transfer-section-header svg {
+.drive-transfers-module .drive-transfer-section[data-section="failed"] .drive-transfer-section-header svg {
   color: var(--drive-ui-danger);
+}
+
+.drive-transfers-module .drive-transfer-section[data-section="canceled"] .drive-transfer-section-header svg {
+  opacity: 0.72;
 }
 
 .drive-transfers-module .drive-transfer-section[data-section="paused"] .drive-transfer-section-header svg {
@@ -425,8 +429,7 @@
   border-color: #fde8bf;
 }
 
-.drive-transfers-module .drive-transfer-file-icon[data-status="failed"],
-.drive-transfers-module .drive-transfer-file-icon[data-status="canceled"] {
+.drive-transfers-module .drive-transfer-file-icon[data-status="failed"] {
   background: #fff1f1;
   border-color: #ffd9d9;
 }
@@ -455,8 +458,7 @@
   color: var(--drive-ui-warning);
 }
 
-.drive-transfers-module .drive-transfer-file-icon[data-status="failed"] .drive-transfer-status-mark,
-.drive-transfers-module .drive-transfer-file-icon[data-status="canceled"] .drive-transfer-status-mark {
+.drive-transfers-module .drive-transfer-file-icon[data-status="failed"] .drive-transfer-status-mark {
   color: var(--drive-ui-danger);
 }
 

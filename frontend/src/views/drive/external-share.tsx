@@ -8,9 +8,10 @@ import { useMotionStagger } from "@/components/ui/motion";
 import { showAppToast } from "@/components/ui/app-toast-store";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
-import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, type PreviewIntentResponse } from "@/features/file/actions";
+import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, fetchPreviewIntentStatus, type PreviewIntentResponse } from "@/features/file/actions";
 import { isValidEmailAddress } from "@/features/auth/auth-input-validation";
 import { canOpenFilePreview } from "@/features/file/open-with";
+import { usePreviewLifecycle } from "@/features/file/use-preview-lifecycle";
 import { formatShareEmailCooldownMessage, resolveShareEmailAccessError, type ShareEmailAccessAction, type ShareEmailAccessCooldown } from "@/features/share/email-access-errors";
 import { createShareAccountAccessSession, fetchCurrentUser, getDriveApiErrorMessage, isAuthExpiredApiError, resolvePublicSiteName, sendShareEmailCode, verifyShareEmailCode, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
 import { ThemeActions } from "./drive-shell";
@@ -20,6 +21,7 @@ import { collectShareDescendants, fetchRegisteredShare, getRegisteredShareParent
 import type { ExternalSharePolicy } from "@/features/share/policy";
 import { AppImage } from "@/components/ui/app-image";
 import { ReadOnlyFilePreview } from "@/components/ui/read-only-file-preview";
+import { PreviewLifecycleBoundary } from "@/components/ui/preview-lifecycle-boundary";
 import { ExternalShareHeroCard } from "./external-share-hero-card";
 import { ExternalShareSidePanel } from "./external-share-side-panel";
 import { ShareAuthDialog } from "./external-share-auth-dialog";
@@ -515,14 +517,6 @@ function ExternalSharePreview({
     const actionPromise = accessAction === "download" ? downloadSharedDriveItem(registeredShare.token, accessItem, accessSessionId ?? undefined).then(() => {
       setFeedback({ message: t("app.downloaded"), tone: "success" });
     }) : createSharedPreviewIntent(registeredShare.token, accessItem.id, accessSessionId ?? undefined).then(intent => {
-      if (!intent.capability.supported) {
-        showAppToast({
-          dedupeKey: `share-preview-no-artifact-${registeredShare.token}-${accessItem.id}`,
-          title: t("preview.noArtifact"),
-          tone: "info",
-        });
-        return;
-      }
       setPreview({
         item: accessItem,
         intent
@@ -913,9 +907,35 @@ function SharePreviewDialog({
   const t = useTranslations();
   const timeZone = useTimeZone();
   const item = preview?.item ?? null;
-  const intent = preview?.intent ?? null;
+  const initialIntent = preview?.intent ?? null;
   const size = item ? formatFileSize(sumDriveItemSizes([item], [item]), locale) : "--";
-  const statusLabel = intent ? t(`preview.apiStatus.${intent.status}`) : t("preview.notConfigured");
+  const previewIdentity = open && item ? `${shareToken}:${item.id}` : null;
+  const createPreviewLifecycleIntent = useCallback((signal: AbortSignal) => {
+    if (!item) return Promise.reject(new Error("Preview item is unavailable"));
+    return createSharedPreviewIntent(
+      shareToken,
+      item.id,
+      accessSessionId ?? undefined,
+      { signal },
+    );
+  }, [accessSessionId, item, shareToken]);
+  const pollPreviewLifecycleIntent = useCallback(
+    (intent: PreviewIntentResponse, signal: AbortSignal) => fetchPreviewIntentStatus(intent, {
+      accessSessionId: accessSessionId ?? undefined,
+      signal,
+    }),
+    [accessSessionId],
+  );
+  const previewLifecycle = usePreviewLifecycle({
+    createIntent: createPreviewLifecycleIntent,
+    enabled: Boolean(previewIdentity),
+    identity: previewIdentity,
+    initialIntent,
+    pollIntent: pollPreviewLifecycleIntent,
+  });
+  const statusLabel = previewLifecycle.intent
+    ? t("preview.lifecycleStatus.completed")
+    : t("preview.notConfigured");
   const loadBlobUrl = useCallback((targetItem: DriveItem) => createSharedDriveItemBlobUrl(shareToken, targetItem, accessSessionId ?? undefined), [accessSessionId, shareToken]);
   return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && onClose()} style={{
         background: "rgba(0, 0, 0, 0.48)"
@@ -979,7 +999,15 @@ function SharePreviewDialog({
             "--r-padding-base": "16px",
             "--r-padding-md": "24px"
           } as React.CSSProperties}>
-              <ReadOnlyFilePreview key={item?.id ?? "empty"} item={item} loadBlobUrl={loadBlobUrl} locale={locale} palette={palette} statusLabel={statusLabel} t={t} />
+              <PreviewLifecycleBoundary
+                error={previewLifecycle.error}
+                intent={previewLifecycle.intent}
+                loading={previewLifecycle.loading}
+                onRetry={previewLifecycle.retry}
+                palette={palette}
+              >
+                <ReadOnlyFilePreview key={item?.id ?? "empty"} item={item} loadBlobUrl={loadBlobUrl} locale={locale} palette={palette} statusLabel={statusLabel} t={t} />
+              </PreviewLifecycleBoundary>
             </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>
