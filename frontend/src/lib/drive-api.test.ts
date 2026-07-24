@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sendShareEmailCode, verifyShareEmailCode } from "./drive-api";
+import { sendShareEmailCode, updateTransfer, verifyShareEmailCode } from "./drive-api";
 
 describe("share email access api", () => {
   beforeEach(() => {
@@ -67,5 +67,39 @@ describe("share email access api", () => {
     expect(init.body).toBe(
       JSON.stringify({ email: "visitor@example.com", code: "123456" }),
     );
+  });
+});
+
+describe("transfer api", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the confirmed failed status when retrying a transfer", async () => {
+    const response = {
+      id: "transfer-1",
+      status: "running",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateTransfer("transfer-1", {
+      expectedStatus: "failed",
+      progress: 42,
+      status: "running",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/transfers/transfer-1");
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(JSON.stringify({
+      expectedStatus: "failed",
+      progress: 42,
+      status: "running",
+    }));
   });
 });
