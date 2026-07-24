@@ -5,62 +5,47 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { StorageService } from '../storage/storage.service';
-import {
-  createFileObjectKey,
-  isUploadObjectKeyForPayload,
-} from '../storage/storage-object-keys';
-import type { TransferStatus } from '../downloads/transfers/transfers.dto';
-import { TransfersService } from '../downloads/transfers/transfers.service';
-import {
-  BatchDownloadIntentResponse,
-  BatchFileNodeIdsDto,
-  BatchFileNodeOperationResponse,
-  BatchMoveFileNodesDto,
-  CompleteUploadPartDto,
-  CompleteUploadDto,
-  CopyFileNodeDto,
-  CreateDownloadIntentDto,
-  CreateFolderDto,
-  CreateUploadIntentDto,
-  DownloadIntentResponse,
-  FileNodeListState,
-  type FileNodeResponse,
-  type FileNodeKind,
-  type FileNodeSpaceScope,
-  FilePolicyResponse,
-  MoveFileNodeDto,
-  PreviewIntentResponse,
-  RenameFileNodeDto,
-  RestoreFileNodeDto,
-  SearchFileNodesQueryDto,
-  UpdateFilePolicyDto,
-  UpdateFileNodeContentDto,
-  UpdateFileNodeStateDto,
-  UploadChunkResponse,
-  type UploadConflictStrategy,
-  UploadIntentResponse,
-  UploadPartIntentResponse,
-} from './file-nodes.dto';
-import { FileNodesRepository } from './file-nodes.repository';
-import {
-  UploadSession,
-  UploadSessionPart,
-  UploadSessionsRepository,
-} from './upload-sessions.repository';
-import {
-  resolveFilePreviewCapability,
-  type FilePreviewCapability,
-} from './file-preview-policy';
 import type { Readable } from 'stream';
 import {
   createSuffixedFileName,
   getFileNameConflictKey,
   normalizeFileName,
 } from '../../common/security/file-name-policy';
+import { StorageService } from '../storage/storage.service';
+import { createFileObjectKey } from '../storage/storage-object-keys';
+import { FileDownloadPreviewService } from './file-download-preview.service';
+import {
+  type BatchDownloadIntentResponse,
+  type BatchFileNodeIdsDto,
+  type BatchFileNodeOperationResponse,
+  type BatchMoveFileNodesDto,
+  type CompleteUploadPartDto,
+  type CompleteUploadDto,
+  type CopyFileNodeDto,
+  type CreateDownloadIntentDto,
+  type CreateFolderDto,
+  type CreateUploadIntentDto,
+  type FileNodeKind,
+  type FileNodeListState,
+  type FileNodeResponse,
+  type FileNodeSpaceScope,
+  type FilePolicyResponse,
+  type MoveFileNodeDto,
+  type RenameFileNodeDto,
+  type RestoreFileNodeDto,
+  type SearchFileNodesQueryDto,
+  type UpdateFileNodeContentDto,
+  type UpdateFileNodeStateDto,
+  type UpdateFilePolicyDto,
+  type UploadChunkResponse,
+  type UploadIntentResponse,
+  type UploadPartIntentResponse,
+} from './file-nodes.dto';
+import { FileNodesRepository } from './file-nodes.repository';
+import { resolveFilePreviewCapability } from './file-preview-policy';
+import { FileUploadService } from './file-upload.service';
 
 const trashCleanupThrottleMs = 5 * 60 * 1000;
-const insufficientStorageMessage = 'Storage space is insufficient';
 type AuditMetadata = Record<string, unknown>;
 type FileAccessOptions = {
   actorRole?: string;
@@ -71,12 +56,6 @@ type FileAuditOptions = FileAccessOptions & {
   auditMetadata?: AuditMetadata;
 };
 
-type ResolvedUploadConflict = {
-  fileName: string;
-  strategy: UploadConflictStrategy;
-  target: FileNodeResponse | null;
-};
-
 @Injectable()
 export class FileNodesService {
   private lastTrashCleanupAt = 0;
@@ -84,8 +63,8 @@ export class FileNodesService {
   constructor(
     private readonly fileNodesRepository: FileNodesRepository,
     private readonly storageService: StorageService,
-    private readonly transfersService: TransfersService,
-    private readonly uploadSessionsRepository: UploadSessionsRepository,
+    private readonly fileUploadService: FileUploadService,
+    private readonly fileDownloadPreviewService: FileDownloadPreviewService,
   ) {}
 
   async listFileNodes(
@@ -151,7 +130,7 @@ export class FileNodesService {
     return this.fileNodesRepository.updatePolicy(dto);
   }
 
-  async createUploadIntent(
+  createUploadIntent(
     dto: CreateUploadIntentDto,
     options: {
       actorRole?: string;
@@ -159,329 +138,59 @@ export class FileNodesService {
       ownerUserId?: string;
     } = {},
   ): Promise<UploadIntentResponse> {
-    const fileName = this.normalizeNodeName(dto.fileName);
-    const conflictStrategy = this.normalizeUploadConflictStrategy(
-      dto.conflictStrategy,
-    );
-    const distributedStorage =
-      await this.storageService.distributedStorageEnabled();
-    const sizeBytes = Math.max(0, Math.trunc(dto.fileSizeBytes ?? 0));
-    const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
-    await this.assertValidParent(
-      dto.workspaceId,
-      dto.parentNodeId ?? null,
-      spaceScope,
-      undefined,
-      { actorRole: options.actorRole, actorUserId: options.ownerUserId },
-    );
-    const resolvedConflict = await this.resolveUploadConflict({
-      allowRename: true,
-      conflictStrategy,
-      explicitConflictStrategy: Boolean(dto.conflictStrategy),
-      fileName,
-      ownerUserId: options.ownerUserId,
-      parentNodeId: dto.parentNodeId ?? null,
-      spaceScope,
-      workspaceId: dto.workspaceId,
-    });
-    const quotaIncomingBytes =
-      resolvedConflict.strategy === 'overwrite' &&
-      resolvedConflict.target?.sizeBytes
-        ? Math.max(0, sizeBytes - resolvedConflict.target.sizeBytes)
-        : sizeBytes;
-    await this.assertWithinWorkspaceQuota(
-      dto.workspaceId,
-      quotaIncomingBytes,
-      spaceScope,
-      options.ownerUserId,
-      options.auditMetadata,
-    );
-    const chunkSizeBytes = this.normalizeChunkSize(dto.chunkSizeBytes, {
-      distributedStorage,
-    });
-    const resumeKey = dto.resumeKey?.trim() || undefined;
-    if (resumeKey && dto.fileSizeBytes !== undefined) {
-      const reusable = await this.uploadSessionsRepository.findReusable({
-        workspaceId: dto.workspaceId,
-        ownerUserId: options.ownerUserId ?? null,
-        spaceScope,
-        conflictStrategy: resolvedConflict.strategy,
-        resumeKey,
-        fileName: resolvedConflict.fileName,
-        parentNodeId: dto.parentNodeId ?? null,
-        sizeBytes,
-      });
-      if (reusable) {
-        if (!this.canReuseSession(reusable, distributedStorage)) {
-          await this.cancelUploadSession(reusable.id, {
-            auditMetadata: options.auditMetadata,
-          });
-        } else {
-          const parts = await this.uploadSessionsRepository.listParts(
-            reusable.id,
-          );
-          const uploaded = this.getUploadedSessionState(reusable, parts);
-          await this.uploadSessionsRepository.updateStatus(
-            reusable.id,
-            'running',
-          );
-          await this.syncUploadTransfer(
-            reusable.transferId,
-            {
-              status: 'running',
-              progress: uploaded.progress,
-            },
-            reusable.ownerUserId,
-          );
-          return this.toUploadIntent(
-            reusable,
-            parts,
-            resolvedConflict.strategy,
-          );
-        }
-      }
-    }
-
-    const objectKey = this.createUploadObjectKey(
-      { ...dto, fileName: resolvedConflict.fileName, spaceScope },
-      distributedStorage,
-    );
-    const transfer = await this.transfersService.createUploadTransfer({
-      auditMetadata: options.auditMetadata,
-      workspaceId: dto.workspaceId,
-      ownerUserId: options.ownerUserId,
-      objectKey,
-      name: resolvedConflict.fileName,
-    });
-    const multipartUpload = distributedStorage
-      ? await this.storageService.createMultipartUpload(
-          objectKey,
-          dto.mimeType ?? 'application/octet-stream',
-        )
-      : null;
-    try {
-      const session = await this.uploadSessionsRepository.create({
-        workspaceId: dto.workspaceId,
-        ownerUserId: options.ownerUserId ?? null,
-        spaceScope,
-        conflictStrategy: resolvedConflict.strategy,
-        transferId: transfer.id,
-        objectKey,
-        multipartUploadId: multipartUpload?.uploadId ?? null,
-        resumeKey: resumeKey ?? null,
-        fileName: resolvedConflict.fileName,
-        parentNodeId: dto.parentNodeId ?? null,
-        mimeType: dto.mimeType ?? 'application/octet-stream',
-        sizeBytes,
-        chunkSizeBytes,
-      });
-      await this.fileNodesRepository.recordAudit(
-        'file.upload_intent_created',
-        objectKey,
-        {
-          metadata: {
-            ...options.auditMetadata,
-            conflictStrategy: resolvedConflict.strategy,
-            requestedFileName: fileName,
-            resolvedFileName: resolvedConflict.fileName,
-            targetNodeId: resolvedConflict.target?.id ?? null,
-          },
-        },
-      );
-
-      return this.toUploadIntent(session, [], resolvedConflict.strategy);
-    } catch (error) {
-      if (multipartUpload?.uploadId) {
-        await this.storageService
-          .abortMultipartUpload({
-            objectKey,
-            uploadId: multipartUpload.uploadId,
-          })
-          .catch(() => undefined);
-      }
-      throw error;
-    }
+    return this.fileUploadService.createUploadIntent(dto, options);
   }
 
-  async createUploadPartIntent(
+  createUploadPartIntent(
     sessionId: string,
     partIndex: number,
     ownerUserId?: string,
   ): Promise<UploadPartIntentResponse> {
-    const session = await this.requireUploadSession(sessionId, ownerUserId);
-    this.assertWritableUploadSession(session);
-    if (!session.multipartUploadId) {
-      throw new BadRequestException(
-        'Upload session does not use object storage multipart upload',
-      );
-    }
-
-    const normalizedPartIndex = Math.trunc(partIndex);
-    this.getExpectedPartRange(session, normalizedPartIndex);
-    const signed = await this.storageService.createMultipartUploadPartUrl({
-      objectKey: session.objectKey,
-      partIndex: normalizedPartIndex,
-      uploadId: session.multipartUploadId,
-    });
-    return {
-      expiresAt: signed.expiresAt,
-      expiresInSeconds: signed.expiresInSeconds,
-      headers: signed.headers,
-      partIndex: normalizedPartIndex,
-      sessionId: session.id,
-      uploadUrl: signed.url,
-    };
+    return this.fileUploadService.createUploadPartIntent(
+      sessionId,
+      partIndex,
+      ownerUserId,
+    );
   }
 
-  async completeUploadPart(
+  completeUploadPart(
     sessionId: string,
     partIndex: number,
     dto: CompleteUploadPartDto,
     ownerUserId?: string,
   ): Promise<UploadChunkResponse> {
-    const session = await this.requireUploadSession(sessionId, ownerUserId);
-    this.assertWritableUploadSession(session);
-    if (!session.multipartUploadId) {
-      throw new BadRequestException(
-        'Upload session does not use object storage multipart upload',
-      );
-    }
-
-    const normalizedPartIndex = Math.trunc(partIndex);
-    const expected = this.getExpectedPartRange(session, normalizedPartIndex);
-    let eTag = dto.eTag?.trim() || null;
-    let sizeBytes = dto.sizeBytes ?? expected.sizeBytes;
-
-    if (!eTag) {
-      const storedPart = await this.storageService.findMultipartUploadPart({
-        objectKey: session.objectKey,
-        partIndex: normalizedPartIndex,
-        uploadId: session.multipartUploadId,
-      });
-      eTag = storedPart.eTag;
-      sizeBytes = storedPart.sizeBytes ?? sizeBytes;
-    }
-
-    if (sizeBytes !== expected.sizeBytes) {
-      throw new BadRequestException('Upload chunk size does not match session');
-    }
-
-    await this.uploadSessionsRepository.upsertPart({
-      sessionId: session.id,
-      partIndex: normalizedPartIndex,
-      startByte: expected.startByte,
-      endByte: expected.endByte,
-      sizeBytes,
-      eTag,
-    });
-    await this.uploadSessionsRepository.updateStatus(session.id, 'running');
-    const parts = await this.uploadSessionsRepository.listParts(session.id);
-    const uploaded = this.getUploadedSessionState(session, parts);
-    await this.syncUploadTransfer(
-      session.transferId,
-      {
-        status: 'running',
-        progress: uploaded.progress,
-      },
-      session.ownerUserId,
+    return this.fileUploadService.completeUploadPart(
+      sessionId,
+      partIndex,
+      dto,
+      ownerUserId,
     );
-
-    return {
-      sessionId: session.id,
-      partIndex: normalizedPartIndex,
-      uploadedBytes: uploaded.uploadedBytes,
-      uploadedPartIndexes: uploaded.uploadedPartIndexes,
-      progress: uploaded.progress,
-    };
   }
 
-  async uploadChunk(
+  uploadChunk(
     sessionId: string,
     partIndex: number,
     stream: Readable,
     ownerUserId?: string,
   ): Promise<UploadChunkResponse> {
-    const session = await this.requireUploadSession(sessionId, ownerUserId);
-    this.assertWritableUploadSession(session);
-    if (session.multipartUploadId) {
-      throw new BadRequestException(
-        'Upload session uses object storage multipart upload',
-      );
-    }
-
-    const normalizedPartIndex = Math.trunc(partIndex);
-    const expected = this.getExpectedPartRange(session, normalizedPartIndex);
-    const written = await this.storageService.writeUploadSessionPart(
-      session.id,
-      normalizedPartIndex,
+    return this.fileUploadService.uploadChunk(
+      sessionId,
+      partIndex,
       stream,
+      ownerUserId,
     );
-    if (written.sizeBytes !== expected.sizeBytes) {
-      throw new BadRequestException('Upload chunk size does not match session');
-    }
-
-    await this.uploadSessionsRepository.upsertPart({
-      sessionId: session.id,
-      partIndex: normalizedPartIndex,
-      startByte: expected.startByte,
-      endByte: expected.endByte,
-      sizeBytes: written.sizeBytes,
-    });
-    await this.uploadSessionsRepository.updateStatus(session.id, 'running');
-    const parts = await this.uploadSessionsRepository.listParts(session.id);
-    const uploaded = this.getUploadedSessionState(session, parts);
-    await this.syncUploadTransfer(
-      session.transferId,
-      {
-        status: 'running',
-        progress: uploaded.progress,
-      },
-      session.ownerUserId,
-    );
-
-    return {
-      sessionId: session.id,
-      partIndex: normalizedPartIndex,
-      uploadedBytes: uploaded.uploadedBytes,
-      uploadedPartIndexes: uploaded.uploadedPartIndexes,
-      progress: uploaded.progress,
-    };
   }
 
-  async cancelUploadSession(
+  cancelUploadSession(
     sessionId: string,
     options: Pick<FileAuditOptions, 'auditMetadata'> & {
       ownerUserId?: string;
     } = {},
   ) {
-    const session = await this.requireUploadSession(
-      sessionId,
-      options.ownerUserId,
-    );
-    if (session.status === 'completed') {
-      throw new BadRequestException('Completed upload sessions cannot cancel');
-    }
-    await this.uploadSessionsRepository.updateStatus(session.id, 'canceled');
-    if (session.multipartUploadId) {
-      await this.storageService.abortMultipartUpload({
-        objectKey: session.objectKey,
-        uploadId: session.multipartUploadId,
-      });
-    } else {
-      await this.storageService.deleteUploadSessionParts(session.id);
-    }
-    await this.syncUploadTransfer(
-      session.transferId,
-      {
-        status: 'canceled',
-        auditMetadata: options.auditMetadata,
-      },
-      session.ownerUserId,
-    );
-    return { ok: true };
+    return this.fileUploadService.cancelUploadSession(sessionId, options);
   }
 
-  async completeUpload(
+  completeUpload(
     dto: CompleteUploadDto,
     options: {
       actorRole?: string;
@@ -489,117 +198,7 @@ export class FileNodesService {
       ownerUserId?: string;
     } = {},
   ) {
-    const fileName = this.normalizeNodeName(dto.fileName);
-    const conflictStrategy = this.normalizeUploadConflictStrategy(
-      dto.conflictStrategy,
-    );
-    const spaceScope = this.normalizeSpaceScope(dto.spaceScope);
-    await this.assertValidParent(
-      dto.workspaceId,
-      dto.parentNodeId ?? null,
-      spaceScope,
-      undefined,
-      { actorRole: options.actorRole, actorUserId: options.ownerUserId },
-    );
-    const resolvedConflict = await this.resolveUploadConflict({
-      allowRename: false,
-      conflictStrategy,
-      explicitConflictStrategy: Boolean(dto.conflictStrategy),
-      fileName,
-      ownerUserId: options.ownerUserId,
-      parentNodeId: dto.parentNodeId ?? null,
-      spaceScope,
-      workspaceId: dto.workspaceId,
-    });
-    const normalizedDto = { ...dto, fileName: resolvedConflict.fileName };
-    this.assertUploadObjectKey(normalizedDto);
-    if (!dto.uploadSessionId?.trim()) {
-      throw new BadRequestException('Upload session is required');
-    }
-    const uploadSession = await this.requireCompletableUploadSession(
-      normalizedDto,
-      options.ownerUserId,
-    );
-    const parts = await this.uploadSessionsRepository.listParts(
-      uploadSession.id,
-    );
-    this.assertUploadSessionComplete(uploadSession, parts);
-    if (uploadSession.multipartUploadId) {
-      await this.storageService.completeMultipartUpload({
-        objectKey: dto.objectKey,
-        uploadId: uploadSession.multipartUploadId,
-        parts: parts.map((part) => ({
-          eTag: part.eTag ?? '',
-          partIndex: part.partIndex,
-        })),
-      });
-    } else {
-      await this.storageService.composeUploadSessionParts({
-        sessionId: uploadSession.id,
-        partIndexes: parts.map((part) => part.partIndex),
-        objectKey: dto.objectKey,
-        contentType: dto.mimeType ?? uploadSession.mimeType,
-      });
-    }
-    await this.uploadSessionsRepository.updateStatus(
-      uploadSession.id,
-      'completed',
-    );
-    await this.storageService.assertObjectExists(normalizedDto.objectKey);
-    const node = await this.fileNodesRepository.completeUpload({
-      ...normalizedDto,
-      conflictStrategy: resolvedConflict.strategy,
-      conflictTargetNodeId: resolvedConflict.target?.id,
-      owner: dto.owner?.trim() || undefined,
-      ownerUserId: options.ownerUserId,
-      spaceScope,
-    });
-    await this.deleteStoredObjects(
-      await this.fileNodesRepository.pruneVersions(node.id),
-    );
-    if (
-      resolvedConflict.strategy === 'overwrite' &&
-      resolvedConflict.target?.objectKey
-    ) {
-      await this.deleteStoredObjects([resolvedConflict.target.objectKey]);
-    }
-    await this.fileNodesRepository.recordAudit(
-      'file.upload_completed',
-      node.id,
-      {
-        metadata: {
-          ...options.auditMetadata,
-          conflictStrategy: resolvedConflict.strategy,
-          requestedFileName: fileName,
-          resolvedFileName: resolvedConflict.fileName,
-          targetNodeId: resolvedConflict.target?.id ?? null,
-        },
-      },
-    );
-    if (resolvedConflict.target && resolvedConflict.strategy === 'version') {
-      await this.fileNodesRepository.recordAudit(
-        'file.version_created',
-        node.id,
-        { metadata: options.auditMetadata },
-      );
-    }
-    if (resolvedConflict.target && resolvedConflict.strategy === 'overwrite') {
-      await this.fileNodesRepository.recordAudit(
-        'file.upload_overwritten',
-        node.id,
-        { metadata: options.auditMetadata },
-      );
-    }
-    const transferId = uploadSession.transferId;
-    if (transferId) {
-      await this.completeUploadTransfer({
-        auditMetadata: options.auditMetadata,
-        transferId,
-        nodeId: node.id,
-        ownerUserId: uploadSession.ownerUserId,
-      });
-    }
-    return node;
+    return this.fileUploadService.completeUpload(dto, options);
   }
 
   async createFolder(
@@ -750,7 +349,6 @@ export class FileNodesService {
         updatedAt: node.updatedAt,
       };
     }
-
     const content = await this.storageService.readObjectText(node.objectKey);
     return {
       content,
@@ -771,7 +369,6 @@ export class FileNodesService {
     if (!node.objectKey) {
       throw new BadRequestException('Folder content cannot be edited');
     }
-
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
     const objectKey = createFileObjectKey({
@@ -892,11 +489,7 @@ export class FileNodesService {
       nodeId: id,
       workspaceId: root?.workspaceId ?? 'workspace-default',
     });
-    return {
-      deleted: deletion.nodes.length,
-      id,
-      ok: true,
-    };
+    return { deleted: deletion.nodes.length, id, ok: true };
   }
 
   async cleanupTrash() {
@@ -908,102 +501,26 @@ export class FileNodesService {
     };
   }
 
-  private async cleanupExpiredTrash(options: { forceAudit?: boolean } = {}) {
-    const policy = await this.fileNodesRepository.getPolicy();
-    const cutoff = new Date(
-      Date.now() - policy.trashRetentionDays * 24 * 60 * 60 * 1000,
-    );
-    const deleted = await this.fileNodesRepository.cleanupTrash(cutoff);
-    await this.deleteStoredObjects([
-      ...deleted.nodes.map((node) => node.objectKey),
-      ...deleted.versions.map((version) => version.objectKey),
-    ]);
-    if (options.forceAudit || deleted.nodes.length > 0) {
-      await this.fileNodesRepository.recordAudit(
-        'file.trash_cleaned',
-        'trash-cleanup',
-        {
-          actor: 'system',
-          metadata: {
-            deletedNodeCount: deleted.nodes.length,
-            deletedVersionCount: deleted.versions.length,
-            trashRetentionDays: policy.trashRetentionDays,
-          },
-          nodeId: null,
-        },
-      );
-    }
-    return {
-      deleted: deleted.nodes.length,
-      trashRetentionDays: policy.trashRetentionDays,
-    };
-  }
-
-  private async cleanupExpiredTrashIfDue() {
-    const now = Date.now();
-    if (now - this.lastTrashCleanupAt < trashCleanupThrottleMs) return;
-    this.lastTrashCleanupAt = now;
-    try {
-      await this.cleanupExpiredTrash();
-    } catch (error) {
-      this.lastTrashCleanupAt = 0;
-      throw error;
-    }
-  }
-
-  async createDownloadIntent(
+  createDownloadIntent(
     nodeId: string,
     dto: CreateDownloadIntentDto,
     options: FileAuditOptions = {},
   ) {
-    const node = await this.requireActiveNode(nodeId, options);
-    const purpose = dto.purpose ?? 'download';
-    if (purpose === 'preview' && !node.previewCapability.supported) {
-      throw new BadRequestException('File type is not available for preview');
-    }
-    const method = node.objectKey ? 'stream' : 'manifest';
-    const intent = await this.fileNodesRepository.createDownloadIntent({
-      auditMetadata: options.auditMetadata,
-      filename: node.name,
-      method,
-      nodeId: node.id,
-      purpose,
-      visitor: this.toDownloadVisitor(options.auditMetadata),
-    });
-    await this.fileNodesRepository.recordAudit(
-      'file.download_intent_created',
-      node.id,
-      { metadata: options.auditMetadata },
+    return this.fileDownloadPreviewService.createDownloadIntent(
+      nodeId,
+      dto,
+      options,
     );
-
-    return {
-      downloadId: intent.downloadId,
-      nodeId: node.id,
-      filename: node.name,
-      method,
-      purpose,
-      availableAt: new Date().toISOString(),
-      expiresAt: intent.expiresAt,
-      downloadUrl: `/api/file-nodes/${encodeURIComponent(node.id)}/download?downloadId=${encodeURIComponent(intent.downloadId)}`,
-    } satisfies DownloadIntentResponse;
   }
 
-  async createBatchDownloadIntents(
+  createBatchDownloadIntents(
     dto: BatchFileNodeIdsDto,
     options: FileAuditOptions = {},
   ): Promise<BatchDownloadIntentResponse> {
-    const result = await this.runBatch(dto.ids, (id) =>
-      this.createDownloadIntent(id, {}, options),
+    return this.fileDownloadPreviewService.createBatchDownloadIntents(
+      dto,
+      options,
     );
-    await this.fileNodesRepository.recordAudit(
-      'file.batch_download_intents_created',
-      'batch-download',
-      {
-        metadata: { ...options.auditMetadata, ...result.summary },
-        nodeId: null,
-      },
-    );
-    return result;
   }
 
   async batchArchive(
@@ -1068,57 +585,16 @@ export class FileNodesService {
     return result;
   }
 
-  async downloadFileNode(
+  downloadFileNode(
     nodeId: string,
     downloadId: string,
-    options: Pick<FileAuditOptions, 'auditMetadata'> & {
-      range?: string;
-    } = {},
+    options: Pick<FileAuditOptions, 'auditMetadata'> & { range?: string } = {},
   ) {
-    const intent = await this.fileNodesRepository.openDownloadIntent({
-      downloadId,
+    return this.fileDownloadPreviewService.downloadFileNode(
       nodeId,
-      visitor: this.toDownloadVisitor(options.auditMetadata),
-    });
-    if (!intent) {
-      throw new NotFoundException('Download intent not found');
-    }
-
-    const node = await this.requireActiveNode(nodeId);
-    if (intent.purpose === 'download') {
-      await this.fileNodesRepository.recordAudit(
-        'file.download_started',
-        node.id,
-        {
-          metadata: {
-            ...intent.auditMetadata,
-            ...options.auditMetadata,
-          },
-        },
-      );
-    }
-
-    if (intent.method === 'stream' && node.objectKey) {
-      const object = await this.storageService.openObjectStream({
-        objectKey: node.objectKey,
-        range: options.range,
-      });
-      return {
-        ...object,
-        contentType: node.mimeType || object.contentType,
-        method: 'stream' as const,
-        filename: node.name,
-        purpose: intent.purpose,
-      };
-    }
-
-    return {
-      method: 'manifest' as const,
-      filename: `${node.name}.txt`,
-      contentType: 'text/plain; charset=utf-8',
-      content: this.buildDownloadManifest(node),
-      purpose: intent.purpose,
-    };
+      downloadId,
+      options,
+    );
   }
 
   async listFileVersions(nodeId: string, access: FileAccessOptions = {}) {
@@ -1130,94 +606,30 @@ export class FileNodesService {
     });
   }
 
-  async createVersionDownloadIntent(
+  createVersionDownloadIntent(
     nodeId: string,
     versionId: string,
     options: FileAuditOptions = {},
   ) {
-    const node = await this.requireActiveNode(nodeId, options);
-    const version = await this.fileNodesRepository.findVersion(
+    return this.fileDownloadPreviewService.createVersionDownloadIntent(
       nodeId,
       versionId,
+      options,
     );
-    if (!version) throw new NotFoundException('File version not found');
-    const filename = `v${version.versionNumber}-${node.name}`;
-    const intent = await this.fileNodesRepository.createDownloadIntent({
-      auditMetadata: options.auditMetadata,
-      filename,
-      method: 'stream',
-      nodeId,
-      purpose: 'download',
-      versionId,
-      visitor: this.toDownloadVisitor(options.auditMetadata),
-    });
-    await this.fileNodesRepository.recordAudit(
-      'file.download_intent_created',
-      nodeId,
-      {
-        metadata: {
-          ...options.auditMetadata,
-          versionId,
-          versionNumber: version.versionNumber,
-        },
-      },
-    );
-    return {
-      downloadId: intent.downloadId,
-      nodeId,
-      filename,
-      method: 'stream' as const,
-      purpose: 'download' as const,
-      availableAt: new Date().toISOString(),
-      expiresAt: intent.expiresAt,
-      downloadUrl: `/api/file-nodes/${encodeURIComponent(nodeId)}/versions/${encodeURIComponent(versionId)}/download?downloadId=${encodeURIComponent(intent.downloadId)}`,
-    } satisfies DownloadIntentResponse;
   }
 
-  async downloadFileVersion(
+  downloadFileVersion(
     nodeId: string,
     versionId: string,
     downloadId: string,
     options: Pick<FileAuditOptions, 'auditMetadata'> & { range?: string } = {},
   ) {
-    const intent = await this.fileNodesRepository.openDownloadIntent({
+    return this.fileDownloadPreviewService.downloadFileVersion(
+      nodeId,
+      versionId,
       downloadId,
-      nodeId,
-      versionId,
-      visitor: this.toDownloadVisitor(options.auditMetadata),
-    });
-    if (!intent || intent.purpose !== 'download') {
-      throw new NotFoundException('Download intent not found');
-    }
-    await this.requireActiveNode(nodeId);
-    const version = await this.fileNodesRepository.findVersion(
-      nodeId,
-      versionId,
+      options,
     );
-    if (!version) throw new NotFoundException('File version not found');
-    const object = await this.storageService.openObjectStream({
-      objectKey: version.objectKey,
-      range: options.range,
-    });
-    await this.fileNodesRepository.recordAudit(
-      'file.version_downloaded',
-      nodeId,
-      {
-        metadata: {
-          ...intent.auditMetadata,
-          ...options.auditMetadata,
-          versionId,
-          versionNumber: version.versionNumber,
-        },
-      },
-    );
-    return {
-      ...object,
-      contentType: version.mimeType || object.contentType,
-      filename: intent.filename,
-      method: 'stream' as const,
-      purpose: 'download' as const,
-    };
   }
 
   async restoreFileVersion(
@@ -1238,163 +650,71 @@ export class FileNodesService {
     await this.fileNodesRepository.recordAudit(
       'file.version_restored',
       nodeId,
-      {
-        metadata: { ...options.auditMetadata, versionId },
-      },
+      { metadata: { ...options.auditMetadata, versionId } },
     );
     return node;
   }
 
-  async createPreviewIntent(nodeId: string, options: FileAuditOptions = {}) {
-    const node = await this.requireActiveNode(nodeId, options);
-    const capability = resolveFilePreviewCapability(node);
-    const status: PreviewIntentResponse['status'] = capability.supported
-      ? 'ready'
-      : 'unsupported';
-
-    const intent = await this.fileNodesRepository.createPreviewArtifact(
-      node,
-      status,
-      capability.renderMode,
-      capability.supported ? null : this.getPreviewUnsupportedError(capability),
-    );
-    await this.fileNodesRepository.recordAudit(
-      'file.preview_requested',
-      node.id,
-      { metadata: options.auditMetadata },
-    );
-    return this.withPreviewCapability(intent, capability);
+  createPreviewIntent(nodeId: string, options: FileAuditOptions = {}) {
+    return this.fileDownloadPreviewService.createPreviewIntent(nodeId, options);
   }
 
-  async getPreviewStatus(
+  getPreviewStatus(
     nodeId: string,
     previewId: string,
     access: FileAccessOptions = {},
   ) {
-    const intent =
-      await this.fileNodesRepository.findPreviewArtifact(previewId);
-    if (!intent || intent.nodeId !== nodeId) {
-      throw new NotFoundException('Preview intent not found');
-    }
-    const node = await this.requireActiveNode(nodeId, access);
-    return this.withPreviewCapability(
-      intent,
-      resolveFilePreviewCapability(node),
+    return this.fileDownloadPreviewService.getPreviewStatus(
+      nodeId,
+      previewId,
+      access,
     );
   }
 
-  async getStorageUsage(workspaceId: string, quotaBytes: number | null) {
-    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId, {
-      spaceScope: 'workspace',
-    });
-    const resolvedQuotaBytes = usage.quotaBytes ?? quotaBytes;
-    const usagePercent =
-      resolvedQuotaBytes && resolvedQuotaBytes > 0
-        ? Math.min(
-            100,
-            Math.round((usage.usedBytes / resolvedQuotaBytes) * 1000) / 10,
-          )
-        : null;
+  getStorageUsage(workspaceId: string, quotaBytes: number | null) {
+    return this.fileUploadService.getStorageUsage(workspaceId, quotaBytes);
+  }
+
+  private async cleanupExpiredTrash(options: { forceAudit?: boolean } = {}) {
+    const policy = await this.fileNodesRepository.getPolicy();
+    const cutoff = new Date(
+      Date.now() - policy.trashRetentionDays * 24 * 60 * 60 * 1000,
+    );
+    const deleted = await this.fileNodesRepository.cleanupTrash(cutoff);
+    await this.deleteStoredObjects([
+      ...deleted.nodes.map((node) => node.objectKey),
+      ...deleted.versions.map((version) => version.objectKey),
+    ]);
+    if (options.forceAudit || deleted.nodes.length > 0) {
+      await this.fileNodesRepository.recordAudit(
+        'file.trash_cleaned',
+        'trash-cleanup',
+        {
+          actor: 'system',
+          metadata: {
+            deletedNodeCount: deleted.nodes.length,
+            deletedVersionCount: deleted.versions.length,
+            trashRetentionDays: policy.trashRetentionDays,
+          },
+          nodeId: null,
+        },
+      );
+    }
     return {
-      workspaceId,
-      ...usage,
-      quotaBytes: resolvedQuotaBytes,
-      usagePercent,
-      updatedAt: new Date().toISOString(),
+      deleted: deleted.nodes.length,
+      trashRetentionDays: policy.trashRetentionDays,
     };
   }
 
-  private async assertWithinWorkspaceQuota(
-    workspaceId: string,
-    incomingBytes: number,
-    spaceScope: FileNodeSpaceScope,
-    ownerUserId?: string,
-    auditMetadata: AuditMetadata = {},
-  ) {
-    const storagePolicyQuotaBytes =
-      await this.storageService.getConfiguredQuotaBytes();
-    if (spaceScope === 'personal') {
-      if (!ownerUserId) {
-        throw new BadRequestException('Personal space requires a user');
-      }
-      const usage = await this.fileNodesRepository.getUserStorageUsage(
-        workspaceId,
-        ownerUserId,
-      );
-      const userQuotaBytes = usage.quotaBytes;
-      const quotaBytes = resolveEffectiveQuotaBytes(
-        userQuotaBytes,
-        storagePolicyQuotaBytes,
-      );
-      const quotaScope =
-        userQuotaBytes !== null &&
-        userQuotaBytes !== undefined &&
-        quotaBytes === userQuotaBytes
-          ? 'user'
-          : 'storage';
-      if (
-        quotaBytes &&
-        quotaBytes > 0 &&
-        usage.usedBytes + incomingBytes > quotaBytes
-      ) {
-        await this.fileNodesRepository.recordAudit(
-          'file.quota_upload_rejected',
-          workspaceId,
-          {
-            metadata: {
-              ...auditMetadata,
-              incomingBytes,
-              quotaBytes,
-              scope: quotaScope,
-              spaceScope,
-              usedBytes: usage.usedBytes,
-              userId: ownerUserId,
-            },
-            nodeId: null,
-            workspaceId,
-          },
-        );
-        throw new BadRequestException(insufficientStorageMessage);
-      }
-      return;
-    }
-
-    const usage = await this.fileNodesRepository.getStorageUsage(workspaceId, {
-      spaceScope: 'workspace',
-    });
-    const workspaceQuotaBytes = usage.quotaBytes;
-    const quotaBytes = resolveEffectiveQuotaBytes(
-      workspaceQuotaBytes,
-      storagePolicyQuotaBytes,
-    );
-    const quotaScope =
-      workspaceQuotaBytes !== null &&
-      workspaceQuotaBytes !== undefined &&
-      quotaBytes === workspaceQuotaBytes
-        ? 'workspace'
-        : 'storage';
-    if (
-      quotaBytes &&
-      quotaBytes > 0 &&
-      usage.usedBytes + incomingBytes > quotaBytes
-    ) {
-      await this.fileNodesRepository.recordAudit(
-        'file.quota_upload_rejected',
-        workspaceId,
-        {
-          metadata: {
-            ...auditMetadata,
-            incomingBytes,
-            quotaBytes,
-            scope: quotaScope,
-            spaceScope,
-            usedBytes: usage.usedBytes,
-          },
-          nodeId: null,
-          workspaceId,
-        },
-      );
-      throw new BadRequestException(insufficientStorageMessage);
+  private async cleanupExpiredTrashIfDue() {
+    const now = Date.now();
+    if (now - this.lastTrashCleanupAt < trashCleanupThrottleMs) return;
+    this.lastTrashCleanupAt = now;
+    try {
+      await this.cleanupExpiredTrash();
+    } catch (error) {
+      this.lastTrashCleanupAt = 0;
+      throw error;
     }
   }
 
@@ -1407,41 +727,6 @@ export class FileNodesService {
         this.storageService.deleteObject(objectKey).catch(() => undefined),
       ),
     );
-  }
-
-  private async syncUploadTransfer(
-    transferId: string,
-    input: {
-      status: TransferStatus;
-      progress?: number;
-      auditMetadata?: AuditMetadata;
-    },
-    ownerUserId?: string | null,
-  ) {
-    try {
-      await this.transfersService.updateTransferInternal(
-        transferId,
-        input,
-        ownerUserId,
-      );
-    } catch (error) {
-      if (error instanceof NotFoundException) return;
-      throw error;
-    }
-  }
-
-  private async completeUploadTransfer(input: {
-    transferId: string;
-    nodeId: string;
-    ownerUserId?: string | null;
-    auditMetadata?: AuditMetadata;
-  }) {
-    try {
-      await this.transfersService.completeTransfer(input);
-    } catch (error) {
-      if (error instanceof NotFoundException) return;
-      throw error;
-    }
   }
 
   private async runBatch<T>(
@@ -1476,189 +761,6 @@ export class FileNodesService {
     };
   }
 
-  private toUploadIntent(
-    session: UploadSession,
-    parts: UploadSessionPart[],
-    conflictStrategy: UploadConflictStrategy = 'version',
-  ): UploadIntentResponse {
-    const uploaded = this.getUploadedSessionState(session, parts);
-    const objectMultipart = Boolean(session.multipartUploadId);
-    return {
-      conflictStrategy,
-      fileName: session.fileName,
-      objectKey: session.objectKey,
-      transferId: session.transferId,
-      uploadMethod: objectMultipart ? 'object-multipart' : 'chunked',
-      uploadUrl: objectMultipart
-        ? `/api/file-nodes/upload-sessions/${encodeURIComponent(session.id)}/parts`
-        : `/api/file-nodes/upload-sessions/${encodeURIComponent(session.id)}/chunks`,
-      headers: {},
-      expiresInSeconds: 86400,
-      expiresAt: new Date(Date.now() + 86400000).toISOString(),
-      sessionId: session.id,
-      chunkSizeBytes: session.chunkSizeBytes,
-      uploadedBytes: uploaded.uploadedBytes,
-      uploadedPartIndexes: uploaded.uploadedPartIndexes,
-    };
-  }
-
-  private getUploadedSessionState(
-    session: UploadSession,
-    parts: UploadSessionPart[],
-  ) {
-    const uploadedBytes = parts.reduce(
-      (total, part) => total + part.sizeBytes,
-      0,
-    );
-    const uploadRatio =
-      session.sizeBytes > 0 ? uploadedBytes / session.sizeBytes : 1;
-    return {
-      uploadedBytes,
-      uploadedPartIndexes: parts
-        .map((part) => part.partIndex)
-        .sort((left, right) => left - right),
-      progress: Math.min(95, Math.round(uploadRatio * 95 * 10) / 10),
-    };
-  }
-
-  private getExpectedPartRange(session: UploadSession, partIndex: number) {
-    if (!Number.isInteger(partIndex) || partIndex < 0) {
-      throw new BadRequestException('Upload chunk index is invalid');
-    }
-    const totalParts = this.getUploadSessionPartCount(session);
-    if (partIndex >= totalParts) {
-      throw new BadRequestException('Upload chunk index is outside session');
-    }
-    const startByte = partIndex * session.chunkSizeBytes;
-    const endByte = Math.min(
-      session.sizeBytes - 1,
-      startByte + session.chunkSizeBytes - 1,
-    );
-    return {
-      startByte,
-      endByte,
-      sizeBytes: endByte - startByte + 1,
-    };
-  }
-
-  private assertUploadSessionComplete(
-    session: UploadSession,
-    parts: UploadSessionPart[],
-  ) {
-    const totalParts = this.getUploadSessionPartCount(session);
-    if (parts.length !== totalParts) {
-      throw new BadRequestException('Upload session is missing chunks');
-    }
-    const expectedIndexes = new Set(
-      Array.from({ length: totalParts }, (_, index) => index),
-    );
-    for (const part of parts) {
-      const expected = this.getExpectedPartRange(session, part.partIndex);
-      if (
-        !expectedIndexes.delete(part.partIndex) ||
-        part.startByte !== expected.startByte ||
-        part.endByte !== expected.endByte ||
-        part.sizeBytes !== expected.sizeBytes ||
-        (Boolean(session.multipartUploadId) && !part.eTag)
-      ) {
-        throw new BadRequestException('Upload session chunks are invalid');
-      }
-    }
-    if (expectedIndexes.size > 0) {
-      throw new BadRequestException('Upload session is missing chunks');
-    }
-  }
-
-  private getUploadSessionPartCount(session: UploadSession) {
-    if (session.sizeBytes === 0) return 0;
-    return Math.ceil(session.sizeBytes / session.chunkSizeBytes);
-  }
-
-  private assertWritableUploadSession(session: UploadSession) {
-    if (session.status === 'completed' || session.status === 'canceled') {
-      throw new BadRequestException('Upload session is not writable');
-    }
-  }
-
-  private canReuseSession(session: UploadSession, distributedStorage: boolean) {
-    return distributedStorage
-      ? Boolean(session.multipartUploadId)
-      : !session.multipartUploadId;
-  }
-
-  private async requireUploadSession(sessionId: string, ownerUserId?: string) {
-    const session = await this.uploadSessionsRepository.findById(sessionId);
-    if (
-      !session ||
-      (ownerUserId !== undefined && session.ownerUserId !== ownerUserId)
-    ) {
-      throw new NotFoundException('Upload session not found');
-    }
-    return session;
-  }
-
-  private async requireCompletableUploadSession(
-    dto: CompleteUploadDto,
-    ownerUserId?: string,
-  ) {
-    const session = await this.requireUploadSession(
-      dto.uploadSessionId,
-      ownerUserId,
-    );
-    if (
-      session.workspaceId !== dto.workspaceId ||
-      session.objectKey !== dto.objectKey ||
-      session.fileName !== dto.fileName ||
-      session.sizeBytes !== dto.sizeBytes ||
-      session.mimeType !== (dto.mimeType ?? session.mimeType) ||
-      session.spaceScope !== this.normalizeSpaceScope(dto.spaceScope) ||
-      session.conflictStrategy !==
-        this.normalizeUploadConflictStrategy(dto.conflictStrategy) ||
-      (dto.transferId !== undefined && dto.transferId !== session.transferId) ||
-      (session.parentNodeId ?? null) !== (dto.parentNodeId ?? null)
-    ) {
-      throw new BadRequestException(
-        'Upload session does not match completion payload',
-      );
-    }
-    if (session.status === 'canceled') {
-      throw new BadRequestException('Upload session was canceled');
-    }
-    return session;
-  }
-
-  private normalizeChunkSize(
-    value: number | undefined,
-    options: { distributedStorage: boolean },
-  ) {
-    const minimum = options.distributedStorage ? 5 * 1024 * 1024 : 64 * 1024;
-    const fallback = options.distributedStorage
-      ? 8 * 1024 * 1024
-      : 4 * 1024 * 1024;
-    const raw = Math.trunc(value ?? fallback);
-    return Math.min(Math.max(raw, minimum), 32 * 1024 * 1024);
-  }
-
-  private createUploadObjectKey(
-    dto: CreateUploadIntentDto & { spaceScope: FileNodeSpaceScope },
-    distributedStorage: boolean,
-  ) {
-    return createFileObjectKey({
-      distributedStorage,
-      fileName: dto.fileName,
-      spaceScope: dto.spaceScope,
-      workspaceId: dto.workspaceId,
-    });
-  }
-
-  private assertUploadObjectKey(dto: CompleteUploadDto) {
-    if (!isUploadObjectKeyForPayload(dto)) {
-      throw new BadRequestException(
-        'Upload object key does not match a valid upload intent',
-      );
-    }
-  }
-
   private normalizeListState(value?: string): FileNodeListState {
     if (value === 'archived' || value === 'all') return value;
     return 'active';
@@ -1666,79 +768,6 @@ export class FileNodesService {
 
   private normalizeSpaceScope(value?: string): FileNodeSpaceScope {
     return value === 'personal' ? 'personal' : 'workspace';
-  }
-
-  private normalizeUploadConflictStrategy(
-    value?: UploadConflictStrategy,
-  ): UploadConflictStrategy {
-    if (
-      value === 'overwrite' ||
-      value === 'rename' ||
-      value === 'skip' ||
-      value === 'version'
-    ) {
-      return value;
-    }
-    return 'version';
-  }
-
-  private async resolveUploadConflict(input: {
-    allowRename: boolean;
-    conflictStrategy: UploadConflictStrategy;
-    explicitConflictStrategy: boolean;
-    fileName: string;
-    ownerUserId?: string;
-    parentNodeId: string | null;
-    spaceScope: FileNodeSpaceScope;
-    workspaceId: string;
-  }): Promise<ResolvedUploadConflict> {
-    const conflicts = await this.findSiblingNameConflicts({
-      name: input.fileName,
-      ownerUserId: input.ownerUserId,
-      parentNodeId: input.parentNodeId,
-      spaceScope: input.spaceScope,
-      workspaceId: input.workspaceId,
-    });
-    if (conflicts.length === 0) {
-      return {
-        fileName: input.fileName,
-        strategy: input.conflictStrategy,
-        target: null,
-      };
-    }
-
-    if (input.conflictStrategy === 'skip') {
-      throw new ConflictException(
-        'File upload skipped because a same-name item exists',
-      );
-    }
-
-    if (input.conflictStrategy === 'rename' && input.allowRename) {
-      const siblings = await this.listSiblingNodes(input);
-      return {
-        fileName: this.createAvailableSiblingFileName(input.fileName, siblings),
-        strategy: input.conflictStrategy,
-        target: null,
-      };
-    }
-
-    const target = conflicts.length === 1 ? conflicts[0] : null;
-    if (
-      target?.objectKey &&
-      (input.conflictStrategy === 'overwrite' ||
-        input.conflictStrategy === 'version') &&
-      (input.explicitConflictStrategy || target.name === input.fileName)
-    ) {
-      return {
-        fileName: input.fileName,
-        strategy: input.conflictStrategy,
-        target,
-      };
-    }
-
-    throw new ConflictException(
-      'File node name conflicts with an existing item',
-    );
   }
 
   private async listSiblingNodes(input: {
@@ -1767,43 +796,11 @@ export class FileNodesService {
       siblings.map((node) => getFileNameConflictKey(node.name)),
     );
     if (!siblingKeys.has(getFileNameConflictKey(fileName))) return fileName;
-
     for (let index = 2; index < 10000; index += 1) {
       const candidate = createSuffixedFileName(fileName, ` (${index})`);
-      if (!siblingKeys.has(getFileNameConflictKey(candidate))) {
-        return candidate;
-      }
+      if (!siblingKeys.has(getFileNameConflictKey(candidate))) return candidate;
     }
     throw new BadRequestException('Unable to create a non-conflicting name');
-  }
-
-  private async assertUploadNameAvailable(input: {
-    allowExactFileOverwrite?: boolean;
-    fileName: string;
-    ownerUserId?: string;
-    parentNodeId: string | null;
-    spaceScope: FileNodeSpaceScope;
-    workspaceId: string;
-  }) {
-    const conflicts = await this.findSiblingNameConflicts({
-      name: input.fileName,
-      ownerUserId: input.ownerUserId,
-      parentNodeId: input.parentNodeId,
-      spaceScope: input.spaceScope,
-      workspaceId: input.workspaceId,
-    });
-    if (conflicts.length === 0) return null;
-    if (
-      input.allowExactFileOverwrite &&
-      conflicts.length === 1 &&
-      conflicts[0]?.name === input.fileName &&
-      Boolean(conflicts[0].objectKey)
-    ) {
-      return conflicts[0];
-    }
-    throw new ConflictException(
-      'File node name conflicts with an existing item',
-    );
   }
 
   private async assertNoSiblingNameConflict(input: {
@@ -1830,16 +827,7 @@ export class FileNodesService {
     workspaceId: string;
   }): Promise<FileNodeResponse[]> {
     const targetKey = getFileNameConflictKey(input.name);
-    const siblings = await this.fileNodesRepository.list(
-      input.workspaceId,
-      input.parentNodeId,
-      'active',
-      {
-        ownerUserId:
-          input.spaceScope === 'personal' ? input.ownerUserId : undefined,
-        spaceScope: input.spaceScope,
-      },
-    );
+    const siblings = await this.listSiblingNodes(input);
     return siblings.filter(
       (node) =>
         node.id !== input.excludeNodeId &&
@@ -1890,7 +878,6 @@ export class FileNodesService {
     if (parentNodeId === sourceNodeId) {
       throw new BadRequestException('A file node cannot be moved into itself');
     }
-
     let parent = await this.requireActiveNode(parentNodeId, access);
     if (parent.workspaceId !== workspaceId) {
       throw new BadRequestException(
@@ -1903,7 +890,6 @@ export class FileNodesService {
     if (parent.kind !== 'folder') {
       throw new BadRequestException('Parent node must be a folder');
     }
-
     while (sourceNodeId && parent.parentNodeId) {
       if (parent.parentNodeId === sourceNodeId) {
         throw new BadRequestException(
@@ -1943,82 +929,4 @@ export class FileNodesService {
     }
     throw new NotFoundException('File node not found');
   }
-
-  private buildDownloadManifest(node: {
-    id: string;
-    name: string;
-    owner: string;
-    kind: string;
-    mimeType: string;
-    sizeBytes: number | null;
-    objectKey: string | null;
-  }) {
-    return [
-      ['name', node.name],
-      ['nodeId', node.id],
-      ['owner', node.owner],
-      ['kind', node.kind],
-      ['mimeType', node.mimeType],
-      ['sizeBytes', node.sizeBytes ?? 'folder'],
-    ]
-      .map((row) => row.join('\t'))
-      .join('\n');
-  }
-
-  private toDownloadVisitor(auditMetadata?: AuditMetadata): {
-    ip?: string;
-    userAgent?: string;
-  } {
-    return {
-      ip: typeof auditMetadata?.ip === 'string' ? auditMetadata.ip : undefined,
-      userAgent:
-        typeof auditMetadata?.userAgent === 'string'
-          ? auditMetadata.userAgent
-          : undefined,
-    };
-  }
-
-  private withPreviewCapability(
-    intent: PreviewIntentResponse,
-    capability: FilePreviewCapability,
-  ): PreviewIntentResponse {
-    return {
-      ...intent,
-      previewType: capability.renderMode,
-      renderMode: capability.renderMode,
-      capability,
-      error: capability.supported
-        ? (intent.error ?? null)
-        : (intent.error ?? this.getPreviewUnsupportedError(capability)),
-    };
-  }
-
-  private getPreviewUnsupportedError(capability: FilePreviewCapability) {
-    switch (capability.reason) {
-      case 'archive':
-        return 'Archives are available for download only';
-      case 'folder':
-        return 'Folders do not have file previews';
-      case 'html-disabled':
-        return 'HTML-like files are available for download only';
-      case 'missing-object':
-        return 'File content is not available for preview';
-      case 'too-large':
-        return 'File is too large to preview';
-      default:
-        return 'Preview is not supported for this file type';
-    }
-  }
-}
-
-function resolveEffectiveQuotaBytes(
-  workspaceQuotaBytes: number | null | undefined,
-  storagePolicyQuotaBytes: number | null,
-) {
-  const candidates = [workspaceQuotaBytes, storagePolicyQuotaBytes].filter(
-    (quotaBytes): quotaBytes is number =>
-      quotaBytes !== null && quotaBytes !== undefined && quotaBytes > 0,
-  );
-  if (candidates.length === 0) return null;
-  return Math.min(...candidates);
 }

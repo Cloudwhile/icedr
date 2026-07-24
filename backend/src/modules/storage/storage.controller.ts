@@ -97,8 +97,12 @@ export class StorageController {
     @Body() dto: RunBlobReconcileDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requirePermission(authorization, 'storage', 'manage');
-    return this.storageService.reconcileObjects(dto);
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'storage',
+      'manage',
+    );
+    return this.storageService.reconcileObjects(dto, session.user.id);
   }
 
   @Patch('settings')

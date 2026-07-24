@@ -8,6 +8,8 @@ import { WorkspacesModule } from '../admin/workspaces/workspaces.module';
 import { SharesController } from './shares.controller';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import { ShareDownloadCommitRepository } from './share-download-commit.repository';
+import { ShareDownloadIntentRepository } from './share-download-intent.repository';
+import { ShareDownloadService } from './share-download.service';
 import { ShareRateLimitRepository } from './share-rate-limit.repository';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
@@ -25,6 +27,8 @@ import { SharesService } from './shares.service';
   providers: [
     ShareAbuseProtectionService,
     ShareDownloadCommitRepository,
+    ShareDownloadIntentRepository,
+    ShareDownloadService,
     ShareRateLimitRepository,
     SharesRepository,
     SharesService,
