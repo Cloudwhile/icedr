@@ -90,6 +90,117 @@ describe('SharesService email and account access', () => {
     });
   });
 
+  it('hides member identifiers until a valid access session is supplied', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: {
+        ...createDto().policy,
+        emailAllowlist: ['reviewer@example.com'],
+        maxViews: 1,
+      },
+    });
+
+    const locked = await service.getShare(created.token);
+
+    expect(locked).toMatchObject({
+      rootItemIds: [],
+      allowedItemIds: [],
+      dynamicRootId: null,
+      contentSummary: {
+        fileCount: 1,
+        folderCount: 0,
+        totalSizeBytes: 284 * 1024,
+      },
+    });
+    expect(locked).not.toHaveProperty('items');
+    expect(locked).not.toHaveProperty('workspaceId');
+    expect(locked).not.toHaveProperty('creatorUserId');
+    expect(Object.keys(locked.policy).sort()).toEqual([
+      'downloadLimit',
+      'speedUnit',
+      'speedValue',
+      'waitUnit',
+      'waitValue',
+    ]);
+    expect(locked.policy).not.toHaveProperty('allowedDomain');
+    expect(locked.policy).not.toHaveProperty('emailAllowlist');
+    expect(locked.policy).not.toHaveProperty('rateLimitProfile');
+    expect(locked.downloadPolicy).not.toHaveProperty('allowedDomain');
+    expect(locked.downloadPolicy).not.toHaveProperty('emailAllowlist');
+    expect(locked.downloadPolicy).not.toHaveProperty('maxViews');
+    expect(locked.downloadPolicy).not.toHaveProperty('rateLimitProfile');
+    await expect(repository.countAuditEvents('share.viewed')).resolves.toBe(0);
+
+    const session = await createEmailSession(created.token);
+    const unlocked = await service.getShare(
+      created.token,
+      {},
+      {
+        accessSessionId: session.sessionId,
+      },
+    );
+
+    expect(unlocked).toMatchObject({
+      rootItemIds: ['roadmap'],
+      allowedItemIds: ['roadmap'],
+      items: [expect.objectContaining({ id: 'roadmap' })],
+    });
+    expect(unlocked).not.toHaveProperty('workspaceId');
+    expect(unlocked).not.toHaveProperty('creatorUserId');
+    expect(unlocked.policy).not.toHaveProperty('allowedDomain');
+    expect(unlocked.policy).not.toHaveProperty('emailAllowlist');
+    expect(unlocked.policy).not.toHaveProperty('rateLimitProfile');
+    expect(unlocked.downloadPolicy).not.toHaveProperty('allowedDomain');
+    expect(unlocked.downloadPolicy).not.toHaveProperty('emailAllowlist');
+    expect(unlocked.downloadPolicy).not.toHaveProperty('maxViews');
+    expect(unlocked.downloadPolicy).not.toHaveProperty('rateLimitProfile');
+    expect(JSON.stringify(unlocked.items)).not.toContain('ownerUserId');
+    expect(JSON.stringify(unlocked.items)).not.toContain('originalPath');
+    expect(JSON.stringify(unlocked.items)).not.toContain('workspaceId');
+    await expect(repository.countAuditEvents('share.viewed')).resolves.toBe(1);
+  });
+
+  it('returns full items for an allowed account and locks a rejected account', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      policy: {
+        ...createDto().policy,
+        allowedDomain: 'example.test',
+      },
+    });
+    const allowedAccount = {
+      id: 'user_allowed',
+      avatarUrl: null,
+      displayName: 'Allowed User',
+      email: 'allowed@example.test',
+    };
+
+    const unlocked = await service.getShare(
+      created.token,
+      {},
+      {
+        accountUser: allowedAccount,
+        actor: 'account',
+      },
+    );
+    const locked = await service.getShare(
+      created.token,
+      {},
+      {
+        accountUser: { ...allowedAccount, email: 'blocked@other.test' },
+        actor: 'account',
+      },
+    );
+
+    expect(unlocked).toHaveProperty('items');
+    expect(locked).toMatchObject({
+      rootItemIds: [],
+      allowedItemIds: [],
+      dynamicRootId: null,
+    });
+    expect(locked).not.toHaveProperty('items');
+  });
+
   it('uses account access sessions to bypass visitor wait and speed limits', async () => {
     const created = await service.createShare(createDto());
     const session = await service.createVerifiedAccountAccessSession(

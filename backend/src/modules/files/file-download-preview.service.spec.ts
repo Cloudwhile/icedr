@@ -74,6 +74,22 @@ describe('FileDownloadPreviewService', () => {
     });
   });
 
+  it('hides expired preview artifacts as not found', async () => {
+    const artifact = await repository.findPreviewArtifact('preview-test');
+    expect(artifact).not.toBeNull();
+    (repository.findPreviewArtifact as jest.Mock).mockResolvedValueOnce({
+      ...artifact!,
+      lifecycle: {
+        ...artifact!.lifecycle,
+        expiresAt: new Date(Date.now() - 1).toISOString(),
+      },
+    });
+
+    await expect(
+      service.getPreviewStatus('roadmap', 'preview-test'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('binds download purpose to the intent and streams through ICEDR', async () => {
     const previewIntent = await service.createDownloadIntent(
       'roadmap',

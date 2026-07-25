@@ -1,99 +1,112 @@
-import { describe, expect, it } from "vitest";
-import type { DriveItem } from "@/features/file/model";
-import {
-  collectShareDescendants,
-  getRegisteredShareParent,
-  getVisibleRegisteredShareItems,
-  type RegisteredShare,
-} from "./registry";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createRegisteredShare, fetchRegisteredShare, type RegisteredShare } from "./registry";
 
-const now = new Date(0).toISOString();
+const policy = {
+  waitValue: 0,
+  waitUnit: "seconds" as const,
+  speedValue: 0,
+  speedUnit: "KB/s" as const,
+  expiresValue: 7,
+  expiresUnit: "days" as const,
+  downloadLimit: "",
+  allowedDomain: "",
+};
 
-function createItem(input: Partial<DriveItem> & Pick<DriveItem, "id" | "name" | "parentId">): DriveItem {
-  return {
-    archivedAt: null,
-    colorKey: "primary",
-    createdAt: now,
-    hasContent: true,
-    mimeType: "text/plain",
-    modifiedAt: now,
-    owner: "Mina",
-    shared: false,
-    sizeBytes: 128,
-    starred: false,
-    workspaceId: "workspace-default",
-    ...input,
-  };
-}
+const selectedFolderShare: RegisteredShare = {
+  allowDownload: true,
+  allowPreview: true,
+  allowedItemIds: ["folder-root", "visible-file", "private-file"],
+  createdAt: "2026-07-25T00:00:00.000Z",
+  dynamicRootId: "folder-root",
+  expiresDays: 7,
+  mode: "folder",
+  owner: "Mina",
+  policy,
+  remark: "Review",
+  rootItemIds: ["folder-root"],
+  selection: {
+    type: "folder",
+    folderId: "folder-root",
+    visibility: "selected-items",
+    selectedItemIds: ["visible-file"],
+  },
+  title: "Private project name",
+  token: "",
+  workspaceId: "workspace-default",
+};
 
-function createShare(input: Partial<RegisteredShare> = {}): RegisteredShare {
-  return {
-    allowDownload: true,
-    allowPreview: true,
-    allowedItemIds: ["folder-product", "roadmap", "brief"],
-    createdAt: now,
-    dynamicRootId: "folder-product",
-    expiresDays: 7,
-    mode: "folder",
-    owner: "Mina",
-    policy: {
-      allowedDomain: "",
-      downloadLimit: "",
-      expiresUnit: "days",
-      expiresValue: 7,
-      speedUnit: "KB/s",
-      speedValue: 0,
-      waitUnit: "seconds",
-      waitValue: 0,
-    },
-    remark: "",
-    rootItemIds: ["folder-product"],
-    title: "Product",
-    token: "s_product",
-    workspaceId: "workspace-default",
-    ...input,
-  };
-}
-
-describe("share registry helpers", () => {
-  const items = [
-    createItem({
-      id: "folder-product",
-      mimeType: "inode/directory",
-      name: "Product",
-      hasContent: false,
-      parentId: null,
-      sizeBytes: null,
-    }),
-    createItem({ id: "roadmap", name: "Roadmap.txt", parentId: "folder-product" }),
-    createItem({ id: "brief", name: "Brief.txt", parentId: "folder-product" }),
-    createItem({ id: "private-note", name: "Private.txt", parentId: "folder-product" }),
-  ];
-
-  it("collects descendants when a folder is shared", () => {
-    const descendants = collectShareDescendants(items[0], items);
-
-    expect(descendants.map((item) => item.id)).toEqual([
-      "roadmap",
-      "brief",
-      "private-note",
-    ]);
+describe("share registry create contract", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.restoreAllMocks();
   });
 
-  it("only exposes allowed items inside a dynamic share folder", () => {
-    const visibleItems = getVisibleRegisteredShareItems(
-      createShare(),
-      "folder-product",
-      items,
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends only selection intent and policy for the new share contract", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        ...selectedFolderShare,
+        allowedItemIds: ["folder-root", "visible-file"],
+        contentSummary: {
+          fileCount: 1,
+          folderCount: 0,
+          totalSizeBytes: 120,
+          unavailableCount: 0,
+          changedCount: 0,
+        },
+        scopeMode: "selected-items",
+        token: "share-token",
+        url: "/share/s/share-token",
+        revokedAt: null,
+      }),
     );
+    vi.stubGlobal("fetch", fetchMock);
 
-    expect(visibleItems.map((item) => item.id)).toEqual(["roadmap", "brief"]);
+    await createRegisteredShare(selectedFolderShare);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/shares");
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+
+    expect(body).toEqual({
+      workspaceId: "workspace-default",
+      selection: selectedFolderShare.selection,
+      allowDownload: true,
+      allowPreview: true,
+      expiresDays: 7,
+      remark: "Review",
+      policy,
+    });
+    expect(body).not.toHaveProperty("title");
+    expect(body).not.toHaveProperty("owner");
+    expect(body).not.toHaveProperty("rootItemIds");
+    expect(body).not.toHaveProperty("allowedItemIds");
+    expect(body).not.toHaveProperty("dynamicRootId");
+    expect(JSON.stringify(body)).not.toContain("Private project name");
+    expect(JSON.stringify(body)).not.toContain("private-file");
   });
 
-  it("stops parent navigation at the dynamic root", () => {
-    const share = createShare();
+  it("sends the access session when refreshing locked share content", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        ...selectedFolderShare,
+        allowedItemIds: ["folder-root", "visible-file"],
+        rootItemIds: ["folder-root"],
+        token: "share-token",
+        url: "/share/s/share-token",
+        revokedAt: null,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
-    expect(getRegisteredShareParent(share, "folder-product", items)).toBeNull();
-    expect(getRegisteredShareParent(share, "roadmap", items)).toBeNull();
+    await fetchRegisteredShare("share-token", "access-session-1");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/shares/share-token");
+    expect(new Headers(init.headers).get("x-share-access-session")).toBe("access-session-1");
   });
 });

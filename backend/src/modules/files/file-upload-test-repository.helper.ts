@@ -391,6 +391,7 @@ export function createFileNodesRepositoryMock(input: {
       return Promise.resolve({
         previewId,
         nodeId,
+        actorUserId: null,
         status: 'completed',
         legacyPreviewStatus: 'ready',
         previewType: 'docx',
@@ -398,6 +399,15 @@ export function createFileNodesRepositoryMock(input: {
         statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
         capability: nodes.find((node) => node.id === 'roadmap')
           ?.previewCapability,
+        lifecycle: {
+          status: 'completed' as const,
+          errorCode: null,
+          errorMessage: null,
+          retryable: false,
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+          expiresAt: null,
+        },
         error: null,
       });
     }),

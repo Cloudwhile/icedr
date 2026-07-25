@@ -48,7 +48,7 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   );
   await page.getByRole("button", { name: "Download" }).last().click();
   const downloadResponse = await downloadResponsePromise;
-  expect(new URL(downloadResponse.url()).origin).toBe("http://127.0.0.1:13000");
+  expect(new URL(downloadResponse.url()).origin).toBe(new URL(page.url()).origin);
   expect(downloadResponse.headers()["content-disposition"]).toContain(fileName);
   expect(state.downloadIntentPurpose).toBe("download");
   expect(state.downloaded).toBe(true);
@@ -77,9 +77,10 @@ test("smoke: verifies external share access with an email code", async ({ page }
 
   await page.goto(`/share/s/${shareToken}`);
   await expect(page.getByText("External share")).toBeVisible();
+  await expect(page.locator(".external-share-file-row")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(fileId);
 
-  await page.locator('button[aria-label="More"]').last().click();
-  await page.getByRole("menuitem", { name: "Download" }).click();
+  await page.getByRole("button", { name: "Verify and download" }).click();
 
   await page.getByRole("textbox", { name: "Enter your email to continue" }).fill("visitor@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
@@ -92,7 +93,9 @@ test("smoke: verifies external share access with an email code", async ({ page }
   expect(state.emailVerifiedFor).toBe("visitor@example.com");
 
   await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText(fileName).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Download" }).last()).toBeVisible();
+  expect(state.contentAccessSessionId).toBe("share-session-email");
 });
 
 async function mockIcedrApi(
@@ -100,6 +103,7 @@ async function mockIcedrApi(
   options: { authenticated?: boolean } = {},
 ) {
   const state = {
+    contentAccessSessionId: "",
     downloadIntentPurpose: "",
     downloaded: false,
     emailCodeSentTo: "",
@@ -189,10 +193,17 @@ async function mockIcedrApi(
     }
 
     if (method === "GET" && path === `/shares/${shareToken}`) {
-      await fulfillJson(route, {
-        ...registeredShare(),
-        items: [shareFileNode()],
-      });
+      const accessSessionId = request.headers()["x-share-access-session"] ?? "";
+      const hasContentAccess =
+        options.authenticated !== false || accessSessionId === "share-session-email";
+
+      if (!hasContentAccess) {
+        await fulfillJson(route, lockedRegisteredShare());
+        return;
+      }
+
+      state.contentAccessSessionId = accessSessionId;
+      await fulfillJson(route, unlockedRegisteredShare());
       return;
     }
 
@@ -384,7 +395,52 @@ function fileNode() {
 }
 
 function shareFileNode() {
-  return fileNode();
+  return {
+    availability: "available",
+    changes: [],
+    createdAt: now,
+    hasContent: true,
+    id: fileId,
+    kind: "doc",
+    mimeType: "text/plain",
+    name: fileName,
+    parentNodeId: null,
+    role: "root",
+    sizeBytes: 42,
+    updatedAt: now,
+  };
+}
+
+function lockedRegisteredShare() {
+  return {
+    ...registeredShare(),
+    allowedItemIds: [],
+    contentSummary: shareContentSummary(),
+    dynamicRootId: null,
+    rootItemIds: [],
+    scopeMode: "items",
+    workspaceId: undefined,
+  };
+}
+
+function unlockedRegisteredShare() {
+  return {
+    ...registeredShare(),
+    contentSummary: shareContentSummary(),
+    items: [shareFileNode()],
+    scopeMode: "items",
+    workspaceId: undefined,
+  };
+}
+
+function shareContentSummary() {
+  return {
+    changedCount: 0,
+    fileCount: 1,
+    folderCount: 0,
+    totalSizeBytes: 42,
+    unavailableCount: 0,
+  };
 }
 
 function registeredShare() {

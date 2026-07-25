@@ -12,6 +12,12 @@ import { MailService } from '../admin/mail/mail.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import type { CreateShareDto, ShareResponse } from './shares.dto';
+import type {
+  NormalizedCreateShareDto,
+  ShareContentMemberSnapshot,
+} from './share-content.types';
+import { ShareContentRepository } from './share-content.repository';
+import { ShareContentService } from './share-content.service';
 import type { ShareAccessSession } from './share-access.dto';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import {
@@ -81,8 +87,16 @@ type StoredIntent = {
   lifecycle: TransferTaskLifecycle;
 };
 
+type StoredSpecShare = ShareResponse & {
+  creatorUserId: string | null;
+};
+
 export class SharesRepositorySpecDouble {
-  private readonly shares = new Map<string, ShareResponse>();
+  private readonly shares = new Map<string, StoredSpecShare>();
+  private readonly contentMembers = new Map<
+    string,
+    ShareContentMemberSnapshot[]
+  >();
   private readonly emailCodes = new Map<
     string,
     {
@@ -106,12 +120,17 @@ export class SharesRepositorySpecDouble {
     metadata: Record<string, unknown>;
   }> = [];
 
-  create(dto: CreateShareDto, creatorUserId?: string) {
+  create(
+    dto: NormalizedCreateShareDto,
+    creatorUserId?: string,
+    members: ShareContentMemberSnapshot[] = [],
+  ) {
     const token = `s_${Math.random().toString(36).slice(2, 14)}`;
-    const share: ShareResponse = {
+    const share: StoredSpecShare = {
       token,
       url: `http://localhost:13000/share/s/${token}`,
       workspaceId: dto.workspaceId ?? 'workspace-default',
+      creatorUserId: creatorUserId?.trim() || null,
       title: dto.title,
       mode: dto.mode,
       owner: dto.owner,
@@ -124,12 +143,43 @@ export class SharesRepositorySpecDouble {
       remark: dto.remark,
       policy: dto.policy,
       downloadPolicy: resolveShareDownloadPolicy(dto.policy),
+      scopeMode: dto.scopeMode,
       createdAt: new Date().toISOString(),
       revokedAt: null,
     };
     this.shares.set(token, share);
-    void creatorUserId;
+    this.contentMembers.set(
+      token,
+      members.map((member) => ({ ...member })),
+    );
     return share;
+  }
+
+  listMembers(token: string) {
+    return Promise.resolve(
+      (this.contentMembers.get(token) ?? []).map((member) => ({ ...member })),
+    );
+  }
+
+  findMember(token: string, nodeId: string) {
+    return Promise.resolve(
+      this.contentMembers
+        .get(token)
+        ?.find((member) => member.nodeId === nodeId) ?? null,
+    );
+  }
+
+  createMembersIfMissing(token: string, members: ShareContentMemberSnapshot[]) {
+    const existing = this.contentMembers.get(token) ?? [];
+    const existingIds = new Set(existing.map((member) => member.nodeId));
+    const additions = members.filter(
+      (member) => !existingIds.has(member.nodeId),
+    );
+    this.contentMembers.set(token, [
+      ...existing,
+      ...additions.map((member) => ({ ...member })),
+    ]);
+    return Promise.resolve({ count: additions.length });
   }
 
   findByToken(token: string) {
@@ -717,6 +767,13 @@ export function createSharesServiceHarness() {
     getFileNode: jest.fn((id: string) =>
       Promise.resolve(nodes.get(id) ?? null),
     ),
+    getFileNodes: jest.fn((ids: string[]) =>
+      Promise.resolve(
+        ids
+          .map((id) => nodes.get(id))
+          .filter((node): node is FileNodeResponse => Boolean(node)),
+      ),
+    ),
     createPreviewIntent: jest.fn((nodeId: string) =>
       Promise.resolve({
         previewId: 'preview-test',
@@ -755,7 +812,11 @@ export function createSharesServiceHarness() {
     ),
   } satisfies Pick<
     FileNodesService,
-    'listFileNodes' | 'getFileNode' | 'createPreviewIntent' | 'getPreviewStatus'
+    | 'listFileNodes'
+    | 'getFileNode'
+    | 'getFileNodes'
+    | 'createPreviewIntent'
+    | 'getPreviewStatus'
   >;
   const storageService = {
     openObjectStream: jest.fn(() =>
@@ -806,10 +867,14 @@ export function createSharesServiceHarness() {
     repository as unknown as SharesRepository,
     configService as unknown as ConfigService,
   );
+  const shareContent = new ShareContentService(
+    repository as unknown as ShareContentRepository,
+    fileNodesService as unknown as FileNodesService,
+  );
   const createService = () => {
     const downloads = new ShareDownloadService(
       repository as unknown as SharesRepository,
-      fileNodesService as unknown as FileNodesService,
+      shareContent,
       storageService as unknown as StorageService,
       configService as unknown as ConfigService,
       abuseProtection,
@@ -823,6 +888,7 @@ export function createSharesServiceHarness() {
       mailService as unknown as MailService,
       configService as unknown as ConfigService,
       abuseProtection,
+      shareContent,
     );
   };
   const service = createService();
@@ -863,6 +929,7 @@ export function createSharesServiceHarness() {
     expectRateLimited,
     fileNodesService,
     mailService,
+    nodes,
     repository,
     sentCodes,
     service,
