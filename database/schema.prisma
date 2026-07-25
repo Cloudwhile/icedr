@@ -291,6 +291,7 @@ model FileNode {
   versions FileVersion[]
 
   @@index([workspaceId, spaceScope])
+  @@index([workspaceId, spaceScope, parentNodeId], map: "file_nodes_workspace_scope_parent_idx")
   @@index([ownerUserId])
   @@index([objectKey], map: "file_nodes_object_key_idx")
   @@unique([workspaceId, spaceScope, ownerScopeKey, directoryKey, nameKey], map: "file_nodes_scope_directory_name_key")
@@ -460,15 +461,35 @@ model ShareLink {
   expiresDays    Int       @map("expires_days")
   remark         String?
   policySnapshot Json      @map("policy_snapshot")
+  scopeMode      String    @default("legacy") @map("scope_mode")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
 
   emailCodes      ShareEmailCode[]
   accessSessions  ShareAccessSession[]
   downloadIntents ShareDownloadIntent[]
+  contentMembers  ShareContentMember[]
 
   @@index([creatorUserId])
   @@map("share_links")
+}
+
+model ShareContentMember {
+  shareToken           String    @map("share_token")
+  nodeId               String    @map("node_id")
+  role                 String
+  snapshotParentNodeId String?   @map("snapshot_parent_node_id")
+  snapshotName         String?   @map("snapshot_name")
+  snapshotKind         String?   @map("snapshot_kind")
+  snapshotMimeType     String?   @map("snapshot_mime_type")
+  snapshotSizeBytes    BigInt?   @map("snapshot_size_bytes")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  share ShareLink @relation(fields: [shareToken], references: [token], onDelete: Cascade)
+
+  @@id([shareToken, nodeId])
+  @@index([nodeId], map: "share_content_members_node_id_idx")
+  @@map("share_content_members")
 }
 
 model ShareEmailCode {

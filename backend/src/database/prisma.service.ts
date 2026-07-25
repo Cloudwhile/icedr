@@ -73,6 +73,7 @@ const copyModels = [
   'uploadSessionPart',
   'transferTask',
   'shareLink',
+  'shareContentMember',
   'shareEmailCode',
   'shareAccessSession',
   'shareDownloadIntent',
@@ -256,6 +257,11 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   get shareLink(): PrismaClient['shareLink'] {
     return this.activeClient.shareLink as PrismaClient['shareLink'];
+  }
+
+  get shareContentMember(): PrismaClient['shareContentMember'] {
+    return this.activeClient
+      .shareContentMember as PrismaClient['shareContentMember'];
   }
 
   get shareEmailCode(): PrismaClient['shareEmailCode'] {
