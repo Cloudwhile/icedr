@@ -11,7 +11,6 @@ import {
   FileNodeResponse,
   type DownloadIntentPurpose,
 } from '../files/file-nodes.dto';
-import { FileNodesService } from '../files/file-nodes.service';
 import { StorageService } from '../storage/storage.service';
 import type { AuthUserResponse } from '../auth/core/auth.dto';
 import {
@@ -22,6 +21,7 @@ import type { ShareResponse } from './shares.dto';
 import { SharesRepository } from './shares.repository';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import { ShareDownloadCommitRepository } from './share-download-commit.repository';
+import { ShareContentService } from './share-content.service';
 import {
   normalizePolicyDomain,
   normalizePolicyEmailAllowlist,
@@ -45,7 +45,7 @@ export type ShareAccountAuditUser = Pick<
 export class ShareDownloadService {
   constructor(
     private readonly sharesRepository: SharesRepository,
-    private readonly fileNodesService: FileNodesService,
+    private readonly shareContent: ShareContentService,
     private readonly storageService: StorageService,
     private readonly configService: ConfigService,
     private readonly abuseProtection: ShareAbuseProtectionService,
@@ -100,7 +100,7 @@ export class ShareDownloadService {
       scope: 'download-intent',
       shareToken: share.token,
     });
-    const node = await this.requireNodeInShare(share, nodeId, purpose);
+    const node = await this.shareContent.requireNode(share, nodeId, purpose);
     if (purpose === 'preview' && !node.previewCapability.supported) {
       throw new BadRequestException('File type is not available for preview');
     }
@@ -194,7 +194,7 @@ export class ShareDownloadService {
       scope: 'download',
       shareToken: share.token,
     });
-    const node = await this.requireNodeInShare(
+    const node = await this.shareContent.requireNode(
       share,
       nodeId,
       pendingIntent.purpose,
@@ -411,27 +411,6 @@ export class ShareDownloadService {
       new Date(share.createdAt).getTime() + share.expiresDays * 86400000 <=
       Date.now()
     );
-  }
-
-  private async requireNodeInShare(
-    share: ShareResponse,
-    nodeId: string,
-    action: 'download' | 'preview',
-  ) {
-    if (!share.allowedItemIds.includes(nodeId)) {
-      throw new ForbiddenException('File node is outside this share scope');
-    }
-    if (action === 'download' && !share.allowDownload) {
-      throw new ForbiddenException('Downloads are disabled for this share');
-    }
-    if (action === 'preview' && !share.allowPreview) {
-      throw new ForbiddenException('Preview is disabled for this share');
-    }
-
-    const node = await this.fileNodesService.getFileNode(nodeId);
-    if (!node) throw new NotFoundException('File node not found');
-    if (node.archivedAt) throw new GoneException('File node is archived');
-    return node;
   }
 
   private async resolveShareAccessIdentity(

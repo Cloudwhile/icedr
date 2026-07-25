@@ -122,6 +122,12 @@ export class FileNodesService {
     return node;
   }
 
+  async getFileNodes(ids: string[], access: FileAccessOptions = {}) {
+    const nodes = await this.fileNodesRepository.findByIds(ids);
+    nodes.forEach((node) => this.assertNodeAccess(node, access));
+    return nodes;
+  }
+
   getFilePolicy(): Promise<FilePolicyResponse> {
     return this.fileNodesRepository.getPolicy();
   }

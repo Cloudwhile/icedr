@@ -78,15 +78,34 @@ export class SharesController {
     });
   }
 
+  @Get(':token/management')
+  async getManagedShare(
+    @Param('token') token: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'share',
+      'read',
+    );
+    return this.sharesService.getManagedShare(token, {
+      actorRole: session.user.role,
+      actorUserId: session.user.id,
+    });
+  }
+
   @Get(':token')
   async getShare(
     @Param('token') token: string,
     @Headers('authorization') authorization: string | undefined,
+    @Headers('x-share-access-session') accessSessionId: string | undefined,
     @Req() request: Request,
   ) {
     const audit = await this.resolveShareRequestAudit(authorization, request);
     return this.sharesService.getShare(token, audit.metadata, {
       actor: audit.actor,
+      accessSessionId,
+      accountUser: audit.user,
     });
   }
 
@@ -215,17 +234,22 @@ export class SharesController {
   }
 
   @Get(':token/items/:nodeId/preview/status')
-  getPreviewStatus(
+  async getPreviewStatus(
     @Param('token') token: string,
     @Param('nodeId') nodeId: string,
     @Query('previewId') previewId: string,
+    @Headers('x-share-access-session') accessSessionId: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
     @Req() request: Request,
   ) {
+    const audit = await this.resolveShareRequestAudit(authorization, request);
     return this.sharesService.getPreviewStatus(
       token,
       nodeId,
       previewId,
-      createVisitorAuditMetadata(request),
+      accessSessionId,
+      audit.metadata,
+      audit.user,
     );
   }
 

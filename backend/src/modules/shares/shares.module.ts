@@ -10,6 +10,8 @@ import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import { ShareDownloadCommitRepository } from './share-download-commit.repository';
 import { ShareDownloadIntentRepository } from './share-download-intent.repository';
 import { ShareDownloadService } from './share-download.service';
+import { ShareContentRepository } from './share-content.repository';
+import { ShareContentService } from './share-content.service';
 import { ShareRateLimitRepository } from './share-rate-limit.repository';
 import { SharesRepository } from './shares.repository';
 import { SharesService } from './shares.service';
@@ -26,6 +28,8 @@ import { SharesService } from './shares.service';
   controllers: [SharesController],
   providers: [
     ShareAbuseProtectionService,
+    ShareContentRepository,
+    ShareContentService,
     ShareDownloadCommitRepository,
     ShareDownloadIntentRepository,
     ShareDownloadService,

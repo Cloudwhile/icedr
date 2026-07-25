@@ -358,6 +358,10 @@ export class FileDownloadPreviewService {
     if (!intent || intent.nodeId !== nodeId) {
       throw new NotFoundException('Preview intent not found');
     }
+    const expiresAt = intent.lifecycle.expiresAt;
+    if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+      throw new NotFoundException('Preview intent not found');
+    }
     const node = await this.requireActiveNode(nodeId, access);
     return this.withPreviewCapability(
       intent,

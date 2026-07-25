@@ -9,7 +9,11 @@ import {
   type ShareEmailCode,
   type ShareLink,
 } from '../../generated/prisma/client';
-import { CreateShareDto, ShareResponse } from './shares.dto';
+import type {
+  NormalizedCreateShareDto,
+  ShareContentMemberSnapshot,
+} from './share-content.types';
+import { ShareResponse } from './shares.dto';
 import {
   ShareAccessIdentityType,
   ShareAccessSession,
@@ -104,8 +108,9 @@ export class SharesRepository {
   ) {}
 
   async create(
-    dto: CreateShareDto,
+    dto: NormalizedCreateShareDto,
     creatorUserId?: string,
+    members: ShareContentMemberSnapshot[] = [],
   ): Promise<StoredShare> {
     const share: StoredShare = {
       token: await this.createUniqueToken(),
@@ -124,6 +129,7 @@ export class SharesRepository {
       remark: dto.remark ?? '',
       policy: dto.policy,
       downloadPolicy: resolveShareDownloadPolicy(dto.policy),
+      scopeMode: dto.scopeMode,
       createdAt: new Date().toISOString(),
       revokedAt: null,
     };
@@ -145,8 +151,20 @@ export class SharesRepository {
         expiresDays: share.expiresDays,
         remark: share.remark,
         policySnapshot: this.toPolicyJson(share.policy),
+        scopeMode: share.scopeMode,
         createdAt: new Date(share.createdAt),
         revokedAt: share.revokedAt ? new Date(share.revokedAt) : null,
+        contentMembers: {
+          create: members.map((member) => ({
+            nodeId: member.nodeId,
+            role: member.role,
+            snapshotParentNodeId: member.snapshotParentNodeId,
+            snapshotName: member.snapshotName,
+            snapshotKind: member.snapshotKind,
+            snapshotMimeType: member.snapshotMimeType,
+            snapshotSizeBytes: member.snapshotSizeBytes,
+          })),
+        },
       },
     });
 
@@ -630,6 +648,7 @@ export class SharesRepository {
       remark: row.remark ?? '',
       policy,
       downloadPolicy: resolveShareDownloadPolicy(policy),
+      scopeMode: row.scopeMode as ShareResponse['scopeMode'],
       createdAt: row.createdAt.toISOString(),
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     };

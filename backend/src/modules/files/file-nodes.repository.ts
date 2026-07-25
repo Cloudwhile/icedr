@@ -88,6 +88,14 @@ export class FileNodesRepository {
     return row ? this.mapRow(row) : null;
   }
 
+  async findByIds(ids: string[]) {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.fileNode.findMany({
+      where: { id: { in: [...new Set(ids)] } },
+    });
+    return rows.map((row) => this.mapRow(row));
+  }
+
   getPolicy() {
     return this.versionsRepository.getPolicy();
   }
