@@ -7,17 +7,57 @@ import {
 } from './file-upload-test-harness.helper';
 
 describe('FileNodesService facade', () => {
+  let nodes: FileNodesServiceTestHarness['nodes'];
   let repository: FileNodesServiceTestHarness['repository'];
   let service: FileNodesServiceTestHarness['service'];
 
   beforeEach(() => {
-    ({ repository, service } = createFileNodesServiceTestHarness());
+    ({ nodes, repository, service } = createFileNodesServiceTestHarness());
   });
 
   it('lists file nodes from the repository', async () => {
     const nodes = await service.listFileNodes('workspace-default');
 
     expect(nodes.some((node) => node.id === 'roadmap')).toBe(true);
+  });
+
+  it('treats a null personal owner as an explicit list and usage filter', async () => {
+    nodes.push(
+      createNode({
+        id: 'personal-unowned',
+        workspaceId: 'workspace-default',
+        spaceScope: 'personal',
+        parentNodeId: null,
+        name: 'Unowned.txt',
+        kind: 'doc',
+        mimeType: 'text/plain',
+        sizeBytes: 7,
+        objectKey: 'uploads/workspace-default/personal-unowned.txt',
+        owner: 'Legacy User',
+        ownerUserId: null,
+        starred: false,
+        archivedAt: null,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      }),
+    );
+
+    const listed = await service.listFileNodes('workspace-default', null, {
+      ownerUserId: null,
+      spaceScope: 'personal',
+    });
+    const usage = await repository.getStorageUsage('workspace-default', {
+      ownerUserId: null,
+      spaceScope: 'personal',
+    });
+
+    expect(listed.map((node) => node.id)).toEqual(['personal-unowned']);
+    expect(usage).toMatchObject({
+      activeBytes: 7,
+      fileCount: 1,
+      folderCount: 0,
+      usedBytes: 7,
+    });
   });
 
   it('keeps repeated generated copy names unique and within the byte limit', async () => {

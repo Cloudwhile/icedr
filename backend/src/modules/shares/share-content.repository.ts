@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import type { ShareContentMember } from '../../generated/prisma/client';
 import type { ShareContentMemberSnapshot } from './share-content.types';
 
 @Injectable()
@@ -13,7 +14,10 @@ export class ShareContentRepository {
     });
   }
 
-  findMember(shareToken: string, nodeId: string) {
+  findMember(
+    shareToken: string,
+    nodeId: string,
+  ): Promise<ShareContentMember | null> {
     return this.prisma.shareContentMember.findUnique({
       where: { shareToken_nodeId: { shareToken, nodeId } },
     });
