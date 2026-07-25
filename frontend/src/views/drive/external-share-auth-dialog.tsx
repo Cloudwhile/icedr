@@ -85,8 +85,8 @@ export function ShareAuthDialog({
     ...accessExperience,
     waitSeconds: remaining,
   };
-  const canSendCode = Boolean(accessItem) && isValidEmailAddress(email.trim()) && !busy && sendCooldownSeconds <= 0;
-  const canVerifyCode = Boolean(accessItem) && code.length === 6 && !busy && verifyCooldownSeconds <= 0;
+  const canSendCode = isValidEmailAddress(email.trim()) && !busy && sendCooldownSeconds <= 0;
+  const canVerifyCode = code.length === 6 && !busy && verifyCooldownSeconds <= 0;
   const showAuthMethodSelector = stage === "choose" || stage === "email" || stage === "code";
   const actionLabel = action === "download" ? t("actions.download") : t("share.openPreview");
 

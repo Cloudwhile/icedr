@@ -5,6 +5,7 @@ import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { AppInput } from "@/components/ui/app-input";
 import { AppPagination } from "@/components/ui/app-pagination";
 import { AppSelect } from "@/components/ui/app-select";
+import { ShareDetailsPanel } from "@/components/ui/share-details-panel";
 import { MotionList } from "@/components/ui/motion";
 import { findDriveItem, getIntlLocale, type DriveItem, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
 import type { AuditEventResponse } from "@/lib/drive-api";
@@ -25,6 +26,7 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const timeZone = useTimeZone();
+  const [focusedLinkToken, setFocusedLinkToken] = useState<string | null>(null);
   const activeLinks = links.filter((link) => (link.status ?? (link.revokedAt ? "revoked" : "active")) === "active");
   const riskLinks = links.filter((link) => link.riskLevel === "high");
   const expiredLinks = links.filter((link) => link.status === "expired");
@@ -108,6 +110,9 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
                   </div>
 
                   <div className="drive-module-row-actions">
+                    <ToolButton label={t("links.viewDetails")} palette={palette} onClick={() => setFocusedLinkToken(link.token)}>
+                      <LocalIcon name="info" size={16} />
+                    </ToolButton>
                     <ToolButton label={t("actions.copyLink")} palette={palette} onClick={() => onCopyLink(link.token)}>
                       <LocalIcon name="copy" size={16} />
                     </ToolButton>
@@ -121,7 +126,15 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
           </MotionList>
         </div>
 
-        {riskLinks.length > 0 ? (
+        {focusedLinkToken ? (
+          <div className="drive-module-side-stack drive-links-side-stack">
+            <ShareDetailsPanel
+              onClose={() => setFocusedLinkToken(null)}
+              palette={palette}
+              token={focusedLinkToken}
+            />
+          </div>
+        ) : riskLinks.length > 0 ? (
           <aside className="drive-module-side-stack drive-links-side-stack">
             <MotionList key={riskLinks.map((link) => link.token).join("|")} className="drive-risk-grid">
               {riskLinks.slice(0, 2).map((link) => {

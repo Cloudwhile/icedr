@@ -101,8 +101,15 @@ export function ExternalShareSidePanel({
           <span>{t("share.shareInformation")}</span>
         </div>
         <div className="external-share-fact-list">
-          <FactRow label={t("share.items")} value={String(totalItems)} />
+          <FactRow label={t("settings.fileCount")} value={String(registeredShare.contentSummary?.fileCount ?? totalItems)} />
+          <FactRow label={t("settings.folderCount")} value={String(registeredShare.contentSummary?.folderCount ?? 0)} />
           <FactRow label={t("share.totalSize")} value={totalSize === "--" ? rootSize : totalSize} />
+          {registeredShare.contentSummary?.unavailableCount ? (
+            <FactRow label={t("share.unavailableItems")} value={String(registeredShare.contentSummary.unavailableCount)} />
+          ) : null}
+          {registeredShare.contentSummary?.changedCount ? (
+            <FactRow label={t("share.changedItems")} value={String(registeredShare.contentSummary.changedCount)} />
+          ) : null}
           <FactRow label={t("share.expires")} value={expiresLabel} />
           <FactRow label={t("preview.createdAt")} value={createdAt} />
           <FactRow label={t("share.visits")} value={String(registeredShare.visitCount ?? 0)} />

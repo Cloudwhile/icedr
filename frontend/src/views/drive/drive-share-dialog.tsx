@@ -6,11 +6,11 @@ import { useRouter } from "@/compat/navigation";
 import { ActionButton } from "@/components/ui/action-button";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import { useMotionStagger } from "@/components/ui/motion";
+import { ShareScopePicker } from "@/components/ui/share-scope-picker";
 import { copyTextToClipboard, createShareUrl } from "@/features/file/actions";
 import {
   findDriveItem,
   formatFileSize,
-  getChildItems,
   getItemKind,
   sumDriveItemSizes,
   type DriveItem,
@@ -20,10 +20,15 @@ import {
   type ThemeMode,
 } from "@/features/file/model";
 import {
+  buildShareMemberScope,
+  type FolderShareVisibility,
+} from "@/features/share/member-scope";
+import {
   collectShareDescendants,
   createRegisteredShare,
   type RegisteredShare,
   type RegisteredShareMode,
+  type ShareSelectionInput,
 } from "@/features/share/registry";
 import { policyFromWorkspaceSettings } from "@/features/share/policy";
 import { useLocale, useTranslations } from "@/i18n/react";
@@ -36,10 +41,15 @@ const buttonTypeAttr = { type: "button" as const };
 type ShareCollection = {
   allowedIds: Set<string>;
   dynamicRootId: string | null;
+  folderRoot: DriveItem | null;
+  isValid: boolean;
+  itemCount: number;
   mode: RegisteredShareMode;
   owner: string;
   rootItems: DriveItem[];
+  selection: ShareSelectionInput | null;
   title: string;
+  totalSizeBytes: number | null;
 };
 
 export type DriveShareDialogProps = {
@@ -58,7 +68,18 @@ export type DriveShareDialogProps = {
   workspaceSettings?: WorkspaceShareSettings | null;
 };
 
-export function DriveShareDialog({
+export function DriveShareDialog(props: DriveShareDialogProps) {
+  if (!props.open) return null;
+
+  return (
+    <DriveShareDialogContent
+      key={getFolderShareRootId(props) ?? "non-folder"}
+      {...props}
+    />
+  );
+}
+
+function DriveShareDialogContent({
   currentDirectoryItems,
   currentFolder,
   onClose,
@@ -84,7 +105,10 @@ export function DriveShareDialog({
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [expiryDaysInput, setExpiryDaysInput] = useState<string | null>(null);
+  const [folderVisibility, setFolderVisibility] =
+    useState<FolderShareVisibility>("entire-folder");
   const [remark, setRemark] = useState("");
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const policy = useMemo(() => policyFromWorkspaceSettings(workspaceSettings), [workspaceSettings]);
   const maxExpiresDays = workspaceSettings?.maxExpiresDays ?? 30;
   const collection = useMemo(
@@ -92,20 +116,23 @@ export function DriveShareDialog({
       buildShareCollection({
         currentDirectoryItems,
         currentFolder,
+        folderVisibility,
         rootTitle,
+        selectedMemberIds,
         selectedItems,
         sourceItems,
       }),
-    [currentDirectoryItems, currentFolder, rootTitle, selectedItems, sourceItems],
+    [
+      currentDirectoryItems,
+      currentFolder,
+      folderVisibility,
+      rootTitle,
+      selectedItems,
+      selectedMemberIds,
+      sourceItems,
+    ],
   );
-  const shareItems = useMemo(
-    () =>
-      Array.from(collection.allowedIds)
-        .map((id) => findDriveItem(id, sourceItems))
-        .filter((item): item is DriveItem => Boolean(item)),
-    [collection.allowedIds, sourceItems],
-  );
-  const totalSize = formatFileSize(sumDriveItemSizes(collection.rootItems, sourceItems), locale);
+  const totalSize = formatFileSize(collection.totalSizeBytes, locale);
   const expiresLabel = t("share.expiryValue", {
     count: policy.expiresValue,
     unit: t(`share.units.${policy.expiresUnit}`),
@@ -123,7 +150,9 @@ export function DriveShareDialog({
     setCreateFeedback(null);
     setCreating(false);
     setExpiryDaysInput(null);
+    setFolderVisibility("entire-folder");
     setRemark("");
+    setSelectedMemberIds([]);
     onClose();
   }, [onClose]);
 
@@ -143,7 +172,7 @@ export function DriveShareDialog({
   }, [closeShareDialog, creating, open]);
 
   const createShare = () => {
-    if (creating) return;
+    if (creating || !collection.isValid || !collection.selection) return;
     setCreating(true);
     setCreateFeedback(null);
     const expires = Math.min(Math.max(Number(expiryDays) || policy.expiresValue, 1), maxExpiresDays);
@@ -159,6 +188,7 @@ export function DriveShareDialog({
       policy,
       remark: remark.trim(),
       rootItemIds: collection.rootItems.map((item) => item.id),
+      selection: collection.selection,
       title: collection.title,
       token: "",
       workspaceId,
@@ -232,10 +262,8 @@ export function DriveShareDialog({
               <ShareTargetSummary
                 collection={collection}
                 expiresLabel={expiresLabel}
-                locale={locale}
                 palette={palette}
-                shareItems={shareItems.length}
-                sourceItems={sourceItems}
+                shareItems={collection.itemCount}
                 totalSize={totalSize}
               />
               {policyLoadError ? (
@@ -257,7 +285,28 @@ export function DriveShareDialog({
                 setExpiryDays={setExpiryDaysInput}
                 setRemark={setRemark}
               />
-              <ShareCollectionList collection={collection} locale={locale} palette={palette} sourceItems={sourceItems} />
+              {collection.folderRoot ? (
+                <section className="drive-share-scope">
+                  <span className="drive-share-section-label">{t("share.visibleScope")}</span>
+                  <ShareScopePicker
+                    mode={folderVisibility}
+                    onModeChange={(nextMode) => {
+                      setFolderVisibility(nextMode);
+                      if (nextMode === "selected-items") setSelectedMemberIds([]);
+                    }}
+                    onSelectedIdsChange={setSelectedMemberIds}
+                    palette={palette}
+                    rootFolder={collection.folderRoot}
+                    selectedIds={selectedMemberIds}
+                    sourceItems={sourceItems}
+                  />
+                  {!collection.isValid ? (
+                    <span className="drive-share-scope-error">{t("share.selectAtLeastOneItem")}</span>
+                  ) : null}
+                </section>
+              ) : (
+                <ShareCollectionList collection={collection} locale={locale} palette={palette} sourceItems={sourceItems} />
+              )}
             </div>
           )}
 
@@ -292,7 +341,7 @@ export function DriveShareDialog({
                   <LocalIcon name="cross" size={17} />
                 </ToolButton>
                 <ActionButton
-                  disabled={creating}
+                  disabled={creating || !collection.isValid}
                   icon={creating ? <LoadingSpinner palette={palette} size={14} /> : <LocalIcon name="link" size={17} />}
                   onClick={createShare}
                   palette={palette}
@@ -313,18 +362,14 @@ export function DriveShareDialog({
 function ShareTargetSummary({
   collection,
   expiresLabel,
-  locale,
   palette,
   shareItems,
-  sourceItems,
   totalSize,
 }: {
   collection: ShareCollection;
   expiresLabel: string;
-  locale: Locale;
   palette: Palette;
   shareItems: number;
-  sourceItems: DriveItem[];
   totalSize: string;
 }) {
   const t = useTranslations();
@@ -340,7 +385,7 @@ function ShareTargetSummary({
         <span className="drive-share-target-copy">
           <span className="drive-share-target-name icedr-truncate">{collection.title}</span>
           <span className="drive-share-target-meta icedr-truncate">
-            {t(`share.mode.${collection.mode}`)} · {formatFileSize(sumDriveItemSizes(collection.rootItems, sourceItems), locale)}
+            {t(`share.mode.${collection.mode}`)} · {totalSize}
           </span>
         </span>
       </div>
@@ -447,7 +492,7 @@ function ShareCollectionList({
     <section className="drive-share-collection">
       <div className="drive-share-collection-head">
         <span className="drive-share-section-label">{t("share.collection")}</span>
-        <StatusPill palette={palette}>{t("share.itemCountValue", { count: collection.allowedIds.size })}</StatusPill>
+        <StatusPill palette={palette}>{t("share.itemCountValue", { count: collection.itemCount })}</StatusPill>
       </div>
       <div ref={listRef} className="drive-share-collection-list">
         {visibleItems.map((item) => (
@@ -558,67 +603,168 @@ async function copyShareLink(
   onCopyFeedback(t("app.copied"));
 }
 
-function buildShareCollection({
+export function buildShareCollection({
   currentDirectoryItems,
   currentFolder,
+  folderVisibility,
   rootTitle,
+  selectedMemberIds,
   selectedItems,
   sourceItems,
 }: {
   currentDirectoryItems: DriveItem[];
   currentFolder?: DriveItem;
+  folderVisibility: FolderShareVisibility;
   rootTitle: string;
+  selectedMemberIds: string[];
   selectedItems: DriveItem[];
   sourceItems: DriveItem[];
 }): ShareCollection {
   if (selectedItems.length === 1 && getItemKind(selectedItems[0]) !== "folder") {
+    const item = selectedItems[0];
     return {
-      allowedIds: new Set(selectedItems.map((item) => item.id)),
+      allowedIds: new Set([item.id]),
       dynamicRootId: null,
+      folderRoot: null,
+      isValid: true,
+      itemCount: 1,
       mode: "single-file",
-      owner: selectedItems[0].owner,
-      rootItems: selectedItems,
-      title: selectedItems[0].name,
+      owner: item.owner,
+      rootItems: [item],
+      selection: { type: "single-file", itemId: item.id },
+      title: item.name,
+      totalSizeBytes: Math.max(0, item.sizeBytes ?? 0),
     };
   }
 
   if (selectedItems.length === 1 && getItemKind(selectedItems[0]) === "folder") {
-    const folder = selectedItems[0];
-    const descendants = collectShareDescendants(folder, sourceItems);
-    return {
-      allowedIds: new Set(descendants.map((item) => item.id)),
-      dynamicRootId: folder.id,
-      mode: "folder",
-      owner: folder.owner,
-      rootItems: getChildItems(folder.id, sourceItems),
-      title: folder.name,
-    };
+    return buildFolderShareCollection(
+      selectedItems[0],
+      sourceItems,
+      folderVisibility,
+      selectedMemberIds,
+    );
   }
 
   if (selectedItems.length > 1) {
-    const selectedAndDescendants = selectedItems.flatMap((item) => [item, ...collectShareDescendants(item, sourceItems)]);
-    const parentId = selectedItems.every((item) => item.parentId === selectedItems[0].parentId) ? selectedItems[0].parentId : null;
-    const parent = parentId ? findDriveItem(parentId, sourceItems) : undefined;
-    return {
-      allowedIds: new Set(selectedAndDescendants.map((item) => item.id)),
-      dynamicRootId: null,
-      mode: "multi-file",
-      owner: selectedItems.every((item) => item.owner === selectedItems[0].owner) ? selectedItems[0].owner : "",
-      rootItems: selectedItems,
-      title: parent?.name ?? rootTitle,
-    };
+    return buildMultiItemShareCollection(selectedItems, sourceItems, rootTitle);
   }
 
-  const rootItems = currentDirectoryItems;
-  const descendants = currentFolder ? collectShareDescendants(currentFolder, sourceItems) : sourceItems;
+  if (currentFolder) {
+    return buildFolderShareCollection(
+      currentFolder,
+      sourceItems,
+      folderVisibility,
+      selectedMemberIds,
+    );
+  }
+
+  return buildMultiItemShareCollection(currentDirectoryItems, sourceItems, rootTitle);
+}
+
+function buildFolderShareCollection(
+  folder: DriveItem,
+  sourceItems: DriveItem[],
+  folderVisibility: FolderShareVisibility,
+  selectedMemberIds: string[],
+): ShareCollection {
+  const scope = buildShareMemberScope({
+    rootFolder: folder,
+    sourceItems,
+    mode: folderVisibility,
+    selectedIds: selectedMemberIds,
+  });
+  const isValid =
+    folderVisibility === "entire-folder" ||
+    scope.normalizedSelectedIds.length > 0;
+
   return {
-    allowedIds: new Set(descendants.map((item) => item.id)),
-    dynamicRootId: currentFolder?.id ?? null,
+    allowedIds: new Set(scope.visibleMemberIds),
+    dynamicRootId: folder.id,
+    folderRoot: folder,
+    isValid,
+    itemCount: scope.fileCount + scope.folderCount,
     mode: "folder",
-    owner: currentFolder?.owner ?? rootItems.find((item) => item.owner)?.owner ?? "",
-    rootItems,
-    title: currentFolder?.name ?? rootTitle,
+    owner: folder.owner,
+    rootItems: [folder],
+    selection: {
+      type: "folder",
+      folderId: folder.id,
+      visibility: folderVisibility,
+      ...(folderVisibility === "selected-items"
+        ? { selectedItemIds: scope.normalizedSelectedIds }
+        : {}),
+    },
+    title: folder.name,
+    totalSizeBytes: scope.totalSizeBytes,
   };
+}
+
+function buildMultiItemShareCollection(
+  requestedItems: DriveItem[],
+  sourceItems: DriveItem[],
+  rootTitle: string,
+): ShareCollection {
+  const rootItems = normalizeShareRoots(requestedItems, sourceItems);
+  const allowedItems = rootItems.flatMap((item) => [
+    item,
+    ...collectShareDescendants(item, sourceItems),
+  ]);
+  const allowedIds = new Set(allowedItems.map((item) => item.id));
+  const parentId =
+    rootItems.length > 0 &&
+    rootItems.every((item) => item.parentId === rootItems[0].parentId)
+      ? rootItems[0].parentId
+      : null;
+  const parent = parentId ? findDriveItem(parentId, sourceItems) : undefined;
+  const owner =
+    rootItems.length > 0 &&
+    rootItems.every((item) => item.owner === rootItems[0].owner)
+      ? rootItems[0].owner
+      : "";
+
+  return {
+    allowedIds,
+    dynamicRootId: null,
+    folderRoot: null,
+    isValid: rootItems.length > 0,
+    itemCount: allowedIds.size,
+    mode: "multi-file",
+    owner,
+    rootItems,
+    selection:
+      rootItems.length > 0
+        ? { type: "multi-item", itemIds: rootItems.map((item) => item.id) }
+        : null,
+    title: parent?.name ?? rootTitle,
+    totalSizeBytes: sumDriveItemSizes(rootItems, sourceItems),
+  };
+}
+
+function normalizeShareRoots(items: DriveItem[], sourceItems: DriveItem[]) {
+  const requestedById = new Map(items.map((item) => [item.id, item]));
+
+  return items.filter((item, index) => {
+    if (items.findIndex((candidate) => candidate.id === item.id) !== index) {
+      return false;
+    }
+    let parentId = item.parentId;
+    const visited = new Set([item.id]);
+
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = findDriveItem(parentId, sourceItems);
+      if (!parent) return true;
+      if (
+        getItemKind(parent) === "folder" &&
+        requestedById.has(parent.id)
+      ) {
+        return false;
+      }
+      parentId = parent.parentId;
+    }
+    return true;
+  });
 }
 
 function resolveCreatedShareUrl(token: string, apiUrl?: string) {
@@ -631,6 +777,20 @@ function resolveCreatedShareUrl(token: string, apiUrl?: string) {
     }
   }
   return createShareUrl(token);
+}
+
+function getFolderShareRootId({
+  currentFolder,
+  selectedItems,
+}: Pick<DriveShareDialogProps, "currentFolder" | "selectedItems">) {
+  if (
+    selectedItems.length === 1 &&
+    getItemKind(selectedItems[0]) === "folder"
+  ) {
+    return selectedItems[0].id;
+  }
+
+  return selectedItems.length === 0 ? (currentFolder?.id ?? null) : null;
 }
 
 function getShareModeIcon(mode: RegisteredShareMode): LocalIconName {

@@ -12,6 +12,16 @@ import {
 const apiUnavailableMessage = "Share API is unavailable";
 
 export type RegisteredShareMode = "single-file" | "multi-file" | "folder";
+export type RegisteredShareScopeMode = "legacy" | "items" | "entire-folder" | "selected-items";
+export type ShareSelectionInput =
+  | { type: "single-file"; itemId: string }
+  | { type: "multi-item"; itemIds: string[] }
+  | {
+      type: "folder";
+      folderId: string;
+      visibility: "entire-folder" | "selected-items";
+      selectedItemIds?: string[];
+    };
 export type RegisteredShareSpeedUnit = "KB/s" | "MB/s";
 export type RegisteredShareTimeUnit = "seconds" | "minutes";
 export type RegisteredShareExpiryUnit = "hours" | "days";
@@ -33,19 +43,27 @@ export type RegisteredSharePolicy = {
 
 export type RegisteredShareItem = {
   id: string;
-  workspaceId: string;
   parentNodeId: string | null;
   name: string;
   kind: DriveItemKind;
   mimeType: string;
   sizeBytes: number | null;
   hasContent: boolean;
-  owner: string;
-  starred: boolean;
-  archivedAt: string | null;
   previewCapability?: FilePreviewCapability;
-  createdAt: string;
-  updatedAt: string;
+  availability: "available" | "archived" | "missing" | "out-of-scope";
+  changes: Array<"moved" | "renamed">;
+  role: "root" | "selected" | "navigation" | "descendant";
+  snapshotName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ShareContentSummary = {
+  fileCount: number;
+  folderCount: number;
+  totalSizeBytes: number;
+  unavailableCount: number;
+  changedCount: number;
 };
 
 export type RegisteredShare = {
@@ -63,6 +81,9 @@ export type RegisteredShare = {
   remark: string;
   policy: RegisteredSharePolicy;
   downloadPolicy?: ShareDownloadPolicy;
+  scopeMode?: RegisteredShareScopeMode;
+  contentSummary?: ShareContentSummary;
+  selection?: ShareSelectionInput;
   createdAt: string;
   url?: string;
   revokedAt?: string | null;
@@ -109,6 +130,8 @@ function mapShareApiResponse(response: ShareApiResponse): RegisteredShare {
     remark: response.remark,
     policy: response.policy,
     downloadPolicy: response.downloadPolicy,
+    scopeMode: response.scopeMode ?? "legacy",
+    contentSummary: response.contentSummary,
     createdAt: response.createdAt,
     url: response.url,
     revokedAt: response.revokedAt,
@@ -148,7 +171,15 @@ export async function createRegisteredShare(record: RegisteredShare) {
   try {
     const response = await requestShareApi<ShareApiResponse>("/shares", {
       method: "POST",
-      body: JSON.stringify({
+      body: JSON.stringify(record.selection ? {
+        workspaceId: record.workspaceId,
+        selection: record.selection,
+        allowDownload: record.allowDownload,
+        allowPreview: record.allowPreview,
+        expiresDays: record.expiresDays,
+        remark: record.remark,
+        policy: record.policy,
+      } : {
         title: record.title,
         workspaceId: record.workspaceId,
         mode: record.mode,
@@ -172,9 +203,32 @@ export async function createRegisteredShare(record: RegisteredShare) {
   }
 }
 
-export async function fetchRegisteredShare(token: string) {
+export async function fetchRegisteredShare(token: string, accessSessionId?: string) {
   try {
-    const response = await requestShareApi<ShareApiResponse | null>(`/shares/${encodeURIComponent(token)}`);
+    const response = await requestShareApi<ShareApiResponse | null>(
+      `/shares/${encodeURIComponent(token)}`,
+      accessSessionId
+        ? {
+            headers: {
+              "x-share-access-session": accessSessionId,
+            },
+          }
+        : undefined,
+    );
+    return response ? mapShareApiResponse(response) : undefined;
+  } catch (error) {
+    if (error instanceof ShareApiUnavailableError) {
+      throw new DriveApiError(apiUnavailableMessage);
+    }
+    throw error;
+  }
+}
+
+export async function fetchRegisteredShareManagement(token: string) {
+  try {
+    const response = await requestShareApi<ShareApiResponse | null>(
+      `/shares/${encodeURIComponent(token)}/management`,
+    );
     return response ? mapShareApiResponse(response) : undefined;
   } catch (error) {
     if (error instanceof ShareApiUnavailableError) {
@@ -223,7 +277,8 @@ export async function revokeRegisteredShare(token: string) {
 }
 
 export function getShareItems(record: RegisteredShare, sourceItems?: DriveItem[]) {
-  const allowed = new Set(record.allowedItemIds);
+  const responseItemIds = record.items?.map((item) => item.id) ?? [];
+  const allowed = new Set(responseItemIds.length > 0 ? responseItemIds : record.allowedItemIds);
   const rootItems = record.rootItemIds.map((id) => findDriveItem(id, sourceItems)).filter((item): item is DriveItem => Boolean(item));
   const allowedItems = record.allowedItemIds.map((id) => findDriveItem(id, sourceItems)).filter((item): item is DriveItem => Boolean(item));
 
@@ -245,7 +300,7 @@ export function getRegisteredShareParent(record: RegisteredShare, folderId: stri
   const folder = findDriveItem(folderId, sourceItems);
   if (!folder?.parentId) return null;
   if (folder.parentId === record.dynamicRootId) return null;
-  return record.allowedItemIds.includes(folder.parentId) ? folder.parentId : null;
+  return getShareItems(record, sourceItems).allowed.has(folder.parentId) ? folder.parentId : null;
 }
 
 export function collectShareDescendants(item: DriveItem, sourceItems?: DriveItem[]) {
