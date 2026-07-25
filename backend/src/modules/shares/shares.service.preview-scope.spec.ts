@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   createDto,
   createSharesServiceHarness,
@@ -10,6 +10,7 @@ describe('SharesService preview and scope', () => {
   let createEmailSession: SharesServiceHarness['createEmailSession'];
   let expectRateLimited: SharesServiceHarness['expectRateLimited'];
   let fileNodesService: SharesServiceHarness['fileNodesService'];
+  let nodes: SharesServiceHarness['nodes'];
   let repository: SharesServiceHarness['repository'];
   let service: SharesServiceHarness['service'];
   let storageService: SharesServiceHarness['storageService'];
@@ -20,6 +21,7 @@ describe('SharesService preview and scope', () => {
       createEmailSession,
       expectRateLimited,
       fileNodesService,
+      nodes,
       repository,
       service,
       storageService,
@@ -115,7 +117,7 @@ describe('SharesService preview and scope', () => {
         'retention',
         session.sessionId,
       ),
-    ).rejects.toThrow('outside this share scope');
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('creates preview intents through the file-node preview adapter', async () => {
@@ -127,8 +129,22 @@ describe('SharesService preview and scope', () => {
       session.sessionId,
     );
 
-    expect(intent.previewId).toBe('preview-test');
+    expect(intent.previewId).toMatch(/^spv1\./);
+    expect(intent.previewId).not.toContain('preview-test');
     expect(intent.statusUrl).toContain('/api/shares/');
+    expect(intent).not.toHaveProperty('actorUserId');
+    const status = await service.getPreviewStatus(
+      created.token,
+      'roadmap',
+      intent.previewId,
+    );
+    expect(status).toMatchObject({ previewId: intent.previewId });
+    expect(status).not.toHaveProperty('actorUserId');
+    expect(fileNodesService.getPreviewStatus).toHaveBeenCalledWith(
+      'roadmap',
+      'preview-test',
+      { actorRole: 'admin' },
+    );
     await expect(
       repository.countAuditEvents('share.preview_requested'),
     ).resolves.toBe(1);
@@ -207,27 +223,177 @@ describe('SharesService preview and scope', () => {
     expect(fileNodesService.createPreviewIntent).not.toHaveBeenCalled();
   });
 
+  it('requires a valid access session when polling a protected preview', async () => {
+    const dto = createDto();
+    const created = await service.createShare({
+      ...dto,
+      policy: { ...dto.policy, allowedDomain: 'example.com' },
+    });
+    const session = await createEmailSession(created.token);
+    const intent = await service.createPreviewIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    fileNodesService.getPreviewStatus.mockClear();
+
+    await expect(
+      service.getPreviewStatus(created.token, 'roadmap', intent.previewId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.getPreviewStatus(
+        created.token,
+        'roadmap',
+        intent.previewId,
+        'sas_invalid',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(fileNodesService.getPreviewStatus).not.toHaveBeenCalled();
+
+    await expect(
+      service.getPreviewStatus(
+        created.token,
+        'roadmap',
+        intent.previewId,
+        session.sessionId,
+      ),
+    ).resolves.toMatchObject({ previewId: intent.previewId });
+  });
+
   it('rate limits preview status polling', async () => {
     configValues['share.rateLimit.viewMax'] = 1;
     configValues['share.rateLimit.viewWindowSeconds'] = 60;
     const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const intent = await service.createPreviewIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
     const visitor = { ip: '203.0.113.46', userAgent: 'Spec Browser' };
 
     await service.getPreviewStatus(
       created.token,
       'roadmap',
-      'preview-test',
+      intent.previewId,
+      undefined,
       visitor,
     );
     await expectRateLimited(
       service.getPreviewStatus(
         created.token,
         'roadmap',
-        'preview-test',
+        intent.previewId,
+        undefined,
         visitor,
       ),
     );
 
     expect(fileNodesService.getPreviewStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a preview capability reused with another node or share token', async () => {
+    const dto = {
+      ...createDto(),
+      mode: 'multi-file' as const,
+      rootItemIds: ['roadmap', 'product-brief'],
+      allowedItemIds: ['roadmap', 'product-brief'],
+    };
+    const first = await service.createShare(dto);
+    const second = await service.createShare(dto);
+    const firstSession = await createEmailSession(first.token);
+    const intent = await service.createPreviewIntent(
+      first.token,
+      'roadmap',
+      firstSession.sessionId,
+    );
+    fileNodesService.getPreviewStatus.mockClear();
+
+    await expect(
+      service.getPreviewStatus(first.token, 'product-brief', intent.previewId),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.getPreviewStatus(second.token, 'roadmap', intent.previewId),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(fileNodesService.getPreviewStatus).not.toHaveBeenCalled();
+  });
+
+  it('revokes a dynamic-folder preview capability after the node moves out', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      selection: {
+        type: 'folder',
+        folderId: 'folder-product',
+        visibility: 'entire-folder',
+      },
+    });
+    const session = await createEmailSession(created.token);
+    const intent = await service.createPreviewIntent(
+      created.token,
+      'product-brief',
+      session.sessionId,
+    );
+    const node = nodes.get('product-brief')!;
+    nodes.set('product-brief', { ...node, parentNodeId: null });
+
+    await expect(
+      service.getPreviewStatus(
+        created.token,
+        'product-brief',
+        intent.previewId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('keeps a fixed selected member authorized after a move', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      selection: {
+        type: 'folder',
+        folderId: 'folder-product',
+        visibility: 'selected-items',
+        selectedItemIds: ['product-brief'],
+      },
+    });
+    const session = await createEmailSession(created.token);
+    const intent = await service.createPreviewIntent(
+      created.token,
+      'product-brief',
+      session.sessionId,
+    );
+    const node = nodes.get('product-brief')!;
+    nodes.set('product-brief', { ...node, parentNodeId: null });
+
+    await expect(
+      service.getPreviewStatus(
+        created.token,
+        'product-brief',
+        intent.previewId,
+      ),
+    ).resolves.toMatchObject({ previewId: intent.previewId });
+  });
+
+  it('rejects an existing preview capability after archival or deletion', async () => {
+    const created = await service.createShare(createDto());
+    const session = await createEmailSession(created.token);
+    const intent = await service.createPreviewIntent(
+      created.token,
+      'roadmap',
+      session.sessionId,
+    );
+    const node = nodes.get('roadmap')!;
+    nodes.set('roadmap', {
+      ...node,
+      archivedAt: new Date().toISOString(),
+    });
+
+    await expect(
+      service.getPreviewStatus(created.token, 'roadmap', intent.previewId),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    nodes.delete('roadmap');
+    await expect(
+      service.getPreviewStatus(created.token, 'roadmap', intent.previewId),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

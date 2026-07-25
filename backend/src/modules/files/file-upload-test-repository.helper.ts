@@ -52,7 +52,7 @@ export function createFileNodesRepositoryMock(input: {
         parentNodeId?: string | null,
         state = 'active',
         filter: {
-          ownerUserId?: string;
+          ownerUserId?: string | null;
           spaceScope?: FileNodeSpaceScope;
         } = {},
       ) =>
@@ -63,7 +63,8 @@ export function createFileNodesRepositoryMock(input: {
               node.parentNodeId === (parentNodeId ?? null) &&
               (state !== 'active' || !node.archivedAt) &&
               node.spaceScope === (filter.spaceScope ?? 'workspace') &&
-              (!filter.ownerUserId || node.ownerUserId === filter.ownerUserId),
+              (filter.ownerUserId === undefined ||
+                node.ownerUserId === filter.ownerUserId),
           ),
         ),
     ),
@@ -71,7 +72,7 @@ export function createFileNodesRepositoryMock(input: {
       (
         workspaceId: string,
         filter: {
-          ownerUserId?: string;
+          ownerUserId?: string | null;
           spaceScope?: FileNodeSpaceScope;
         } = {},
       ) =>
@@ -82,7 +83,7 @@ export function createFileNodesRepositoryMock(input: {
                 node.workspaceId === workspaceId &&
                 !node.archivedAt &&
                 node.spaceScope === (filter.spaceScope ?? 'workspace') &&
-                (!filter.ownerUserId ||
+                (filter.ownerUserId === undefined ||
                   node.ownerUserId === filter.ownerUserId),
             )
             .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
@@ -93,7 +94,8 @@ export function createFileNodesRepositoryMock(input: {
               !node.archivedAt &&
               node.sizeBytes !== null &&
               node.spaceScope === (filter.spaceScope ?? 'workspace') &&
-              (!filter.ownerUserId || node.ownerUserId === filter.ownerUserId),
+              (filter.ownerUserId === undefined ||
+                node.ownerUserId === filter.ownerUserId),
           ).length,
           folderCount: nodes.filter(
             (node) =>
@@ -101,7 +103,8 @@ export function createFileNodesRepositoryMock(input: {
               !node.archivedAt &&
               node.sizeBytes === null &&
               node.spaceScope === (filter.spaceScope ?? 'workspace') &&
-              (!filter.ownerUserId || node.ownerUserId === filter.ownerUserId),
+              (filter.ownerUserId === undefined ||
+                node.ownerUserId === filter.ownerUserId),
           ).length,
           quotaBytes: null,
           trashBytes: 0,
@@ -112,7 +115,7 @@ export function createFileNodesRepositoryMock(input: {
               (node) =>
                 node.workspaceId === workspaceId &&
                 node.spaceScope === (filter.spaceScope ?? 'workspace') &&
-                (!filter.ownerUserId ||
+                (filter.ownerUserId === undefined ||
                   node.ownerUserId === filter.ownerUserId),
             )
             .reduce((total, node) => total + (node.sizeBytes ?? 0), 0),
@@ -387,17 +390,33 @@ export function createFileNodesRepositoryMock(input: {
     ),
     findPreviewArtifact: jest.fn((previewId: string) => {
       const nodeId =
-        previewId === 'preview-personal-b' ? 'personal-b' : 'roadmap';
+        previewId === 'preview-test'
+          ? 'roadmap'
+          : previewId === 'preview-personal-b'
+            ? 'personal-b'
+            : null;
+      if (!nodeId) return Promise.resolve(null);
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return Promise.resolve(null);
       return Promise.resolve({
         previewId,
         nodeId,
+        actorUserId: null,
         status: 'completed',
         legacyPreviewStatus: 'ready',
-        previewType: 'docx',
-        renderMode: 'docx',
+        previewType: node.previewCapability.renderMode,
+        renderMode: node.previewCapability.renderMode,
         statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
-        capability: nodes.find((node) => node.id === 'roadmap')
-          ?.previewCapability,
+        capability: node.previewCapability,
+        lifecycle: {
+          status: 'completed' as const,
+          errorCode: null,
+          errorMessage: null,
+          retryable: false,
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+          expiresAt: null,
+        },
         error: null,
       });
     }),

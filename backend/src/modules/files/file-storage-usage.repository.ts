@@ -4,7 +4,7 @@ import { Prisma } from '../../generated/prisma/client';
 import type { FileNodeSpaceScope } from './file-nodes.dto';
 
 export type FileNodeSpaceFilter = {
-  ownerUserId?: string;
+  ownerUserId?: string | null;
   spaceScope?: FileNodeSpaceScope;
 };
 
@@ -16,7 +16,9 @@ export class FileStorageUsageRepository {
     const scopedWhere: Prisma.FileNodeWhereInput = {
       workspaceId,
       spaceScope: filter.spaceScope ?? 'workspace',
-      ...(filter.ownerUserId ? { ownerUserId: filter.ownerUserId } : {}),
+      ...(filter.ownerUserId !== undefined
+        ? { ownerUserId: filter.ownerUserId }
+        : {}),
     };
     const [activeStats, trashStats, folderCount, versionStats, workspace] =
       await Promise.all([

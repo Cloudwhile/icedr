@@ -26,6 +26,8 @@ import {
 
 export type { StoredFileVersionResponse } from './file-node-versions.repository';
 
+const fileNodeLookupBatchSize = 500;
+
 export type FileAuditAction =
   | 'file.folder_created'
   | 'file.renamed'
@@ -73,7 +75,9 @@ export class FileNodesRepository {
       where: {
         ...(workspaceId ? { workspaceId } : {}),
         spaceScope: filter.spaceScope ?? 'workspace',
-        ...(filter.ownerUserId ? { ownerUserId: filter.ownerUserId } : {}),
+        ...(filter.ownerUserId !== undefined
+          ? { ownerUserId: filter.ownerUserId }
+          : {}),
         ...(parentNodeId !== undefined ? { parentNodeId } : {}),
         ...(state === 'active' ? { archivedAt: null } : {}),
         ...(state === 'archived' ? { archivedAt: { not: null } } : {}),
@@ -86,6 +90,30 @@ export class FileNodesRepository {
   async findById(id: string) {
     const row = await this.prisma.fileNode.findUnique({ where: { id } });
     return row ? this.mapRow(row) : null;
+  }
+
+  async findByIds(ids: string[]) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+
+    const rowsById = new Map<string, FileNode>();
+    for (
+      let offset = 0;
+      offset < uniqueIds.length;
+      offset += fileNodeLookupBatchSize
+    ) {
+      const rows = await this.prisma.fileNode.findMany({
+        where: {
+          id: { in: uniqueIds.slice(offset, offset + fileNodeLookupBatchSize) },
+        },
+      });
+      rows.forEach((row) => rowsById.set(row.id, row));
+    }
+
+    return uniqueIds.flatMap((id) => {
+      const row = rowsById.get(id);
+      return row ? [this.mapRow(row)] : [];
+    });
   }
 
   getPolicy() {

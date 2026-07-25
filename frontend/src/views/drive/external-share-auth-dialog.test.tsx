@@ -284,4 +284,116 @@ describe("ShareAuthDialog email verification", () => {
     fireEvent.click(screen.getByRole("button", { name: "share.verifyCode" }));
     expect(onVerifyCode).toHaveBeenCalledOnce();
   });
+
+  it("allows email authentication before a locked share exposes an item", () => {
+    const onSendCode = vi.fn();
+    const onVerifyCode = vi.fn();
+    const { rerender } = render(
+      <ShareAuthDialog
+        {...commonProps}
+        accessItem={null}
+        authMethod="email"
+        code=""
+        email="visitor@example.com"
+        onCodeChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()}
+        onSendCode={onSendCode}
+        onVerifyCode={onVerifyCode}
+        stage="email"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "share.sendCode" }));
+    expect(onSendCode).toHaveBeenCalledOnce();
+
+    rerender(
+      <ShareAuthDialog
+        {...commonProps}
+        accessItem={null}
+        authMethod="email"
+        code="123456"
+        email="visitor@example.com"
+        onCodeChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()}
+        onSendCode={onSendCode}
+        onVerifyCode={onVerifyCode}
+        stage="code"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "share.verifyCode" }));
+    expect(onVerifyCode).toHaveBeenCalledOnce();
+  });
+
+  it("allows account authentication before a locked share exposes an item", () => {
+    const onAccountAuth = vi.fn();
+
+    render(
+      <ShareAuthDialog
+        {...commonProps}
+        accessItem={null}
+        accountConfigured
+        authMethod="account"
+        code=""
+        email=""
+        onAccountAuth={onAccountAuth}
+        onCodeChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()}
+        onSendCode={vi.fn()}
+        onVerifyCode={vi.fn()}
+        stage="choose"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "share.useIcaIdentity" }));
+    expect(onAccountAuth).toHaveBeenCalledOnce();
+  });
+
+  it("completes share-level access without an exposed item", () => {
+    const onComplete = vi.fn();
+
+    render(
+      <ShareAuthDialog
+        {...commonProps}
+        accessItem={null}
+        action="download"
+        authMethod="email"
+        code=""
+        email="visitor@example.com"
+        onCodeChange={vi.fn()}
+        onComplete={onComplete}
+        onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()}
+        onSendCode={vi.fn()}
+        onVerifyCode={vi.fn()}
+        stage="download"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "actions.download" }));
+    expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  it("keeps email verification disabled without an exposed item when the email is invalid", () => {
+    render(
+      <ShareAuthDialog
+        {...commonProps}
+        accessItem={null}
+        authMethod="email"
+        code=""
+        email="invalid-email"
+        onCodeChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()}
+        onSendCode={vi.fn()}
+        onVerifyCode={vi.fn()}
+        stage="email"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "share.sendCode" })).toBeDisabled();
+  });
 });

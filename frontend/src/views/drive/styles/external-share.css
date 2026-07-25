@@ -769,6 +769,30 @@
   min-width: 0;
 }
 
+.external-share-file-primary-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.external-share-folder-name-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  padding: 0;
+}
+
+.external-share-folder-name-button:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--external-share-focus, #2f65ff);
+  outline-offset: 3px;
+}
+
 .external-share-file-size,
 .external-share-file-type {
   align-items: center;

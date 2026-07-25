@@ -44,6 +44,7 @@ describe('SharesController', () => {
         legacyPreviewStatus: 'ready',
       }),
     );
+    const getShare = jest.fn(() => Promise.resolve({ token: 'share-token' }));
     const requireAdminSession = jest.fn(() =>
       Promise.resolve({ user: { role: 'admin' } }),
     );
@@ -58,9 +59,14 @@ describe('SharesController', () => {
     );
     const requirePermission = jest.fn();
     const listShares = jest.fn(() => Promise.resolve([]));
+    const getManagedShare = jest.fn(() =>
+      Promise.resolve({ token: 'share-token' }),
+    );
     const sharesService = {
       createVerifiedAccountAccessSession,
+      getManagedShare,
       getPreviewStatus,
+      getShare,
       listShares,
       revokeShare,
       sendEmailAccessCode,
@@ -77,6 +83,8 @@ describe('SharesController', () => {
       controller: new SharesController(sharesService, adminGuard),
       createVerifiedAccountAccessSession,
       getPreviewStatus,
+      getManagedShare,
+      getShare,
       listShares,
       requireAdminSession,
       requirePermission,
@@ -86,6 +94,40 @@ describe('SharesController', () => {
       verifyEmailAccessCode,
     };
   }
+
+  it('forwards the access session and resolved account to share details', async () => {
+    const { accountUser, controller, getShare, requireSession } =
+      createController();
+    const request = {
+      get: jest.fn((name: string) =>
+        name.toLowerCase() === 'user-agent' ? 'spec-agent' : undefined,
+      ),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await controller.getShare(
+      'share-token',
+      'Bearer account',
+      'sas_email',
+      request,
+    );
+
+    expect(requireSession).toHaveBeenCalledWith('Bearer account');
+    expect(getShare).toHaveBeenCalledWith(
+      'share-token',
+      expect.objectContaining({
+        actorEmail: 'mina@example.test',
+        actorUserId: 'user_1',
+        userAgent: 'spec-agent',
+      }),
+      {
+        accessSessionId: 'sas_email',
+        accountUser,
+        actor: 'account',
+      },
+    );
+  });
 
   it('requires an admin session before revoking shares', async () => {
     const { controller, requireAdminSession, requirePermission, revokeShare } =
@@ -107,6 +149,26 @@ describe('SharesController', () => {
     await controller.listShares('workspace-default', 'Bearer member');
 
     expect(listShares).toHaveBeenCalledWith('workspace-default', {
+      actorRole: 'member',
+      actorUserId: 'user-member',
+    });
+  });
+
+  it('requires share read permission for management details', async () => {
+    const { controller, getManagedShare, requirePermission } =
+      createController();
+    requirePermission.mockResolvedValueOnce({
+      user: { id: 'user-member', role: 'member' },
+    });
+
+    await controller.getManagedShare('share-token', 'Bearer member');
+
+    expect(requirePermission).toHaveBeenCalledWith(
+      'Bearer member',
+      'share',
+      'read',
+    );
+    expect(getManagedShare).toHaveBeenCalledWith('share-token', {
       actorRole: 'member',
       actorUserId: 'user-member',
     });
@@ -208,8 +270,9 @@ describe('SharesController', () => {
     );
   });
 
-  it('forwards visitor metadata when polling preview status', async () => {
-    const { controller, getPreviewStatus } = createController();
+  it('forwards the access session and resolved account when polling preview status', async () => {
+    const { accountUser, controller, getPreviewStatus, requireSession } =
+      createController();
     const request = {
       get: jest.fn((name: string) =>
         name.toLowerCase() === 'user-agent' ? 'spec-agent' : undefined,
@@ -222,14 +285,24 @@ describe('SharesController', () => {
       'share-token',
       'node-1',
       'preview-test',
+      'sas_email',
+      'Bearer account',
       request,
     );
 
+    expect(requireSession).toHaveBeenCalledWith('Bearer account');
     expect(getPreviewStatus).toHaveBeenCalledWith(
       'share-token',
       'node-1',
       'preview-test',
-      { ip: '203.0.113.25', userAgent: 'spec-agent' },
+      'sas_email',
+      expect.objectContaining({
+        actorEmail: 'mina@example.test',
+        actorUserId: 'user_1',
+        ip: '203.0.113.25',
+        userAgent: 'spec-agent',
+      }),
+      accountUser,
     );
   });
 });

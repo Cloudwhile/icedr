@@ -42,6 +42,18 @@ describe('FileDownloadPreviewService', () => {
         actorUserId: 'user-a',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+
+    await expect(
+      repository.findPreviewArtifact('preview-personal-b'),
+    ).resolves.toMatchObject({
+      nodeId: 'personal-b',
+      previewType: 'text',
+      renderMode: 'text',
+      capability: { renderMode: 'text', supported: true },
+    });
+    await expect(
+      repository.findPreviewArtifact('preview-missing'),
+    ).resolves.toBeNull();
   });
 
   it('degrades unsafe or oversized preview intents to download-only', async () => {
@@ -72,6 +84,22 @@ describe('FileDownloadPreviewService', () => {
       },
       error: 'File is too large to preview',
     });
+  });
+
+  it('hides expired preview artifacts as not found', async () => {
+    const artifact = await repository.findPreviewArtifact('preview-test');
+    expect(artifact).not.toBeNull();
+    (repository.findPreviewArtifact as jest.Mock).mockResolvedValueOnce({
+      ...artifact!,
+      lifecycle: {
+        ...artifact!.lifecycle,
+        expiresAt: new Date(Date.now() - 1).toISOString(),
+      },
+    });
+
+    await expect(
+      service.getPreviewStatus('roadmap', 'preview-test'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('binds download purpose to the intent and streams through ICEDR', async () => {

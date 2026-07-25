@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
@@ -20,6 +21,13 @@ import type {
 import type { ShareDownloadPolicy } from './share-download-policy';
 
 export type ShareMode = 'single-file' | 'multi-file' | 'folder';
+export type ShareContentScopeMode =
+  | 'legacy'
+  | 'items'
+  | 'entire-folder'
+  | 'selected-items';
+export type ShareFolderVisibility = 'entire-folder' | 'selected-items';
+export type ShareSelectionType = 'single-file' | 'multi-item' | 'folder';
 export type ShareWaitUnit = 'seconds' | 'minutes';
 export type ShareSpeedUnit = 'KB/s' | 'MB/s';
 export type ShareExpiryUnit = 'hours' | 'days';
@@ -76,6 +84,36 @@ export class SharePolicyDto {
   rateLimitProfile = '';
 }
 
+export class ShareSelectionDto {
+  @IsIn(['single-file', 'multi-item', 'folder'])
+  type!: ShareSelectionType;
+
+  @IsString()
+  @IsOptional()
+  itemId?: string;
+
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @IsOptional()
+  itemIds?: string[];
+
+  @IsString()
+  @IsOptional()
+  folderId?: string;
+
+  @IsIn(['entire-folder', 'selected-items'])
+  @IsOptional()
+  visibility?: ShareFolderVisibility;
+
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @IsOptional()
+  selectedItemIds?: string[];
+}
+
 export class CreateShareDto {
   @IsString()
   @IsOptional()
@@ -83,28 +121,41 @@ export class CreateShareDto {
 
   @IsString()
   @IsNotEmpty()
-  title!: string;
+  @IsOptional()
+  title?: string;
 
   @IsIn(['single-file', 'multi-file', 'folder'])
-  mode!: ShareMode;
+  @IsOptional()
+  mode?: ShareMode;
 
   @IsString()
   @IsNotEmpty()
-  owner!: string;
+  @IsOptional()
+  owner?: string;
 
   @IsArray()
   @ArrayNotEmpty()
+  @ArrayMaxSize(10000)
   @IsString({ each: true })
-  rootItemIds!: string[];
+  @IsOptional()
+  rootItemIds?: string[];
 
   @IsArray()
   @ArrayNotEmpty()
+  @ArrayMaxSize(10000)
   @IsString({ each: true })
-  allowedItemIds!: string[];
+  @IsOptional()
+  allowedItemIds?: string[];
 
   @IsString()
   @IsOptional()
   dynamicRootId?: string | null;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ShareSelectionDto)
+  @IsOptional()
+  selection?: ShareSelectionDto;
 
   @IsBoolean()
   allowDownload!: boolean;
@@ -149,14 +200,98 @@ export type ShareResponse = {
   remark: string;
   policy: SharePolicyDto;
   downloadPolicy: ShareDownloadPolicy;
+  scopeMode: ShareContentScopeMode;
+  contentSummary?: ShareContentSummary;
   createdAt: string;
   revokedAt: string | null;
 };
 
-export type ShareFileNodeResponse = Omit<FileNodeResponse, 'objectKey'> & {
-  hasContent: boolean;
+export type ExternalSharePolicy = Pick<
+  SharePolicyDto,
+  'waitValue' | 'waitUnit' | 'speedValue' | 'speedUnit' | 'downloadLimit'
+>;
+
+export type ExternalShareDownloadPolicy = Pick<
+  ShareDownloadPolicy,
+  | 'requiresAccessSession'
+  | 'requiresEmailVerification'
+  | 'maxDownloads'
+  | 'downloadLimit'
+  | 'rules'
+>;
+
+export type ExternalShareResponse = Pick<
+  ShareResponse,
+  | 'token'
+  | 'url'
+  | 'title'
+  | 'mode'
+  | 'owner'
+  | 'rootItemIds'
+  | 'allowedItemIds'
+  | 'dynamicRootId'
+  | 'allowDownload'
+  | 'allowPreview'
+  | 'expiresDays'
+  | 'remark'
+  | 'scopeMode'
+  | 'createdAt'
+  | 'revokedAt'
+> & {
+  policy: ExternalSharePolicy;
+  downloadPolicy: ExternalShareDownloadPolicy;
 };
 
-export type ShareDetailResponse = ShareResponse & {
+export type ShareContentAvailability =
+  | 'available'
+  | 'archived'
+  | 'missing'
+  | 'out-of-scope';
+export type ShareContentChange = 'moved' | 'renamed';
+export type ShareContentMemberRole =
+  | 'root'
+  | 'selected'
+  | 'navigation'
+  | 'descendant';
+
+export type ShareContentSummary = {
+  fileCount: number;
+  folderCount: number;
+  totalSizeBytes: number;
+  unavailableCount: number;
+  changedCount: number;
+};
+
+export type ShareFileNodeResponse = Pick<
+  FileNodeResponse,
+  | 'id'
+  | 'kind'
+  | 'mimeType'
+  | 'name'
+  | 'parentNodeId'
+  | 'previewCapability'
+  | 'sizeBytes'
+> & {
+  availability: ShareContentAvailability;
+  changes: ShareContentChange[];
+  createdAt?: string;
+  hasContent: boolean;
+  role: ShareContentMemberRole;
+  snapshotName?: string;
+  updatedAt?: string;
+};
+
+export type ShareDetailResponse = Omit<ShareResponse, 'contentSummary'> & {
+  contentSummary: ShareContentSummary;
+  items: ShareFileNodeResponse[];
+};
+
+export type ExternalShareMetadataResponse = ExternalShareResponse & {
+  contentSummary: ShareContentSummary;
+  items?: never;
+};
+
+export type ExternalShareDetailResponse = ExternalShareResponse & {
+  contentSummary: ShareContentSummary;
   items: ShareFileNodeResponse[];
 };

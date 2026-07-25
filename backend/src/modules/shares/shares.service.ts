@@ -9,9 +9,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { FileNodesService } from '../files/file-nodes.service';
 import { MailService } from '../admin/mail/mail.service';
-import {
-  FileNodeResponse,
-  type DownloadIntentPurpose,
+import type {
+  DownloadIntentPurpose,
+  PreviewIntentResponse,
 } from '../files/file-nodes.dto';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import type { AuditActor } from '../logs/audit-events';
@@ -24,14 +24,22 @@ import {
 } from './share-access.dto';
 import type {
   CreateShareDto,
+  ExternalShareDetailResponse,
+  ExternalShareMetadataResponse,
+  ShareContentSummary,
   ShareDetailResponse,
-  ShareFileNodeResponse,
   SharePolicyDto,
   ShareResponse,
 } from './shares.dto';
+import { ShareContentService } from './share-content.service';
+import type { ShareCreatorAccess } from './share-content.types';
 import { SharesRepository } from './shares.repository';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import { ShareDownloadService } from './share-download.service';
+import {
+  createSharePreviewCapability,
+  readSharePreviewCapability,
+} from './share-preview-capability';
 import {
   normalizePolicyDomain,
   normalizePolicyEmailAllowlist,
@@ -49,9 +57,24 @@ type AccountAuditUser = Pick<
   AuthUserResponse,
   'avatarUrl' | 'displayName' | 'email' | 'id'
 >;
-type ShareCreatorAccess = {
-  actorRole?: string;
-  actorUserId?: string;
+type ShareMetadataResponse = ShareResponse & {
+  contentSummary: ShareContentSummary;
+  items?: never;
+};
+type SharedPreviewResponse = Pick<
+  PreviewIntentResponse,
+  | 'capability'
+  | 'error'
+  | 'legacyPreviewStatus'
+  | 'lifecycle'
+  | 'nodeId'
+  | 'previewType'
+  | 'renderMode'
+  | 'status'
+> & {
+  previewId: string;
+  shareToken: string;
+  statusUrl: string;
 };
 @Injectable()
 export class SharesService {
@@ -63,6 +86,7 @@ export class SharesService {
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly abuseProtection: ShareAbuseProtectionService,
+    private readonly shareContent: ShareContentService,
   ) {}
 
   async createShare(
@@ -70,11 +94,12 @@ export class SharesService {
     auditMetadata: AuditMetadata = {},
     access: ShareCreatorAccess = {},
   ) {
-    const normalizedDto = await this.applyWorkspaceSharePolicy(dto);
-    await this.assertShareScope(normalizedDto, access);
+    const policyDto = await this.applyWorkspaceSharePolicy(dto);
+    const scope = await this.shareContent.resolveCreateScope(policyDto, access);
     const share = await this.sharesRepository.create(
-      normalizedDto,
+      scope.dto,
       access.actorUserId,
+      scope.members,
     );
     await this.sharesRepository.recordAudit(
       'share.created',
@@ -82,7 +107,7 @@ export class SharesService {
       auditMetadata,
       { actor: 'workspace' },
     );
-    return this.toPublicShare(share);
+    return this.shareContent.withContent(this.toPublicShare(share));
   }
 
   async sendEmailAccessCode(
@@ -226,20 +251,46 @@ export class SharesService {
     return session;
   }
 
-  listShares(workspaceId: string | undefined, access: ShareCreatorAccess) {
-    return this.sharesRepository.list(
+  async listShares(
+    workspaceId: string | undefined,
+    access: ShareCreatorAccess,
+  ) {
+    const shares = await this.sharesRepository.list(
       workspaceId,
       access.actorRole === 'admin' || access.actorRole === 'owner'
         ? undefined
         : access.actorUserId,
     );
+    return Promise.all(
+      shares.map((share) => this.shareContent.withContent(share)),
+    );
+  }
+
+  async getManagedShare(token: string, access: ShareCreatorAccess) {
+    const share = await this.sharesRepository.findByToken(token);
+    if (
+      !share ||
+      (access.actorRole !== 'admin' &&
+        access.actorRole !== 'owner' &&
+        share.creatorUserId !== access.actorUserId)
+    ) {
+      throw new NotFoundException('Share link not found');
+    }
+    return this.shareContent.withContent(this.toPublicShare(share), {
+      includeItems: true,
+      includeSnapshots: true,
+    });
   }
 
   async getShare(
     token: string,
     visitor: VisitorAuditMetadata = {},
-    options: { actor?: AuditActor } = {},
-  ): Promise<ShareDetailResponse> {
+    options: {
+      accessSessionId?: string;
+      accountUser?: AccountAuditUser;
+      actor?: AuditActor;
+    } = {},
+  ): Promise<ExternalShareDetailResponse | ExternalShareMetadataResponse> {
     const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     await this.abuseProtection.consume({
@@ -249,6 +300,21 @@ export class SharesService {
       scope: 'view',
       shareToken: share.token,
     });
+    const hasContentAccess = await this.hasShareContentAccess(
+      share,
+      options.accessSessionId,
+      options.accountUser,
+      visitor,
+    );
+    if (!hasContentAccess) {
+      const content = await this.shareContent.withContent({
+        ...share,
+        rootItemIds: [],
+        allowedItemIds: [],
+        dynamicRootId: null,
+      });
+      return this.toExternalShare(content);
+    }
     const viewRecord = await this.sharesRepository.recordShareViewed(
       token,
       share.policy.maxViews ?? 0,
@@ -267,7 +333,33 @@ export class SharesService {
     if (!viewRecord.recorded) {
       throw new GoneException('Share view limit has been reached');
     }
-    return this.withShareItems(share);
+    const content = await this.shareContent.withContent(share, {
+      includeItems: true,
+    });
+    return this.toExternalShare(content);
+  }
+
+  private async hasShareContentAccess(
+    share: ShareResponse,
+    accessSessionId: string | undefined,
+    accountUser: AccountAuditUser | undefined,
+    visitor: VisitorAuditMetadata,
+  ) {
+    if (!share.downloadPolicy.requiresAccessSession) return true;
+    if (!accessSessionId && !accountUser) return false;
+    try {
+      return Boolean(
+        await this.resolveShareAccessIdentity(
+          share,
+          accessSessionId,
+          accountUser,
+          visitor,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
   }
 
   async revokeShare(token: string, auditMetadata: AuditMetadata = {}) {
@@ -361,7 +453,7 @@ export class SharesService {
       scope: 'download-intent',
       shareToken: share.token,
     });
-    const node = await this.requireNodeInShare(share, nodeId, 'preview');
+    const node = await this.shareContent.requireNode(share, nodeId, 'preview');
     if (!node.previewCapability.supported) {
       throw new BadRequestException('File type is not available for preview');
     }
@@ -373,33 +465,109 @@ export class SharesService {
     await this.sharesRepository.recordAudit('share.preview_requested', token, {
       ...auditMetadata,
     });
-
-    return {
-      ...intent,
+    const previewId = createSharePreviewCapability(this.configService, {
+      artifactPreviewId: intent.previewId,
+      nodeId,
       shareToken: share.token,
-      statusUrl: `/api/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(nodeId)}/preview/status?previewId=${encodeURIComponent(intent.previewId)}`,
-    };
+    });
+
+    return this.toSharedPreviewResponse(intent, share.token, nodeId, previewId);
   }
 
   async getPreviewStatus(
     token: string,
     nodeId: string,
     previewId: string,
+    accessSessionId?: string,
     visitor: VisitorAuditMetadata = {},
+    accountUser?: AccountAuditUser,
   ) {
     const share = await this.requireActiveShare(token, { ...visitor, nodeId });
     const rateLimitProfile = this.getShareRateLimitProfile(share);
+    const requestMetadata = {
+      ...(accountUser ? this.getAccountAuditMetadata(accountUser) : {}),
+      nodeId,
+      ...(accountUser ? { email: accountUser.email, identityType: 'ica' } : {}),
+      purpose: 'preview',
+      ...visitor,
+    };
     await this.abuseProtection.consume({
-      metadata: { ...visitor, nodeId },
+      dimensions: ['link', 'ip', 'user'],
+      metadata: requestMetadata,
       profileName: rateLimitProfile.name,
       rule: rateLimitProfile.view,
       scope: 'preview-status',
       shareToken: share.token,
     });
-    await this.requireNodeInShare(share, nodeId, 'preview');
-    return this.fileNodesService.getPreviewStatus(nodeId, previewId, {
-      actorRole: 'admin',
+    const accessSession = await this.resolveShareAccessIdentity(
+      share,
+      accessSessionId,
+      accountUser,
+      requestMetadata,
+    );
+    const auditMetadata = {
+      ...this.getShareIdentityAuditMetadata(accessSession),
+      nodeId,
+      identityType: accessSession?.identityType ?? 'anonymous',
+      ...visitor,
+    };
+    await this.abuseProtection.consume({
+      dimensions: ['email'],
+      metadata: auditMetadata,
+      profileName: rateLimitProfile.name,
+      rule: rateLimitProfile.view,
+      scope: 'preview-status',
+      shareToken: share.token,
     });
+    await this.shareContent.requireNode(share, nodeId, 'preview');
+    const artifactPreviewId = readSharePreviewCapability(this.configService, {
+      capability: previewId,
+      nodeId,
+      shareToken: share.token,
+    });
+    if (!artifactPreviewId) {
+      throw new NotFoundException('Preview intent not found');
+    }
+    const status = await this.fileNodesService.getPreviewStatus(
+      nodeId,
+      artifactPreviewId,
+      {
+        actorRole: 'admin',
+        ...(accessSession?.actorUserId
+          ? { actorUserId: accessSession.actorUserId }
+          : {}),
+      },
+    );
+    return this.toSharedPreviewResponse(status, share.token, nodeId, previewId);
+  }
+
+  private toSharedPreviewResponse(
+    intent: PreviewIntentResponse,
+    shareToken: string,
+    nodeId: string,
+    previewId: string,
+  ): SharedPreviewResponse {
+    return {
+      capability: intent.capability,
+      error: intent.error,
+      legacyPreviewStatus: intent.legacyPreviewStatus,
+      lifecycle: intent.lifecycle,
+      nodeId,
+      previewId,
+      previewType: intent.previewType,
+      renderMode: intent.renderMode,
+      shareToken,
+      status: intent.status,
+      statusUrl: this.getSharePreviewStatusUrl(shareToken, nodeId, previewId),
+    };
+  }
+
+  private getSharePreviewStatusUrl(
+    token: string,
+    nodeId: string,
+    previewId: string,
+  ) {
+    return `/api/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(nodeId)}/preview/status?previewId=${encodeURIComponent(previewId)}`;
   }
 
   private async requireActiveShare(
@@ -451,163 +619,11 @@ export class SharesService {
     return share;
   }
 
-  private async assertShareScope(
-    dto: CreateShareDto,
-    access: ShareCreatorAccess,
-  ) {
-    const workspaceId = dto.workspaceId ?? 'workspace-default';
-    const rootIds = new Set(dto.rootItemIds);
-    const allowedIds = new Set(dto.allowedItemIds);
-    if (
-      rootIds.size !== dto.rootItemIds.length ||
-      allowedIds.size !== dto.allowedItemIds.length
-    ) {
-      throw new BadRequestException('Share node ids must be unique');
-    }
-    for (const rootId of rootIds) {
-      if (!allowedIds.has(rootId)) {
-        throw new BadRequestException(
-          'Share roots must be included in the allowed item scope',
-        );
-      }
-    }
-
-    const nodes = new Map<string, FileNodeResponse>();
-    for (const nodeId of allowedIds) {
-      const node = await this.fileNodesService.getFileNode(nodeId, access);
-      if (!node) throw new NotFoundException('File node not found');
-      this.assertShareCreatorNodeAccess(node, access);
-      if (node.archivedAt) {
-        throw new BadRequestException('Archived file nodes cannot be shared');
-      }
-      if (node.workspaceId !== workspaceId) {
-        throw new BadRequestException('File node belongs to another workspace');
-      }
-      nodes.set(nodeId, node);
-    }
-
-    const roots = [...rootIds].map((rootId) => nodes.get(rootId)!);
-    if (dto.mode === 'single-file') {
-      if (roots.length !== 1 || roots[0].kind === 'folder') {
-        throw new BadRequestException(
-          'Single-file shares require exactly one file root',
-        );
-      }
-    }
-    if (dto.mode === 'folder') {
-      if (
-        roots.length !== 1 ||
-        roots[0].kind !== 'folder' ||
-        dto.dynamicRootId !== roots[0].id
-      ) {
-        throw new BadRequestException(
-          'Folder shares require one matching folder root',
-        );
-      }
-    } else if (dto.dynamicRootId) {
-      throw new BadRequestException(
-        'Dynamic root is only available for folder shares',
-      );
-    }
-
-    for (const node of nodes.values()) {
-      if (rootIds.has(node.id)) continue;
-      if (
-        !(await this.isWithinShareRoots(
-          node,
-          rootIds,
-          nodes,
-          workspaceId,
-          access,
-        ))
-      ) {
-        throw new BadRequestException(
-          'File node is outside the selected share roots',
-        );
-      }
-    }
-  }
-
-  private async isWithinShareRoots(
-    node: FileNodeResponse,
-    rootIds: Set<string>,
-    nodes: Map<string, FileNodeResponse>,
-    workspaceId: string,
-    access: ShareCreatorAccess,
-  ) {
-    const visited = new Set([node.id]);
-    let parentId = node.parentNodeId;
-    while (parentId) {
-      if (rootIds.has(parentId)) return true;
-      if (visited.has(parentId)) {
-        throw new BadRequestException('File node hierarchy contains a cycle');
-      }
-      visited.add(parentId);
-      let parent = nodes.get(parentId);
-      if (!parent) {
-        const resolvedParent = await this.fileNodesService.getFileNode(
-          parentId,
-          access,
-        );
-        if (!resolvedParent) throw new NotFoundException('File node not found');
-        parent = resolvedParent;
-        this.assertShareCreatorNodeAccess(parent, access);
-        if (parent.archivedAt || parent.workspaceId !== workspaceId) {
-          throw new BadRequestException(
-            'File node hierarchy is outside the share workspace',
-          );
-        }
-        nodes.set(parent.id, parent);
-      }
-      parentId = parent.parentNodeId;
-    }
-    return false;
-  }
-
-  private assertShareCreatorNodeAccess(
-    node: FileNodeResponse,
-    access: ShareCreatorAccess,
-  ) {
-    if (
-      node.spaceScope !== 'personal' ||
-      !access.actorUserId ||
-      access.actorRole === 'admin' ||
-      node.ownerUserId === access.actorUserId
-    ) {
-      return;
-    }
-    throw new NotFoundException('File node not found');
-  }
-
   private isExpiredShare(share: ShareResponse) {
     return (
       new Date(share.createdAt).getTime() + share.expiresDays * 86400000 <=
       Date.now()
     );
-  }
-
-  private async withShareItems(
-    share: ShareResponse,
-  ): Promise<ShareDetailResponse> {
-    const shareItemIds = new Set([
-      ...share.rootItemIds,
-      ...share.allowedItemIds,
-    ]);
-    const nodes = await this.fileNodesService.listFileNodes(share.workspaceId);
-    const items = nodes
-      .filter((node) => shareItemIds.has(node.id))
-      .map((node): ShareFileNodeResponse => {
-        const { objectKey, ...safeNode } = node;
-        return {
-          ...safeNode,
-          hasContent: Boolean(objectKey),
-        };
-      });
-
-    return {
-      ...this.toPublicShare(share),
-      items,
-    };
   }
 
   private toPublicShare<T extends ShareResponse>(share: T): ShareResponse {
@@ -618,39 +634,52 @@ export class SharesService {
     return publicShare;
   }
 
-  private async requireShareNode(
-    token: string,
-    nodeId: string,
-    action: 'download' | 'preview',
-    visitor: VisitorAuditMetadata = {},
-  ): Promise<{ share: ShareResponse; node: FileNodeResponse }> {
-    const share = await this.requireActiveShare(token, {
-      ...visitor,
-      nodeId,
-    });
-    const node = await this.requireNodeInShare(share, nodeId, action);
-    return { share, node };
-  }
-
-  private async requireNodeInShare(
-    share: ShareResponse,
-    nodeId: string,
-    action: 'download' | 'preview',
-  ) {
-    if (!share.allowedItemIds.includes(nodeId)) {
-      throw new ForbiddenException('File node is outside this share scope');
+  private toExternalShare(
+    share: ShareMetadataResponse,
+  ): ExternalShareMetadataResponse;
+  private toExternalShare(
+    share: ShareDetailResponse,
+  ): ExternalShareDetailResponse;
+  private toExternalShare(
+    share: ShareMetadataResponse | ShareDetailResponse,
+  ): ExternalShareMetadataResponse | ExternalShareDetailResponse {
+    const externalShare: ExternalShareMetadataResponse = {
+      token: share.token,
+      url: share.url,
+      title: share.title,
+      mode: share.mode,
+      owner: share.owner,
+      rootItemIds: share.rootItemIds,
+      allowedItemIds: share.allowedItemIds,
+      dynamicRootId: share.dynamicRootId,
+      allowDownload: share.allowDownload,
+      allowPreview: share.allowPreview,
+      expiresDays: share.expiresDays,
+      remark: share.remark,
+      policy: {
+        waitValue: share.policy.waitValue,
+        waitUnit: share.policy.waitUnit,
+        speedValue: share.policy.speedValue,
+        speedUnit: share.policy.speedUnit,
+        downloadLimit: share.policy.downloadLimit,
+      },
+      downloadPolicy: {
+        requiresAccessSession: share.downloadPolicy.requiresAccessSession,
+        requiresEmailVerification:
+          share.downloadPolicy.requiresEmailVerification,
+        maxDownloads: share.downloadPolicy.maxDownloads,
+        downloadLimit: share.downloadPolicy.downloadLimit,
+        rules: share.downloadPolicy.rules,
+      },
+      scopeMode: share.scopeMode,
+      contentSummary: share.contentSummary,
+      createdAt: share.createdAt,
+      revokedAt: share.revokedAt,
+    };
+    if ('items' in share && share.items) {
+      return { ...externalShare, items: share.items };
     }
-    if (action === 'download' && !share.allowDownload) {
-      throw new ForbiddenException('Downloads are disabled for this share');
-    }
-    if (action === 'preview' && !share.allowPreview) {
-      throw new ForbiddenException('Preview is disabled for this share');
-    }
-
-    const node = await this.fileNodesService.getFileNode(nodeId);
-    if (!node) throw new NotFoundException('File node not found');
-    if (node.archivedAt) throw new GoneException('File node is archived');
-    return node;
+    return externalShare;
   }
 
   private async resolveShareAccessIdentity(

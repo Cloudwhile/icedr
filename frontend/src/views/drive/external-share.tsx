@@ -3,7 +3,7 @@
 import { Modal } from "@heroui/react";
 import { useRouter } from "@/compat/navigation";
 import { useTimeZone, useTranslations } from "@/i18n/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionStagger } from "@/components/ui/motion";
 import { showAppToast } from "@/components/ui/app-toast-store";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
@@ -15,8 +15,7 @@ import { usePreviewLifecycle } from "@/features/file/use-preview-lifecycle";
 import { formatShareEmailCooldownMessage, resolveShareEmailAccessError, type ShareEmailAccessAction, type ShareEmailAccessCooldown } from "@/features/share/email-access-errors";
 import { createShareAccountAccessSession, fetchCurrentUser, getDriveApiErrorMessage, isAuthExpiredApiError, resolvePublicSiteName, sendShareEmailCode, verifyShareEmailCode, type AuthUser, type PublicSiteSettings, type ShareAccessSession } from "@/lib/drive-api";
 import { ThemeActions } from "./drive-shell";
-import { ItemIcon, LocalIcon, StatusPill, Surface, ToolButton } from "./drive-primitives";
-import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
+import { ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
 import { collectShareDescendants, fetchRegisteredShare, getRegisteredShareParent, getShareItems, getVisibleRegisteredShareItems, type RegisteredShare, type RegisteredShareItem } from "@/features/share/registry";
 import type { ExternalSharePolicy } from "@/features/share/policy";
 import { AppImage } from "@/components/ui/app-image";
@@ -25,11 +24,7 @@ import { PreviewLifecycleBoundary } from "@/components/ui/preview-lifecycle-boun
 import { ExternalShareHeroCard } from "./external-share-hero-card";
 import { ExternalShareSidePanel } from "./external-share-side-panel";
 import { ShareAuthDialog } from "./external-share-auth-dialog";
-const buttonTypeAttr: {
-  type?: "button";
-} = {
-  type: "button"
-};
+import { VisitorShareBrowser } from "./external-share-browser";
 type ShareMode = "single-file" | "multi-file" | "folder";
 type VisitorStage = "choose" | "email" | "code" | "verified" | "waiting" | "download";
 type VisitorAccessAction = "download" | "preview";
@@ -85,6 +80,9 @@ function getSharePolicyExperience(share: RegisteredShare, level: VisitorLevel, a
 function getShareAccessRequired(share: RegisteredShare) {
   return share.downloadPolicy?.requiresAccessSession ?? Boolean(share.policy.allowedDomain || share.policy.downloadLimit || formatPolicyWaitSeconds(share.policy) > 0);
 }
+function isShareContentLocked(share: RegisteredShare) {
+  return getShareAccessRequired(share) && share.items === undefined;
+}
 function formatDownloadLimitLabel(maxDownloads: number, downloadLimit: string, t: DriveTranslator) {
   if (maxDownloads > 0) return t("share.downloadLimitValue", { count: maxDownloads });
   return downloadLimit || t("share.noDownloadLimit");
@@ -102,7 +100,7 @@ function getCollectionFromRegisteredShare(record: RegisteredShare, sourceItems: 
     allowed,
     rootItems
   } = getShareItems(record, sourceItems);
-  if (rootItems.length === 0) return null;
+  if (rootItems.length === 0 && !isShareContentLocked(record)) return null;
   return {
     title: record.title,
     mode: record.mode,
@@ -112,21 +110,21 @@ function getCollectionFromRegisteredShare(record: RegisteredShare, sourceItems: 
     dynamicRootId: record.dynamicRootId
   };
 }
-function mapRegisteredShareItemToDriveItem(item: RegisteredShareItem): DriveItem {
+function mapRegisteredShareItemToDriveItem(item: RegisteredShareItem, share: RegisteredShare): DriveItem {
   return {
     id: item.id,
     name: item.name,
     kind: item.kind,
-    workspaceId: item.workspaceId,
+    workspaceId: share.workspaceId,
     parentId: item.parentNodeId,
-    owner: item.owner,
-    modifiedAt: item.updatedAt,
+    owner: share.owner,
+    modifiedAt: item.updatedAt ?? share.createdAt,
     mimeType: item.mimeType,
     hasContent: item.hasContent,
     sizeBytes: item.sizeBytes,
     shared: true,
-    starred: item.starred,
-    archivedAt: item.archivedAt,
+    starred: false,
+    archivedAt: item.availability === "archived" ? item.updatedAt ?? share.createdAt : null,
     previewCapability: item.previewCapability,
     colorKey: item.kind === "sheet" ? "success" : item.kind === "image" || item.kind === "video" ? "secure" : item.kind === "archive" ? "tertiary" : "primary"
   };
@@ -156,15 +154,29 @@ export function ExternalShareStandalone({
     share: initialShare?.token === token ? initialShare : null
   }));
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [sourceItems, setSourceItems] = useState<DriveItem[]>(() => initialShare?.token === token ? initialShare.items?.map(mapRegisteredShareItemToDriveItem) ?? [] : []);
+  const [sourceItems, setSourceItems] = useState<DriveItem[]>(() => initialShare?.token === token ? initialShare.items?.map(item => mapRegisteredShareItemToDriveItem(item, initialShare)) ?? [] : []);
   const previewLoading = resolvedShare.token !== token;
   const registeredShare = previewLoading ? null : resolvedShare.share;
   const collection = useMemo(() => registeredShare ? getCollectionFromRegisteredShare(registeredShare, sourceItems) : null, [registeredShare, sourceItems]);
-  const totalSize = collection ? formatFileSize(sumDriveItemSizes(collection.rootItems, sourceItems), locale) : "--";
+  const totalSize = registeredShare?.contentSummary
+    ? formatFileSize(registeredShare.contentSummary.totalSizeBytes, locale)
+    : collection
+      ? formatFileSize(sumDriveItemSizes(collection.rootItems, sourceItems), locale)
+      : "--";
   const expiresLabel = registeredShare ? t("share.expiryValue", {
     count: registeredShare.expiresDays,
     unit: t("share.units.days")
   }) : t("share.unavailable");
+  const refreshRegisteredShare = useCallback(async (accessSessionId: string) => {
+    const share = await fetchRegisteredShare(token, accessSessionId);
+    setSourceItems(share?.items?.map(item => mapRegisteredShareItemToDriveItem(item, share)) ?? []);
+    setLoadError(share ? null : t("errors.shareUnavailable"));
+    setResolvedShare({
+      token,
+      share: share ?? null,
+    });
+    return share;
+  }, [t, token]);
   useEffect(() => {
     let cancelled = false;
     if (initialShare?.token === token && resolvedShare.token === token) {
@@ -176,7 +188,7 @@ export function ExternalShareStandalone({
       try {
         const share = await fetchRegisteredShare(token);
         if (!cancelled) {
-          setSourceItems(share?.items?.map(mapRegisteredShareItemToDriveItem) ?? []);
+          setSourceItems(share?.items?.map(item => mapRegisteredShareItemToDriveItem(item, share)) ?? []);
           setLoadError(share ? null : t("errors.shareUnavailable"));
           setResolvedShare({
             token,
@@ -206,7 +218,7 @@ export function ExternalShareStandalone({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      {previewLoading ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : !registeredShare || !collection ? <ExternalShareErrorState message={loadError ?? t("errors.shareUnavailable")} palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
+      {previewLoading ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : !registeredShare || !collection ? <ExternalShareErrorState message={loadError ?? t("errors.shareUnavailable")} palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} onRefreshShare={refreshRegisteredShare} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
     </div>;
 }
 
@@ -251,6 +263,7 @@ function ExternalSharePreview({
   collection,
   expiresLabel,
   locale,
+  onRefreshShare,
   palette,
   registeredShare,
   setThemeMode,
@@ -262,6 +275,7 @@ function ExternalSharePreview({
   collection: ShareCollection;
   expiresLabel: string;
   locale: Locale;
+  onRefreshShare: (accessSessionId: string) => Promise<RegisteredShare | undefined>;
   palette: Palette;
   registeredShare: RegisteredShare;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
@@ -289,13 +303,16 @@ function ExternalSharePreview({
   const [accessSession, setAccessSession] = useState<ShareAccessSession | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const refreshingAccessSessionId = useRef<string | null>(null);
   const [preview, setPreview] = useState<{
     item: DriveItem;
     intent: PreviewIntentResponse | null;
   } | null>(null);
   const visibleItems = getVisibleRegisteredShareItems(registeredShare, folderId, sourceItems);
   const currentFolder = folderId ? findDriveItem(folderId, sourceItems) : undefined;
-  const shareContentCount = collection.allowedIds.size;
+  const shareContentCount = registeredShare.contentSummary
+    ? registeredShare.contentSummary.fileCount + registeredShare.contentSummary.folderCount
+    : Math.max(0, collection.allowedIds.size - 1);
   const experience = getSharePolicyExperience(registeredShare, visitorLevel, accessSession, t);
   const verified = stage === "verified" || stage === "waiting" || stage === "download";
   const sendCooldownSeconds = emailCooldowns.send?.remainingSeconds ?? 0;
@@ -310,6 +327,7 @@ function ExternalSharePreview({
       }
     : emailStatus;
   const accessSessionRequired = getShareAccessRequired(registeredShare);
+  const contentLocked = isShareContentLocked(registeredShare);
   const primaryAccessItem = getPrimaryShareAccessItem(visibleItems, sourceItems, registeredShare);
   const primaryAccessAction: VisitorAccessAction | null = registeredShare.allowDownload ? "download" : registeredShare.allowPreview ? "preview" : null;
   const visibleListRef = useMotionStagger<HTMLDivElement>([folderId, visibleItems.map(item => item.id).join("|")]);
@@ -362,9 +380,33 @@ function ExternalSharePreview({
       cancelled = true;
     };
   }, []);
+  const refreshShareContent = useCallback(async () => {
+    if (!accessSessionId || remaining > 0 || refreshingAccessSessionId.current === accessSessionId) return;
+    refreshingAccessSessionId.current = accessSessionId;
+    try {
+      const refreshedShare = await onRefreshShare(accessSessionId);
+      if (!refreshedShare || isShareContentLocked(refreshedShare)) {
+        refreshingAccessSessionId.current = null;
+        setFeedback({ message: t("share.unavailable"), tone: "error" });
+      }
+    } catch (error) {
+      refreshingAccessSessionId.current = null;
+      setFeedback({
+        message: getDriveApiErrorMessage(error, t, { fallbackKey: "share.unavailable", scope: "share" }),
+        tone: "error",
+      });
+    }
+  }, [accessSessionId, onRefreshShare, remaining, t]);
+  useEffect(() => {
+    if (!contentLocked || !accessSessionId || remaining > 0) return;
+    const timer = window.setTimeout(() => {
+      void refreshShareContent();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [accessSessionId, contentLocked, refreshShareContent, remaining]);
   const sendCode = () => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!accessItem || !isValidEmailAddress(normalizedEmail) || sendCooldownSeconds > 0) return;
+    if (!isValidEmailAddress(normalizedEmail) || sendCooldownSeconds > 0) return;
     setAuthBusy(true);
     setEmail(normalizedEmail);
     setCode("");
@@ -384,7 +426,7 @@ function ExternalSharePreview({
   };
   const verifyCode = () => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!accessItem || !isValidEmailAddress(normalizedEmail) || code.length !== 6 || verifyCooldownSeconds > 0) return;
+    if (!isValidEmailAddress(normalizedEmail) || code.length !== 6 || verifyCooldownSeconds > 0) return;
     setAuthBusy(true);
     setEmailStatus(null);
     void verifyShareEmailCode(registeredShare.token, normalizedEmail, code).then(session => {
@@ -418,12 +460,12 @@ function ExternalSharePreview({
   const redirectToLogin = () => {
     router.push(`/login?next=${encodeURIComponent(`/share/s/${registeredShare.token}`)}`);
   };
-  const requestVisitorAction = (item: DriveItem, action: VisitorAccessAction) => {
-    if (action === "download" && !registeredShare.allowDownload) {
+  const requestVisitorAction = (item: DriveItem | null, action: VisitorAccessAction) => {
+    if (item && action === "download" && !registeredShare.allowDownload) {
       setFeedback({ message: t("share.downloadBlocked"), tone: "error" });
       return;
     }
-    if (action === "preview" && !registeredShare.allowPreview) {
+    if (item && action === "preview" && !registeredShare.allowPreview) {
       showAppToast({
         dedupeKey: `share-preview-blocked-${registeredShare.token}-${item.id}`,
         title: t("preview.noArtifact"),
@@ -431,7 +473,7 @@ function ExternalSharePreview({
       });
       return;
     }
-    if (action === "preview" && !canOpenFilePreview(item)) {
+    if (item && action === "preview" && !canOpenFilePreview(item)) {
       showAppToast({
         dedupeKey: `share-preview-no-artifact-${registeredShare.token}-${item.id}`,
         title: t("preview.noArtifact"),
@@ -462,7 +504,6 @@ function ExternalSharePreview({
     setStage(nextAuthMethod === "account" ? "choose" : "email");
   };
   const authenticateAccount = () => {
-    if (!accessItem) return;
     if (!currentUser) {
       redirectToLogin();
       return;
@@ -504,7 +545,11 @@ function ExternalSharePreview({
     setStage(currentWait > 0 ? "waiting" : "download");
   };
   const completeVisitorAction = () => {
-    if (!accessItem) return;
+    if (!accessItem) {
+      setAuthOpen(false);
+      void refreshShareContent();
+      return;
+    }
     if (accessAction === "preview" && !canOpenFilePreview(accessItem)) {
       showAppToast({
         dedupeKey: `share-preview-no-artifact-${registeredShare.token}-${accessItem.id}`,
@@ -591,7 +636,11 @@ function ExternalSharePreview({
           collectionItems={collection.rootItems}
           experience={experience}
           expiresLabel={expiresLabel}
-          onStartAccess={primaryAccessItem && primaryAccessAction ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction) : undefined}
+          onStartAccess={primaryAccessItem && primaryAccessAction
+            ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction)
+            : contentLocked
+              ? () => requestVisitorAction(null, primaryAccessAction ?? "preview")
+              : undefined}
           registeredShare={registeredShare}
           selectedEmail={email || currentUser?.email || ""}
           totalItems={shareContentCount}
@@ -630,257 +679,24 @@ function ExternalSharePreview({
         </div> : null}
     </div>;
 }
-function VisitorShareBrowser({
-  activeItemId,
-  allowDownload,
-  allowPreview,
-  collectionTitle,
-  currentFolder,
-  folderId,
-  goUp,
-  locale,
-  onDownloadItem,
-  onOpenFolder,
-  onPreviewItem,
-  palette,
-  registeredShare,
-  sourceItems,
-  totalItems,
-  visibleItems,
-  visibleListRef
-}: {
-  activeItemId: string | null;
-  allowDownload: boolean;
-  allowPreview: boolean;
-  collectionTitle: string;
-  currentFolder?: DriveItem;
-  folderId: string | null;
-  goUp: () => void;
-  locale: Locale;
-  onDownloadItem: (item: DriveItem) => void;
-  onOpenFolder: (id: string) => void;
-  onPreviewItem: (item: DriveItem) => void;
-  palette: Palette;
-  registeredShare: RegisteredShare;
-  sourceItems: DriveItem[];
-  totalItems: number;
-  visibleItems: DriveItem[];
-  visibleListRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const t = useTranslations();
-  const timeZone = useTimeZone();
-  const allowedItemIds = useMemo(() => new Set(registeredShare.allowedItemIds), [registeredShare.allowedItemIds]);
-  const canOpenFolder = useCallback((item: DriveItem) => getItemKind(item) === "folder" && collectShareDescendants(item, sourceItems).some(child => allowedItemIds.has(child.id)), [allowedItemIds, sourceItems]);
-  const firstBrowsableFolder = !folderId ? visibleItems.find(canOpenFolder) ?? null : null;
-  const showFooterAction = !folderId && totalItems > visibleItems.length;
-  return <Surface palette={palette} className="icedr-r-min-height external-share-browser" style={{
-    overflow: "hidden",
-    flex: "0 0 auto",
-    "--r-min-height-base": "360px",
-    "--r-min-height-lg": "0px"
-  } as React.CSSProperties}>
-      <div className="external-share-browser-header" style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      height: "52px",
-      paddingInline: "16px",
-      borderBottomWidth: "1px",
-      borderColor: palette.hairline
-    }}>
-        <div className="external-share-browser-heading" style={{
-        alignItems: "center",
-        display: "flex",
-        gap: "8px",
-        minWidth: "0px"
-      }}>
-          {folderId ? <ToolButton label={t("app.up")} palette={palette} onClick={goUp}>
-              <LocalIcon name="arrow_up" size={16} />
-            </ToolButton> : null}
-          <div className="external-share-browser-title-stack">
-            <span className="external-share-browser-title icedr-truncate">{t("share.contentPreview")}</span>
-            <span className="external-share-browser-subtitle icedr-truncate">{currentFolder?.name ?? collectionTitle}</span>
-          </div>
-        </div>
-        <StatusPill palette={palette}>{t("share.itemCountValue", { count: totalItems })}</StatusPill>
-      </div>
-
-      {visibleItems.length === 0 ? <div className="external-share-browser-empty" style={{
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "12px",
-      minHeight: "300px",
-      color: palette.subtle
-    }}>
-          <LocalIcon name="folder" size={28} />
-          <span style={{
-        fontWeight: "600"
-      }}>{t("files.emptyTitle")}</span>
-        </div> : <div ref={visibleListRef} className="external-share-browser-list" style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "0px"
-    }}>
-          <div className="external-share-browser-table-head" aria-hidden="true">
-            <span>{t("files.name")}</span>
-            <span>{t("files.size")}</span>
-            <span>{t("files.type")}</span>
-            <span />
-          </div>
-          {visibleItems.map(item => {
-        const isFolder = getItemKind(item) === "folder";
-        const canOpen = canOpenFolder(item);
-        const isActive = activeItemId === item.id;
-        return <div key={item.id} data-motion-row className="icedr-has-hover external-share-file-row" style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "12px",
-          paddingInline: "16px",
-          paddingBlock: "12px",
-          minHeight: "64px",
-          textAlign: "left",
-          borderBottomWidth: "1px",
-          borderColor: palette.hairline,
-          background: "transparent",
-          boxShadow: isActive ? `inset 2px 0 0 ${palette.primary}` : "none",
-          transition: "background-color var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease)",
-          "--hover-bg": "transparent",
-          "--hover-box-shadow": `inset 2px 0 0 ${palette.primary}`
-        } as React.CSSProperties}>
-                <div className="external-share-file-primary" style={{
-            alignItems: "center",
-            display: "flex",
-            gap: "12px",
-            minWidth: "0px",
-            flex: "1 1 auto"
-          }}>
-                  <ItemIcon item={item} palette={palette} size={20} />
-                  <div {...canOpen ? buttonTypeAttr : {}} onClick={canOpen ? () => onOpenFolder(item.id) : undefined} style={{
-              minWidth: "0px",
-              flex: "1 1 auto",
-              textAlign: "left",
-              transition: "color var(--motion-fast) var(--motion-ease)"
-            } as React.CSSProperties}>
-                    <div style={{
-                alignItems: "center",
-                display: "flex",
-                gap: "8px",
-                minWidth: "0px"
-              }}>
-                      <span className="icedr-truncate" style={{
-                  color: "inherit",
-                  fontWeight: "500"
-                }}>
-                        {item.name}
-                      </span>
-                      {isFolder ? <LocalIcon name="arrow_right" size={14} color={palette.subtle} /> : null}
-                    </div>
-                    <div style={{
-                alignItems: "center",
-                display: "flex",
-                gap: "8px",
-                marginTop: "4px",
-                color: palette.subtle,
-                fontSize: "12px"
-              }}>
-                      <span>{t(`files.kind.${getItemKind(item)}`)}</span>
-                      <span>/</span>
-                      <span>{formatDriveItemModified(item, locale, timeZone)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <span className="external-share-file-size">
-                  {formatFileSize(sumDriveItemSizes([item], sourceItems), locale)}
-                </span>
-                <span className="external-share-file-type icedr-truncate">
-                  {t(`files.kind.${getItemKind(item)}`)}
-                </span>
-                <div className="external-share-file-actions" style={{
-            alignItems: "center",
-            display: "flex",
-            gap: "8px",
-            marginLeft: "12px",
-            flexShrink: "0"
-          }}>
-                  {isFolder ? <ToolButton label={canOpen ? t("actions.open") : t("share.unavailable")} palette={palette} disabled={!canOpen} onClick={() => canOpen && onOpenFolder(item.id)}>
-                      <LocalIcon name="folder" size={16} />
-                    </ToolButton> : <>
-                      <ToolButton label={allowPreview ? t("share.openPreview") : t("preview.unsupportedHint")} palette={palette} disabled={!allowPreview} onClick={() => onPreviewItem(item)}>
-                        <LocalIcon name="visible" size={16} />
-                      </ToolButton>
-                      <VisitorActionsMenu allowDownload={allowDownload} allowPreview={allowPreview} item={item} onDownloadItem={onDownloadItem} onPreviewItem={onPreviewItem} palette={palette} />
-                    </>}
-                </div>
-              </div>;
-      })}
-          {showFooterAction ? <button className="external-share-browser-footer" type="button" disabled={!firstBrowsableFolder} onClick={() => firstBrowsableFolder && onOpenFolder(firstBrowsableFolder.id)}>
-              <span>{t("share.viewAllItems", { count: totalItems })}</span>
-              <LocalIcon name="arrow_down" size={15} />
-            </button> : null}
-        </div>}
-    </Surface>;
-}
-function VisitorActionsMenu({
-  allowDownload,
-  allowPreview,
-  item,
-  onDownloadItem,
-  onPreviewItem,
-  palette
-}: {
-  allowDownload: boolean;
-  allowPreview: boolean;
-  item: DriveItem;
-  onDownloadItem: (item: DriveItem) => void;
-  onPreviewItem: (item: DriveItem) => void;
-  palette: Palette;
-}) {
-  const t = useTranslations();
-  const actionItems: AppMenuItem[] = [{
-    disabled: !allowPreview,
-    icon: <LocalIcon name="visible" size={15} />,
-    label: t("share.openPreview"),
-    onClick: () => allowPreview && onPreviewItem(item),
-    value: "preview"
-  }, {
-    disabled: !allowDownload,
-    icon: <LocalIcon name="download" size={15} />,
-    label: allowDownload ? t("actions.download") : t("share.downloadBlocked"),
-    onClick: () => allowDownload && onDownloadItem(item),
-    value: "download"
-  }];
-  return <ActionMenu ariaLabel={t("actions.more")} items={actionItems} palette={palette}>
-      <button {...buttonTypeAttr} aria-label={t("actions.more")} className="icedr-tool-button icedr-file-menu-trigger icedr-has-hover icedr-has-active icedr-has-focus-visible" style={{
-      "--tool-color": palette.subtle,
-      "--tool-focus": palette.focusRing,
-      "--tool-hover-bg": palette.surface2,
-      "--tool-hover-border": palette.hairline,
-      "--tool-hover-color": palette.ink,
-      "--active-transform": "scale(0.96)",
-      "--focus-visible-outline": "2px solid",
-      "--focus-visible-outline-color": palette.focusRing,
-      "--focus-visible-outline-offset": "2px"
-    } as React.CSSProperties}>
-        <LocalIcon name="menu7" size={16} />
-      </button>
-    </ActionMenu>;
-}
-
 function getPrimaryShareAccessItem(
   visibleItems: DriveItem[],
   sourceItems: DriveItem[],
   registeredShare: RegisteredShare,
 ) {
-  const directFile = visibleItems.find((item) => getItemKind(item) !== "folder");
+  const availableIds = new Set(
+    (registeredShare.items ?? [])
+      .filter((item) => item.availability === "available")
+      .map((item) => item.id),
+  );
+  const directFile = visibleItems.find(
+    (item) => getItemKind(item) !== "folder" && availableIds.has(item.id),
+  );
   if (directFile) return directFile;
   const visibleFolder = visibleItems.find((item) => getItemKind(item) === "folder");
   if (!visibleFolder) return null;
   return collectShareDescendants(visibleFolder, sourceItems).find((item) =>
-    getItemKind(item) !== "folder" && registeredShare.allowedItemIds.includes(item.id)
+    getItemKind(item) !== "folder" && availableIds.has(item.id)
   ) ?? null;
 }
 

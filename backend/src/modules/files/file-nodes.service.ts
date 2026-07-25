@@ -70,7 +70,11 @@ export class FileNodesService {
   async listFileNodes(
     workspaceId?: string,
     parentNodeId?: string | null,
-    options: { ownerUserId?: string; spaceScope?: string; state?: string } = {},
+    options: {
+      ownerUserId?: string | null;
+      spaceScope?: string;
+      state?: string;
+    } = {},
   ) {
     const state = this.normalizeListState(options.state);
     const spaceScope = this.normalizeSpaceScope(options.spaceScope);
@@ -120,6 +124,12 @@ export class FileNodesService {
     if (!node) return null;
     this.assertNodeAccess(node, access);
     return node;
+  }
+
+  async getFileNodes(ids: string[], access: FileAccessOptions = {}) {
+    const nodes = await this.fileNodesRepository.findByIds(ids);
+    nodes.forEach((node) => this.assertNodeAccess(node, access));
+    return nodes;
   }
 
   getFilePolicy(): Promise<FilePolicyResponse> {
