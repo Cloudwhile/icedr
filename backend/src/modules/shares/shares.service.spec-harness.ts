@@ -763,7 +763,42 @@ export function createSharesServiceHarness() {
     ].map((node) => [node.id, node]),
   );
   const fileNodesService = {
-    listFileNodes: jest.fn(() => Promise.resolve([...nodes.values()])),
+    listFileNodes: jest.fn(
+      (
+        workspaceId?: string,
+        parentNodeId?: string | null,
+        options: {
+          ownerUserId?: string | null;
+          spaceScope?: string;
+          state?: string;
+        } = {},
+      ) => {
+        const spaceScope =
+          options.spaceScope === 'personal' ? 'personal' : 'workspace';
+        const ownerUserId =
+          spaceScope === 'personal' ? options.ownerUserId : undefined;
+        const state =
+          options.state === 'archived' || options.state === 'all'
+            ? options.state
+            : 'active';
+        return Promise.resolve(
+          [...nodes.values()]
+            .filter(
+              (node) =>
+                (!workspaceId || node.workspaceId === workspaceId) &&
+                node.spaceScope === spaceScope &&
+                (parentNodeId === undefined ||
+                  node.parentNodeId === parentNodeId) &&
+                (ownerUserId === undefined ||
+                  node.ownerUserId === ownerUserId) &&
+                (state === 'all' ||
+                  (state === 'active' && !node.archivedAt) ||
+                  (state === 'archived' && Boolean(node.archivedAt))),
+            )
+            .sort((left, right) => left.name.localeCompare(right.name)),
+        );
+      },
+    ),
     getFileNode: jest.fn((id: string) =>
       Promise.resolve(nodes.get(id) ?? null),
     ),

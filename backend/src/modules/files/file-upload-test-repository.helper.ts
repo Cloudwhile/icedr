@@ -387,18 +387,24 @@ export function createFileNodesRepositoryMock(input: {
     ),
     findPreviewArtifact: jest.fn((previewId: string) => {
       const nodeId =
-        previewId === 'preview-personal-b' ? 'personal-b' : 'roadmap';
+        previewId === 'preview-test'
+          ? 'roadmap'
+          : previewId === 'preview-personal-b'
+            ? 'personal-b'
+            : null;
+      if (!nodeId) return Promise.resolve(null);
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return Promise.resolve(null);
       return Promise.resolve({
         previewId,
         nodeId,
         actorUserId: null,
         status: 'completed',
         legacyPreviewStatus: 'ready',
-        previewType: 'docx',
-        renderMode: 'docx',
+        previewType: node.previewCapability.renderMode,
+        renderMode: node.previewCapability.renderMode,
         statusUrl: `/api/file-nodes/${nodeId}/preview/status`,
-        capability: nodes.find((node) => node.id === 'roadmap')
-          ?.previewCapability,
+        capability: node.previewCapability,
         lifecycle: {
           status: 'completed' as const,
           errorCode: null,

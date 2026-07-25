@@ -65,4 +65,16 @@ describe('share preview capability', () => {
       }),
     ).toBeNull();
   });
+
+  it('does not hide a missing capability secret as an invalid token', () => {
+    const missingConfig = { get: () => undefined };
+
+    expect(() =>
+      readSharePreviewCapability(missingConfig, {
+        capability: 'invalid',
+        nodeId: 'node-a',
+        shareToken: 'share-a',
+      }),
+    ).toThrow('share.visitorHashSecret is not configured');
+  });
 });

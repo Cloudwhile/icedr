@@ -42,6 +42,18 @@ describe('FileDownloadPreviewService', () => {
         actorUserId: 'user-a',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+
+    await expect(
+      repository.findPreviewArtifact('preview-personal-b'),
+    ).resolves.toMatchObject({
+      nodeId: 'personal-b',
+      previewType: 'text',
+      renderMode: 'text',
+      capability: { renderMode: 'text', supported: true },
+    });
+    await expect(
+      repository.findPreviewArtifact('preview-missing'),
+    ).resolves.toBeNull();
   });
 
   it('degrades unsafe or oversized preview intents to download-only', async () => {

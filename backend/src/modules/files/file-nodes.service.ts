@@ -70,7 +70,11 @@ export class FileNodesService {
   async listFileNodes(
     workspaceId?: string,
     parentNodeId?: string | null,
-    options: { ownerUserId?: string; spaceScope?: string; state?: string } = {},
+    options: {
+      ownerUserId?: string | null;
+      spaceScope?: string;
+      state?: string;
+    } = {},
   ) {
     const state = this.normalizeListState(options.state);
     const spaceScope = this.normalizeSpaceScope(options.spaceScope);

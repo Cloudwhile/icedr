@@ -37,6 +37,7 @@ export function readSharePreviewCapability(
   config: ConfigReader,
   input: { capability: string; nodeId: string; shareToken: string },
 ) {
+  const key = resolveKey(config);
   try {
     const [version, encodedIv, encodedCiphertext, encodedTag, extra] =
       input.capability.split('.');
@@ -62,7 +63,7 @@ export function readSharePreviewCapability(
     ) {
       return null;
     }
-    const decipher = createDecipheriv('aes-256-gcm', resolveKey(config), iv);
+    const decipher = createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAAD(resolveAssociatedData(input.shareToken, input.nodeId));
     decipher.setAuthTag(tag);
     const artifactPreviewId = Buffer.concat([

@@ -160,12 +160,18 @@ export class ShareContentService {
       throw new ForbiddenException('Preview is disabled for this share');
     }
     if (scopeMode === 'entire-folder') {
-      await this.contentRepository.createMembersIfMissing(share.token, [
-        this.toMemberSnapshot(
-          node,
-          node.id === share.dynamicRootId ? 'root' : 'descendant',
-        ),
-      ]);
+      const existingMember = await this.contentRepository.findMember(
+        share.token,
+        node.id,
+      );
+      if (!existingMember) {
+        await this.contentRepository.createMembersIfMissing(share.token, [
+          this.toMemberSnapshot(
+            node,
+            node.id === share.dynamicRootId ? 'root' : 'descendant',
+          ),
+        ]);
+      }
     }
     return node;
   }
@@ -250,7 +256,7 @@ export class ShareContentService {
     );
     this.assertSameNodeScope(requested);
     const scopeRoot = requested[0];
-    const tree = await this.loadActiveTree(scopeRoot);
+    const tree = await this.loadActiveTree(requested);
     const normalizedRoots = requested.filter(
       (node) =>
         !requested.some(
@@ -661,26 +667,75 @@ export class ShareContentService {
     return node;
   }
 
-  private async loadActiveTree(root: FileNodeResponse) {
-    const nodes = await this.fileNodesService.listFileNodes(
-      root.workspaceId,
-      undefined,
-      {
-        ownerUserId: root.ownerUserId ?? undefined,
-        spaceScope: root.spaceScope,
-        state: 'active',
-      },
-    );
-    const byId = new Map(nodes.map((node) => [node.id, node]));
-    byId.set(root.id, root);
+  private async loadActiveTree(input: FileNodeResponse | FileNodeResponse[]) {
+    const roots = Array.isArray(input) ? input : [input];
+    const scopeRoot = roots[0];
+    this.assertSameNodeScope(roots);
+
+    const byId = new Map(roots.map((node) => [node.id, node]));
     const byParent = new Map<string, FileNodeResponse[]>();
-    byId.forEach((node) => {
-      if (!node.parentNodeId) return;
-      const children = byParent.get(node.parentNodeId) ?? [];
-      children.push(node);
-      byParent.set(node.parentNodeId, children);
-    });
+    const pendingFolderIds = roots
+      .filter((node) => node.kind === 'folder')
+      .map((node) => node.id);
+    const scheduledFolderIds = new Set(pendingFolderIds);
+
+    for (const parentNodeId of pendingFolderIds) {
+      const children = await this.fileNodesService.listFileNodes(
+        scopeRoot.workspaceId,
+        parentNodeId,
+        {
+          ownerUserId:
+            scopeRoot.spaceScope === 'personal'
+              ? scopeRoot.ownerUserId
+              : undefined,
+          spaceScope: scopeRoot.spaceScope,
+          state: 'active',
+        },
+      );
+      const siblings = byParent.get(parentNodeId) ?? [];
+      for (const child of children) {
+        if (child.parentNodeId !== parentNodeId) {
+          throw new BadRequestException('File node hierarchy is invalid');
+        }
+        this.assertSameNodeScope([scopeRoot, child]);
+        if (siblings.some((node) => node.id === child.id)) {
+          throw new BadRequestException('File node hierarchy contains a cycle');
+        }
+        const existing = byId.get(child.id);
+        if (existing && existing.parentNodeId !== child.parentNodeId) {
+          throw new BadRequestException('File node hierarchy is invalid');
+        }
+        byId.set(child.id, child);
+        siblings.push(child);
+        if (child.kind === 'folder' && !scheduledFolderIds.has(child.id)) {
+          scheduledFolderIds.add(child.id);
+          pendingFolderIds.push(child.id);
+        }
+      }
+      byParent.set(parentNodeId, siblings);
+    }
+
+    this.assertTreeAcyclic(byId);
     return { byId, byParent };
+  }
+
+  private assertTreeAcyclic(byId: Map<string, FileNodeResponse>) {
+    const resolved = new Set<string>();
+    byId.forEach((node) => {
+      if (resolved.has(node.id)) return;
+      const path = new Set<string>();
+      let current: FileNodeResponse | undefined = node;
+      while (current && !resolved.has(current.id)) {
+        if (path.has(current.id)) {
+          throw new BadRequestException('File node hierarchy contains a cycle');
+        }
+        path.add(current.id);
+        current = current.parentNodeId
+          ? byId.get(current.parentNodeId)
+          : undefined;
+      }
+      path.forEach((nodeId) => resolved.add(nodeId));
+    });
   }
 
   private collectDescendants(

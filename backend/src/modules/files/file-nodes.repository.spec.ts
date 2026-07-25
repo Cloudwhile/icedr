@@ -1,7 +1,95 @@
 import { ConflictException } from '@nestjs/common';
 import { createFileNodesRepository as createRepository } from './file-nodes.repository.spec-helpers';
 
+function storedNode(id: string) {
+  return {
+    id,
+    workspaceId: 'workspace-default',
+    spaceScope: 'workspace',
+    parentNodeId: null,
+    directoryKey: '',
+    ownerScopeKey: '',
+    name: `${id}.txt`,
+    nameKey: `active:${id}.txt`,
+    kind: 'doc',
+    mimeType: 'text/plain',
+    sizeBytes: 1n,
+    objectKey: `objects/${id}`,
+    ownerName: 'Workspace User',
+    ownerUserId: null,
+    starred: false,
+    archivedAt: null,
+    archivedBy: null,
+    originalParentNodeId: null,
+    originalPath: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+}
+
 describe('FileNodesRepository', () => {
+  it('looks up unique ids in sequential batches and preserves first input order', async () => {
+    const ids = Array.from({ length: 1001 }, (_, index) => `node-${index}`);
+    const requested = [
+      ids[700],
+      ...ids.filter((id) => id !== ids[700]),
+      'missing',
+      ids[700],
+    ];
+    let activeQueries = 0;
+    let maxActiveQueries = 0;
+    const findMany = jest.fn(
+      async (input: { where: { id: { in: string[] } } }) => {
+        activeQueries += 1;
+        maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+        await Promise.resolve();
+        activeQueries -= 1;
+        return [...input.where.id.in]
+          .reverse()
+          .filter((id) => id !== 'missing')
+          .map((id) => storedNode(id));
+      },
+    );
+    const repository = createRepository({ fileNode: { findMany } });
+
+    const result = await repository.findByIds(requested);
+
+    expect(findMany).toHaveBeenCalledTimes(3);
+    expect(
+      findMany.mock.calls.map((call) => call[0].where.id.in.length),
+    ).toEqual([500, 500, 2]);
+    expect(findMany.mock.calls.flatMap((call) => call[0].where.id.in)).toEqual([
+      ...new Set(requested),
+    ]);
+    expect(result.map((node) => node.id)).toEqual([
+      ids[700],
+      ...ids.filter((id) => id !== ids[700]),
+    ]);
+    expect(maxActiveQueries).toBe(1);
+  });
+
+  it('distinguishes a null owner filter from an omitted owner filter', async () => {
+    const findMany = jest.fn(() => Promise.resolve([]));
+    const repository = createRepository({ fileNode: { findMany } });
+
+    await repository.list('workspace-default', 'folder', 'active', {
+      ownerUserId: null,
+      spaceScope: 'personal',
+    });
+    await repository.list('workspace-default', 'folder', 'active', {
+      spaceScope: 'personal',
+    });
+
+    expect(findMany.mock.calls[0]?.[0]).toMatchObject({
+      where: {
+        ownerUserId: null,
+        parentNodeId: 'folder',
+        spaceScope: 'personal',
+      },
+    });
+    expect(findMany.mock.calls[1]?.[0].where).not.toHaveProperty('ownerUserId');
+  });
+
   it('keeps generated restore names within the UTF-8 byte limit', async () => {
     const name = `${'界'.repeat(83)}ab.txt`;
     expect(Buffer.byteLength(name, 'utf8')).toBe(255);

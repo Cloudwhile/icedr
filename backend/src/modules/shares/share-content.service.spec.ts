@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { FileNodeResponse } from '../files/file-nodes.dto';
 import type { FileNodesService } from '../files/file-nodes.service';
 import { resolveFilePreviewCapability } from '../files/file-preview-policy';
@@ -146,20 +146,38 @@ describe('ShareContentService', () => {
       listFileNodes: jest.fn(
         (
           workspaceId?: string,
-          _parentNodeId?: string | null,
-          options: { ownerUserId?: string; spaceScope?: string } = {},
-        ) =>
-          Promise.resolve(
-            [...nodes.values()].filter(
-              (node) =>
-                !node.archivedAt &&
-                (!workspaceId || node.workspaceId === workspaceId) &&
-                (!options.spaceScope ||
-                  node.spaceScope === options.spaceScope) &&
-                (!options.ownerUserId ||
-                  node.ownerUserId === options.ownerUserId),
-            ),
-          ),
+          parentNodeId?: string | null,
+          options: {
+            ownerUserId?: string | null;
+            spaceScope?: string;
+            state?: string;
+          } = {},
+        ) => {
+          const spaceScope =
+            options.spaceScope === 'personal' ? 'personal' : 'workspace';
+          const ownerUserId =
+            spaceScope === 'personal' ? options.ownerUserId : undefined;
+          const state =
+            options.state === 'archived' || options.state === 'all'
+              ? options.state
+              : 'active';
+          return Promise.resolve(
+            [...nodes.values()]
+              .filter(
+                (node) =>
+                  (!workspaceId || node.workspaceId === workspaceId) &&
+                  node.spaceScope === spaceScope &&
+                  (parentNodeId === undefined ||
+                    node.parentNodeId === parentNodeId) &&
+                  (ownerUserId === undefined ||
+                    node.ownerUserId === ownerUserId) &&
+                  (state === 'all' ||
+                    (state === 'active' && !node.archivedAt) ||
+                    (state === 'archived' && Boolean(node.archivedAt))),
+              )
+              .sort((left, right) => left.name.localeCompare(right.name)),
+          );
+        },
       ),
     };
     const service = new ShareContentService(
@@ -174,7 +192,12 @@ describe('ShareContentService', () => {
     const file = createNode('file', { parentNodeId: root.id });
     const childFolder = folder('child', root.id);
     const nested = createNode('nested', { parentNodeId: childFolder.id });
-    const { service } = createHarness([root, file, childFolder, nested]);
+    const { fileNodesService, service } = createHarness([
+      root,
+      file,
+      childFolder,
+      nested,
+    ]);
 
     const resolved = await service.resolveCreateScope(
       createDto({
@@ -203,6 +226,95 @@ describe('ShareContentService', () => {
       child: 'descendant',
       nested: 'descendant',
     });
+    expect(
+      fileNodesService.listFileNodes.mock.calls.map((call) => call[1]),
+    ).toEqual(['root', 'child']);
+  });
+
+  it('keeps independent multi-item roots while loading only their folder subtrees', async () => {
+    const rootFile = createNode('root-file');
+    const rootFolder = folder('root-folder');
+    const nestedFolder = folder('nested-folder', rootFolder.id);
+    const nestedFile = createNode('nested-file', {
+      parentNodeId: nestedFolder.id,
+    });
+    const outsideFolder = folder('outside-folder');
+    const outsideFile = createNode('outside-file', {
+      parentNodeId: outsideFolder.id,
+    });
+    const { fileNodesService, service } = createHarness([
+      rootFile,
+      rootFolder,
+      nestedFolder,
+      nestedFile,
+      outsideFolder,
+      outsideFile,
+    ]);
+
+    const resolved = await service.resolveCreateScope(
+      createDto({
+        type: 'multi-item',
+        itemIds: [rootFile.id, rootFolder.id, nestedFolder.id],
+      }),
+    );
+
+    expect(resolved.dto.rootItemIds).toEqual([rootFile.id, rootFolder.id]);
+    expect(new Set(resolved.dto.allowedItemIds)).toEqual(
+      new Set([rootFile.id, rootFolder.id, nestedFolder.id, nestedFile.id]),
+    );
+    expect(resolved.dto.allowedItemIds).not.toContain(outsideFile.id);
+    expect(
+      fileNodesService.listFileNodes.mock.calls.map((call) => call[1]),
+    ).toEqual([rootFolder.id, nestedFolder.id]);
+  });
+
+  it('keeps a null personal owner as an explicit subtree filter', async () => {
+    const root = folder('personal-root', null, {
+      ownerUserId: null,
+      spaceScope: 'personal',
+    });
+    const child = createNode('orphan-child', {
+      ownerUserId: null,
+      parentNodeId: root.id,
+      spaceScope: 'personal',
+    });
+    const foreign = createNode('foreign-child', {
+      ownerUserId: 'user-b',
+      parentNodeId: root.id,
+      spaceScope: 'personal',
+    });
+    const { fileNodesService, service } = createHarness([root, child, foreign]);
+
+    const resolved = await service.resolveCreateScope(
+      createDto({
+        type: 'folder',
+        folderId: root.id,
+        visibility: 'entire-folder',
+      }),
+    );
+
+    expect(resolved.dto.allowedItemIds).toEqual([root.id, child.id]);
+    expect(fileNodesService.listFileNodes).toHaveBeenCalledWith(
+      'workspace-default',
+      root.id,
+      expect.objectContaining({ ownerUserId: null, spaceScope: 'personal' }),
+    );
+  });
+
+  it('rejects a cycle returned while loading a folder subtree', async () => {
+    const root = folder('root', 'child');
+    const child = folder('child', root.id);
+    const { service } = createHarness([root, child]);
+
+    await expect(
+      service.resolveCreateScope(
+        createDto({
+          type: 'folder',
+          folderId: root.id,
+          visibility: 'entire-folder',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('includes only selected content, navigation ancestors, and selected folder snapshots', async () => {
@@ -285,6 +397,27 @@ describe('ShareContentService', () => {
         'download',
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('persists a dynamic member only until it exists', async () => {
+    const root = folder('root');
+    const child = createNode('child', { parentNodeId: root.id });
+    const { contentRepository, service } = createHarness([root, child]);
+    const share = createShare({
+      allowedItemIds: [root.id],
+      dynamicRootId: root.id,
+      rootItemIds: [root.id],
+      scopeMode: 'entire-folder',
+    });
+
+    await service.requireNode(share, child.id, 'preview');
+    await service.requireNode(share, child.id, 'preview');
+
+    expect(contentRepository.createMembersIfMissing).toHaveBeenCalledTimes(1);
+    expect(contentRepository.createMembersIfMissing).toHaveBeenCalledWith(
+      share.token,
+      [expect.objectContaining({ nodeId: child.id, role: 'descendant' })],
+    );
   });
 
   it('does not reveal policy or lifecycle state for nodes outside the scope', async () => {
