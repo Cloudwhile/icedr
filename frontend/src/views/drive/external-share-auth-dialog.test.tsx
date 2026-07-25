@@ -359,6 +359,7 @@ describe("ShareAuthDialog email verification", () => {
       <ShareAuthDialog
         {...commonProps}
         accessItem={null}
+        action="download"
         authMethod="email"
         code=""
         email="visitor@example.com"
@@ -374,5 +375,25 @@ describe("ShareAuthDialog email verification", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "actions.download" }));
     expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  it("keeps email verification disabled without an exposed item when the email is invalid", () => {
+    render(
+      <ShareAuthDialog
+        {...commonProps}
+        accessItem={null}
+        authMethod="email"
+        code=""
+        email="invalid-email"
+        onCodeChange={vi.fn()}
+        onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()}
+        onSendCode={vi.fn()}
+        onVerifyCode={vi.fn()}
+        stage="email"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "share.sendCode" })).toBeDisabled();
   });
 });

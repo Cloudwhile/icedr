@@ -1,7 +1,13 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
-import { useLocale } from "@/i18n/react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { useLocale, useTranslations } from "@/i18n/react";
 import { ItemIcon, LocalIcon } from "@/components/ui/app-icon";
 import {
   formatFileSize,
@@ -50,7 +56,14 @@ export type ShareScopePickerProps = {
   onSelectedIdsChange: (ids: string[]) => void;
   palette: Palette;
   labels?: Partial<ShareScopePickerLabels>;
+  treeAriaDescribedBy?: string;
+  treeAriaInvalid?: boolean;
 };
+
+const folderVisibilityModes: FolderShareVisibility[] = [
+  "entire-folder",
+  "selected-items",
+];
 
 export function ShareScopePicker({
   rootFolder,
@@ -61,12 +74,21 @@ export function ShareScopePicker({
   onSelectedIdsChange,
   palette,
   labels,
+  treeAriaDescribedBy,
+  treeAriaInvalid = false,
 }: ShareScopePickerProps) {
   const locale = useLocale() as Locale;
+  const t = useTranslations();
   const copy = {
-    ...getDefaultLabels(locale),
+    ...getDefaultLabels(t),
     ...labels,
   };
+  const modeButtonRefs = useRef<
+    Record<FolderShareVisibility, HTMLButtonElement | null>
+  >({
+    "entire-folder": null,
+    "selected-items": null,
+  });
   const scope = useMemo(
     () =>
       buildShareMemberScope({
@@ -113,6 +135,32 @@ export function ShareScopePicker({
     if (nextMode !== mode) onModeChange(nextMode);
   };
 
+  const handleModeKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    currentMode: FolderShareVisibility,
+  ) => {
+    const currentIndex = folderVisibilityModes.indexOf(currentMode);
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % folderVisibilityModes.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex =
+        (currentIndex - 1 + folderVisibilityModes.length) %
+        folderVisibilityModes.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = folderVisibilityModes.length - 1;
+    }
+
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextMode = folderVisibilityModes[nextIndex];
+    setMode(nextMode);
+    modeButtonRefs.current[nextMode]?.focus();
+  };
+
   const setExpanded = (itemId: string, expanded: boolean) => {
     setExpansionOverrides((current) => {
       const next = new Map(current);
@@ -135,6 +183,7 @@ export function ShareScopePicker({
     <section className="share-scope-picker" style={pickerStyle}>
       <div
         aria-label={copy.modeLabel}
+        aria-orientation="horizontal"
         className="share-scope-picker-modes"
         role="radiogroup"
       >
@@ -143,7 +192,12 @@ export function ShareScopePicker({
           className="share-scope-picker-mode-button"
           data-active={mode === "entire-folder" ? "true" : undefined}
           onClick={() => setMode("entire-folder")}
+          onKeyDown={(event) => handleModeKeyDown(event, "entire-folder")}
+          ref={(element) => {
+            modeButtonRefs.current["entire-folder"] = element;
+          }}
           role="radio"
+          tabIndex={mode === "entire-folder" ? 0 : -1}
           type="button"
         >
           <LocalIcon name="folder" size={15} />
@@ -154,7 +208,12 @@ export function ShareScopePicker({
           className="share-scope-picker-mode-button"
           data-active={mode === "selected-items" ? "true" : undefined}
           onClick={() => setMode("selected-items")}
+          onKeyDown={(event) => handleModeKeyDown(event, "selected-items")}
+          ref={(element) => {
+            modeButtonRefs.current["selected-items"] = element;
+          }}
           role="radio"
+          tabIndex={mode === "selected-items" ? 0 : -1}
           type="button"
         >
           <LocalIcon name="tick" size={15} />
@@ -164,6 +223,8 @@ export function ShareScopePicker({
 
       {mode === "selected-items" ? (
         <div
+          aria-describedby={treeAriaDescribedBy}
+          aria-invalid={treeAriaInvalid ? true : undefined}
           aria-label={copy.treeLabel}
           className="share-scope-picker-tree"
           role="tree"
@@ -345,38 +406,39 @@ function ShareScopeTreeItem({
   );
 }
 
-function getDefaultLabels(locale: Locale): ShareScopePickerLabels {
-  const isChinese = locale.toLowerCase().startsWith("zh");
-
-  if (isChinese) {
-    return {
-      modeLabel: "文件夹可见范围",
-      entireFolder: "整个文件夹",
-      selectedItems: "选择内容",
-      treeLabel: "选择分享内容",
-      emptyFolder: "此文件夹为空",
-      expandFolder: (name) => `展开 ${name}`,
-      collapseFolder: (name) => `折叠 ${name}`,
-      selectItem: (name) => `选择 ${name}`,
-      deselectItem: (name) => `取消选择 ${name}`,
-      coveredItem: (name) => `${name} 已由上级文件夹包含`,
-      summary: ({ fileCount, folderCount, formattedSize }) =>
-        `${fileCount} 个文件 · ${folderCount} 个文件夹 · ${formattedSize}`,
-    };
-  }
-
+function getDefaultLabels(
+  t: ReturnType<typeof useTranslations>,
+): ShareScopePickerLabels {
   return {
-    modeLabel: "Folder visibility",
-    entireFolder: "Entire folder",
-    selectedItems: "Selected items",
-    treeLabel: "Select shared content",
-    emptyFolder: "This folder is empty",
-    expandFolder: (name) => `Expand ${name}`,
-    collapseFolder: (name) => `Collapse ${name}`,
-    selectItem: (name) => `Select ${name}`,
-    deselectItem: (name) => `Deselect ${name}`,
-    coveredItem: (name) => `${name} is included by its parent folder`,
-    summary: ({ fileCount, folderCount, formattedSize }) =>
-      `${fileCount} ${fileCount === 1 ? "file" : "files"} · ${folderCount} ${folderCount === 1 ? "folder" : "folders"} · ${formattedSize}`,
+    modeLabel: t("share.scopePicker.modeLabel"),
+    entireFolder: t("share.scopePicker.entireFolder"),
+    selectedItems: t("share.scopePicker.selectedItems"),
+    treeLabel: t("share.scopePicker.treeLabel"),
+    emptyFolder: t("share.scopePicker.emptyFolder"),
+    expandFolder: (name) => t("share.scopePicker.expandFolder", { name }),
+    collapseFolder: (name) =>
+      t("share.scopePicker.collapseFolder", { name }),
+    selectItem: (name) => t("share.scopePicker.selectItem", { name }),
+    deselectItem: (name) => t("share.scopePicker.deselectItem", { name }),
+    coveredItem: (name) => t("share.scopePicker.coveredItem", { name }),
+    summary: ({ fileCount, folderCount, formattedSize }) => {
+      const files = t(
+        fileCount === 1
+          ? "share.scopePicker.fileCountOne"
+          : "share.scopePicker.fileCountMany",
+        { count: fileCount },
+      );
+      const folders = t(
+        folderCount === 1
+          ? "share.scopePicker.folderCountOne"
+          : "share.scopePicker.folderCountMany",
+        { count: folderCount },
+      );
+      return t("share.scopePicker.summary", {
+        files,
+        folders,
+        size: formattedSize,
+      });
+    },
   };
 }

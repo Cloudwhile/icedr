@@ -12,6 +12,8 @@ import { LocalIcon, StatusPill, ToolButton } from "@/views/drive/drive-primitive
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import "@/styles/share-details-panel.css";
 
+const memberPageSize = 100;
+
 export function ShareDetailsPanel({
   onClose,
   palette,
@@ -28,8 +30,20 @@ export function ShareDetailsPanel({
     share: RegisteredShare | null;
     token: string;
   }>({ error: false, share: null, token: "" });
+  const [memberLimit, setMemberLimit] = useState({
+    count: memberPageSize,
+    token: "",
+  });
   const loading = state.token !== token;
   const share = loading ? null : state.share;
+  const visibleMemberCount =
+    memberLimit.token === token ? memberLimit.count : memberPageSize;
+  const members = share?.items ?? [];
+  const visibleMembers = members.slice(0, visibleMemberCount);
+  const remainingMemberCount = Math.max(
+    0,
+    members.length - visibleMembers.length,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -97,9 +111,33 @@ export function ShareDetailsPanel({
           </div>
 
           <section className="share-details-members" aria-label={t("share.collection")}>
-            {(share.items ?? []).map((item) => (
-              <ShareMemberRow item={item} key={item.id} palette={palette} />
-            ))}
+            {visibleMembers.length > 0 ? (
+              visibleMembers.map((item) => (
+                <ShareMemberRow item={item} key={item.id} palette={palette} />
+              ))
+            ) : (
+              <span className="share-details-empty">
+                {t("share.emptyCollection")}
+              </span>
+            )}
+            {remainingMemberCount > 0 ? (
+              <div className="share-details-members-more">
+                <ToolButton
+                  label={t("share.showMoreItems", {
+                    count: remainingMemberCount,
+                  })}
+                  onClick={() =>
+                    setMemberLimit({
+                      count: visibleMemberCount + memberPageSize,
+                      token,
+                    })
+                  }
+                  palette={palette}
+                >
+                  <LocalIcon name="arrow_down" size={16} />
+                </ToolButton>
+              </div>
+            ) : null}
           </section>
         </div>
       )}
@@ -139,7 +177,9 @@ function ShareMemberRow({
       <span className="share-details-member-copy">
         <span className="icedr-truncate">{item.name || t("share.unavailable")}</span>
         {item.snapshotName && item.snapshotName !== item.name ? (
-          <span className="icedr-truncate">{item.snapshotName}</span>
+          <span className="icedr-truncate">
+            {t("share.originalName", { name: item.snapshotName })}
+          </span>
         ) : null}
       </span>
       <StatusPill palette={palette} tone={available ? (changed ? "accent" : "neutral") : "risk"}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { AppInput } from "@/components/ui/app-input";
 import { AppPagination } from "@/components/ui/app-pagination";
@@ -27,6 +27,9 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
   const locale = useLocale() as Locale;
   const timeZone = useTimeZone();
   const [focusedLinkToken, setFocusedLinkToken] = useState<string | null>(null);
+  const focusedLink = focusedLinkToken
+    ? links.find((link) => link.token === focusedLinkToken) ?? null
+    : null;
   const activeLinks = links.filter((link) => (link.status ?? (link.revokedAt ? "revoked" : "active")) === "active");
   const riskLinks = links.filter((link) => link.riskLevel === "high");
   const expiredLinks = links.filter((link) => link.status === "expired");
@@ -34,6 +37,17 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
   const protectedTokens = new Set(protectedLinks.map((link) => link.token));
   const totalVisits = links.reduce((sum, link) => sum + (link.visitCount ?? 0), 0);
   const totalDownloads = links.reduce((sum, link) => sum + (link.downloadCount ?? 0), 0);
+
+  useEffect(() => {
+    if (focusedLinkToken && !focusedLink) {
+      const staleToken = focusedLinkToken;
+      queueMicrotask(() => {
+        setFocusedLinkToken((currentToken) =>
+          currentToken === staleToken ? null : currentToken,
+        );
+      });
+    }
+  }, [focusedLink, focusedLinkToken]);
 
   return (
     <div className="drive-module-stack drive-links-module">
@@ -126,12 +140,12 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
           </MotionList>
         </div>
 
-        {focusedLinkToken ? (
+        {focusedLink ? (
           <div className="drive-module-side-stack drive-links-side-stack">
             <ShareDetailsPanel
               onClose={() => setFocusedLinkToken(null)}
               palette={palette}
-              token={focusedLinkToken}
+              token={focusedLink.token}
             />
           </div>
         ) : riskLinks.length > 0 ? (

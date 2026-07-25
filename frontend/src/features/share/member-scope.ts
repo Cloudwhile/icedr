@@ -244,21 +244,18 @@ function createScopeTreeIndex(
   sourceItems: DriveItem[],
 ): ScopeTreeIndex {
   const candidateById = new Map<string, DriveItem>();
+  const personalRoot = rootFolder.spaceScope === "personal";
 
   sourceItems.forEach((item) => {
     if (
       item.id === rootFolder.id ||
       item.archivedAt ||
       candidateById.has(item.id) ||
-      (rootFolder.workspaceId &&
-        item.workspaceId &&
+      (rootFolder.workspaceId !== undefined &&
         item.workspaceId !== rootFolder.workspaceId) ||
-      (rootFolder.spaceScope &&
-        item.spaceScope &&
+      (rootFolder.spaceScope !== undefined &&
         item.spaceScope !== rootFolder.spaceScope) ||
-      (rootFolder.ownerUserId &&
-        item.ownerUserId &&
-        item.ownerUserId !== rootFolder.ownerUserId)
+      (personalRoot && item.ownerUserId !== rootFolder.ownerUserId)
     ) {
       return;
     }

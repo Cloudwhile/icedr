@@ -65,15 +65,18 @@ export function VisitorShareBrowser({
     [registeredShare.items],
   );
   const canOpenFolder = useCallback(
-    (item: DriveItem) =>
-      getItemKind(item) === "folder" &&
-      memberById.get(item.id)?.availability !== "archived" &&
-      memberById.get(item.id)?.availability !== "missing" &&
-      memberById.get(item.id)?.availability !== "out-of-scope",
+    (item: DriveItem) => {
+      if (getItemKind(item) !== "folder") return false;
+      const member = memberById.get(item.id);
+      return !member || member.availability === "available";
+    },
     [memberById],
   );
   const firstBrowsableFolder = !folderId ? visibleItems.find(canOpenFolder) ?? null : null;
-  const showFooterAction = !folderId && totalItems > visibleItems.length;
+  const showFooterAction =
+    !folderId &&
+    totalItems > visibleItems.length &&
+    firstBrowsableFolder !== null;
 
   return (
     <Surface
@@ -160,6 +163,52 @@ export function VisitorShareBrowser({
             const available = !member || member.availability === "available";
             const canOpen = canOpenFolder(item);
             const isActive = activeItemId === item.id;
+            const itemCopy = (
+              <>
+                <div
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    gap: "8px",
+                    minWidth: "0px",
+                  }}
+                >
+                  <span
+                    className="icedr-truncate"
+                    style={{
+                      color: "inherit",
+                      fontWeight: "500",
+                    }}
+                  >
+                    {item.name}
+                  </span>
+                  {isFolder ? <LocalIcon name="arrow_right" size={14} color={palette.subtle} /> : null}
+                  {member && member.availability !== "available" ? (
+                    <StatusPill palette={palette} tone="risk">
+                      {t(`share.memberStatus.${member.availability}`)}
+                    </StatusPill>
+                  ) : member?.changes.length ? (
+                    <StatusPill palette={palette} tone="accent">
+                      {t(`share.memberChange.${member.changes[0]}`)}
+                    </StatusPill>
+                  ) : null}
+                </div>
+                <div
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    gap: "8px",
+                    marginTop: "4px",
+                    color: palette.subtle,
+                    fontSize: "12px",
+                  }}
+                >
+                  <span>{t(`files.kind.${getItemKind(item)}`)}</span>
+                  <span>/</span>
+                  <span>{formatDriveItemModified(item, locale, timeZone)}</span>
+                </div>
+              </>
+            );
 
             return (
               <div
@@ -196,59 +245,23 @@ export function VisitorShareBrowser({
                   }}
                 >
                   <ItemIcon item={item} palette={palette} size={20} />
-                  <div
-                    {...(canOpen ? buttonTypeAttr : {})}
-                    onClick={canOpen ? () => onOpenFolder(item.id) : undefined}
-                    style={{
-                      minWidth: "0px",
-                      flex: "1 1 auto",
-                      textAlign: "left",
-                      transition: "color var(--motion-fast) var(--motion-ease)",
-                    } as CSSProperties}
-                  >
-                    <div
+                  {canOpen ? (
+                    <button
+                      aria-label={t("share.enterFolder", { name: item.name })}
+                      className="external-share-file-primary-copy external-share-folder-name-button"
+                      onClick={() => onOpenFolder(item.id)}
                       style={{
-                        alignItems: "center",
-                        display: "flex",
-                        gap: "8px",
-                        minWidth: "0px",
-                      }}
+                        "--external-share-focus": palette.focusRing,
+                      } as CSSProperties}
+                      type="button"
                     >
-                      <span
-                        className="icedr-truncate"
-                        style={{
-                          color: "inherit",
-                          fontWeight: "500",
-                        }}
-                      >
-                        {item.name}
-                      </span>
-                      {isFolder ? <LocalIcon name="arrow_right" size={14} color={palette.subtle} /> : null}
-                      {member && member.availability !== "available" ? (
-                        <StatusPill palette={palette} tone="risk">
-                          {t(`share.memberStatus.${member.availability}`)}
-                        </StatusPill>
-                      ) : member?.changes.length ? (
-                        <StatusPill palette={palette} tone="accent">
-                          {t(`share.memberChange.${member.changes[0]}`)}
-                        </StatusPill>
-                      ) : null}
+                      {itemCopy}
+                    </button>
+                  ) : (
+                    <div className="external-share-file-primary-copy">
+                      {itemCopy}
                     </div>
-                    <div
-                      style={{
-                        alignItems: "center",
-                        display: "flex",
-                        gap: "8px",
-                        marginTop: "4px",
-                        color: palette.subtle,
-                        fontSize: "12px",
-                      }}
-                    >
-                      <span>{t(`files.kind.${getItemKind(item)}`)}</span>
-                      <span>/</span>
-                      <span>{formatDriveItemModified(item, locale, timeZone)}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <span className="external-share-file-size">
@@ -269,7 +282,11 @@ export function VisitorShareBrowser({
                 >
                   {isFolder ? (
                     <ToolButton
-                      label={canOpen ? t("actions.open") : t("share.unavailable")}
+                      label={
+                        canOpen || !member
+                          ? t("actions.open")
+                          : t(`share.memberStatus.${member.availability}`)
+                      }
                       palette={palette}
                       disabled={!canOpen}
                       onClick={() => canOpen && onOpenFolder(item.id)}
@@ -279,7 +296,13 @@ export function VisitorShareBrowser({
                   ) : (
                     <>
                       <ToolButton
-                        label={allowPreview && available ? t("share.openPreview") : t("preview.unsupportedHint")}
+                        label={
+                          !available && member
+                            ? t(`share.memberStatus.${member.availability}`)
+                            : allowPreview
+                              ? t("share.openPreview")
+                              : t("share.previewBlocked")
+                        }
                         palette={palette}
                         disabled={!allowPreview || !available}
                         onClick={() => onPreviewItem(item)}
@@ -301,15 +324,16 @@ export function VisitorShareBrowser({
               </div>
             );
           })}
-          {showFooterAction ? (
+          {showFooterAction && firstBrowsableFolder ? (
             <button
               className="external-share-browser-footer"
               type="button"
-              disabled={!firstBrowsableFolder}
-              onClick={() => firstBrowsableFolder && onOpenFolder(firstBrowsableFolder.id)}
+              onClick={() => onOpenFolder(firstBrowsableFolder.id)}
             >
-              <span>{t("share.viewAllItems", { count: totalItems })}</span>
-              <LocalIcon name="arrow_down" size={15} />
+              <span>
+                {t("share.enterFolder", { name: firstBrowsableFolder.name })}
+              </span>
+              <LocalIcon name="arrow_right" size={15} />
             </button>
           ) : null}
         </div>

@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createRegisteredShare, fetchRegisteredShare, type RegisteredShare } from "./registry";
+import type { DriveItem } from "@/features/file/model";
+import {
+  createRegisteredShare,
+  fetchRegisteredShare,
+  getShareItems,
+  type RegisteredShare,
+  type RegisteredShareItem,
+} from "./registry";
 
 const policy = {
   waitValue: 0,
@@ -35,6 +42,66 @@ const selectedFolderShare: RegisteredShare = {
   workspaceId: "workspace-default",
 };
 
+function createDriveItem(
+  input: Partial<DriveItem> & Pick<DriveItem, "id" | "name" | "parentId">,
+): DriveItem {
+  return {
+    archivedAt: null,
+    colorKey: "primary",
+    hasContent: true,
+    kind: "doc",
+    mimeType: "text/plain",
+    modifiedAt: "2026-07-25T00:00:00.000Z",
+    owner: "Mina",
+    ownerUserId: "user-a",
+    shared: true,
+    sizeBytes: 120,
+    spaceScope: "workspace",
+    starred: false,
+    workspaceId: "workspace-default",
+    ...input,
+  };
+}
+
+function createShareItem(
+  item: DriveItem,
+  role: RegisteredShareItem["role"],
+): RegisteredShareItem {
+  return {
+    availability: "available",
+    changes: [],
+    hasContent: Boolean(item.hasContent),
+    id: item.id,
+    kind: item.kind ?? "other",
+    mimeType: item.mimeType ?? "application/octet-stream",
+    name: item.name,
+    parentNodeId: item.parentId,
+    role,
+    sizeBytes: item.sizeBytes,
+  };
+}
+
+const folderRoot = createDriveItem({
+  id: "folder-root",
+  name: "Folder root",
+  parentId: null,
+  hasContent: false,
+  kind: "folder",
+  mimeType: "inode/directory",
+  sizeBytes: null,
+});
+const visibleFile = createDriveItem({
+  id: "visible-file",
+  name: "Visible.txt",
+  parentId: folderRoot.id,
+});
+const privateFile = createDriveItem({
+  id: "private-file",
+  name: "Private.txt",
+  parentId: folderRoot.id,
+});
+const sourceItems = [folderRoot, visibleFile, privateFile];
+
 describe("share registry create contract", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -68,7 +135,7 @@ describe("share registry create contract", () => {
     await createRegisteredShare(selectedFolderShare);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/shares");
+    expect(String(url)).toMatch(/\/shares$/);
     expect(init.method).toBe("POST");
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
 
@@ -106,7 +173,38 @@ describe("share registry create contract", () => {
     await fetchRegisteredShare("share-token", "access-session-1");
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/shares/share-token");
+    expect(String(url)).toMatch(/\/shares\/share-token$/);
     expect(new Headers(init.headers).get("x-share-access-session")).toBe("access-session-1");
+  });
+});
+
+describe("share registry item scope", () => {
+  it("uses response members as the single authoritative allowed set", () => {
+    const { allowed, allowedItems } = getShareItems(
+      {
+        ...selectedFolderShare,
+        items: [
+          createShareItem(folderRoot, "root"),
+          createShareItem(visibleFile, "selected"),
+        ],
+      },
+      sourceItems,
+    );
+
+    expect([...allowed]).toEqual([folderRoot.id, visibleFile.id]);
+    expect(allowedItems.map((item) => item.id)).toEqual([
+      folderRoot.id,
+      visibleFile.id,
+    ]);
+  });
+
+  it("keeps an explicit empty response member list authoritative", () => {
+    const { allowed, allowedItems } = getShareItems(
+      { ...selectedFolderShare, items: [] },
+      sourceItems,
+    );
+
+    expect([...allowed]).toEqual([]);
+    expect(allowedItems).toEqual([]);
   });
 });

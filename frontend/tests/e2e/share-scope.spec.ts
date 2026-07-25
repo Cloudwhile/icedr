@@ -39,13 +39,56 @@ test("scope: submits only folder selection intent and shows management lifecycle
 
   const dialog = page.getByRole("dialog", { name: "Create external link" });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("radio", { name: "Selected items" }).click();
+  const entireFolderRadio = dialog.getByRole("radio", {
+    name: "Entire folder",
+  });
+  const selectedItemsRadio = dialog.getByRole("radio", {
+    name: "Selected items",
+  });
+  await expect(entireFolderRadio).toHaveAttribute("tabindex", "0");
+  await expect(selectedItemsRadio).toHaveAttribute("tabindex", "-1");
+  await entireFolderRadio.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(selectedItemsRadio).toBeFocused();
+  await expect(selectedItemsRadio).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Home");
+  await expect(entireFolderRadio).toBeFocused();
+  await expect(entireFolderRadio).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(selectedItemsRadio).toBeFocused();
+  await expect(selectedItemsRadio).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("ArrowUp");
+  await expect(entireFolderRadio).toBeFocused();
+  await expect(entireFolderRadio).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("End");
+  await expect(selectedItemsRadio).toBeFocused();
+  await expect(selectedItemsRadio).toHaveAttribute("aria-checked", "true");
+  await expect(entireFolderRadio).toHaveAttribute("tabindex", "-1");
+  await expect(selectedItemsRadio).toHaveAttribute("tabindex", "0");
+
   const createButton = dialog.getByRole("button", { name: "Create link" });
   await expect(createButton).toBeDisabled();
+  const scopeTree = dialog.getByRole("tree", {
+    name: "Select shared content",
+  });
+  const scopeError = dialog.getByRole("alert");
+  await expect(scopeTree).toHaveAttribute("aria-invalid", "true");
+  await expect(scopeTree).toHaveAttribute(
+    "aria-describedby",
+    "drive-share-dialog-scope-error",
+  );
+  await expect(scopeError).toHaveAttribute(
+    "id",
+    "drive-share-dialog-scope-error",
+  );
+  await expect(scopeError).toHaveText("Select at least one item");
 
   await dialog
     .getByRole("checkbox", { name: `Select ${publicFileName}` })
     .click();
+  await expect(scopeTree).not.toHaveAttribute("aria-invalid");
+  await expect(scopeTree).not.toHaveAttribute("aria-describedby");
+  await expect(scopeError).toHaveCount(0);
   await dialog
     .getByRole("checkbox", { name: `Select ${selectedFolderName}` })
     .click();
@@ -134,11 +177,18 @@ test("scope: submits only folder selection intent and shows management lifecycle
 test("scope: public tree excludes private members and remains usable at both viewports", async ({
   page,
 }, testInfo) => {
-  const state = await mockScopeApi(page);
+  const state = await mockScopeApi(page, {
+    allowPreview: false,
+    authenticated: false,
+  });
+  await useSignedOutSession(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
   await page.goto(`/share/s/${shareToken}`);
   await expect(page.getByText("External share")).toBeVisible();
+  await expect
+    .poll(() => state.unauthorizedAuthRequests)
+    .toBeGreaterThanOrEqual(1);
   expect(state.publicSharePayloads.length).toBeGreaterThanOrEqual(1);
   for (const payload of state.publicSharePayloads) {
     expect(payload).not.toContain(privateFileId);
@@ -150,10 +200,33 @@ test("scope: public tree excludes private members and remains usable at both vie
   await expect(page.locator("body")).not.toContainText(privateFileId);
   await expect(page.locator("body")).not.toContainText(privateFileName);
 
-  await openFolder(page, rootName);
+  const rootRow = page.locator(".external-share-file-row", {
+    hasText: rootName,
+  });
+  const rootNameButton = rootRow.getByRole("button", {
+    name: `Enter ${rootName}`,
+  });
+  await rootNameButton.focus();
+  await expect(rootNameButton).toBeFocused();
+  await expect
+    .poll(() =>
+      rootNameButton.evaluate(
+        (element) => window.getComputedStyle(element).outlineWidth,
+      ),
+    )
+    .toBe("2px");
+  await page.keyboard.press("Enter");
   await expect(page.getByText(publicFileName).first()).toBeVisible();
   await expect(page.getByText(selectedFolderName).first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText(privateFileName);
+  const publicFileRow = page.locator(".external-share-file-row", {
+    hasText: publicFileName,
+  });
+  await expect(
+    publicFileRow.getByRole("button", {
+      name: "Previews are disabled for this link",
+    }),
+  ).toBeDisabled();
   await openFolder(page, selectedFolderName);
 
   await expect(page.getByText("Empty Folder").first()).toBeVisible();
@@ -167,7 +240,7 @@ test("scope: public tree excludes private members and remains usable at both vie
   });
   await expect(
     archivedRow.getByRole("button", {
-      name: "This file type does not have a preview artifact yet.",
+      name: "Archived",
     }),
   ).toBeDisabled();
   await archivedRow.getByRole("button", { name: "More" }).click();
@@ -176,10 +249,12 @@ test("scope: public tree excludes private members and remains usable at both vie
 
   await openFolder(page, "Empty Folder");
   await expect(page.locator(".external-share-browser-empty")).toBeVisible();
+  await expect(page.locator(".external-share-browser-footer")).toHaveCount(0);
   await expectNoViewportOverflow(page);
 
   await page.goto(`/share/s/${shareToken}`);
   const footer = page.locator(".external-share-browser-footer");
+  await expect(footer).toHaveAccessibleName(`Enter ${rootName}`);
   await footer.scrollIntoViewIfNeeded();
   await expect(footer).toBeInViewport();
   await expectNoViewportOverflow(page);
@@ -200,6 +275,7 @@ test("scope: public tree excludes private members and remains usable at both vie
   await page.screenshot({
     path: testInfo.outputPath("issue27-share-mobile.png"),
   });
+  expect(state.unhandledRequests).toEqual([]);
 });
 
 type ScopeMockState = {
@@ -207,14 +283,23 @@ type ScopeMockState = {
   managementRequests: number;
   publicSharePayloads: string[];
   shareCreated: boolean;
+  unauthorizedAuthRequests: number;
+  unhandledRequests: string[];
 };
 
-async function mockScopeApi(page: Page) {
+type ScopeMockOptions = {
+  allowPreview?: boolean;
+  authenticated?: boolean;
+};
+
+async function mockScopeApi(page: Page, options: ScopeMockOptions = {}) {
   const state: ScopeMockState = {
     createBody: null,
     managementRequests: 0,
     publicSharePayloads: [],
     shareCreated: false,
+    unauthorizedAuthRequests: 0,
+    unhandledRequests: [],
   };
 
   await page.route("**/api/**", async (route) => {
@@ -237,6 +322,11 @@ async function mockScopeApi(page: Page) {
       return;
     }
     if (method === "GET" && path === "/auth/me") {
+      if (options.authenticated === false) {
+        state.unauthorizedAuthRequests += 1;
+        await fulfillJson(route, { message: "Unauthorized" }, 401);
+        return;
+      }
       await fulfillJson(route, currentUser());
       return;
     }
@@ -282,7 +372,7 @@ async function mockScopeApi(page: Page) {
       return;
     }
     if (method === "GET" && path === `/shares/${shareToken}`) {
-      const payload = publicShare();
+      const payload = publicShare(options);
       const serialized = JSON.stringify(payload);
       state.publicSharePayloads.push(serialized);
       await route.fulfill({
@@ -317,6 +407,7 @@ async function mockScopeApi(page: Page) {
       return;
     }
 
+    state.unhandledRequests.push(`${method} ${path}`);
     await route.fulfill({
       body: JSON.stringify({ message: `Unhandled ${method} ${path}` }),
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -330,6 +421,13 @@ async function mockScopeApi(page: Page) {
 async function useSignedInSession(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("icedr.auth.token", "scope-token");
+    window.localStorage.setItem("icedr.ui.themePreference", "light");
+  });
+}
+
+async function useSignedOutSession(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("icedr.auth.token");
     window.localStorage.setItem("icedr.ui.themePreference", "light");
   });
 }
@@ -420,9 +518,10 @@ function fileNode(
   };
 }
 
-function publicShare() {
+function publicShare(options: ScopeMockOptions = {}) {
   return {
     ...shareBase(),
+    allowPreview: options.allowPreview ?? true,
     items: shareItems(),
   };
 }

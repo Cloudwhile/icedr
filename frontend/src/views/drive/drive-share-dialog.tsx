@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "@/compat/navigation";
 import { ActionButton } from "@/components/ui/action-button";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
@@ -37,6 +37,7 @@ import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "
 import "./styles/drive-share-dialog.css";
 
 const buttonTypeAttr = { type: "button" as const };
+const shareScopeErrorId = "drive-share-dialog-scope-error";
 
 type ShareCollection = {
   allowedIds: Set<string>;
@@ -84,7 +85,6 @@ function DriveShareDialogContent({
   currentFolder,
   onClose,
   onShareCreated,
-  open,
   palette,
   policyLoadError,
   rootTitle,
@@ -142,17 +142,6 @@ function DriveShareDialogContent({
   const expiryDays = expiryDaysInput ?? String(policy.expiresValue);
 
   const closeShareDialog = useCallback(() => {
-    setAllowDownload(true);
-    setAllowPreview(true);
-    setCreated(false);
-    setCreatedShareUrl(null);
-    setCreatedToken(null);
-    setCreateFeedback(null);
-    setCreating(false);
-    setExpiryDaysInput(null);
-    setFolderVisibility("entire-folder");
-    setRemark("");
-    setSelectedMemberIds([]);
     onClose();
   }, [onClose]);
 
@@ -163,13 +152,12 @@ function DriveShareDialogContent({
   }, [createFeedback]);
 
   useEffect(() => {
-    if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !creating) closeShareDialog();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeShareDialog, creating, open]);
+  }, [closeShareDialog, creating]);
 
   const createShare = () => {
     if (creating || !collection.isValid || !collection.selection) return;
@@ -206,9 +194,7 @@ function DriveShareDialogContent({
   };
 
   return (
-    <Fragment>
-      {open ? (
-      <div className="drive-share-dialog-layer" data-theme={themeMode} style={dialogVariables(palette)}>
+    <div className="drive-share-dialog-layer" data-theme={themeMode} style={dialogVariables(palette)}>
         <button
           {...buttonTypeAttr}
           aria-label={t("app.close")}
@@ -299,9 +285,19 @@ function DriveShareDialogContent({
                     rootFolder={collection.folderRoot}
                     selectedIds={selectedMemberIds}
                     sourceItems={sourceItems}
+                    treeAriaDescribedBy={
+                      collection.isValid ? undefined : shareScopeErrorId
+                    }
+                    treeAriaInvalid={!collection.isValid}
                   />
                   {!collection.isValid ? (
-                    <span className="drive-share-scope-error">{t("share.selectAtLeastOneItem")}</span>
+                    <span
+                      className="drive-share-scope-error"
+                      id={shareScopeErrorId}
+                      role="alert"
+                    >
+                      {t("share.selectAtLeastOneItem")}
+                    </span>
                   ) : null}
                 </section>
               ) : (
@@ -354,8 +350,6 @@ function DriveShareDialogContent({
           </footer>
         </section>
       </div>
-      ) : null}
-    </Fragment>
   );
 }
 

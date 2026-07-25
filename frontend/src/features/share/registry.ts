@@ -277,10 +277,12 @@ export async function revokeRegisteredShare(token: string) {
 }
 
 export function getShareItems(record: RegisteredShare, sourceItems?: DriveItem[]) {
-  const responseItemIds = record.items?.map((item) => item.id) ?? [];
-  const allowed = new Set(responseItemIds.length > 0 ? responseItemIds : record.allowedItemIds);
+  const allowedIds = record.items === undefined
+    ? record.allowedItemIds
+    : record.items.map((item) => item.id);
+  const allowed = new Set(allowedIds);
   const rootItems = record.rootItemIds.map((id) => findDriveItem(id, sourceItems)).filter((item): item is DriveItem => Boolean(item));
-  const allowedItems = record.allowedItemIds.map((id) => findDriveItem(id, sourceItems)).filter((item): item is DriveItem => Boolean(item));
+  const allowedItems = [...allowed].map((id) => findDriveItem(id, sourceItems)).filter((item): item is DriveItem => Boolean(item));
 
   return {
     allowed,

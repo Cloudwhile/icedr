@@ -23,13 +23,19 @@ function createItem(
     owner: "Mina",
     shared: false,
     sizeBytes: 100,
+    spaceScope: "workspace",
     starred: false,
     workspaceId: "workspace-default",
+    ownerUserId: "user-a",
     ...input,
   };
 }
 
-function createFolder(id: string, parentId: string | null) {
+function createFolder(
+  id: string,
+  parentId: string | null,
+  input: Partial<DriveItem> = {},
+) {
   return createItem({
     id,
     name: id,
@@ -38,6 +44,7 @@ function createFolder(id: string, parentId: string | null) {
     kind: "folder",
     mimeType: "inode/directory",
     sizeBytes: null,
+    ...input,
   });
 }
 
@@ -134,6 +141,87 @@ describe("share member scope", () => {
     });
     expect(scope.visibleMemberIds).not.toContain(archivedFile.id);
     expect(scope.visibleMemberIds).not.toContain(outsideFile.id);
+  });
+
+  it("matches workspace and space while keeping workspace collaborators", () => {
+    const collaboratorFile = createItem({
+      id: "collaborator-file",
+      name: "Collaborator.txt",
+      ownerUserId: "user-b",
+      parentId: root.id,
+    });
+    const otherWorkspaceFile = createItem({
+      id: "other-workspace-file",
+      name: "Other workspace.txt",
+      ownerUserId: "user-b",
+      parentId: root.id,
+      workspaceId: "workspace-other",
+    });
+    const personalFile = createItem({
+      id: "personal-file",
+      name: "Personal.txt",
+      ownerUserId: "user-a",
+      parentId: root.id,
+      spaceScope: "personal",
+    });
+    const missingWorkspaceFile = createItem({
+      id: "missing-workspace-file",
+      name: "Missing workspace.txt",
+      ownerUserId: "user-a",
+      parentId: root.id,
+      workspaceId: undefined,
+    });
+    const missingSpaceFile = createItem({
+      id: "missing-space-file",
+      name: "Missing space.txt",
+      ownerUserId: "user-a",
+      parentId: root.id,
+      spaceScope: undefined,
+    });
+
+    const scope = buildShareMemberScope({
+      rootFolder: root,
+      sourceItems: [
+        root,
+        collaboratorFile,
+        otherWorkspaceFile,
+        personalFile,
+        missingWorkspaceFile,
+        missingSpaceFile,
+      ],
+      mode: "entire-folder",
+    });
+
+    expect(scope.visibleMemberIds).toEqual([root.id, collaboratorFile.id]);
+  });
+
+  it("keeps personal folder members within the same owner", () => {
+    const personalRoot = createFolder("personal-root", null, {
+      ownerUserId: "user-a",
+      spaceScope: "personal",
+    });
+    const ownerFile = createItem({
+      id: "owner-file",
+      name: "Owner.txt",
+      ownerUserId: "user-a",
+      parentId: personalRoot.id,
+      spaceScope: "personal",
+    });
+    const otherOwnerFile = createItem({
+      id: "other-owner-file",
+      name: "Other owner.txt",
+      ownerUserId: "user-b",
+      parentId: personalRoot.id,
+      spaceScope: "personal",
+    });
+
+    const scope = buildShareMemberScope({
+      rootFolder: personalRoot,
+      sourceItems: [personalRoot, ownerFile, otherOwnerFile],
+      mode: "entire-folder",
+    });
+
+    expect(scope.visibleMemberIds).toEqual([personalRoot.id, ownerFile.id]);
   });
 
   it("adds only required navigation ancestors for a deeply selected file", () => {
@@ -281,6 +369,17 @@ describe("share member scope", () => {
         sourceItems,
         selectedIds: [selectedFolder.id],
         itemId: nestedFile.id,
+      }),
+    ).toEqual([selectedFolder.id]);
+  });
+
+  it("removes only the explicitly deselected member", () => {
+    expect(
+      toggleSelectedMemberId({
+        rootFolder: root,
+        sourceItems,
+        selectedIds: [privateFile.id, selectedFolder.id],
+        itemId: privateFile.id,
       }),
     ).toEqual([selectedFolder.id]);
   });
