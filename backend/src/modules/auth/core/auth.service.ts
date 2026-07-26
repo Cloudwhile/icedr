@@ -11,8 +11,12 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 import { MailService } from '../../admin/mail/mail.service';
+import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
 import { SettingsService } from '../../admin/settings/settings.service';
-import type { OAuthSettings } from '../../admin/settings/settings.dto';
+import type {
+  OAuthSettings,
+  PasskeySettings,
+} from '../../admin/settings/settings.dto';
 import {
   AuthSessionResponse,
   AuthSettings,
@@ -51,6 +55,7 @@ const resetCodeAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const oauthStateTtlMs = 10 * 60 * 1000;
 const oauthExchangeTtlMs = 2 * 60 * 1000;
 const invalidCredentialsCode = 'AUTH_INVALID_CREDENTIALS';
+const setupAdminEmailOccupiedCode = 'SETUP_ADMIN_EMAIL_OCCUPIED';
 const invalidCredentialsPasswordHash =
   'scrypt$icedr-auth-invalid$5m3ozKIOc8ztEI2scnbBUoChYL6g8J2r8wIcRIgbsUSqFB3aJyC9v6VmxtTqUsoUxNQqR5Fe61bLEJO55CpWPA';
 
@@ -64,9 +69,11 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly mailService: MailService,
     private readonly authAuditService: AuthAuditService,
+    private readonly bootstrapState: BootstrapStateService,
   ) {}
 
   async getSettings(): Promise<AuthSettingsResponse> {
+    await this.bootstrapState.requireCompleted();
     const settings = await this.authRepository.getSettings();
     return this.withConfigState(settings);
   }
@@ -88,19 +95,42 @@ export class AuthService {
     return this.persistAuthSettings(dto);
   }
 
+  async validateSettingsForSetup(
+    dto: UpdateAuthSettingsDto,
+    candidates: {
+      oauth?: OAuthSettings;
+      passkey?: PasskeySettings;
+    } = {},
+  ) {
+    if (await this.settingsService.bootstrapCompleted()) {
+      throw new ForbiddenException('Setup has already been completed');
+    }
+    await this.prepareAuthSettings(dto, candidates);
+  }
+
   private async persistAuthSettings(
     dto: UpdateAuthSettingsDto,
   ): Promise<AuthSettingsResponse> {
+    const next = await this.prepareAuthSettings(dto);
+    return this.withConfigState(await this.authRepository.updateSettings(next));
+  }
+
+  private async prepareAuthSettings(
+    dto: UpdateAuthSettingsDto,
+    candidates: {
+      oauth?: OAuthSettings;
+      passkey?: PasskeySettings;
+    } = {},
+  ) {
     const current = await this.authRepository.getSettings();
     const next: AuthSettings = {
       ...current,
       ...dto,
       updatedAt: new Date().toISOString(),
     };
-    await this.assertMethodConfiguration(next);
+    await this.assertMethodConfiguration(next, candidates);
     this.assertAtLeastOneMethod(next);
-
-    return this.withConfigState(await this.authRepository.updateSettings(next));
+    return next;
   }
 
   async register(
@@ -136,7 +166,7 @@ export class AuthService {
     const email = this.normalizeEmail(dto.email);
     const displayName = dto.displayName.trim();
     if (!displayName) throw new BadRequestException('Display name is required');
-    const existing = await this.authRepository.findUserByEmail(email);
+    const existing = await this.resolveSetupAdmin(email);
     const user = existing
       ? await this.promoteExistingSetupAdmin(
           existing,
@@ -155,6 +185,21 @@ export class AuthService {
       request,
     });
     return session;
+  }
+
+  async validateSetupAdmin(dto: RegisterDto) {
+    const email = this.normalizeEmail(dto.email);
+    const displayName = dto.displayName.trim();
+    if (!displayName) throw new BadRequestException('Display name is required');
+    const existing = await this.resolveSetupAdmin(email);
+    if (
+      existing &&
+      !(await this.verifyPassword(dto.password, existing.passwordHash))
+    ) {
+      throw new UnauthorizedException(
+        'Existing administrator password does not match',
+      );
+    }
   }
 
   async login(dto: LoginDto, request?: Request): Promise<AuthSessionResponse> {
@@ -307,6 +352,7 @@ export class AuthService {
   }
 
   async startOAuthLogin(providerId?: string): Promise<OAuthStartResponse> {
+    await this.bootstrapState.requireCompleted();
     const settings = await this.authRepository.getSettings();
     if (!settings.oauthEnabled) {
       throw new ForbiddenException('OAuth login is disabled');
@@ -332,6 +378,7 @@ export class AuthService {
   }
 
   async handleOAuthCallback(currentUrl: string) {
+    await this.bootstrapState.requireCompleted();
     const url = new URL(currentUrl);
     const state = url.searchParams.get('state');
     if (!state) throw new UnauthorizedException('OAuth state is required');
@@ -490,6 +537,7 @@ export class AuthService {
     dto: OAuthExchangeDto,
     request?: Request,
   ): Promise<OAuthExchangeResponse> {
+    await this.bootstrapState.requireCompleted();
     const codeHash = this.hashToken(dto.code);
     const code = await this.authRepository.findOAuthExchangeCode(codeHash);
     if (
@@ -724,6 +772,7 @@ export class AuthService {
   }
 
   private async assertLocalAuthEnabled() {
+    await this.bootstrapState.requireCompleted();
     const settings = await this.authRepository.getSettings();
     if (!settings.localEnabled) {
       throw new ForbiddenException('Local authentication is disabled');
@@ -776,17 +825,31 @@ export class AuthService {
     return reset;
   }
 
-  private async assertMethodConfiguration(settings: AuthSettings) {
-    const oauth = await this.settingsService.getOAuthSettings();
-    const passkey = await this.settingsService.getPasskeySettings();
-    if (settings.oauthEnabled && !this.settingsService.oauthConfigured(oauth)) {
+  private async assertMethodConfiguration(
+    settings: AuthSettings,
+    candidates: {
+      oauth?: OAuthSettings;
+      passkey?: PasskeySettings;
+    } = {},
+  ) {
+    const oauth = settings.oauthEnabled
+      ? (candidates.oauth ?? (await this.settingsService.getOAuthSettings()))
+      : undefined;
+    const passkey = settings.passkeyEnabled
+      ? (candidates.passkey ??
+        (await this.settingsService.getPasskeySettings()))
+      : undefined;
+    if (
+      settings.oauthEnabled &&
+      (!oauth || !this.settingsService.oauthConfigured(oauth))
+    ) {
       throw new BadRequestException(
         'OAuth must be configured before enabling it',
       );
     }
     if (
       settings.passkeyEnabled &&
-      !this.settingsService.passkeyConfigured(passkey)
+      (!passkey || !this.settingsService.passkeyConfigured(passkey))
     ) {
       throw new BadRequestException(
         'Passkey must be configured before enabling it',
@@ -806,11 +869,24 @@ export class AuthService {
     }
   }
 
+  private async resolveSetupAdmin(email: string) {
+    const state = await this.authRepository.getSetupAdminEmailState(email);
+    if (state.kind === 'occupied') {
+      throw new ConflictException({
+        code: setupAdminEmailOccupiedCode,
+        message:
+          'Administrator email is already assigned to an account without local credentials',
+      });
+    }
+    return state.kind === 'local' ? state.user : null;
+  }
+
   private async requireSession(authorization?: string): Promise<{
     tokenHash: string;
     user: AuthUserResponse;
     expiresAt: string;
   }> {
+    await this.bootstrapState.requireCompleted();
     const token = this.extractBearerToken(authorization);
     if (!token) throw new UnauthorizedException('Authentication is required');
 

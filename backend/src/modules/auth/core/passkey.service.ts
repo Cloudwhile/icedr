@@ -21,6 +21,7 @@ import {
 } from '@simplewebauthn/server';
 import { AdminGuardService } from '../../../common/security/admin-guard.service';
 import { MailService } from '../../admin/mail/mail.service';
+import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
 import { SettingsService } from '../../admin/settings/settings.service';
 import { AuthAuditService } from './auth-audit.service';
 import { AuthRepository } from './auth.repository';
@@ -61,6 +62,7 @@ export class PasskeyService {
     private readonly config: ConfigService,
     private readonly mailService: MailService,
     private readonly auditService: AuthAuditService,
+    private readonly bootstrapState: BootstrapStateService,
   ) {}
 
   async createAuthenticationOptions(
@@ -703,6 +705,7 @@ export class PasskeyService {
   }
 
   private async requirePasskeyLoginEnabled() {
+    await this.bootstrapState.requireCompleted();
     const settings = await this.authRepository.getSettings();
     if (!settings.passkeyEnabled) {
       throw new ForbiddenException('Passkey login is disabled');

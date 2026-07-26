@@ -24,4 +24,11 @@ export class WorkspacesService {
   ) {
     return this.shareSettingsRepository.upsert(workspaceId, dto);
   }
+
+  validateShareSettings(
+    workspaceId: string,
+    dto: UpdateWorkspaceShareSettingsDto,
+  ) {
+    return this.shareSettingsRepository.validateUpdate(workspaceId, dto);
+  }
 }

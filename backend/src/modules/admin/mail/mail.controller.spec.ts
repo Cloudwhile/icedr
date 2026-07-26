@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { SetupAuthorizationService } from '../setup/setup-authorization.service';
+import { SetupOperationService } from '../setup/setup-operation.service';
 import { MailService } from './mail.service';
 import { SetupMailController } from './mail.controller';
 
@@ -22,10 +23,15 @@ describe('SetupMailController', () => {
     const setupAuthorization = {
       requireToken,
     } as unknown as SetupAuthorizationService;
+    const runExclusive = jest.fn(
+      (_operation: string, _payload: unknown, action: () => Promise<unknown>) =>
+        action(),
+    );
     const controller = new SetupMailController(
       settingsService,
       mailService,
       setupAuthorization,
+      { runExclusive } as unknown as SetupOperationService,
     );
 
     return {
@@ -33,6 +39,7 @@ describe('SetupMailController', () => {
       controller,
       getMailSettings,
       requireToken,
+      runExclusive,
       sendTestMessage,
       updateMailSettings,
     };
@@ -66,4 +73,27 @@ describe('SetupMailController', () => {
       expect(context.sendTestMessage).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    [
+      'mail-settings',
+      (controller: SetupMailController) => controller.updateSettings({}),
+    ],
+    [
+      'mail-test',
+      (controller: SetupMailController) =>
+        controller.testSettings({ recipientEmail: 'admin@example.com' }),
+    ],
+  ])('serializes setup %s writes', async (operation, run) => {
+    const context = createController();
+    context.requireToken.mockImplementation(() => undefined);
+
+    await run(context.controller);
+
+    expect(context.runExclusive).toHaveBeenCalledWith(
+      operation,
+      expect.any(Object),
+      expect.any(Function),
+    );
+  });
 });

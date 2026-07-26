@@ -201,6 +201,15 @@ export class SettingsService {
   }
 
   async updateSiteSettings(dto: UpdateSiteSettingsDto) {
+    const next = await this.previewSiteSettings(dto);
+    return this.repository.set(settingsParentMeta, siteMeta, next);
+  }
+
+  async validateSiteSettings(dto: UpdateSiteSettingsDto) {
+    await this.previewSiteSettings(dto);
+  }
+
+  private async previewSiteSettings(dto: UpdateSiteSettingsDto) {
     const current = await this.getPublicSiteSettings();
     const next: PublicSiteSettings = {
       siteName: this.normalizeSiteName(dto.siteName ?? current.siteName),
@@ -209,7 +218,7 @@ export class SettingsService {
           ? current.authLogoDataUrl
           : this.validateLogo(dto.authLogoDataUrl),
     };
-    return this.repository.set(settingsParentMeta, siteMeta, next);
+    return next;
   }
 
   async getTranslationSettings(): Promise<TranslationSettings> {
@@ -379,6 +388,19 @@ export class SettingsService {
   }
 
   async updateOAuthSettings(dto: UpdateOAuthSettingsDto) {
+    const { next, nextProviders } = await this.prepareOAuthSettingsUpdate(dto);
+    await this.saveOAuthProviders(nextProviders);
+    return this.toOAuthResponse(next);
+  }
+
+  async validateOAuthSettings(dto: UpdateOAuthSettingsDto) {
+    const candidate = await this.prepareOAuthSettingsUpdate(dto);
+    return (
+      selectPrimaryOAuthProvider(candidate.nextProviders) ?? candidate.next
+    );
+  }
+
+  private async prepareOAuthSettingsUpdate(dto: UpdateOAuthSettingsDto) {
     const providers = await this.getOAuthProviderSettings();
     const current =
       providers.find((provider) => provider.id === dto.id) ??
@@ -394,8 +416,7 @@ export class SettingsService {
       [...remainingProviders, next],
       next.enabled ? next.id : undefined,
     );
-    await this.saveOAuthProviders(nextProviders);
-    return this.toOAuthResponse(next);
+    return { next, nextProviders };
   }
 
   async getPasskeySettings(): Promise<PasskeySettings> {
@@ -414,6 +435,15 @@ export class SettingsService {
   }
 
   async updatePasskeySettings(dto: UpdatePasskeySettingsDto) {
+    const next = await this.previewPasskeySettings(dto);
+    return this.repository.set(settingsParentMeta, passkeyMeta, next);
+  }
+
+  async validatePasskeySettings(dto: UpdatePasskeySettingsDto) {
+    return this.previewPasskeySettings(dto);
+  }
+
+  private async previewPasskeySettings(dto: UpdatePasskeySettingsDto) {
     const current = await this.getPasskeySettings();
     const next: PasskeySettings = {
       ...current,
@@ -423,7 +453,7 @@ export class SettingsService {
       origin: (dto.origin ?? current.origin).trim(),
     };
     if (next.rpId || next.origin) this.assertPasskeySettings(next);
-    return this.repository.set(settingsParentMeta, passkeyMeta, next);
+    return next;
   }
 
   async getMailSettings(): Promise<MailSettings> {
@@ -451,6 +481,12 @@ export class SettingsService {
   }
 
   async updateMailSettings(dto: UpdateMailSettingsDto) {
+    const next = await this.previewMailSettings(dto);
+    const saved = await this.repository.set(settingsParentMeta, mailMeta, next);
+    return this.toMailResponse(saved);
+  }
+
+  async previewMailSettings(dto: UpdateMailSettingsDto = {}) {
     const current = await this.getMailSettings();
     const next: MailSettings = {
       ...current,
@@ -472,8 +508,7 @@ export class SettingsService {
     if (this.mailTransportChanged(current, next)) {
       next.verifiedAt = null;
     }
-    const saved = await this.repository.set(settingsParentMeta, mailMeta, next);
-    return this.toMailResponse(saved);
+    return next;
   }
 
   async markMailVerified() {

@@ -1,6 +1,7 @@
 import { HttpException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
+import { PrismaService } from '../../database/prisma.service';
 import {
   createTransferTaskLifecycle,
   type TransferTaskLifecycle,
@@ -9,6 +10,7 @@ import type { FileNodeResponse } from '../files/file-nodes.dto';
 import { FileNodesService } from '../files/file-nodes.service';
 import { resolveFilePreviewCapability } from '../files/file-preview-policy';
 import { MailService } from '../admin/mail/mail.service';
+import { BootstrapStateService } from '../admin/setup/bootstrap-state.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkspacesService } from '../admin/workspaces/workspaces.service';
 import type { CreateShareDto, ShareResponse } from './shares.dto';
@@ -729,6 +731,17 @@ function fixtureNode(
 
 export function createSharesServiceHarness() {
   const sentCodes = new Map<string, string>();
+  let bootstrapSettingValue: unknown = { completed: true };
+  let bootstrapLookupError: Error | null = null;
+  const bootstrapSettingFindUnique = jest.fn(() => {
+    if (bootstrapLookupError) return Promise.reject(bootstrapLookupError);
+    return Promise.resolve(
+      bootstrapSettingValue === null ? null : { value: bootstrapSettingValue },
+    );
+  });
+  const bootstrapState = new BootstrapStateService({
+    setting: { findUnique: bootstrapSettingFindUnique },
+  } as unknown as PrismaService);
   const configValues: Record<string, unknown> = {
     'share.visitorHashSecret':
       'share-visitor-hash-secret-for-service-tests-2026',
@@ -924,6 +937,7 @@ export function createSharesServiceHarness() {
       configService as unknown as ConfigService,
       abuseProtection,
       shareContent,
+      bootstrapState,
     );
   };
   const service = createService();
@@ -957,6 +971,8 @@ export function createSharesServiceHarness() {
 
   return {
     abuseProtection,
+    bootstrapSettingFindUnique,
+    bootstrapState,
     configService,
     configValues,
     createEmailSession,
@@ -967,6 +983,12 @@ export function createSharesServiceHarness() {
     nodes,
     repository,
     sentCodes,
+    setBootstrapLookupError: (error: Error | null) => {
+      bootstrapLookupError = error;
+    },
+    setBootstrapState: (value: unknown) => {
+      bootstrapSettingValue = value;
+    },
     service,
     storageService,
     workspacesService,

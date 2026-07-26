@@ -227,6 +227,25 @@ model Setting {
   @@map("settings")
 }
 
+model SetupOperation {
+  operationKey          String    @id @map("operation_key")
+  status                String
+  payloadFingerprint    String    @map("payload_fingerprint")
+  claimTokenHash        String?   @map("claim_token_hash")
+  claimedAt             DateTime? @map("claimed_at") @db.Timestamptz
+  claimExpiresAt        DateTime? @map("claim_expires_at") @db.Timestamptz
+  irreversibleStartedAt DateTime? @map("irreversible_started_at") @db.Timestamptz
+  completedAt           DateTime? @map("completed_at") @db.Timestamptz
+  failedAt              DateTime? @map("failed_at") @db.Timestamptz
+  failureCode           String?   @map("failure_code")
+  failureMessage        String?   @map("failure_message")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([status, claimExpiresAt])
+  @@map("setup_operations")
+}
+
 model Workspace {
   id          String   @id
   name        String

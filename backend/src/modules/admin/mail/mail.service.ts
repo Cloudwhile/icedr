@@ -31,11 +31,12 @@ export class MailService {
     return this.settingsService.markMailVerified();
   }
 
-  async assertReady() {
-    const settings = await this.settingsService.getMailSettings();
+  async assertReady(settings?: MailSettings) {
+    const resolvedSettings =
+      settings ?? (await this.settingsService.getMailSettings());
     if (
-      !this.settingsService.mailConfigured(settings) ||
-      !settings.verifiedAt
+      !this.settingsService.mailConfigured(resolvedSettings) ||
+      !resolvedSettings.verifiedAt
     ) {
       throw new BadRequestException(
         'SMTP must be configured and verified before setup can be completed',

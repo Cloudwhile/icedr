@@ -1,4 +1,5 @@
 import { PasskeyStateConflictError } from './passkey.repository';
+import { ServiceUnavailableException } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   generateAuthenticationOptions,
@@ -7,6 +8,7 @@ import {
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
 import { PasskeyService } from './passkey.service';
+import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
 
 jest.mock('@simplewebauthn/server', () => ({
   generateAuthenticationOptions: jest.fn(),
@@ -27,7 +29,7 @@ const user = {
   createdAt: new Date(0).toISOString(),
 };
 
-function createService() {
+function createService(bootstrapCompleted = true) {
   const passkeyRepository = {
     assertRateLimit: jest.fn(() => Promise.resolve()),
     claimChallenge: jest.fn(() =>
@@ -129,6 +131,18 @@ function createService() {
     record: jest.fn(() => Promise.resolve()),
     recordSuccess: jest.fn(() => Promise.resolve()),
   };
+  const bootstrapState = {
+    requireCompleted: jest.fn(() =>
+      bootstrapCompleted
+        ? Promise.resolve()
+        : Promise.reject(
+            new ServiceUnavailableException({
+              code: 'SETUP_REQUIRED',
+              message: 'Initial setup must be completed',
+            }),
+          ),
+    ),
+  } as unknown as BootstrapStateService;
 
   return {
     auditService,
@@ -142,6 +156,7 @@ function createService() {
       config as never,
       mailService as never,
       auditService as never,
+      bootstrapState,
     ),
   };
 }
@@ -159,6 +174,16 @@ function request() {
 describe('PasskeyService ceremony options', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('rejects anonymous Passkey options before rate limiting while setup is incomplete', async () => {
+    const { passkeyRepository, service } = createService(false);
+
+    await expect(
+      service.createAuthenticationOptions(request()),
+    ).rejects.toMatchObject({ response: { code: 'SETUP_REQUIRED' } });
+    expect(passkeyRepository.assertRateLimit).not.toHaveBeenCalled();
+    expect(generateAuthenticationOptions).not.toHaveBeenCalled();
   });
 
   it('creates username-less authentication options without an email or credential allow-list', async () => {

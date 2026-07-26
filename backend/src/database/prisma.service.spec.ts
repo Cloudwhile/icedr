@@ -76,6 +76,12 @@ describe('PrismaService', () => {
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
     );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS "setup_operations"'),
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'CREATE INDEX IF NOT EXISTS "setup_operations_status_claim_expires_at_idx" ON "setup_operations"("status", "claim_expires_at")',
+    );
   });
 
   it('keeps existing SQLite space scope columns unchanged on startup', async () => {
@@ -265,6 +271,8 @@ describe('PrismaService', () => {
 
     expect(writes.length).toBeGreaterThan(1);
     expect(writes.some(({ model }) => model === 'fileNode')).toBe(true);
+    expect(writes.some(({ model }) => model === 'setupOperation')).toBe(true);
+    expect(writes[writes.length - 1]?.model).toBe('setupOperation');
     expect(writes.every(({ skipDuplicates }) => !skipDuplicates)).toBe(true);
   });
 

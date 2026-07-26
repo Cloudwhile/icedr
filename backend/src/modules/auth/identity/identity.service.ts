@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
 import { SettingsService } from '../../admin/settings/settings.service';
 
 @Injectable()
@@ -7,6 +8,7 @@ export class IdentityService {
   constructor(
     private readonly config: ConfigService,
     private readonly settingsService: SettingsService,
+    private readonly bootstrapState: BootstrapStateService,
   ) {}
 
   getOAuthConfig() {
@@ -26,6 +28,7 @@ export class IdentityService {
   }
 
   async getPublicOAuthConfig() {
+    await this.bootstrapState.requireCompleted();
     const settings = await this.settingsService.getOAuthSettings();
     const providerList = await this.settingsService.listOAuthProviders();
     const providers = providerList.providers

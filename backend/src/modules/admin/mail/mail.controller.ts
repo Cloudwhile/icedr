@@ -10,6 +10,7 @@ import {
   setupTokenHeader,
   SetupAuthorizationService,
 } from '../setup/setup-authorization.service';
+import { SetupOperationService } from '../setup/setup-operation.service';
 import { MailService } from './mail.service';
 
 @ApiTags('mail')
@@ -55,6 +56,7 @@ export class SetupMailController {
     private readonly settingsService: SettingsService,
     private readonly mailService: MailService,
     private readonly setupAuthorization: SetupAuthorizationService,
+    private readonly setupOperation: SetupOperationService,
   ) {}
 
   @Get()
@@ -72,8 +74,10 @@ export class SetupMailController {
     @Headers(setupTokenHeader) setupToken?: string,
   ) {
     this.setupAuthorization.requireToken(setupToken);
-    await this.settingsService.assertSetupOpen();
-    return this.settingsService.updateMailSettings(dto);
+    return this.setupOperation.runExclusive('mail-settings', dto, async () => {
+      await this.settingsService.assertSetupOpen();
+      return this.settingsService.updateMailSettings(dto);
+    });
   }
 
   @Post('test')
@@ -82,7 +86,9 @@ export class SetupMailController {
     @Headers(setupTokenHeader) setupToken?: string,
   ) {
     this.setupAuthorization.requireToken(setupToken);
-    await this.settingsService.assertSetupOpen();
-    return this.mailService.sendTestMessage(dto.recipientEmail);
+    return this.setupOperation.runExclusive('mail-test', dto, async () => {
+      await this.settingsService.assertSetupOpen();
+      return this.mailService.sendTestMessage(dto.recipientEmail);
+    });
   }
 }

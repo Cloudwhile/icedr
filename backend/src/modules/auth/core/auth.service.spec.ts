@@ -1,5 +1,9 @@
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { scryptSync } from 'crypto';
+import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
 import { AuthService } from './auth.service';
 import {
   createOAuthProviderAdapter,
@@ -55,7 +59,12 @@ function createUserResponse(locale: string | null = null) {
   };
 }
 
-function createService(options: { userLocale?: string | null } = {}) {
+function createService(
+  options: {
+    bootstrapCompleted?: boolean;
+    userLocale?: string | null;
+  } = {},
+) {
   let resetRecord: ResetRecord | null = null;
   const user = {
     ...createUserResponse(options.userLocale ?? null),
@@ -110,6 +119,7 @@ function createService(options: { userLocale?: string | null } = {}) {
       return Promise.resolve();
     }),
     deleteSessionsForUser: jest.fn(() => Promise.resolve()),
+    deleteSessionByTokenHash: jest.fn(() => Promise.resolve()),
     createSession: jest.fn(() => Promise.resolve()),
     findOAuthState: jest.fn(),
     createOAuthState: jest.fn(() => Promise.resolve()),
@@ -146,16 +156,31 @@ function createService(options: { userLocale?: string | null } = {}) {
     record: jest.fn(() => Promise.resolve()),
     recordSuccess: jest.fn(() => Promise.resolve()),
   };
+  const requireBootstrapCompleted = jest.fn(() =>
+    options.bootstrapCompleted === false
+      ? Promise.reject(
+          new ServiceUnavailableException({
+            code: 'SETUP_REQUIRED',
+            message: 'Initial setup must be completed',
+          }),
+        )
+      : Promise.resolve(),
+  );
+  const bootstrapState = {
+    requireCompleted: requireBootstrapCompleted,
+  } as unknown as BootstrapStateService;
   const service = new AuthService(
     repository as never,
     settingsService as never,
     config as never,
     mailService as never,
     authAuditService as never,
+    bootstrapState,
   );
 
   return {
     authAuditService,
+    requireBootstrapCompleted,
     get resetRecord() {
       return resetRecord;
     },
@@ -189,6 +214,57 @@ describe('AuthService', () => {
   afterEach(() => {
     jest.mocked(createOAuthProviderAdapter).mockReset();
     jest.mocked(createOAuthRequestState).mockReset();
+  });
+
+  it('rejects registration before reading users while setup is incomplete', async () => {
+    const { repository, service } = createService({
+      bootstrapCompleted: false,
+    });
+
+    await expect(
+      service.register({
+        displayName: 'Blocked user',
+        email: 'blocked@example.com',
+        password: 'password123',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'SETUP_REQUIRED' } });
+    expect(repository.findUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects OAuth callbacks before reading state while setup is incomplete', async () => {
+    const { repository, service } = createService({
+      bootstrapCompleted: false,
+    });
+
+    await expect(
+      service.handleOAuthCallback(
+        'https://drive.example.com/api/auth/oauth/callback?state=state-1&code=code-1',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'SETUP_REQUIRED' } });
+    expect(repository.findOAuthState).not.toHaveBeenCalled();
+  });
+
+  it('rejects public auth settings before reading defaults while setup is incomplete', async () => {
+    const { repository, service } = createService({
+      bootstrapCompleted: false,
+    });
+
+    await expect(service.getSettings()).rejects.toMatchObject({
+      response: { code: 'SETUP_REQUIRED' },
+    });
+    expect(repository.getSettings).not.toHaveBeenCalled();
+  });
+
+  it('allows logout to clear sessions while setup is incomplete', async () => {
+    const { requireBootstrapCompleted, repository, service } = createService({
+      bootstrapCompleted: false,
+    });
+
+    await expect(service.logout('Bearer stale-session')).resolves.toEqual({
+      ok: true,
+    });
+    expect(requireBootstrapCompleted).not.toHaveBeenCalled();
+    expect(repository.deleteSessionByTokenHash).toHaveBeenCalled();
   });
 
   it('uses one safe credential error for unknown email and wrong password', async () => {

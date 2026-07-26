@@ -120,6 +120,17 @@ export class StorageSettingsUsageService {
   async updateSettings(
     dto: UpdateStorageSettingsDto,
   ): Promise<StorageSettingsResponse> {
+    const { nextDraft, physicalCapacity } =
+      await this.prepareSettingsUpdate(dto);
+    const next = await this.settingsRepository.update(nextDraft);
+    return this.withProfileState(next, physicalCapacity);
+  }
+
+  async validateSettings(dto: UpdateStorageSettingsDto) {
+    await this.prepareSettingsUpdate(dto);
+  }
+
+  private async prepareSettingsUpdate(dto: UpdateStorageSettingsDto) {
     const current = await this.getResolvedSettings({
       enableConfiguredObjectStorage: false,
     });
@@ -132,8 +143,7 @@ export class StorageSettingsUsageService {
     if (nextDraft.endpoint) this.assertEndpointSafe(nextDraft.endpoint);
     const physicalCapacity = await this.getPhysicalCapacity(nextDraft);
     this.assertStoragePolicyQuotaWithinCapacity(nextDraft, physicalCapacity);
-    const next = await this.settingsRepository.update(nextDraft);
-    return this.withProfileState(next, physicalCapacity);
+    return { nextDraft, physicalCapacity };
   }
 
   async testSettings(

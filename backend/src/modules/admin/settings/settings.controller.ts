@@ -22,6 +22,7 @@ import {
   setupTokenHeader,
   SetupAuthorizationService,
 } from '../setup/setup-authorization.service';
+import { SetupOperationService } from '../setup/setup-operation.service';
 
 @ApiTags('site')
 @Controller('site/settings')
@@ -78,6 +79,7 @@ export class SetupController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly setupAuthorization: SetupAuthorizationService,
+    private readonly setupOperation: SetupOperationService,
   ) {}
 
   @Get('status')
@@ -93,7 +95,9 @@ export class SetupController {
     @Headers(setupTokenHeader) setupToken?: string,
   ) {
     this.setupAuthorization.requireToken(setupToken);
-    return this.settingsService.verifyDatabase(dto);
+    return this.setupOperation.runExclusive('verify-database', dto, () =>
+      this.settingsService.verifyDatabase(dto),
+    );
   }
 }
 

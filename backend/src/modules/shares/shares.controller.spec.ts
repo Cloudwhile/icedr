@@ -1,4 +1,8 @@
-import { ForbiddenException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminGuardService } from '../../common/security/admin-guard.service';
 import { SharesController } from './shares.controller';
@@ -127,6 +131,68 @@ describe('SharesController', () => {
         actor: 'account',
       },
     );
+  });
+
+  it('falls back to visitor audit only for an invalid optional session', async () => {
+    const { controller, getShare, requireSession } = createController();
+    requireSession.mockRejectedValueOnce(
+      new UnauthorizedException('Session is invalid'),
+    );
+    const request = {
+      get: jest.fn(),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await controller.getShare(
+      'share-token',
+      'Bearer invalid',
+      undefined,
+      request,
+    );
+
+    expect(getShare).toHaveBeenCalledWith(
+      'share-token',
+      { ip: '203.0.113.25' },
+      {
+        accessSessionId: undefined,
+        accountUser: undefined,
+        actor: 'visitor',
+      },
+    );
+  });
+
+  it('does not hide bootstrap-required failures while resolving audit identity', async () => {
+    const { controller, getShare, requireSession } = createController();
+    requireSession.mockRejectedValueOnce(
+      new ServiceUnavailableException({ code: 'SETUP_REQUIRED' }),
+    );
+    const request = {
+      get: jest.fn(),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await expect(
+      controller.getShare('share-token', 'Bearer account', undefined, request),
+    ).rejects.toMatchObject({ response: { code: 'SETUP_REQUIRED' } });
+    expect(getShare).not.toHaveBeenCalled();
+  });
+
+  it('does not hide unexpected session lookup failures', async () => {
+    const { controller, getShare, requireSession } = createController();
+    const lookupError = new Error('session store unavailable');
+    requireSession.mockRejectedValueOnce(lookupError);
+    const request = {
+      get: jest.fn(),
+      ip: '203.0.113.25',
+      socket: {},
+    } as unknown as Request;
+
+    await expect(
+      controller.getShare('share-token', 'Bearer account', undefined, request),
+    ).rejects.toBe(lookupError);
+    expect(getShare).not.toHaveBeenCalled();
   });
 
   it('requires an admin session before revoking shares', async () => {

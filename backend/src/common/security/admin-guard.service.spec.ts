@@ -1,6 +1,11 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { createHash } from 'crypto';
 import { AuthRepository } from '../../modules/auth/core/auth.repository';
+import { BootstrapStateService } from '../../modules/admin/setup/bootstrap-state.service';
 import { AdminGuardService } from './admin-guard.service';
 
 describe('AdminGuardService', () => {
@@ -24,6 +29,12 @@ describe('AdminGuardService', () => {
     };
   }
 
+  function createGuard(repository: AuthRepository) {
+    return new AdminGuardService(repository, {
+      requireCompleted: jest.fn(() => Promise.resolve()),
+    } as unknown as BootstrapStateService);
+  }
+
   function createSession(role: 'admin' | 'member', expiresInMs = 60_000) {
     return {
       expiresAt: new Date(Date.now() + expiresInMs).toISOString(),
@@ -39,7 +50,7 @@ describe('AdminGuardService', () => {
 
   it('rejects requests without a bearer session', async () => {
     const { repository } = createRepository(null);
-    const guard = new AdminGuardService(repository);
+    const guard = createGuard(repository);
 
     await expect(
       guard.requirePermission(undefined, 'workspace', 'read'),
@@ -50,7 +61,7 @@ describe('AdminGuardService', () => {
     const { deleteSessionByTokenHash, repository } = createRepository(
       createSession('admin', -1),
     );
-    const guard = new AdminGuardService(repository);
+    const guard = createGuard(repository);
 
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'audit', 'read'),
@@ -60,7 +71,7 @@ describe('AdminGuardService', () => {
 
   it('allows members to access main panel resources', async () => {
     const { repository } = createRepository(createSession('member'));
-    const guard = new AdminGuardService(repository);
+    const guard = createGuard(repository);
 
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'file', 'read'),
@@ -72,7 +83,7 @@ describe('AdminGuardService', () => {
 
   it('rejects members from administration resources', async () => {
     const { repository } = createRepository(createSession('member'));
-    const guard = new AdminGuardService(repository);
+    const guard = createGuard(repository);
 
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'audit', 'read'),
@@ -84,7 +95,7 @@ describe('AdminGuardService', () => {
 
   it('allows admins to read audit records and manage settings', async () => {
     const { repository } = createRepository(createSession('admin'));
-    const guard = new AdminGuardService(repository);
+    const guard = createGuard(repository);
 
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'audit', 'read'),
@@ -109,7 +120,7 @@ describe('AdminGuardService', () => {
         recoveryCodes: 0,
       },
     });
-    const guard = new AdminGuardService(repository);
+    const guard = createGuard(repository);
 
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'file', 'write'),
@@ -119,5 +130,27 @@ describe('AdminGuardService', () => {
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'file', 'read'),
     ).resolves.toMatchObject({ user: { role: 'member' } });
+  });
+
+  it('rejects setup-incomplete access before reading an existing session', async () => {
+    const { findSessionByTokenHash, repository } = createRepository(
+      createSession('admin'),
+    );
+    const bootstrapState = {
+      requireCompleted: jest.fn(() =>
+        Promise.reject(
+          new ServiceUnavailableException({
+            code: 'SETUP_REQUIRED',
+            message: 'Initial setup must be completed',
+          }),
+        ),
+      ),
+    } as unknown as BootstrapStateService;
+    const guard = new AdminGuardService(repository, bootstrapState);
+
+    await expect(
+      guard.requirePermission(`Bearer ${token}`, 'settings', 'manage'),
+    ).rejects.toMatchObject({ response: { code: 'SETUP_REQUIRED' } });
+    expect(findSessionByTokenHash).not.toHaveBeenCalled();
   });
 });
