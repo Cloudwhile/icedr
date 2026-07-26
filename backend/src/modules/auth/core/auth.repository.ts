@@ -86,6 +86,11 @@ export type StoredAuthUser = AuthUserResponse & {
   passwordHash: string;
 };
 
+export type SetupAdminEmailState =
+  | { kind: 'available' }
+  | { kind: 'local'; user: StoredAuthUser }
+  | { kind: 'occupied' };
+
 export type StoredOAuthUser = AuthUserResponse & {
   emailSource: OAuthEmailSource;
 };
@@ -225,6 +230,11 @@ export class AuthRepository implements OnModuleInit {
   }
 
   async findUserByEmail(email: string): Promise<StoredAuthUser | null> {
+    const state = await this.getSetupAdminEmailState(email);
+    return state.kind === 'local' ? state.user : null;
+  }
+
+  async getSetupAdminEmailState(email: string): Promise<SetupAdminEmailState> {
     const user = await this.prisma.user.findUnique({
       where: { email },
       include: {
@@ -239,10 +249,15 @@ export class AuthRepository implements OnModuleInit {
         meta: true,
       },
     });
+    if (!user) return { kind: 'available' };
+
     const passwordHash = user?.identities[0]?.passwordHash;
-    return user && passwordHash
-      ? this.mapPrismaUserWithPassword(user, passwordHash)
-      : null;
+    return passwordHash
+      ? {
+          kind: 'local',
+          user: this.mapPrismaUserWithPassword(user, passwordHash),
+        }
+      : { kind: 'occupied' };
   }
 
   async createUser(input: {

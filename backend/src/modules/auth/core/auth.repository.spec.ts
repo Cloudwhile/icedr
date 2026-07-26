@@ -49,6 +49,10 @@ function createPrismaMock(queryRows: unknown[] = []) {
     void args;
     return Promise.resolve({});
   });
+  const userFindUnique = jest.fn((args: unknown): Promise<unknown> => {
+    void args;
+    return Promise.resolve(null);
+  });
   const tx = {
     user: {
       findUnique: jest.fn(() => Promise.resolve(prismaUser)),
@@ -72,7 +76,35 @@ function createPrismaMock(queryRows: unknown[] = []) {
     authSetting: {
       upsert: jest.fn(() => Promise.resolve({})),
     },
+    user: {
+      findUnique: userFindUnique,
+    },
     tx,
+  };
+}
+
+function createSetupUser(passwordHash?: string | null) {
+  return {
+    id: 'user_setup',
+    email: 'admin@example.com',
+    displayName: 'Existing User',
+    role: 'member',
+    meta: {
+      avatarUrl: null,
+      locale: null,
+      theme: null,
+      timezone: null,
+    },
+    identities:
+      passwordHash === undefined
+        ? []
+        : [
+            {
+              passwordHash,
+            },
+          ],
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
   };
 }
 
@@ -172,4 +204,44 @@ describe('AuthRepository', () => {
       }),
     );
   });
+
+  it('reports an unused setup administrator email as available', async () => {
+    const prisma = createPrismaMock();
+    const repository = new AuthRepository(prisma as never);
+
+    await expect(
+      repository.getSetupAdminEmailState('admin@example.com'),
+    ).resolves.toEqual({ kind: 'available' });
+  });
+
+  it('returns the local user when the setup administrator email has a password identity', async () => {
+    const prisma = createPrismaMock();
+    prisma.user.findUnique.mockResolvedValue(
+      createSetupUser('scrypt$salt$password'),
+    );
+    const repository = new AuthRepository(prisma as never);
+
+    await expect(
+      repository.getSetupAdminEmailState('admin@example.com'),
+    ).resolves.toMatchObject({
+      kind: 'local',
+      user: {
+        email: 'admin@example.com',
+        passwordHash: 'scrypt$salt$password',
+      },
+    });
+  });
+
+  it.each([undefined, null])(
+    'reports a setup administrator email without a local password as occupied',
+    async (passwordHash) => {
+      const prisma = createPrismaMock();
+      prisma.user.findUnique.mockResolvedValue(createSetupUser(passwordHash));
+      const repository = new AuthRepository(prisma as never);
+
+      await expect(
+        repository.getSetupAdminEmailState('admin@example.com'),
+      ).resolves.toEqual({ kind: 'occupied' });
+    },
+  );
 });

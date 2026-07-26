@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { FileNodesService } from '../files/file-nodes.service';
 import { MailService } from '../admin/mail/mail.service';
+import { BootstrapStateService } from '../admin/setup/bootstrap-state.service';
 import type {
   DownloadIntentPurpose,
   PreviewIntentResponse,
@@ -87,6 +88,7 @@ export class SharesService {
     private readonly configService: ConfigService,
     private readonly abuseProtection: ShareAbuseProtectionService,
     private readonly shareContent: ShareContentService,
+    private readonly bootstrapState: BootstrapStateService,
   ) {}
 
   async createShare(
@@ -115,6 +117,7 @@ export class SharesService {
     dto: SendShareEmailCodeDto,
     visitor: VisitorAuditMetadata = {},
   ) {
+    await this.bootstrapState.requireCompleted();
     const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     const auditMetadata = this.getEmailAccessAuditMetadata(dto.email, visitor);
@@ -159,6 +162,7 @@ export class SharesService {
     dto: VerifyShareEmailCodeDto,
     visitor: VisitorAuditMetadata = {},
   ) {
+    await this.bootstrapState.requireCompleted();
     const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     const auditMetadata = this.getEmailAccessAuditMetadata(dto.email, visitor);
@@ -215,6 +219,7 @@ export class SharesService {
     user: AccountAuditUser,
     visitor: VisitorAuditMetadata = {},
   ) {
+    await this.bootstrapState.requireCompleted();
     const share = await this.requireActiveShare(token, {
       ...visitor,
       actorUserId: user.id,
@@ -291,6 +296,7 @@ export class SharesService {
       actor?: AuditActor;
     } = {},
   ): Promise<ExternalShareDetailResponse | ExternalShareMetadataResponse> {
+    await this.bootstrapState.requireCompleted();
     const share = await this.requireActiveShare(token, visitor);
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     await this.abuseProtection.consume({
@@ -383,6 +389,7 @@ export class SharesService {
     accountUser?: AccountAuditUser,
     purpose: DownloadIntentPurpose = 'download',
   ) {
+    await this.bootstrapState.requireCompleted();
     return this.shareDownloads.createDownloadIntent(
       token,
       nodeId,
@@ -400,6 +407,7 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     options: { range?: string } = {},
   ) {
+    await this.bootstrapState.requireCompleted();
     return this.shareDownloads.downloadSharedNode(
       token,
       nodeId,
@@ -416,6 +424,7 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     accountUser?: AccountAuditUser,
   ) {
+    await this.bootstrapState.requireCompleted();
     const share = await this.requireActiveShare(token, { ...visitor, nodeId });
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     const requestMetadata = {
@@ -482,6 +491,7 @@ export class SharesService {
     visitor: VisitorAuditMetadata = {},
     accountUser?: AccountAuditUser,
   ) {
+    await this.bootstrapState.requireCompleted();
     const share = await this.requireActiveShare(token, { ...visitor, nodeId });
     const rateLimitProfile = this.getShareRateLimitProfile(share);
     const requestMetadata = {

@@ -123,6 +123,10 @@ type SetupStatusBase = {
   databaseAvailable: boolean;
 };
 
+export type SetupAccessState =
+  | { authorized: false; configured: boolean }
+  | { authorized: true; configured: true };
+
 export type SetupStatusResponse =
   | (SetupStatusBase & {
       needsSetup: false;
@@ -131,6 +135,15 @@ export type SetupStatusResponse =
   | (SetupStatusBase & {
       needsSetup: true;
       bootstrapCompleted: false;
+      setupAccess: SetupAccessState & { authorized: false };
+    })
+  | (SetupStatusBase & {
+      needsSetup: true;
+      bootstrapCompleted: false;
+      setupAccess: SetupAccessState & {
+        authorized: true;
+        configured: true;
+      };
       databaseProfile: DatabaseProfile;
       site: PublicSiteSettings;
       oauth: OAuthSettingsResponse;

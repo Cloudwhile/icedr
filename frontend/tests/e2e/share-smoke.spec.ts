@@ -41,12 +41,16 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   const useCurrentAccount = page.getByRole("button", { name: "Use current account" });
   await expect(useCurrentAccount).toBeVisible();
   await useCurrentAccount.click();
+  const downloadButton = page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Download", exact: true });
+  await expect(downloadButton).toBeVisible();
   const downloadResponsePromise = page.waitForResponse((response) =>
     response.request().method() === "GET" &&
     response.url().includes(`/shares/${shareToken}/items/${fileId}/download?downloadId=`) &&
     response.status() === 200
   );
-  await page.getByRole("button", { name: "Download" }).last().click();
+  await downloadButton.click();
   const downloadResponse = await downloadResponsePromise;
   expect(new URL(downloadResponse.url()).origin).toBe(new URL(page.url()).origin);
   expect(downloadResponse.headers()["content-disposition"]).toContain(fileName);

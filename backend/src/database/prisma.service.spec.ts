@@ -1,5 +1,28 @@
 import { ConfigService } from '@nestjs/config';
+import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { PostgresDatabaseSource } from './database-url';
 import { PrismaService } from './prisma.service';
+
+jest.mock('node:child_process', () => {
+  const actual =
+    jest.requireActual<typeof import('node:child_process')>(
+      'node:child_process',
+    );
+  return {
+    ...actual,
+    spawn: jest.fn(),
+  };
+});
+
+const migrationDeployTimeoutMilliseconds = 10 * 60 * 1000;
+
+type MockMigrationProcess = EventEmitter & {
+  kill: jest.Mock<boolean, [NodeJS.Signals]>;
+  stderr: PassThrough;
+  stdout: PassThrough;
+};
 
 function config(values: Record<string, unknown>) {
   return {
@@ -8,6 +31,11 @@ function config(values: Record<string, unknown>) {
 }
 
 describe('PrismaService', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.mocked(spawn).mockReset();
+  });
+
   it('uses SQLite when database connection fields are missing', async () => {
     const service = new PrismaService(
       config({
@@ -35,6 +63,81 @@ describe('PrismaService', () => {
     expect(service.getSource().provider).toBe('postgresql');
     expect(typeof service.workspace.findMany).toBe('function');
     await service.onModuleDestroy();
+  });
+
+  it('kills a stalled PostgreSQL migration and rejects only with the timeout', async () => {
+    jest.useFakeTimers();
+    const service = createSqliteService();
+    const child = createMigrationProcess((process) => {
+      process.emit('close', 0);
+    });
+    jest.mocked(spawn).mockReturnValue(child as never);
+
+    const deployment = deployPostgresMigrations(service);
+    const rejection = expect(deployment).rejects.toThrow(
+      'PostgreSQL migration deploy timed out',
+    );
+    await jest.advanceTimersByTimeAsync(migrationDeployTimeoutMilliseconds);
+
+    await rejection;
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    expect(child.listenerCount('close')).toBe(0);
+    expect(child.listenerCount('error')).toBe(0);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('clears the migration timeout when the child exits successfully', async () => {
+    jest.useFakeTimers();
+    const service = createSqliteService();
+    const child = createMigrationProcess();
+    jest.mocked(spawn).mockReturnValue(child as never);
+
+    const deployment = deployPostgresMigrations(service);
+    child.emit('close', 0);
+
+    await expect(deployment).resolves.toBeUndefined();
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(migrationDeployTimeoutMilliseconds);
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it('still rejects with the timeout when killing the child fails', async () => {
+    jest.useFakeTimers();
+    const service = createSqliteService();
+    const child = createMigrationProcess();
+    const killError = new Error('kill failed');
+    child.kill.mockImplementation(() => {
+      throw killError;
+    });
+    jest.mocked(spawn).mockReturnValue(child as never);
+
+    const deployment = deployPostgresMigrations(service);
+    const rejection = expect(deployment).rejects.toMatchObject({
+      cause: killError,
+      message: 'PostgreSQL migration deploy timed out',
+    });
+    await jest.advanceTimersByTimeAsync(migrationDeployTimeoutMilliseconds);
+
+    await rejection;
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('clears the migration timeout when the child reports an error', async () => {
+    jest.useFakeTimers();
+    const service = createSqliteService();
+    const child = createMigrationProcess();
+    const migrationError = new Error('spawn failed');
+    jest.mocked(spawn).mockReturnValue(child as never);
+
+    const deployment = deployPostgresMigrations(service);
+    child.emit('error', migrationError);
+
+    await expect(deployment).rejects.toBe(migrationError);
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(migrationDeployTimeoutMilliseconds);
+    expect(child.kill).not.toHaveBeenCalled();
   });
 
   it('patches missing SQLite space scope columns on startup', async () => {
@@ -75,6 +178,12 @@ describe('PrismaService', () => {
     );
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS "setup_operations"'),
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'CREATE INDEX IF NOT EXISTS "setup_operations_status_claim_expires_at_idx" ON "setup_operations"("status", "claim_expires_at")',
     );
   });
 
@@ -265,6 +374,9 @@ describe('PrismaService', () => {
 
     expect(writes.length).toBeGreaterThan(1);
     expect(writes.some(({ model }) => model === 'fileNode')).toBe(true);
+    expect(writes.some(({ model }) => model === 'setupOperation')).toBe(true);
+    // Copy the latest lease last before heartbeat and release switch to PostgreSQL.
+    expect(writes[writes.length - 1]?.model).toBe('setupOperation');
     expect(writes.every(({ skipDuplicates }) => !skipDuplicates)).toBe(true);
   });
 
@@ -308,3 +420,45 @@ describe('PrismaService', () => {
     );
   });
 });
+
+function createSqliteService() {
+  return new PrismaService(
+    config({
+      'database.configured': false,
+    }),
+  );
+}
+
+function createMigrationProcess(
+  onKill?: (process: MockMigrationProcess) => void,
+) {
+  const child = new EventEmitter() as MockMigrationProcess;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = jest.fn((signal: NodeJS.Signals) => {
+    void signal;
+    onKill?.(child);
+    return true;
+  });
+  return child;
+}
+
+function deployPostgresMigrations(service: PrismaService) {
+  const source: PostgresDatabaseSource = {
+    provider: 'postgresql',
+    host: 'database.example',
+    port: 5432,
+    dbName: 'icedr',
+    user: 'icedr',
+    password: 'secret',
+    source: 'setup',
+    verifiedAt: '2026-07-26T00:00:00.000Z',
+  };
+  return (
+    service as unknown as {
+      deployPostgresMigrations: (
+        target: PostgresDatabaseSource,
+      ) => Promise<void>;
+    }
+  ).deployPostgresMigrations(source);
+}

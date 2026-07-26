@@ -15,6 +15,7 @@ import { QueueModule } from './modules/downloads/queue/queue.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { SettingsModule } from './modules/admin/settings/settings.module';
 import { SetupModule } from './modules/admin/setup/setup.module';
+import { BootstrapStateModule } from './modules/admin/setup/bootstrap-state.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { TransfersModule } from './modules/downloads/transfers/transfers.module';
 import { WorkerModule } from './modules/downloads/worker/worker.module';
@@ -28,6 +29,7 @@ import { WorkspacesModule } from './modules/admin/workspaces/workspaces.module';
       envFilePath: ['.env.local', '.env', '../.env'],
     }),
     DatabaseModule,
+    BootstrapStateModule,
     AuthCoreModule,
     SettingsModule,
     SetupModule,

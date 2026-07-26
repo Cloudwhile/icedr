@@ -43,6 +43,10 @@ export class StorageService {
     return this.settingsUsage.updateSettings(dto);
   }
 
+  validateSettings(dto: UpdateStorageSettingsDto) {
+    return this.settingsUsage.validateSettings(dto);
+  }
+
   testSettings(dto: UpdateStorageSettingsDto): Promise<StorageTestResponse> {
     return this.settingsUsage.testSettings(dto);
   }

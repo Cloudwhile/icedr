@@ -43,6 +43,81 @@ describe('SettingsService setup status', () => {
     expect(getStorageSettings).not.toHaveBeenCalled();
   });
 
+  it('returns only public readiness state while setup access is unauthorized', async () => {
+    const config = { get: jest.fn() } as unknown as ConfigService;
+    const prisma = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ value: 1 }])),
+    } as unknown as PrismaService;
+    const repository = {
+      get: jest.fn(() =>
+        Promise.resolve({ completed: false, completedAt: null }),
+      ),
+    } as unknown as SettingsRepository;
+    const getStorageSettings = jest.fn();
+    const storageService = {
+      getSettings: getStorageSettings,
+    } as unknown as StorageService;
+    const authRepository = {
+      getSettings: jest.fn(),
+    } as unknown as AuthRepository;
+    const service = new SettingsService(
+      config,
+      prisma,
+      repository,
+      storageService,
+      authRepository,
+    );
+
+    await expect(
+      service.getSetupStatus({ authorized: false, configured: true }),
+    ).resolves.toEqual({
+      bootstrapCompleted: false,
+      databaseAvailable: true,
+      needsSetup: true,
+      setupAccess: { authorized: false, configured: true },
+    });
+    expect(getStorageSettings).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit confirmation before migrating to PostgreSQL', async () => {
+    const config = { get: jest.fn() } as unknown as ConfigService;
+    const migrateToPostgres = jest.fn();
+    const prisma = {
+      migrateToPostgres,
+    } as unknown as PrismaService;
+    const repository = {
+      get: jest.fn(() =>
+        Promise.resolve({ completed: false, completedAt: null }),
+      ),
+      set: jest.fn(),
+    } as unknown as SettingsRepository;
+    const storageService = {
+      getSettings: jest.fn(),
+    } as unknown as StorageService;
+    const authRepository = {
+      getSettings: jest.fn(),
+    } as unknown as AuthRepository;
+    const service = new SettingsService(
+      config,
+      prisma,
+      repository,
+      storageService,
+      authRepository,
+    );
+
+    await expect(
+      service.verifyDatabase({
+        provider: 'postgresql',
+        host: 'db.example.com',
+        port: 5432,
+        dbName: 'icedr',
+        user: 'icedr',
+        password: 'secret',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(migrateToPostgres).not.toHaveBeenCalled();
+  });
+
   it('treats complete RP settings as configured without the legacy flag', () => {
     const service = createSettingsService();
 

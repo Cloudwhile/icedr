@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { AuthRepository } from '../../modules/auth/core/auth.repository';
+import { BootstrapStateService } from '../../modules/admin/setup/bootstrap-state.service';
 import {
   canAccessResource,
   formatPermission,
@@ -14,7 +15,10 @@ import {
 
 @Injectable()
 export class AdminGuardService {
-  constructor(private readonly authRepository: AuthRepository) {}
+  constructor(
+    private readonly authRepository: AuthRepository,
+    private readonly bootstrapState: BootstrapStateService,
+  ) {}
 
   async requireAdminSession(authorization?: string) {
     return this.requirePermission(authorization, 'settings', 'manage');
@@ -49,6 +53,7 @@ export class AdminGuardService {
   }
 
   async requireSession(authorization?: string) {
+    await this.bootstrapState.requireCompleted();
     const token = this.extractBearerToken(authorization);
     if (!token) throw new UnauthorizedException('Authentication is required');
     const session = await this.authRepository.findSessionByTokenHash(

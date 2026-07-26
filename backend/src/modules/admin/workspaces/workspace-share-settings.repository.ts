@@ -41,6 +41,28 @@ export class WorkspaceShareSettingsRepository {
   }
 
   async upsert(workspaceId: string, dto: UpdateWorkspaceShareSettingsDto) {
+    const next = await this.prepareUpdate(workspaceId, dto);
+
+    const row = await this.prisma.workspaceShareSetting.upsert({
+      where: { workspaceId },
+      create: this.toPrismaWrite(next),
+      update: this.toPrismaWrite(next),
+    });
+
+    return this.mapRow(row);
+  }
+
+  async validateUpdate(
+    workspaceId: string,
+    dto: UpdateWorkspaceShareSettingsDto,
+  ) {
+    await this.prepareUpdate(workspaceId, dto);
+  }
+
+  private async prepareUpdate(
+    workspaceId: string,
+    dto: UpdateWorkspaceShareSettingsDto,
+  ) {
     const current = await this.getForUpdate(workspaceId);
     const next = this.validate({
       ...current,
@@ -51,14 +73,7 @@ export class WorkspaceShareSettingsRepository {
       audit: dto.audit ? { ...current.audit, ...dto.audit } : current.audit,
       updatedAt: new Date().toISOString(),
     });
-
-    const row = await this.prisma.workspaceShareSetting.upsert({
-      where: { workspaceId },
-      create: this.toPrismaWrite(next),
-      update: this.toPrismaWrite(next),
-    });
-
-    return this.mapRow(row);
+    return next;
   }
 
   private async getForUpdate(workspaceId: string) {

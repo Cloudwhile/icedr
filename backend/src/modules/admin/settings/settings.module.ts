@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthCoreModule } from '../../auth/core/auth-core.module';
 import { StorageModule } from '../../storage/storage.module';
+import { SetupAuthorizationModule } from '../setup/setup-authorization.module';
 import {
   OAuthSettingsController,
   PasskeySettingsController,
@@ -11,7 +12,7 @@ import { SettingsRepository } from './settings.repository';
 import { SettingsService } from './settings.service';
 
 @Module({
-  imports: [AuthCoreModule, StorageModule],
+  imports: [AuthCoreModule, SetupAuthorizationModule, StorageModule],
   controllers: [
     SiteSettingsController,
     SetupController,

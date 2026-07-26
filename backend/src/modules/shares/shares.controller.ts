@@ -12,6 +12,7 @@ import {
   HttpException,
   HttpStatus,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
@@ -275,7 +276,8 @@ export class SharesController {
         metadata: createRequestAuditMetadata(session, request),
         user: session.user,
       };
-    } catch {
+    } catch (error) {
+      if (!(error instanceof UnauthorizedException)) throw error;
       return {
         actor: 'visitor',
         metadata: createVisitorAuditMetadata(request),

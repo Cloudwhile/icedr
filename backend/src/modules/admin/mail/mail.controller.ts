@@ -6,6 +6,11 @@ import {
   UpdateMailSettingsDto,
 } from '../settings/settings.dto';
 import { SettingsService } from '../settings/settings.service';
+import {
+  setupTokenHeader,
+  SetupAuthorizationService,
+} from '../setup/setup-authorization.service';
+import { SetupOperationService } from '../setup/setup-operation.service';
 import { MailService } from './mail.service';
 
 @ApiTags('mail')
@@ -50,10 +55,13 @@ export class SetupMailController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly mailService: MailService,
+    private readonly setupAuthorization: SetupAuthorizationService,
+    private readonly setupOperation: SetupOperationService,
   ) {}
 
   @Get()
-  async getSettings() {
+  async getSettings(@Headers(setupTokenHeader) setupToken?: string) {
+    this.setupAuthorization.requireToken(setupToken);
     await this.settingsService.assertSetupOpen();
     return this.settingsService.toMailResponse(
       await this.settingsService.getMailSettings(),
@@ -61,14 +69,26 @@ export class SetupMailController {
   }
 
   @Patch()
-  async updateSettings(@Body() dto: UpdateMailSettingsDto) {
-    await this.settingsService.assertSetupOpen();
-    return this.settingsService.updateMailSettings(dto);
+  async updateSettings(
+    @Body() dto: UpdateMailSettingsDto,
+    @Headers(setupTokenHeader) setupToken?: string,
+  ) {
+    this.setupAuthorization.requireToken(setupToken);
+    return this.setupOperation.runExclusive('mail-settings', dto, async () => {
+      await this.settingsService.assertSetupOpen();
+      return this.settingsService.updateMailSettings(dto);
+    });
   }
 
   @Post('test')
-  async testSettings(@Body() dto: TestMailSettingsDto) {
-    await this.settingsService.assertSetupOpen();
-    return this.mailService.sendTestMessage(dto.recipientEmail);
+  async testSettings(
+    @Body() dto: TestMailSettingsDto,
+    @Headers(setupTokenHeader) setupToken?: string,
+  ) {
+    this.setupAuthorization.requireToken(setupToken);
+    return this.setupOperation.runExclusive('mail-test', dto, async () => {
+      await this.settingsService.assertSetupOpen();
+      return this.mailService.sendTestMessage(dto.recipientEmail);
+    });
   }
 }

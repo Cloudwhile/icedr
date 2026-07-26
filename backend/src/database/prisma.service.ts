@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { PrismaClient } from '../generated/prisma/client';
@@ -46,6 +46,8 @@ type FileNodeNameKeyModel = {
   }) => Promise<unknown>;
 };
 
+const postgresMigrationDeployTimeoutMilliseconds = 10 * 60 * 1000;
+
 const copyModels = [
   'authSetting',
   'user',
@@ -79,6 +81,7 @@ const copyModels = [
   'shareDownloadIntent',
   'auditEvent',
   'blobReconcileTask',
+  'setupOperation',
 ] as const;
 
 @Injectable()
@@ -129,7 +132,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async migrateToPostgres(input: RemoteDatabaseInput) {
     const source = await this.verifyRemote(input);
-    this.deployPostgresMigrations(source);
+    await this.deployPostgresMigrations(source);
 
     const targetClient = this.createPostgresClient(source);
     await targetClient.$connect();
@@ -205,6 +208,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   get setting(): PrismaClient['setting'] {
     return this.activeClient.setting as PrismaClient['setting'];
+  }
+
+  get setupOperation(): PrismaClient['setupOperation'] {
+    return this.activeClient.setupOperation as PrismaClient['setupOperation'];
   }
 
   get workspace(): PrismaClient['workspace'] {
@@ -403,6 +410,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       'TEXT',
     );
     await this.ensureSqlitePasskeySecurityTables();
+    await this.ensureSqliteSetupOperationTable();
     await this.ensureSqliteColumn(
       'file_nodes',
       'space_scope',
@@ -534,6 +542,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async ensureSqliteSetupOperationTable() {
+    const statements = [
+      'CREATE TABLE IF NOT EXISTS "setup_operations" ("operation_key" TEXT NOT NULL PRIMARY KEY, "status" TEXT NOT NULL, "payload_fingerprint" TEXT NOT NULL, "claim_token_hash" TEXT, "claimed_at" TEXT, "claim_expires_at" TEXT, "irreversible_started_at" TEXT, "completed_at" TEXT, "failed_at" TEXT, "failure_code" TEXT, "failure_message" TEXT, "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+      'CREATE INDEX IF NOT EXISTS "setup_operations_status_claim_expires_at_idx" ON "setup_operations"("status", "claim_expires_at")',
+    ];
+    for (const statement of statements) {
+      await this.activeClient.$executeRawUnsafe(statement);
+    }
+  }
+
   private async ensureSqliteColumn(
     tableName: string,
     columnName: string,
@@ -548,38 +566,92 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private deployPostgresMigrations(source: PostgresDatabaseSource) {
+  private async deployPostgresMigrations(source: PostgresDatabaseSource) {
     const prismaPackage = require.resolve('prisma/package.json', {
       paths: [this.backendRoot],
     });
     const prismaCli = resolve(prismaPackage, '..', 'build', 'index.js');
-    const result = spawnSync(
-      process.execPath,
-      [
-        prismaCli,
-        'migrate',
-        'deploy',
-        '--schema',
-        '../database/schema.prisma',
-        '--config',
-        '../prisma.config.ts',
-      ],
-      {
-        cwd: this.backendRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          DATABASE_URL: buildPostgresUrl(source),
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const child = spawn(
+        process.execPath,
+        [
+          prismaCli,
+          'migrate',
+          'deploy',
+          '--schema',
+          '../database/schema.prisma',
+          '--config',
+          '../prisma.config.ts',
+        ],
+        {
+          cwd: this.backendRoot,
+          env: {
+            ...process.env,
+            DATABASE_URL: buildPostgresUrl(source),
+          },
+          windowsHide: true,
         },
-      },
-    );
-    if (result.status !== 0) {
-      throw new Error(
-        result.stderr?.trim() ||
-          result.stdout?.trim() ||
-          'Failed to deploy PostgreSQL migrations',
       );
-    }
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (complete: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
+        child.removeListener('error', onError);
+        child.removeListener('close', onClose);
+        complete();
+      };
+      const onError = (error: Error) => {
+        finish(() => rejectPromise(error));
+      };
+      const onClose = (code: number | null) => {
+        finish(() => {
+          if (code === 0) {
+            resolvePromise();
+            return;
+          }
+          rejectPromise(
+            new Error(
+              stderr.trim() ||
+                stdout.trim() ||
+                'Failed to deploy PostgreSQL migrations',
+            ),
+          );
+        });
+      };
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        stdout += chunk;
+      });
+      child.stderr.on('data', (chunk: string) => {
+        stderr += chunk;
+      });
+      child.once('error', onError);
+      child.once('close', onClose);
+      timer = setTimeout(() => {
+        finish(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch (error) {
+            rejectPromise(
+              new Error('PostgreSQL migration deploy timed out', {
+                cause: error,
+              }),
+            );
+            return;
+          }
+          rejectPromise(new Error('PostgreSQL migration deploy timed out'));
+        });
+      }, postgresMigrationDeployTimeoutMilliseconds);
+      timer.unref();
+    });
   }
 
   private async copyData(source: ActivePrismaClient, target: PrismaClient) {

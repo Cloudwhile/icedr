@@ -117,6 +117,9 @@ export default () => {
         'icedr-dev-auth-security-secret',
       ),
     },
+    setup: {
+      bootstrapToken: readString(process.env.SETUP_BOOTSTRAP_TOKEN),
+    },
     database: {
       host: readString(process.env.DATABASE_HOST),
       port: readNumber(process.env.DATABASE_PORT, 5432),
