@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import {
   bootstrapMeta,
@@ -9,9 +13,16 @@ export const setupRequiredErrorCode = 'SETUP_REQUIRED';
 
 @Injectable()
 export class BootstrapStateService {
+  private readonly logger = new Logger(BootstrapStateService.name);
+  private completed = false;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async isCompleted() {
+    if (this.completed) {
+      return true;
+    }
+
     try {
       const row = await this.prisma.setting.findUnique({
         where: {
@@ -22,8 +33,13 @@ export class BootstrapStateService {
         },
         select: { value: true },
       });
-      return this.readCompleted(row?.value);
-    } catch {
+      this.completed = this.readCompleted(row?.value);
+      return this.completed;
+    } catch (error) {
+      this.logger.warn(
+        'Bootstrap completion lookup failed; treating setup as incomplete',
+        error,
+      );
       return false;
     }
   }

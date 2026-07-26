@@ -6,6 +6,7 @@ import { StorageModule } from '../../storage/storage.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { SetupCompleteController } from './setup.controller';
 import { SetupAuthorizationModule } from './setup-authorization.module';
+import { SetupRateLimitService } from './setup-rate-limit.service';
 import { SetupService } from './setup.service';
 
 @Module({
@@ -18,6 +19,6 @@ import { SetupService } from './setup.service';
     WorkspacesModule,
   ],
   controllers: [SetupCompleteController],
-  providers: [SetupService],
+  providers: [SetupRateLimitService, SetupService],
 })
 export class SetupModule {}

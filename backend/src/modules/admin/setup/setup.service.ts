@@ -10,7 +10,10 @@ import { MailService } from '../mail/mail.service';
 import type { CompleteSetupDto } from '../settings/settings.dto';
 import { SettingsService } from '../settings/settings.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
-import { SetupOperationService } from './setup-operation.service';
+import {
+  SetupOperationService,
+  type SetupOperationClaim,
+} from './setup-operation.service';
 
 export type CompleteSetupResponse = {
   session: AuthSessionResponse;
@@ -103,31 +106,57 @@ export class SetupService {
 
   private async persistSettings(
     dto: CompleteSetupDto,
-    claim: Parameters<SetupOperationService['extendLease']>[0],
+    claim: SetupOperationClaim,
   ) {
-    if (dto.mail) {
+    let lastCompletedStep = 'none';
+    const runStep = async (step: string, action: () => Promise<unknown>) => {
       await this.operationService.extendLease(claim);
-      await this.settingsService.updateMailSettings(dto.mail);
+      await action();
+      lastCompletedStep = step;
+    };
+
+    try {
+      const mail = dto.mail;
+      if (mail) {
+        await runStep('mail', () =>
+          this.settingsService.updateMailSettings(mail),
+        );
+      }
+      await runStep('site', () =>
+        this.settingsService.updateSiteSettings(dto.site ?? {}),
+      );
+      const oauth = dto.oauth;
+      if (oauth) {
+        await runStep('oauth', () =>
+          this.settingsService.updateOAuthSettings(oauth),
+        );
+      }
+      const passkey = dto.passkey;
+      if (passkey) {
+        await runStep('passkey', () =>
+          this.settingsService.updatePasskeySettings(passkey),
+        );
+      }
+      await runStep('auth', () =>
+        this.authService.updateSettingsForSetup(this.authSettings(dto)),
+      );
+      await runStep('storage', () =>
+        this.storageService.updateSettings(this.storageSettings(dto)),
+      );
+      await runStep('share', () =>
+        this.workspacesService.updateShareSettings(
+          'workspace-default',
+          dto.sharePolicy,
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        'Setup settings persistence failed after ' +
+          lastCompletedStep +
+          ' step',
+      );
+      throw error;
     }
-    await this.operationService.extendLease(claim);
-    await this.settingsService.updateSiteSettings(dto.site ?? {});
-    if (dto.oauth) {
-      await this.operationService.extendLease(claim);
-      await this.settingsService.updateOAuthSettings(dto.oauth);
-    }
-    if (dto.passkey) {
-      await this.operationService.extendLease(claim);
-      await this.settingsService.updatePasskeySettings(dto.passkey);
-    }
-    await this.operationService.extendLease(claim);
-    await this.authService.updateSettingsForSetup(this.authSettings(dto));
-    await this.operationService.extendLease(claim);
-    await this.storageService.updateSettings(this.storageSettings(dto));
-    await this.operationService.extendLease(claim);
-    await this.workspacesService.updateShareSettings(
-      'workspace-default',
-      dto.sharePolicy,
-    );
   }
 
   private assertAuthenticationMethod(dto: CompleteSetupDto) {

@@ -189,6 +189,50 @@ describe('SetupService', () => {
     expect(indexOf(events, 'admin-create')).toBeLessThan(
       indexOf(events, 'complete'),
     );
+    expect(context.operationService.fail).not.toHaveBeenCalled();
+  });
+
+  it('marks bootstrap complete after the setup lease action finishes', async () => {
+    const events: string[] = [];
+    const context = createContext(events);
+    context.operationService.withLease.mockImplementationOnce(
+      async (_claim: unknown, action: () => Promise<unknown>) => {
+        events.push('lease-start');
+        const result = await action();
+        events.push('lease-end');
+        return result;
+      },
+    );
+
+    await context.service.complete(completeDto);
+
+    expect(indexOf(events, 'admin-create')).toBeLessThan(
+      indexOf(events, 'lease-end'),
+    );
+    expect(indexOf(events, 'lease-end')).toBeLessThan(
+      indexOf(events, 'complete'),
+    );
+  });
+
+  it('preserves bootstrap completion failures after the administrator is created', async () => {
+    const context = createContext();
+    const completionError = new Error('bootstrap completion failed');
+    context.operationService.completeWithBootstrap.mockRejectedValue(
+      completionError,
+    );
+
+    await expect(context.service.complete(completeDto)).rejects.toBe(
+      completionError,
+    );
+
+    expect(context.authService.createSetupAdmin).toHaveBeenCalledWith(
+      completeDto.admin,
+      undefined,
+    );
+    expect(context.operationService.fail).toHaveBeenCalledWith(
+      claim,
+      completionError,
+    );
   });
 
   it('passes object storage settings through preflight and persistence', async () => {
@@ -265,8 +309,17 @@ function createContext(events: string[] = []) {
       events.push('auth-write');
       return Promise.resolve();
     }),
-    validateSettingsForSetup: jest.fn(() => Promise.resolve()),
-    validateSetupAdmin: jest.fn(() => Promise.resolve()),
+    validateSettingsForSetup: jest.fn(
+      (settings: unknown, candidates: unknown) => {
+        void settings;
+        void candidates;
+        return Promise.resolve();
+      },
+    ),
+    validateSetupAdmin: jest.fn((admin: unknown) => {
+      void admin;
+      return Promise.resolve();
+    }),
   };
   const mailService = {
     assertReady: jest.fn(() => Promise.resolve()),

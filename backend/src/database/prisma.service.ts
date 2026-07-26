@@ -46,6 +46,8 @@ type FileNodeNameKeyModel = {
   }) => Promise<unknown>;
 };
 
+const postgresMigrationDeployTimeoutMilliseconds = 10 * 60 * 1000;
+
 const copyModels = [
   'authSetting',
   'user',
@@ -592,6 +594,37 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       );
       let stdout = '';
       let stderr = '';
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (complete: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
+        child.removeListener('error', onError);
+        child.removeListener('close', onClose);
+        complete();
+      };
+      const onError = (error: Error) => {
+        finish(() => rejectPromise(error));
+      };
+      const onClose = (code: number | null) => {
+        finish(() => {
+          if (code === 0) {
+            resolvePromise();
+            return;
+          }
+          rejectPromise(
+            new Error(
+              stderr.trim() ||
+                stdout.trim() ||
+                'Failed to deploy PostgreSQL migrations',
+            ),
+          );
+        });
+      };
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk: string) => {
@@ -600,20 +633,24 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       child.stderr.on('data', (chunk: string) => {
         stderr += chunk;
       });
-      child.once('error', rejectPromise);
-      child.once('close', (code) => {
-        if (code === 0) {
-          resolvePromise();
-          return;
-        }
-        rejectPromise(
-          new Error(
-            stderr.trim() ||
-              stdout.trim() ||
-              'Failed to deploy PostgreSQL migrations',
-          ),
-        );
-      });
+      child.once('error', onError);
+      child.once('close', onClose);
+      timer = setTimeout(() => {
+        finish(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch (error) {
+            rejectPromise(
+              new Error('PostgreSQL migration deploy timed out', {
+                cause: error,
+              }),
+            );
+            return;
+          }
+          rejectPromise(new Error('PostgreSQL migration deploy timed out'));
+        });
+      }, postgresMigrationDeployTimeoutMilliseconds);
+      timer.unref();
     });
   }
 

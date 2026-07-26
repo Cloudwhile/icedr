@@ -15,8 +15,8 @@ import {
 import { setupAuthorizationErrorCode } from './setup-authorization.service';
 
 const setupOperationKey = 'setup-exclusive';
-const claimLeaseMilliseconds = 15 * 60 * 1000;
-const claimHeartbeatMilliseconds = 60 * 1000;
+export const setupOperationClaimLeaseMilliseconds = 15 * 60 * 1000;
+export const setupOperationClaimHeartbeatMilliseconds = 60 * 1000;
 
 export type SetupOperationClaim = {
   claimTokenHash: string;
@@ -42,10 +42,9 @@ export class SetupOperationService {
     action: () => Promise<T>,
   ): Promise<T> {
     const claim = await this.claim(operation, payload);
+    let result: T;
     try {
-      const result = await this.withLease(claim, action);
-      await this.release(claim);
-      return result;
+      result = await this.withLease(claim, action);
     } catch (error) {
       try {
         await this.fail(claim, error);
@@ -58,6 +57,18 @@ export class SetupOperationService {
       }
       throw error;
     }
+
+    try {
+      await this.release(claim);
+    } catch (releaseError) {
+      this.logger.warn(
+        'Setup claim release failed after successful ' +
+          operation +
+          ': ' +
+          (releaseError instanceof Error ? releaseError.name : 'UnknownError'),
+      );
+    }
+    return result;
   }
 
   async withLease<T>(
@@ -342,7 +353,7 @@ export class SetupOperationService {
   }
 
   private leaseExpiry(now: Date) {
-    return new Date(now.getTime() + claimLeaseMilliseconds);
+    return new Date(now.getTime() + setupOperationClaimLeaseMilliseconds);
   }
 
   private startLeaseHeartbeat(claim: SetupOperationClaim) {
@@ -359,7 +370,7 @@ export class SetupOperationService {
         }
       });
     };
-    const timer = setInterval(renew, claimHeartbeatMilliseconds);
+    const timer = setInterval(renew, setupOperationClaimHeartbeatMilliseconds);
     timer.unref();
 
     return async () => {
@@ -388,7 +399,7 @@ function canonicalValue(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value)
       .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, item]) => [key, canonicalValue(item)]),
   );
 }

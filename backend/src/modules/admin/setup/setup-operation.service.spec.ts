@@ -1,9 +1,11 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
 import type { CompleteSetupDto } from '../settings/settings.dto';
 import {
   SetupOperationService,
+  setupOperationClaimHeartbeatMilliseconds,
+  setupOperationClaimLeaseMilliseconds,
   type SetupOperationClaim,
 } from './setup-operation.service';
 
@@ -88,6 +90,22 @@ describe('SetupOperationService', () => {
     await second.service.claimComplete(createSetupDto());
 
     expect(createdFingerprint(first.model)).toBe(
+      createdFingerprint(second.model),
+    );
+  });
+
+  it('keeps recovery fingerprints keyed by the auth security secret', async () => {
+    const first = createService({ fingerprintSecret: 'first-hmac-secret' });
+    const second = createService({ fingerprintSecret: 'second-hmac-secret' });
+    first.model.updateMany.mockResolvedValue({ count: 0 });
+    first.model.create.mockResolvedValue({});
+    second.model.updateMany.mockResolvedValue({ count: 0 });
+    second.model.create.mockResolvedValue({});
+
+    await first.service.claimComplete(createSetupDto());
+    await second.service.claimComplete(createSetupDto());
+
+    expect(createdFingerprint(first.model)).not.toBe(
       createdFingerprint(second.model),
     );
   });
@@ -223,6 +241,28 @@ describe('SetupOperationService', () => {
     expect(asRecord(released.data).status).toBe('idle');
   });
 
+  it('returns a successful transient result when claim release fails', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const { model, service } = createService();
+    model.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const action = jest.fn(() => Promise.resolve('done'));
+
+    await expect(
+      service.runExclusive('mail-settings', {}, action),
+    ).resolves.toBe('done');
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(model.updateMany).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Setup claim release failed after successful mail-settings',
+      ),
+    );
+    warn.mockRestore();
+  });
+
   it('does not run a transient setup operation while completion owns the claim', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-26T03:00:00.000Z'));
     const { model, service } = createService();
@@ -303,11 +343,18 @@ describe('SetupOperationService', () => {
     await jest.advanceTimersByTimeAsync(0);
     expect(action).toHaveBeenCalledTimes(1);
 
-    await jest.advanceTimersByTimeAsync(16 * 60 * 1000);
-    expect(model.updateMany).toHaveBeenCalledTimes(17);
-    const heartbeat = nthCall(model.updateMany, 17);
+    const elapsedMilliseconds = setupOperationClaimHeartbeatMilliseconds * 16;
+    const heartbeatCount =
+      elapsedMilliseconds / setupOperationClaimHeartbeatMilliseconds;
+    await jest.advanceTimersByTimeAsync(elapsedMilliseconds);
+    expect(model.updateMany).toHaveBeenCalledTimes(1 + heartbeatCount);
+    const heartbeat = nthCall(model.updateMany, 1 + heartbeatCount);
     expect(asRecord(heartbeat.data).claimExpiresAt).toEqual(
-      new Date('2026-07-26T03:31:00.000Z'),
+      new Date(
+        new Date('2026-07-26T03:00:00.000Z').getTime() +
+          elapsedMilliseconds +
+          setupOperationClaimLeaseMilliseconds,
+      ),
     );
 
     finishAction?.();
