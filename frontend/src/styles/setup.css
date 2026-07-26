@@ -27,6 +27,106 @@
   padding: 0 30px;
 }
 
+.icedr-setup-topbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.icedr-setup-access-shell {
+  align-items: center;
+  display: grid;
+  height: calc(100dvh - 78px);
+  justify-items: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px;
+}
+
+.icedr-setup-access-panel {
+  border-color: color-mix(in srgb, var(--accent) 9%, var(--border));
+  box-shadow: 0 16px 44px rgba(30, 41, 59, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 100%;
+  padding: 22px;
+  width: 460px;
+}
+
+[data-theme="dark"] .icedr-setup-access-panel {
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28);
+}
+
+.icedr-setup-access-heading {
+  align-items: flex-start;
+  display: grid;
+  gap: 13px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.icedr-setup-access-icon {
+  align-items: center;
+  border: 1px solid;
+  border-radius: 8px;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.icedr-setup-access-heading h1 {
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: 820;
+  line-height: 24px;
+  margin: 0;
+}
+
+.icedr-setup-access-form {
+  border-top: 1px solid color-mix(in srgb, var(--accent) 8%, var(--border));
+  min-width: 0;
+  padding-top: 18px;
+}
+
+.icedr-setup-access-control {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  min-width: 0;
+}
+
+.icedr-setup-access-control .icedr-tool-button {
+  height: 44px;
+  min-height: 44px;
+  min-width: 44px;
+  width: 44px;
+}
+
+.icedr-setup-access-state {
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 8%, var(--border));
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  font-weight: 620;
+  gap: 12px;
+  justify-content: space-between;
+  line-height: 19px;
+  min-height: 63px;
+  min-width: 0;
+  padding-top: 18px;
+}
+
+.icedr-setup-access-state > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .icedr-setup-brand {
   align-items: center;
   display: flex;
@@ -348,6 +448,18 @@
   padding-top: 13px;
 }
 
+.icedr-setup-section .icedr-setup-info-tile {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--accent) 9%, var(--border));
+  border-radius: 0;
+  border-width: 0 0 1px;
+  padding: 8px 0 10px;
+}
+
+.icedr-setup-section .icedr-setup-info-tile:last-child {
+  border-bottom-width: 0;
+}
+
 .icedr-setup-form-grid {
   display: grid;
   gap: 12px;
@@ -493,7 +605,9 @@
 }
 
 .icedr-setup-primary-action {
-  width: 260px;
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
 }
 
 @keyframes icedr-setup-rise {
@@ -520,6 +634,10 @@
     grid-template-columns: minmax(0, 1fr);
     height: calc(100dvh - 70px);
     padding: 14px 18px 18px;
+  }
+
+  .icedr-setup-access-shell {
+    height: calc(100dvh - 70px);
   }
 
   .icedr-setup-rail {
@@ -577,6 +695,17 @@
     padding: 12px;
   }
 
+  .icedr-setup-access-shell {
+    align-items: start;
+    padding: 18px 12px;
+  }
+
+  .icedr-setup-access-panel {
+    gap: 18px;
+    padding: 18px;
+    width: 100%;
+  }
+
   .icedr-setup-form-grid,
   .icedr-setup-form-grid[data-columns="3"],
   .icedr-setup-form-grid[data-columns="brand"] {
@@ -588,6 +717,6 @@
   }
 
   .icedr-setup-primary-action {
-    width: min(240px, calc(100vw - 96px));
+    min-width: 44px;
   }
 }

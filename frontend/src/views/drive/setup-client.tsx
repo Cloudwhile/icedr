@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/features/file/actions";
 import {
   isValidEmailAddress,
@@ -15,8 +15,26 @@ import {
   validateMailSettingsDraft,
   validateObjectStorageDraft,
 } from "@/features/settings/connection-input-validation";
-import { completeSetup, defaultPublicSiteSettings, fetchSetupStatus, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type OAuthSettingsInput, type PasskeySettings, type PublicSiteSettings, type StorageSettings, type StorageSettingsInput, type VerifyDatabaseInput, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { completeSetup, defaultPublicSiteSettings, getApiBaseUrl, resolvePublicSiteName, setStoredAuthToken, testSetupMailSettings, toOAuthSettingsInput, updateSetupMailSettings, verifySetupDatabase, type CompleteSetupInput, type DatabaseProfile, type MailSettings, type MailSettingsInput, type OAuthSettings, type PasskeySettings, type PublicSiteSettings, type StorageSettingsInput, type VerifyDatabaseInput } from "@/lib/drive-api";
 import { type Palette, type ThemeMode } from "@/features/file/model";
+import { SetupAccessGate } from "@/components/setup/setup-access-gate";
+import {
+  buildLoginCallbackUrl,
+  defaultSetupMailSettings,
+  defaultSetupOAuth,
+  defaultSetupPasskey,
+  defaultSetupSharePolicy,
+  defaultSetupStorage,
+  emptyRemoteSetupDatabase,
+  emptySetupDatabase,
+  getCallbackBaseUrl,
+  getCurrentSystemBaseUrl,
+  icetowneBlogOAuthPreset,
+} from "@/features/setup/setup-defaults";
+import {
+  type AuthorizedSetupStatus,
+  useSetupAccess,
+} from "@/features/setup/use-setup-access";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
@@ -29,81 +47,6 @@ import {
   SetupStepNavItem,
   SetupToggleRow as ToggleRow,
 } from "@/components/ui/setup-flow-primitives";
-const emptyDatabase: DatabaseProfile = {
-  provider: "sqlite",
-  host: "",
-  port: 5432,
-  dbName: "icedr.sqlite",
-  user: "",
-  passwordProvided: false,
-  passwordSource: "local",
-  verified: false,
-  verifiedAt: null
-};
-const emptyRemoteDatabase: Required<VerifyDatabaseInput> = {
-  provider: "postgresql",
-  host: "",
-  port: 5432,
-  dbName: "",
-  user: "",
-  password: ""
-};
-const defaultSharePolicy: Omit<WorkspaceShareSettings, "workspaceId" | "updatedAt"> = {
-  anonymousAccess: "email-required",
-  emailRule: "any",
-  allowedDomains: [],
-  defaultExpiresDays: 7,
-  maxExpiresDays: 30,
-  allowPermanent: false,
-  audit: {
-    ip: true,
-    userAgent: true,
-    downloads: true,
-    anomaly: false,
-    alerts: false
-  }
-};
-const defaultMailSettings: MailSettings = {
-  enabled: false,
-  host: "",
-  port: 587,
-  secure: false,
-  username: "",
-  fromName: defaultPublicSiteSettings.siteName,
-  fromEmail: "",
-  replyTo: "",
-  configured: false,
-  passwordConfigured: false,
-  verifiedAt: null
-};
-const defaultSetupStorage: Pick<StorageSettings, "accessKeyId" | "bucket" | "endpoint" | "forcePathStyle" | "objectStorageConfigured" | "region" | "secretAccessKeyConfigured"> = {
-  accessKeyId: "",
-  bucket: "icedr-drive",
-  endpoint: "",
-  forcePathStyle: true,
-  objectStorageConfigured: false,
-  region: "us-east-1",
-  secretAccessKeyConfigured: false
-};
-const icetowneBlogOAuthPreset = {
-  providerProfile: "icetowne-blog",
-  issuerUrl: "https://blog.icetowne.com",
-  audience: "",
-  scopes: "basic vip_info"
-} satisfies Pick<OAuthSettingsInput, "providerProfile" | "issuerUrl" | "audience" | "scopes">;
-function getCurrentSystemBaseUrl() {
-  if (typeof window === "undefined") return "";
-  return window.location.origin;
-}
-function buildLoginCallbackUrl(systemBaseUrl: string) {
-  const base = systemBaseUrl.trim().replace(/\/$/, "");
-  return base ? `${base}/callback` : "";
-}
-function getCallbackBaseUrl(redirectUri: string, fallbackBaseUrl: string) {
-  const trimmed = redirectUri.trim();
-  if (!trimmed) return fallbackBaseUrl;
-  return trimmed.replace(/\/callback\/?$/, "");
-}
 const setupSteps = [{
   id: "database",
   key: "setup.database",
@@ -165,45 +108,18 @@ function SetupPage({
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthNoticeStatus | null>(null);
-  const [database, setDatabase] = useState<DatabaseProfile>(emptyDatabase);
+  const [database, setDatabase] = useState<DatabaseProfile>(emptySetupDatabase);
   const [databaseMode, setDatabaseMode] = useState<DatabaseSetupMode>("sqlite");
-  const [remoteDatabase, setRemoteDatabase] = useState(emptyRemoteDatabase);
+  const [remoteDatabase, setRemoteDatabase] = useState(emptyRemoteSetupDatabase);
   const [remoteDatabaseTouched, setRemoteDatabaseTouched] = useState(false);
   const [site, setSite] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
-  const [oauth, setOAuth] = useState<OAuthSettings>({
-    id: "default",
-    enabled: false,
-    providerKey: "oidc",
-    displayName: "Custom OIDC",
-    providerProfile: "oidc",
-    providerMode: "standard",
-    issuerUrl: "",
-    authorizationUrl: "",
-    tokenUrl: "",
-    userinfoUrl: "",
-    clientId: "",
-    audience: "icedr-api",
-    scopes: "openid email profile",
-    redirectUri: "",
-    allowSignup: true,
-    linkByVerifiedEmail: true,
-    requireVerifiedEmail: true,
-    allowedEmailDomains: [],
-    clientSecretConfigured: false,
-    configured: false,
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString()
-  });
+  const [oauth, setOAuth] = useState<OAuthSettings>(defaultSetupOAuth);
   const [oauthSecret, setOAuthSecret] = useState("");
-  const [mail, setMail] = useState<MailSettings>(defaultMailSettings);
+  const [mail, setMail] = useState<MailSettings>(defaultSetupMailSettings);
   const [mailPassword, setMailPassword] = useState("");
   const [mailTestEmail, setMailTestEmail] = useState("");
   const [mailTestEmailTouched, setMailTestEmailTouched] = useState(false);
-  const [passkey, setPasskey] = useState<PasskeySettings>({
-    rpName: defaultPublicSiteSettings.siteName,
-    rpId: "localhost",
-    origin: "http://localhost:13000"
-  });
+  const [passkey, setPasskey] = useState<PasskeySettings>(defaultSetupPasskey);
   const [admin, setAdmin] = useState({
     displayName: "",
     email: "",
@@ -215,58 +131,61 @@ function SetupPage({
   const [distributedStorageEnabled, setDistributedStorageEnabled] = useState(false);
   const [objectStorage, setObjectStorage] = useState(defaultSetupStorage);
   const [objectStorageSecret, setObjectStorageSecret] = useState("");
-  const [sharePolicy, setSharePolicy] = useState(defaultSharePolicy);
+  const [sharePolicy, setSharePolicy] = useState(defaultSetupSharePolicy);
   const [domainText, setDomainText] = useState("");
   const [stepIndex, setStepIndex] = useState(0);
   const currentSystemBaseUrl = useMemo(() => getCurrentSystemBaseUrl(), []);
   const defaultOAuthRedirectUri = useMemo(() => buildLoginCallbackUrl(currentSystemBaseUrl) || `${getApiBaseUrl()}/auth/oauth/callback`, [currentSystemBaseUrl]);
   const effectiveOAuthRedirectUri = oauth.redirectUri.trim() || defaultOAuthRedirectUri;
   const oauthCallbackBaseUrl = getCallbackBaseUrl(effectiveOAuthRedirectUri, currentSystemBaseUrl);
-  useEffect(() => {
-    let cancelled = false;
-    void fetchSetupStatus().then(setup => {
-      if (cancelled) return;
-      if (!setup.needsSetup) {
-        router.replace(next);
-        return;
-      }
-      setDatabase(setup.databaseProfile);
-      setDatabaseMode(setup.databaseProfile.provider);
-      if (setup.databaseProfile.provider === "postgresql") {
-        setRemoteDatabase(value => ({
-          ...value,
-          host: setup.databaseProfile.host,
-          port: setup.databaseProfile.port,
-          dbName: setup.databaseProfile.dbName,
-          user: setup.databaseProfile.user,
-          password: ""
-        }));
-        setRemoteDatabaseTouched(false);
-      }
-      setSite(setup.site);
-      setOAuth(setup.oauth);
-      setPasskey(setup.passkey);
-      setMail(setup.mail);
-      setOAuthEnabled(setup.oauth.enabled);
-      setDistributedStorageEnabled(setup.storage.distributedStorageEnabled);
-      setObjectStorage({
-        accessKeyId: setup.storage.accessKeyId,
-        bucket: setup.storage.bucket,
-        endpoint: setup.storage.endpoint,
-        forcePathStyle: setup.storage.forcePathStyle,
-        objectStorageConfigured: setup.storage.objectStorageConfigured,
-        region: setup.storage.region,
-        secretAccessKeyConfigured: setup.storage.secretAccessKeyConfigured
-      });
-      setObjectStorageSecret("");
-    }).catch(() => setStatus({
-      tone: "error",
-      message: t("setup.statusFailed")
+  const clearSensitiveSetupState = useCallback(() => {
+    setRemoteDatabase(value => ({ ...value, password: "" }));
+    setAdmin(value => ({ ...value, password: "" }));
+    setOAuthSecret("");
+    setMailPassword("");
+    setObjectStorageSecret("");
+    setStatus(null);
+  }, []);
+  const hydrateSetupStatus = useCallback((setup: AuthorizedSetupStatus) => {
+    setDatabase(setup.databaseProfile);
+    setDatabaseMode(setup.databaseProfile.provider);
+    setRemoteDatabase(value => ({
+      ...value,
+      host: setup.databaseProfile.provider === "postgresql" ? setup.databaseProfile.host : "",
+      port: setup.databaseProfile.provider === "postgresql" ? setup.databaseProfile.port : 5432,
+      dbName: setup.databaseProfile.provider === "postgresql" ? setup.databaseProfile.dbName : "",
+      user: setup.databaseProfile.provider === "postgresql" ? setup.databaseProfile.user : "",
+      password: "",
     }));
-    return () => {
-      cancelled = true;
-    };
-  }, [next, router, t]);
+    setRemoteDatabaseTouched(false);
+    setSite(setup.site);
+    setOAuth(setup.oauth);
+    setPasskey(setup.passkey);
+    setMail(setup.mail);
+    setOAuthEnabled(setup.oauth.enabled);
+    setDistributedStorageEnabled(setup.storage.distributedStorageEnabled);
+    setObjectStorage({
+      accessKeyId: setup.storage.accessKeyId,
+      bucket: setup.storage.bucket,
+      endpoint: setup.storage.endpoint,
+      forcePathStyle: setup.storage.forcePathStyle,
+      objectStorageConfigured: setup.storage.objectStorageConfigured,
+      region: setup.storage.region,
+      secretAccessKeyConfigured: setup.storage.secretAccessKeyConfigured,
+    });
+    setOAuthSecret("");
+    setMailPassword("");
+    setObjectStorageSecret("");
+    setStatus(null);
+  }, []);
+  const navigateAfterSetup = useCallback(() => {
+    router.replace(next);
+  }, [next, router]);
+  const setupAccess = useSetupAccess({
+    onAccessCleared: clearSensitiveSetupState,
+    onAuthorized: hydrateSetupStatus,
+    onCompleted: navigateAfterSetup,
+  });
   const logoPreview = site.authLogoDataUrl || "/logo.png";
   const adminComplete = Boolean(
     admin.displayName.trim() &&
@@ -358,6 +277,11 @@ function SetupPage({
   };
   const verifyDatabase = () => {
     if (busy) return;
+    const setupToken = setupAccess.token;
+    if (!setupToken) {
+      setupAccess.clearAccess("expired");
+      return;
+    }
     if (remoteDatabaseSelected && !remoteDatabaseReady) {
       setStatus({
         tone: "error",
@@ -377,7 +301,7 @@ function SetupPage({
           ...(remoteDatabase.password ? { password: remoteDatabase.password } : {}),
         }
       : {};
-    void verifySetupDatabase(input).then(profile => {
+    void verifySetupDatabase(setupToken, input).then(profile => {
       setDatabase(profile);
       setDatabaseMode(profile.provider);
       setRemoteDatabase(value => ({
@@ -389,10 +313,13 @@ function SetupPage({
         tone: "success",
         message: t("setup.databaseVerified")
       });
-    }).catch(() => setStatus({
-      tone: "error",
-      message: t("setup.databaseFailed")
-    })).finally(() => setBusy(false));
+    }).catch(error => {
+      if (setupAccess.handleOperationError(error)) return;
+      setStatus({
+        tone: "error",
+        message: t("setup.databaseFailed")
+      });
+    }).finally(() => setBusy(false));
   };
   const currentMailInput = (): MailSettingsInput => {
     if (!mail.enabled) return {
@@ -431,6 +358,11 @@ function SetupPage({
   const testMail = () => {
     const recipientEmail = (mailTestEmail || admin.email).trim();
     if (!mail.enabled || busy) return;
+    const setupToken = setupAccess.token;
+    if (!setupToken) {
+      setupAccess.clearAccess("expired");
+      return;
+    }
     if (!mailValidation.valid) {
       setStatus({
         tone: "error",
@@ -444,19 +376,22 @@ function SetupPage({
     }
     setBusy(true);
     setStatus(null);
-    void updateSetupMailSettings(currentMailInput()).then(settings => {
+    void updateSetupMailSettings(setupToken, currentMailInput()).then(settings => {
       setMail(settings);
-      return testSetupMailSettings(recipientEmail);
+      return testSetupMailSettings(setupToken, recipientEmail);
     }).then(settings => {
       setMail(settings);
       setStatus({
         tone: "success",
         message: t("setup.mailVerified")
       });
-    }).catch(() => setStatus({
-      tone: "error",
-      message: t("setup.mailFailed")
-    })).finally(() => setBusy(false));
+    }).catch(error => {
+      if (setupAccess.handleOperationError(error)) return;
+      setStatus({
+        tone: "error",
+        message: t("setup.mailFailed")
+      });
+    }).finally(() => setBusy(false));
   };
   const copyOAuthCallback = (value: string) => {
     const target = value.trim();
@@ -481,6 +416,11 @@ function SetupPage({
   };
   const complete = () => {
     if (!canComplete || busy) return;
+    const setupToken = setupAccess.token;
+    if (!setupToken) {
+      setupAccess.clearAccess("expired");
+      return;
+    }
     setBusy(true);
     setStatus(null);
     const allowedDomains = domainText.split(/[\n,]/).map(domain => domain.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
@@ -512,13 +452,17 @@ function SetupPage({
         emailRule: allowedDomains.length > 0 ? "domains" : sharePolicy.emailRule
       }
     };
-    void completeSetup(input).then(response => {
+    void completeSetup(setupToken, input).then(response => {
+      setupAccess.completeAccess();
       setStoredAuthToken(response.session.token);
       router.replace(next);
-    }).catch(() => setStatus({
-      tone: "error",
-      message: t("setup.completeFailed")
-    })).finally(() => setBusy(false));
+    }).catch(error => {
+      if (setupAccess.handleOperationError(error)) return;
+      setStatus({
+        tone: "error",
+        message: t("setup.completeFailed")
+      });
+    }).finally(() => setBusy(false));
   };
   const pickLogo = () => logoInputRef.current?.click();
   const updateLogo = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -559,17 +503,22 @@ function SetupPage({
             <span className="icedr-truncate">{t("setup.title")}</span>
           </div>
         </div>
-        <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+        <div className="icedr-setup-topbar-actions">
+          {setupAccess.phase === "authorized" ? <ToolButton label={t("setup.accessLock")} onClick={() => setupAccess.clearAccess()} palette={palette} visual="surface">
+              <LocalIcon name="lock" size={17} />
+            </ToolButton> : null}
+          <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
+        </div>
       </div>
 
-      <div className="icedr-setup-body">
+      {setupAccess.phase === "authorized" ? <div className="icedr-setup-body">
         <aside className="icedr-setup-rail">
           <div className="icedr-setup-rail-head">
             <span>{t("setup.flowBoard")}</span>
             <strong>{completedRequiredSteps}/{requiredSetupSteps.length}</strong>
           </div>
           <div className="icedr-setup-rail-steps">
-            {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} completed={index !== stepIndex && stepCompletion[step.id]} description={t(step.summaryKey)} disabled={!canReachStep(index) || busy} index={index} label={t(step.key)} onClick={() => {
+            {setupSteps.map((step, index) => <SetupStepNavItem key={step.id} active={index === stepIndex} completed={index !== stepIndex && stepCompletion[step.id]} disabled={!canReachStep(index) || busy} index={index} label={t(step.key)} onClick={() => {
             if (canReachStep(index) && !busy) setStepIndex(index);
           }} palette={palette} statusLabel={getStepStatusLabel(step, index)} step={step} />)}
           </div>
@@ -593,11 +542,10 @@ function SetupPage({
               <div className="icedr-setup-step-head">
                 <div className="icedr-setup-step-kicker">
                   <span>{String(stepIndex + 1).padStart(2, "0")} / {String(setupSteps.length).padStart(2, "0")}</span>
-                  <StatusPill palette={palette} tone={currentStepReady ? "secure" : "neutral"}>
+                <StatusPill palette={palette} tone={currentStepReady ? "secure" : "neutral"}>
                     {currentStepReady ? t("setup.cardReady") : t("setup.cardActive")}
                   </StatusPill>
                 </div>
-                <p>{t(currentStep.summaryKey)}</p>
               </div>
             {currentStep.id === "database" ? <SetupSection icon="folder" palette={palette} title={t("setup.database")}>
                 <div className="icedr-setup-form-grid">
@@ -971,13 +919,24 @@ function SetupPage({
                 <LocalIcon name="arrow_left" size={17} />
               </ToolButton>
               <div className="icedr-setup-primary-action">
-                <AuthPrimaryButton icon={stepIndex === setupSteps.length - 1 ? "tick" : "arrow_right"} palette={palette} busy={busy} disabled={!canContinue || busy} onClick={goNext}>
-                  {stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")}
-                </AuthPrimaryButton>
+                <ToolButton disabled={!canContinue || busy} isPending={busy} label={stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")} onClick={goNext} palette={palette} size="lg" tone="accent" visual="surface">
+                  <LocalIcon name={stepIndex === setupSteps.length - 1 ? "tick" : "arrow_right"} size={18} />
+                </ToolButton>
               </div>
             </div>
           </div>
         </main>
-      </div>
+      </div> : <main className="icedr-setup-access-shell">
+          <SetupAccessGate
+            busy={setupAccess.busy}
+            credential={setupAccess.credential}
+            notice={setupAccess.notice}
+            onAuthorize={setupAccess.authorize}
+            onCredentialChange={setupAccess.setCredential}
+            onRetry={setupAccess.retry}
+            palette={palette}
+            phase={setupAccess.phase}
+          />
+        </main>}
     </div>;
 }

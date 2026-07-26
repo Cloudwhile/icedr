@@ -395,6 +395,10 @@ type SetupStatusBase = {
   databaseAvailable: boolean;
 };
 
+export type SetupAccessState =
+  | { authorized: false; configured: boolean }
+  | { authorized: true; configured: true };
+
 export type SetupStatus =
   | (SetupStatusBase & {
       needsSetup: false;
@@ -403,6 +407,12 @@ export type SetupStatus =
   | (SetupStatusBase & {
       needsSetup: true;
       bootstrapCompleted: false;
+      setupAccess: { authorized: false; configured: boolean };
+    })
+  | (SetupStatusBase & {
+      needsSetup: true;
+      bootstrapCompleted: false;
+      setupAccess: { authorized: true; configured: true };
       databaseProfile: DatabaseProfile;
       site: PublicSiteSettings;
       oauth: OAuthSettings;
@@ -410,6 +420,11 @@ export type SetupStatus =
       mail: MailSettings;
       storage: StorageSettings;
     });
+
+export type SetupAuthorizedStatus = Extract<
+  SetupStatus,
+  { needsSetup: true; setupAccess: { authorized: true } }
+>;
 
 export type AdminSettings = {
   site: PublicSiteSettings;

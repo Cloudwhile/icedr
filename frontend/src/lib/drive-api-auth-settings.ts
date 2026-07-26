@@ -10,9 +10,6 @@ import type {
   AuthSession,
   AuthSettings,
   AuthUser,
-  CompleteSetupInput,
-  CompleteSetupResponse,
-  DatabaseProfile,
   IdentityConfigResponse,
   MailSettings,
   MailSettingsInput,
@@ -28,38 +25,14 @@ import type {
   PasswordResetVerifyResponse,
   PublicSiteSettings,
   RecoveryCodeSet,
-  SetupStatus,
   TranslationBundle,
   TranslationSettings,
   UpdateCurrentUserInput,
-  VerifyDatabaseInput,
   WorkspaceResponse,
 } from "./drive-api-types";
 
 export function fetchIdentityConfig() {
   return requestDriveApi<IdentityConfigResponse>("/identity/oauth");
-}
-
-export function fetchSetupStatus() {
-  return requestDriveApi<SetupStatus>("/setup/status");
-}
-
-export function verifySetupDatabase(input: VerifyDatabaseInput = {}) {
-  return requestDriveApi<DatabaseProfile>("/setup/verify-database", {
-    method: "POST",
-    body: JSON.stringify({ confirm: true, ...input }),
-  });
-}
-
-export function completeSetup(input: CompleteSetupInput) {
-  const body = {
-    ...input,
-    ...(input.oauth ? { oauth: toOAuthSettingsInput(input.oauth) } : {}),
-  };
-  return requestDriveApi<CompleteSetupResponse>("/setup/complete", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
 }
 
 export function fetchPublicSiteSettings() {
@@ -266,20 +239,6 @@ export function updateMailSettings(settings: MailSettingsInput) {
 
 export function testMailSettings(recipientEmail: string) {
   return requestDriveApi<MailSettings>("/mail/settings/test", {
-    method: "POST",
-    body: JSON.stringify({ recipientEmail }),
-  });
-}
-
-export function updateSetupMailSettings(settings: MailSettingsInput) {
-  return requestDriveApi<MailSettings>("/setup/mail", {
-    method: "PATCH",
-    body: JSON.stringify(settings),
-  });
-}
-
-export function testSetupMailSettings(recipientEmail: string) {
-  return requestDriveApi<MailSettings>("/setup/mail/test", {
     method: "POST",
     body: JSON.stringify({ recipientEmail }),
   });
