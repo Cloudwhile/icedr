@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../database/prisma.service';
 import {
+  setupCompleteRateLimitUnavailableCode,
   setupCompleteRateLimitWindowSeconds,
   setupCompleteSourceLimit,
   SetupRateLimitService,
@@ -36,12 +37,26 @@ type UpdateManyInput = {
 class InMemoryAuthRateLimitModel {
   readonly buckets: RateLimitBucket[] = [];
   createRaceConflicts = 0;
+  forceIncrementMisses = false;
+  resetRaceConflicts = 0;
 
   updateMany(input: UpdateManyInput) {
     const bucket = this.buckets.find((candidate) =>
       this.matches(candidate, input.where),
     );
     if (!bucket) return { count: 0 };
+
+    if (input.where.count && this.forceIncrementMisses) {
+      return { count: 0 };
+    }
+    if (input.where.id && this.resetRaceConflicts > 0) {
+      this.resetRaceConflicts -= 1;
+      bucket.count = 1;
+      bucket.windowStartedAt =
+        input.data.windowStartedAt ?? bucket.windowStartedAt;
+      bucket.updatedAt = input.data.updatedAt;
+      return { count: 0 };
+    }
 
     if (typeof input.data.count === 'number') {
       bucket.count = input.data.count;
@@ -210,6 +225,30 @@ describe('SetupRateLimitService', () => {
     });
   });
 
+  it('retries when a concurrent window reset wins the compare-and-set', async () => {
+    const { model, service } = createService();
+    const request = createRequest('203.0.113.54');
+
+    await service.assertAllowed(request);
+    const initialBucket = { ...model.buckets[0] };
+    const nextWindowStartedAt = new Date(
+      initialBucket.windowStartedAt.getTime() +
+        (setupCompleteRateLimitWindowSeconds + 1) * 1000,
+    );
+    jest.setSystemTime(nextWindowStartedAt);
+    model.resetRaceConflicts = 1;
+
+    await expect(service.assertAllowed(request)).resolves.toBeUndefined();
+
+    expect(model.buckets).toHaveLength(1);
+    expect(model.buckets[0]).toMatchObject({
+      id: initialBucket.id,
+      count: 2,
+      windowStartedAt: nextWindowStartedAt,
+      updatedAt: nextWindowStartedAt,
+    });
+  });
+
   it('uses stable HMAC scopes for the same source', async () => {
     const first = createService();
     const second = createService();
@@ -288,6 +327,31 @@ describe('SetupRateLimitService', () => {
       model.buckets.find((bucket) => bucket.action === 'setup:complete:source')
         ?.count,
     ).toBe(2);
+  });
+
+  it('returns a structured 503 when mutation retries are exhausted', async () => {
+    const { model, service } = createService();
+    const request = createRequest('203.0.113.55');
+
+    await service.assertAllowed(request);
+    model.forceIncrementMisses = true;
+
+    let caught: unknown;
+    try {
+      await service.assertAllowed(request);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).getStatus()).toBe(
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+    expect((caught as HttpException).getResponse()).toEqual({
+      code: setupCompleteRateLimitUnavailableCode,
+      message: 'Setup completion rate limiting is temporarily unavailable',
+    });
+    expect(model.buckets[0].count).toBe(1);
   });
 
   it('uses the socket remote address when the request ip is unavailable', async () => {

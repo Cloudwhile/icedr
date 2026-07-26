@@ -8,6 +8,8 @@ import { setupAuthorizationErrorCode } from './setup-authorization.service';
 
 export const setupCompleteRateLimitWindowSeconds = 15 * 60;
 export const setupCompleteSourceLimit = 8;
+export const setupCompleteRateLimitUnavailableCode =
+  'SETUP_COMPLETE_RATE_LIMIT_UNAVAILABLE';
 
 const sourceAction = 'setup:complete:source';
 const mutationAttempts = 8;
@@ -120,14 +122,24 @@ export class SetupRateLimitService {
     }
 
     const current = await this.findBucket(input.action, input.scopeHash);
-    if (current && current.windowStartedAt >= cutoff) {
+    if (
+      current &&
+      current.windowStartedAt >= cutoff &&
+      current.count >= input.limit
+    ) {
       throw this.createExceededError(
         current.windowStartedAt,
         input.windowSeconds,
         input.now,
       );
     }
-    throw new Error('Unable to update the setup rate limit bucket');
+    throw new HttpException(
+      {
+        code: setupCompleteRateLimitUnavailableCode,
+        message: 'Setup completion rate limiting is temporarily unavailable',
+      },
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   }
 
   private findBucket(action: string, scopeHash: string) {
