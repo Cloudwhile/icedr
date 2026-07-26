@@ -317,7 +317,7 @@ function authUser() {
     avatarUrl: null,
     createdAt: now,
     displayName: "Admin",
-    email: "Admin3505161899@qq.com",
+    email: "admin@example.com",
     id: "user-admin",
     locale: "en",
     role: "admin",
