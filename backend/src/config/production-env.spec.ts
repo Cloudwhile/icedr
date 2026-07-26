@@ -68,6 +68,22 @@ describe('production environment validation', () => {
     }
   });
 
+  it('maps the setup bootstrap token without generating a default', () => {
+    const originalEnv = process.env;
+    process.env = {
+      NODE_ENV: 'development',
+      SETUP_BOOTSTRAP_TOKEN: 'configured-setup-bootstrap-token-2026',
+    };
+
+    try {
+      expect(configuration().setup.bootstrapToken).toBe(
+        'configured-setup-bootstrap-token-2026',
+      );
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
   it('rejects development-only flags in production', () => {
     expect(() =>
       validateProductionEnv({
@@ -243,6 +259,38 @@ describe('production environment validation', () => {
         SHARE_VISITOR_HASH_SECRET: validProductionEnv.AUTH_SECURITY_SECRET,
       }),
     ).toThrow(/SHARE_VISITOR_HASH_SECRET.*must differ/s);
+  });
+
+  it('rejects unsafe setup bootstrap tokens when one is configured', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SETUP_BOOTSTRAP_TOKEN: 'short-token',
+      }),
+    ).toThrow(/SETUP_BOOTSTRAP_TOKEN.*at least 32 bytes/s);
+
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SETUP_BOOTSTRAP_TOKEN: 'replace-me',
+      }),
+    ).toThrow(/SETUP_BOOTSTRAP_TOKEN.*placeholder/s);
+  });
+
+  it('requires the setup bootstrap token to differ from long-lived secrets', () => {
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SETUP_BOOTSTRAP_TOKEN: validProductionEnv.AUTH_SECURITY_SECRET,
+      }),
+    ).toThrow(/SETUP_BOOTSTRAP_TOKEN.*AUTH_SECURITY_SECRET/s);
+
+    expect(() =>
+      validateProductionEnv({
+        ...validProductionEnv,
+        SETUP_BOOTSTRAP_TOKEN: validProductionEnv.SHARE_VISITOR_HASH_SECRET,
+      }),
+    ).toThrow(/SETUP_BOOTSTRAP_TOKEN.*SHARE_VISITOR_HASH_SECRET/s);
   });
 
   it('accepts complete production settings through the app configuration', () => {

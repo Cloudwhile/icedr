@@ -18,6 +18,10 @@ import {
   VerifyDatabaseDto,
 } from './settings.dto';
 import { SettingsService } from './settings.service';
+import {
+  setupTokenHeader,
+  SetupAuthorizationService,
+} from '../setup/setup-authorization.service';
 
 @ApiTags('site')
 @Controller('site/settings')
@@ -71,15 +75,24 @@ export class SiteSettingsController {
 @ApiTags('setup')
 @Controller('setup')
 export class SetupController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly setupAuthorization: SetupAuthorizationService,
+  ) {}
 
   @Get('status')
-  getStatus() {
-    return this.settingsService.getSetupStatus();
+  getStatus(@Headers(setupTokenHeader) setupToken?: string) {
+    return this.settingsService.getSetupStatus(
+      this.setupAuthorization.inspectToken(setupToken),
+    );
   }
 
   @Post('verify-database')
-  verifyDatabase(@Body() dto: VerifyDatabaseDto) {
+  verifyDatabase(
+    @Body() dto: VerifyDatabaseDto,
+    @Headers(setupTokenHeader) setupToken?: string,
+  ) {
+    this.setupAuthorization.requireToken(setupToken);
     return this.settingsService.verifyDatabase(dto);
   }
 }

@@ -5,6 +5,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../../storage/storage.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { SetupCompleteController } from './setup.controller';
+import { SetupAuthorizationModule } from './setup-authorization.module';
 import { SetupService } from './setup.service';
 
 @Module({
@@ -12,6 +13,7 @@ import { SetupService } from './setup.service';
     AuthModule,
     MailModule,
     SettingsModule,
+    SetupAuthorizationModule,
     StorageModule,
     WorkspacesModule,
   ],

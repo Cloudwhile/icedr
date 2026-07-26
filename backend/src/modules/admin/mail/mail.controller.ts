@@ -6,6 +6,10 @@ import {
   UpdateMailSettingsDto,
 } from '../settings/settings.dto';
 import { SettingsService } from '../settings/settings.service';
+import {
+  setupTokenHeader,
+  SetupAuthorizationService,
+} from '../setup/setup-authorization.service';
 import { MailService } from './mail.service';
 
 @ApiTags('mail')
@@ -50,10 +54,12 @@ export class SetupMailController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly mailService: MailService,
+    private readonly setupAuthorization: SetupAuthorizationService,
   ) {}
 
   @Get()
-  async getSettings() {
+  async getSettings(@Headers(setupTokenHeader) setupToken?: string) {
+    this.setupAuthorization.requireToken(setupToken);
     await this.settingsService.assertSetupOpen();
     return this.settingsService.toMailResponse(
       await this.settingsService.getMailSettings(),
@@ -61,13 +67,21 @@ export class SetupMailController {
   }
 
   @Patch()
-  async updateSettings(@Body() dto: UpdateMailSettingsDto) {
+  async updateSettings(
+    @Body() dto: UpdateMailSettingsDto,
+    @Headers(setupTokenHeader) setupToken?: string,
+  ) {
+    this.setupAuthorization.requireToken(setupToken);
     await this.settingsService.assertSetupOpen();
     return this.settingsService.updateMailSettings(dto);
   }
 
   @Post('test')
-  async testSettings(@Body() dto: TestMailSettingsDto) {
+  async testSettings(
+    @Body() dto: TestMailSettingsDto,
+    @Headers(setupTokenHeader) setupToken?: string,
+  ) {
+    this.setupAuthorization.requireToken(setupToken);
     await this.settingsService.assertSetupOpen();
     return this.mailService.sendTestMessage(dto.recipientEmail);
   }

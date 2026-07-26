@@ -19,6 +19,7 @@ import {
   OAuthSettingsResponse,
   PasskeySettings,
   PublicSiteSettings,
+  SetupAccessState,
   SetupStatusResponse,
   TranslationSettings,
   UpdateMailSettingsDto,
@@ -76,7 +77,12 @@ export class SettingsService {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async getSetupStatus(): Promise<SetupStatusResponse> {
+  async getSetupStatus(
+    setupAccess: SetupAccessState = {
+      authorized: false,
+      configured: false,
+    },
+  ): Promise<SetupStatusResponse> {
     const databaseAvailable = await this.databaseReachable();
     const bootstrapCompleted = await this.bootstrapCompleted();
     if (bootstrapCompleted) {
@@ -86,10 +92,19 @@ export class SettingsService {
         bootstrapCompleted: true,
       };
     }
+    if (!setupAccess.authorized) {
+      return {
+        databaseAvailable,
+        needsSetup: true,
+        bootstrapCompleted: false,
+        setupAccess,
+      };
+    }
     return {
       databaseAvailable,
       needsSetup: true,
       bootstrapCompleted: false,
+      setupAccess,
       databaseProfile: await this.getDatabaseProfile(),
       site: await this.getPublicSiteSettings(),
       oauth: this.toOAuthResponse(await this.getOAuthSettings()),
@@ -129,6 +144,11 @@ export class SettingsService {
     await this.assertSetupOpen();
     const remoteInput = this.normalizeRemoteDatabaseInput(dto);
     if (remoteInput) {
+      if (dto.confirm !== true) {
+        throw new BadRequestException(
+          'Remote database migration requires explicit confirmation',
+        );
+      }
       const source = await this.prisma.migrateToPostgres(remoteInput);
       const profile = this.toDatabaseProfile(source, true);
       await this.repository.set(settingsParentMeta, databaseMeta, profile);

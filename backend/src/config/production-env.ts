@@ -67,6 +67,7 @@ const placeholderEnv = [
   'SHARE_EMAIL_PROVIDER',
   'SHARE_VISITOR_HASH_SECRET',
   'AUTH_SECURITY_SECRET',
+  'SETUP_BOOTSTRAP_TOKEN',
 ] as const;
 
 const shareRateLimitMaxEnv = [
@@ -219,6 +220,29 @@ export function validateProductionEnv(env: EnvironmentVariables = process.env) {
     );
   }
 
+  if (hasValue(env.SETUP_BOOTSTRAP_TOKEN)) {
+    const setupToken = env.SETUP_BOOTSTRAP_TOKEN.trim();
+    if (Buffer.byteLength(setupToken, 'utf8') < 32) {
+      errors.push('SETUP_BOOTSTRAP_TOKEN must be at least 32 bytes');
+    }
+    if (
+      hasValue(env.AUTH_SECURITY_SECRET) &&
+      setupToken === env.AUTH_SECURITY_SECRET.trim()
+    ) {
+      errors.push(
+        'SETUP_BOOTSTRAP_TOKEN must differ from AUTH_SECURITY_SECRET',
+      );
+    }
+    if (
+      hasValue(env.SHARE_VISITOR_HASH_SECRET) &&
+      setupToken === env.SHARE_VISITOR_HASH_SECRET.trim()
+    ) {
+      errors.push(
+        'SETUP_BOOTSTRAP_TOKEN must differ from SHARE_VISITOR_HASH_SECRET',
+      );
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid production environment: ${errors.join('; ')}`);
   }
@@ -254,6 +278,7 @@ function isSensitiveName(name: string) {
   return (
     name.includes('PASSWORD') ||
     name.includes('SECRET') ||
+    name.includes('TOKEN') ||
     name.includes('ACCESS_KEY') ||
     name.endsWith('_USER') ||
     name.endsWith('_USERNAME')
