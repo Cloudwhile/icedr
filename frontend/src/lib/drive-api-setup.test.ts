@@ -163,6 +163,20 @@ describe("setup api", () => {
     });
     expect(getStoredSetupToken()).toBeNull();
   });
+
+  it("clears a stored token when status rejects it without an HTTP error", async () => {
+    setStoredSetupToken(setupToken);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(Response.json(unauthorizedSetupStatus())),
+    );
+
+    await expect(fetchSetupStatus(setupToken)).resolves.toMatchObject({
+      needsSetup: true,
+      setupAccess: { authorized: false, configured: true },
+    });
+    expect(getStoredSetupToken()).toBeNull();
+  });
 });
 
 function completedSetupStatus() {
@@ -170,6 +184,15 @@ function completedSetupStatus() {
     bootstrapCompleted: true,
     databaseAvailable: true,
     needsSetup: false,
+  } as const;
+}
+
+function unauthorizedSetupStatus() {
+  return {
+    bootstrapCompleted: false,
+    databaseAvailable: true,
+    needsSetup: true,
+    setupAccess: { authorized: false, configured: true },
   } as const;
 }
 

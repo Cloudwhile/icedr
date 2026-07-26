@@ -54,6 +54,12 @@ test("visual smoke: renders auth and gated setup surfaces", async ({ page }, tes
 
   const accessInput = page.getByLabel("Access credential");
   await expect(accessInput).toHaveAttribute("type", "password");
+  await page.evaluate(() =>
+    window.sessionStorage.setItem(
+      "icedr.setup.token",
+      "previous-stale-setup-token",
+    ),
+  );
   await accessInput.fill("wrong-token");
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await expect(page.getByText("The credential is invalid. Try again.")).toBeVisible();

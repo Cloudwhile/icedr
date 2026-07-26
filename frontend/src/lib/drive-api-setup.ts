@@ -87,7 +87,13 @@ export async function fetchSetupStatus(setupToken?: string) {
     "/setup/status",
     setupToken,
   );
-  if (!status.needsSetup) clearStoredSetupToken();
+  const suppliedToken = Boolean(setupToken?.trim());
+  if (
+    !status.needsSetup ||
+    (suppliedToken && !isAuthorizedSetupStatus(status))
+  ) {
+    clearStoredSetupToken();
+  }
   return status;
 }
 
