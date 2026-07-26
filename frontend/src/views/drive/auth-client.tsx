@@ -24,6 +24,7 @@ import {
   isValidPasswordLength,
   validateAuthSubmission,
 } from "@/features/auth/auth-input-validation";
+import { resolveAuthNextTarget } from "@/features/auth/auth-navigation";
 import {
   assertPasskeyRequestContext,
   getPasskeyErrorNotice,
@@ -110,7 +111,7 @@ function AuthPage({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/";
+  const next = resolveAuthNextTarget(searchParams.get("next") || "/");
   const oauthCode = searchParams.get("oauthCode") || "";
   const queryEmail = searchParams.get("email") || "";
   const queryResetCode = normalizeAuthCodeValue(searchParams.get("code") || searchParams.get("token") || "", passwordResetCodeLength);
@@ -171,7 +172,7 @@ function AuthPage({
     void fetchCurrentUser().then(user => {
       if (cancelled) return;
       if (user) {
-        router.replace(resolveAuthNextTarget(next));
+        router.replace(next);
         return;
       }
       setCurrentUser(null);
@@ -194,7 +195,7 @@ function AuthPage({
     token: string;
   }) => {
     setStoredAuthToken(session.token);
-    router.replace(resolveAuthNextTarget(next));
+    router.replace(next);
   }, [next, router]);
   useEffect(() => {
     if (
@@ -265,7 +266,7 @@ function AuthPage({
   }, [mode, queryEmail, queryResetCode]);
   const continueCurrentSession = () => {
     if (busy) return;
-    router.replace(resolveAuthNextTarget(next));
+    router.replace(next);
   };
   useEffect(() => {
     if (!oauthCode) return;
@@ -934,15 +935,6 @@ function focusAuthField(field: AuthFieldName) {
 function getFormString(formData: FormData, name: string) {
   const value = formData.get(name);
   return typeof value === "string" ? value : undefined;
-}
-function resolveAuthNextTarget(next: string) {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
-  const [pathname] = next.split(/[?#]/, 1);
-  return isAuthRoutePath(pathname) ? "/" : next;
-}
-function isAuthRoutePath(pathname: string) {
-  const normalized = (pathname || "/").replace(/\/+$/, "") || "/";
-  return normalized === "/login" || normalized === "/register" || normalized === "/forgot-password" || normalized === "/reset-password";
 }
 function getAuthEmailLocale(locale: Locale): "en" | "zh" {
   return locale === "zh" || locale.toLowerCase().startsWith("zh") ? "zh" : "en";

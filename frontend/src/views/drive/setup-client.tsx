@@ -9,6 +9,7 @@ import {
   isValidPasswordLength,
   normalizeEmailAddress,
 } from "@/features/auth/auth-input-validation";
+import { resolveAuthNextTarget } from "@/features/auth/auth-navigation";
 import { validatePasskeySettingsInput } from "@/features/auth/passkey-settings-validation";
 import { validateOAuthDraft } from "@/extensions/oauth/provider-catalog";
 import {
@@ -104,7 +105,7 @@ function SetupPage({
   const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/";
+  const next = resolveAuthNextTarget(searchParams.get("next") || "/");
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AuthNoticeStatus | null>(null);
