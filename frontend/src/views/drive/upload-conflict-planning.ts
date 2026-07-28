@@ -1,10 +1,7 @@
+import type { UploadConflictStrategy } from "@/features/file/actions";
 import { getDriveFileNameConflictKey } from "@/features/file/file-name-policy";
 
-export type UploadConflictResolutionStrategy =
-  | "overwrite"
-  | "rename"
-  | "skip"
-  | "version";
+const DEFAULT_UPLOAD_GROUP_CONCURRENCY = 4;
 
 export type UploadConflictGroup<T> = {
   canonicalName: string;
@@ -57,7 +54,7 @@ export function analyzeUploadConflicts<T extends { name: string }>(
 
 export function planUploadConflictResolution<T>(
   analysis: UploadConflictAnalysis<T>,
-  strategy: UploadConflictResolutionStrategy,
+  strategy: UploadConflictStrategy,
 ): UploadConflictPlan<T> {
   if (strategy !== "skip") {
     return {
@@ -86,14 +83,29 @@ export function planUploadConflictResolution<T>(
 export async function runUploadGroups<T>(
   groups: readonly (readonly T[])[],
   start: (item: T) => Promise<unknown> | void,
+  maxConcurrentGroups = DEFAULT_UPLOAD_GROUP_CONCURRENCY,
 ) {
-  await Promise.all(groups.map(async (group) => {
-    for (const item of group) {
-      try {
-        await start(item);
-      } catch {
-        // A failed item must not prevent the remaining items in its canonical-name group.
+  const normalizedConcurrency = Number.isFinite(maxConcurrentGroups)
+    ? Math.max(1, Math.floor(maxConcurrentGroups))
+    : 1;
+  const workerCount = Math.min(groups.length, normalizedConcurrency);
+  let nextGroupIndex = 0;
+
+  const runWorker = async () => {
+    while (nextGroupIndex < groups.length) {
+      const group = groups[nextGroupIndex];
+      nextGroupIndex += 1;
+      if (!group) continue;
+
+      for (const item of group) {
+        try {
+          await start(item);
+        } catch {
+          // A failed item must not prevent the remaining items in its canonical-name group.
+        }
       }
     }
-  }));
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 }
