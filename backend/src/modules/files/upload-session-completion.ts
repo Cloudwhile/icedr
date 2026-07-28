@@ -384,4 +384,79 @@ export class UploadSessionCompletionStore {
       throw error;
     }
   }
+
+  async cancel(
+    id: string,
+    completionToken: string,
+    auditMetadata: Record<string, unknown> = {},
+  ) {
+    const now = new Date();
+    const session = await this.prisma.uploadSession.findUnique({
+      where: { id },
+      select: { transferId: true },
+    });
+    if (!session) return null;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const transferRows = await tx.transferTask.updateManyAndReturn({
+          where: {
+            id: session.transferId,
+            transferType: 'upload',
+            status: {
+              in: getTransferTaskTransitionSources('canceled').filter(
+                (source) => source !== 'canceled',
+              ),
+            },
+          },
+          data: {
+            status: 'canceled',
+            failureCode: null,
+            updatedAt: now,
+          },
+        });
+        let changedTransfer: TransferTask | null = transferRows[0] ?? null;
+        if (transferRows.length !== 1) {
+          const unchanged = await tx.transferTask.findFirst({
+            where: {
+              id: session.transferId,
+              transferType: 'upload',
+              status: 'canceled',
+            },
+            select: { id: true },
+          });
+          if (!unchanged) throw new UploadTransferStateConflictError();
+          changedTransfer = null;
+        }
+        const rows = await tx.uploadSession.updateManyAndReturn({
+          where: {
+            id,
+            status: 'running',
+            completionToken,
+          },
+          data: {
+            status: 'canceled',
+            failureCode: null,
+            completionToken: null,
+            completionStartedAt: null,
+            updatedAt: now,
+          },
+        });
+        if (rows.length !== 1 || rows[0].status !== 'canceled') {
+          throw new UploadSessionStateConflictError();
+        }
+        if (changedTransfer) {
+          await recordUploadTransferAudit(
+            tx,
+            'transfer.canceled',
+            changedTransfer,
+            auditMetadata,
+          );
+        }
+        return mapUploadSession(rows[0]);
+      });
+    } catch (error) {
+      if (isUploadSessionConflict(error)) return null;
+      throw error;
+    }
+  }
 }

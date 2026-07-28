@@ -18,7 +18,6 @@ import {
   type UploadDriveFileTask,
 } from "@/features/file/actions";
 import {
-  getDriveFileNameConflictKey,
   getDriveFileNameErrorMessageKey,
   validateDriveFileName,
 } from "@/features/file/file-name-policy";
@@ -30,11 +29,17 @@ import {
   DriveApiError,
   fetchStorageUsage,
   fetchTransfers,
+  isUploadConflictSkippedApiError,
   type DriveSpaceScope,
   type FileNodeResponse,
   type StorageUsage,
 } from "@/lib/drive-api";
 import type { TransferRow, UploadTelemetry } from "./drive-types";
+import {
+  analyzeUploadConflicts,
+  planUploadConflictResolution,
+  runUploadGroups,
+} from "./upload-conflict-planning";
 
 export type UploadTaskMeta = {
   onCompleted: (node: FileNodeResponse) => void;
@@ -170,11 +175,6 @@ export function useDriveTransfers({
     setUploadConflictPrompt(null);
     resolver?.(strategy);
   }, []);
-  const getConflictingUploadFiles = useCallback((files: File[]) => {
-    const siblingKeys = new Set(currentDirectoryItems.map((item) => getDriveFileNameConflictKey(item.name)));
-    return files.filter((file) => siblingKeys.has(getDriveFileNameConflictKey(file.name)));
-  }, [currentDirectoryItems]);
-
   const syncControllableTransferIds = () => {
     setControllableTransferIds(Array.from(uploadTasksRef.current.keys()));
   };
@@ -284,7 +284,7 @@ export function useDriveTransfers({
     meta: UploadTaskMeta,
     draftId?: string,
   ) => {
-    void promise
+    return promise
       .then((createdNode) => Promise.all([
         refreshDriveItems(),
         refreshTransfers(),
@@ -298,6 +298,14 @@ export function useDriveTransfers({
       })
       .catch((error) => {
         const state = task.getState();
+        if (isUploadConflictSkippedApiError(error)) {
+          unregisterUploadTask(state.transferId);
+          if (draftId) unregisterUploadTask(draftId);
+          removeUploadTelemetryRows(draftId, state.transferId);
+          void refreshTransfers();
+          showFeedback(t("upload.conflictSkipped", { count: 1 }), "neutral");
+          return;
+        }
         if (isUploadDriveFileControlError(error)) {
           const controlledId = state.transferId ?? draftId ?? null;
           if (error.control === "canceled" || state.status === "canceled") unregisterUploadTask(controlledId);
@@ -333,17 +341,17 @@ export function useDriveTransfers({
     targetNav: "drive" | "transfers" = "transfers",
     preflightUsage: StorageUsage | null = storageUsage,
     conflictStrategy: UploadConflictStrategy = "version",
+    targetSpaceScope: DriveSpaceScope = spaceScopeRef.current,
   ) => {
     if (!workspaceId) {
       showFeedback(t("app.uploadFailed"), "error");
-      return;
+      return Promise.resolve();
     }
-    const targetSpaceScope = spaceScopeRef.current;
     const scopedPreflightUsage = preflightUsage?.spaceScope === targetSpaceScope ? preflightUsage : null;
     const pendingUploadBytes = getPendingUploadBytes(Object.values(uploadTelemetry), targetSpaceScope);
     if (!hasUploadStorageCapacity(scopedPreflightUsage, pendingUploadBytes, file.size)) {
       showStorageInsufficient();
-      return;
+      return Promise.resolve();
     }
     const draftId = createLocalUploadTransferId(++uploadDraftCounterRef.current);
     const targetWorkspaceId = workspaceId;
@@ -372,7 +380,7 @@ export function useDriveTransfers({
       workspaceId: targetWorkspaceId,
     });
     registerUploadTask(draftId, task, meta);
-    attachUploadPromise(task.start(), task, meta, draftId);
+    return attachUploadPromise(task.start(), task, meta, draftId);
   };
   const pauseUploadTransfer = (id: string) => uploadTasksRef.current.get(id)?.pause();
   const resumeUploadTransfer = (id: string) => {
@@ -424,39 +432,50 @@ export function useDriveTransfers({
   const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const selectedFiles = Array.from(event.target.files ?? []);
+    input.value = "";
     if (selectedFiles.length > 0 && workspaceId) {
       const invalidFile = selectedFiles.find((file) => !validateDriveFileName(file.name).ok);
       if (invalidFile) {
         const validation = validateDriveFileName(invalidFile.name);
         if (!validation.ok) showFeedback(t(getDriveFileNameErrorMessageKey(validation.code), validation.values), "error");
-        input.value = "";
         return;
       }
-      const latestUsage = await fetchLatestStorageUsage(workspaceId);
-      const selectedBytes = selectedFiles.reduce((total, file) => total + file.size, 0);
-      const pendingUploadBytes = getPendingUploadBytes(Object.values(uploadTelemetry), spaceScopeRef.current);
-      if (!hasUploadStorageCapacity(latestUsage, pendingUploadBytes, selectedBytes)) {
-        showStorageInsufficient();
-        input.value = "";
-        return;
-      }
-      const conflictingFiles = getConflictingUploadFiles(selectedFiles);
+      const conflictAnalysis = analyzeUploadConflicts(
+        selectedFiles,
+        currentDirectoryItems.map((item) => item.name),
+      );
+      const targetSpaceScope = spaceScopeRef.current;
+      const conflictingFiles = conflictAnalysis.conflictingFiles;
       let conflictStrategy: UploadConflictStrategy = "version";
-      let uploadFiles = selectedFiles;
       if (conflictingFiles.length > 0) {
         const selectedStrategy = await requestUploadConflictStrategy(conflictingFiles);
         if (!selectedStrategy) {
-          input.value = "";
           return;
         }
         conflictStrategy = selectedStrategy;
-        if (selectedStrategy === "skip") {
-          const conflictingKeys = new Set(conflictingFiles.map((file) => getDriveFileNameConflictKey(file.name)));
-          uploadFiles = selectedFiles.filter((file) => !conflictingKeys.has(getDriveFileNameConflictKey(file.name)));
-          showFeedback(t("upload.conflictSkipped", { count: selectedFiles.length - uploadFiles.length }), "neutral");
-        }
       }
-      uploadFiles.forEach((file) => startUploadFile(file, {
+      const uploadPlan = planUploadConflictResolution(
+        conflictAnalysis,
+        conflictStrategy,
+      );
+      if (uploadPlan.skippedFiles.length > 0) {
+        showFeedback(
+          t("upload.conflictSkipped", { count: uploadPlan.skippedFiles.length }),
+          "neutral",
+        );
+      }
+      const uploadFiles = uploadPlan.uploadGroups.flat();
+      if (uploadFiles.length === 0) {
+        return;
+      }
+      const latestUsage = await fetchLatestStorageUsage(workspaceId, targetSpaceScope);
+      const selectedBytes = uploadFiles.reduce((total, file) => total + file.size, 0);
+      const pendingUploadBytes = getPendingUploadBytes(Object.values(uploadTelemetry), targetSpaceScope);
+      if (!hasUploadStorageCapacity(latestUsage, pendingUploadBytes, selectedBytes)) {
+        showStorageInsufficient();
+        return;
+      }
+      void runUploadGroups(uploadPlan.uploadGroups, (file) => startUploadFile(file, {
         onCompleted: () => showFeedback(t("app.uploaded")),
         onFailed: (error) => {
           if (isStorageCapacityError(error)) {
@@ -466,9 +485,8 @@ export function useDriveTransfers({
           }
           showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
         },
-      }, "transfers", latestUsage, conflictStrategy));
+      }, "transfers", latestUsage, conflictStrategy, targetSpaceScope));
     }
-    input.value = "";
   };
 
   return {

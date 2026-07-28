@@ -1,8 +1,9 @@
-const serializableTransactionMaxAttempts = 5;
+export const serializableTransactionMaxAttempts = 5;
 const retryBaseDelayMs = 10;
 const retryMaxDelayMs = 100;
 
 type SerializableTransactionRetryOptions = {
+  isRetryableError?: (error: unknown) => boolean;
   random?: () => number;
   sleep?: (delayMs: number) => Promise<void>;
 };
@@ -19,7 +20,10 @@ export async function retryPrismaSerializableTransaction<T>(
       return await operation();
     } catch (error) {
       if (
-        !isPrismaSerializableTransactionConflict(error) ||
+        !(
+          isPrismaSerializableTransactionConflict(error) ||
+          options.isRetryableError?.(error)
+        ) ||
         attempt >= serializableTransactionMaxAttempts
       ) {
         throw error;

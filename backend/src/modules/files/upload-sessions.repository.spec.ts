@@ -31,6 +31,7 @@ describe('UploadSessionsRepository core and resume', () => {
       objectKey: 'uploads/test.bin',
       ownerUserId: 'user-a',
       resumeKey: 'resume-test',
+      requestedFileName: 'test.bin',
       sizeBytes: 1024,
       conflictStrategy: 'version',
       transferId: 'transfer_test',
@@ -39,10 +40,43 @@ describe('UploadSessionsRepository core and resume', () => {
     });
 
     expect(capturedData?.expiresAt).toEqual(expiresAt);
+    expect(capturedData).toMatchObject({
+      requestedFileName: 'test.bin',
+      fileName: 'test.bin',
+    });
     expect(session.expiresAt).toBe('2026-07-19T00:00:00.000Z');
     expect(session.lifecycle).toMatchObject({
       status: 'running',
       expiresAt: '2026-07-19T00:00:00.000Z',
+    });
+  });
+
+  it('reuses the legacy file name during the nullable rollout', async () => {
+    const prisma = {
+      uploadSession: {
+        findFirst: jest.fn(() =>
+          Promise.resolve(
+            createUploadSessionRow({
+              requestedFileName: null,
+              fileName: 'legacy.bin',
+            }),
+          ),
+        ),
+      },
+    };
+    const repository = new UploadSessionsRepository(prisma as never);
+
+    await expect(
+      repository.findReusable({
+        conflictStrategy: 'version',
+        requestedFileName: 'legacy.bin',
+        resumeKey: 'resume-test',
+        sizeBytes: 1024,
+        workspaceId: 'workspace-default',
+      }),
+    ).resolves.toMatchObject({
+      requestedFileName: 'legacy.bin',
+      fileName: 'legacy.bin',
     });
   });
 
@@ -75,7 +109,7 @@ describe('UploadSessionsRepository core and resume', () => {
     });
   });
 
-  it('does not reuse sessions whose fixed expiry has elapsed', async () => {
+  it('matches current and legacy file names while enforcing fixed expiry', async () => {
     let capturedWhere: Record<string, unknown> | undefined;
     const prisma = {
       uploadSession: {
@@ -89,7 +123,7 @@ describe('UploadSessionsRepository core and resume', () => {
 
     await repository.findReusable({
       conflictStrategy: 'version',
-      fileName: 'test.bin',
+      requestedFileName: 'test.bin',
       ownerUserId: 'user-a',
       resumeKey: 'resume-test',
       sizeBytes: 1024,
@@ -97,13 +131,23 @@ describe('UploadSessionsRepository core and resume', () => {
     });
 
     expect(capturedWhere).toMatchObject({
-      OR: [{ expiresAt: null }, { expiresAt: {} }],
+      AND: [
+        {
+          OR: [
+            { requestedFileName: 'test.bin' },
+            { requestedFileName: null, fileName: 'test.bin' },
+          ],
+        },
+        {
+          OR: [{ expiresAt: null }, { expiresAt: {} }],
+        },
+      ],
       status: { in: ['running', 'paused', 'failed'] },
       completionToken: null,
       storageFinalizedAt: null,
     });
     expect(
-      readPath(capturedWhere, ['OR', 1, 'expiresAt', 'gt']),
+      readPath(capturedWhere, ['AND', 1, 'OR', 1, 'expiresAt', 'gt']),
     ).toBeInstanceOf(Date);
   });
 

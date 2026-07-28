@@ -169,6 +169,14 @@ export function isAuthExpiredApiError(error: unknown): boolean {
   return error instanceof DriveApiError && error.kind === "auth-expired";
 }
 
+export function isUploadConflictSkippedApiError(error: unknown): boolean {
+  return (
+    error instanceof DriveApiError
+    && error.status === 409
+    && error.code === "UPLOAD_CONFLICT_SKIPPED"
+  );
+}
+
 function getFormErrorMessageKey(error: DriveApiError): string | null {
   if (error.code === "AUTH_REAUTH_FAILED") {
     return "errors.reauthenticationFailed";

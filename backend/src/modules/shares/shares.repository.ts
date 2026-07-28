@@ -27,7 +27,7 @@ import {
   matchesShareVisitorFingerprint,
   type ShareVisitorFingerprint,
 } from './share-visitor-fingerprint';
-import { retryPrismaSerializableTransaction } from './serializable-transaction-retry';
+import { retryPrismaSerializableTransaction } from '../../common/database/serializable-transaction-retry';
 import {
   ShareDownloadIntentRepository,
   type CreateShareDownloadIntentInput,

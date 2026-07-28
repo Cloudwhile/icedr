@@ -42,6 +42,9 @@ export class UploadSessionsRepository {
     ownerUserId?: string | null;
     parentNodeId?: string | null;
     resumeKey?: string | null;
+    requestedFileName: string;
+    conflictTargetNodeId?: string | null;
+    conflictTargetObjectKey?: string | null;
     sizeBytes: number;
     spaceScope?: 'workspace' | 'personal';
     conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
@@ -62,7 +65,10 @@ export class UploadSessionsRepository {
         objectKey: input.objectKey,
         multipartUploadId: input.multipartUploadId ?? null,
         resumeKey: input.resumeKey ?? null,
+        requestedFileName: input.requestedFileName,
         fileName: input.fileName,
+        conflictTargetNodeId: input.conflictTargetNodeId ?? null,
+        conflictTargetObjectKey: input.conflictTargetObjectKey ?? null,
         parentNodeId: input.parentNodeId ?? null,
         mimeType: input.mimeType,
         sizeBytes: BigInt(input.sizeBytes),
@@ -79,7 +85,7 @@ export class UploadSessionsRepository {
   }
 
   async findReusable(input: {
-    fileName: string;
+    requestedFileName: string;
     parentNodeId?: string | null;
     ownerUserId?: string | null;
     resumeKey: string;
@@ -96,13 +102,25 @@ export class UploadSessionsRepository {
         spaceScope: input.spaceScope ?? 'workspace',
         conflictStrategy: input.conflictStrategy,
         resumeKey: input.resumeKey,
-        fileName: input.fileName,
         parentNodeId: input.parentNodeId ?? null,
         sizeBytes: BigInt(input.sizeBytes),
         status: { in: ['running', 'paused', 'failed'] },
         completionToken: null,
         storageFinalizedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [
+          {
+            OR: [
+              { requestedFileName: input.requestedFileName },
+              {
+                requestedFileName: null,
+                fileName: input.requestedFileName,
+              },
+            ],
+          },
+          {
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+        ],
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -210,6 +228,14 @@ export class UploadSessionsRepository {
       failureCode,
       auditMetadata,
     );
+  }
+
+  cancelCompletionClaim(
+    id: string,
+    completionToken: string,
+    auditMetadata: Record<string, unknown> = {},
+  ) {
+    return this.completion.cancel(id, completionToken, auditMetadata);
   }
 
   cancelSession(
