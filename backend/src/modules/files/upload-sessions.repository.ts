@@ -102,13 +102,25 @@ export class UploadSessionsRepository {
         spaceScope: input.spaceScope ?? 'workspace',
         conflictStrategy: input.conflictStrategy,
         resumeKey: input.resumeKey,
-        requestedFileName: input.requestedFileName,
         parentNodeId: input.parentNodeId ?? null,
         sizeBytes: BigInt(input.sizeBytes),
         status: { in: ['running', 'paused', 'failed'] },
         completionToken: null,
         storageFinalizedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [
+          {
+            OR: [
+              { requestedFileName: input.requestedFileName },
+              {
+                requestedFileName: null,
+                fileName: input.requestedFileName,
+              },
+            ],
+          },
+          {
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+        ],
       },
       orderBy: { createdAt: 'desc' },
     });

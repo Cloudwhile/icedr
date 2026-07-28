@@ -391,7 +391,7 @@ model UploadSession {
   objectKey         String   @map("object_key")
   multipartUploadId String?  @map("multipart_upload_id")
   resumeKey         String?  @map("resume_key")
-  requestedFileName String   @map("requested_file_name")
+  requestedFileName String?  @map("requested_file_name")
   fileName          String   @map("file_name")
   conflictTargetNodeId String? @map("conflict_target_node_id")
   conflictTargetObjectKey String? @map("conflict_target_object_key")

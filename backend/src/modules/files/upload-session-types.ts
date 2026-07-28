@@ -99,7 +99,7 @@ export function mapUploadSession(row: PrismaUploadSession): UploadSession {
     objectKey: row.objectKey,
     multipartUploadId: row.multipartUploadId,
     resumeKey: row.resumeKey,
-    requestedFileName: row.requestedFileName,
+    requestedFileName: row.requestedFileName ?? row.fileName,
     fileName: row.fileName,
     conflictTargetNodeId: row.conflictTargetNodeId,
     conflictTargetObjectKey: row.conflictTargetObjectKey,
