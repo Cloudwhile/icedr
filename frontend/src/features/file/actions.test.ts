@@ -110,6 +110,154 @@ describe("upload intent lifecycle", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("reports the server-resolved name after an automatic rename", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const onProgress = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      conflictStrategy: "rename",
+      expiresAt,
+      expiresInSeconds: 3600,
+      fileName: "report (2).txt",
+      headers: {},
+      objectKey: "objects/report-2.txt",
+      transferId: "transfer-renamed",
+      uploadMethod: "presigned-url",
+      uploadUrl: "https://storage.example/upload",
+    }));
+    updateTransferMock.mockResolvedValue({ status: "failed" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      conflictStrategy: "rename",
+      file: new File(["report"], "report.txt", { type: "text/plain" }),
+      onProgress,
+      workspaceId: "workspace-1",
+    });
+    const upload = task.start();
+
+    await vi.waitFor(() => expect(onProgress).toHaveBeenCalled());
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({
+      fileName: "report (2).txt",
+      transferId: "transfer-renamed",
+    }));
+
+    FakeXMLHttpRequest.requests[0]?.fail();
+    await expect(upload).rejects.toThrow("Object upload failed");
+  });
+
+  it("reports a name reassigned while completing a concurrent rename", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const onProgress = vi.fn();
+    const intent = {
+      conflictStrategy: "rename" as const,
+      expiresAt,
+      expiresInSeconds: 3600,
+      fileName: "report (2).txt",
+      headers: {},
+      objectKey: "objects/report-2.txt",
+      transferId: "transfer-renamed-concurrently",
+      uploadMethod: "presigned-url" as const,
+      uploadUrl: "https://storage.example/upload",
+    };
+    const completedNode = {
+      id: "node-renamed",
+      name: "report (3).txt",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json(intent));
+      }
+      if (url.endsWith("/file-nodes/upload-completions")) {
+        return Promise.resolve(Response.json(completedNode));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      conflictStrategy: "rename",
+      file: new File(["report"], "report.txt", { type: "text/plain" }),
+      onProgress,
+      workspaceId: "workspace-1",
+    });
+    const upload = task.start();
+
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    FakeXMLHttpRequest.requests[0]?.succeed();
+
+    await expect(upload).resolves.toEqual(completedNode);
+    expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
+      fileName: "report (3).txt",
+      status: "completed",
+      transferId: "transfer-renamed-concurrently",
+    }));
+  });
+
+  it("keeps a completion-time conflict skip out of the failed transfer state", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const intent = {
+      conflictStrategy: "skip" as const,
+      expiresAt,
+      expiresInSeconds: 3600,
+      fileName: "report.txt",
+      headers: {},
+      objectKey: "objects/report.txt",
+      transferId: "transfer-skipped-concurrently",
+      uploadMethod: "presigned-url" as const,
+      uploadUrl: "https://storage.example/upload",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json(intent));
+      }
+      if (url.endsWith("/file-nodes/upload-completions")) {
+        return Promise.resolve(Response.json(
+          {
+            code: "UPLOAD_CONFLICT_SKIPPED",
+            message: "File upload skipped because a same-name item exists",
+          },
+          { status: 409 },
+        ));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      conflictStrategy: "skip",
+      file: new File(["report"], "report.txt", { type: "text/plain" }),
+      workspaceId: "workspace-1",
+    });
+    const upload = task.start();
+
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    FakeXMLHttpRequest.requests[0]?.succeed();
+
+    await expect(upload).rejects.toMatchObject({
+      code: "UPLOAD_CONFLICT_SKIPPED",
+      status: 409,
+    });
+    expect(task.getState().status).toBe("canceled");
+    expect(updateTransferMock).not.toHaveBeenCalledWith(
+      "transfer-skipped-concurrently",
+      expect.objectContaining({ status: "failed" }),
+    );
+  });
+
   it("does not start retry upload I/O until the failed-to-running CAS is confirmed", async () => {
     vi.spyOn(performance, "now").mockReturnValue(100);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();

@@ -3,6 +3,7 @@ import {
   createDriveApiResponseError,
   DriveApiError,
   getDriveApiErrorMessage,
+  isUploadConflictSkippedApiError,
   readDriveApiError,
 } from "./drive-api-errors";
 
@@ -148,5 +149,38 @@ describe("drive api errors", () => {
         { fallbackKey: "fallback" },
       ),
     ).toBe("errors.withReason:{\"reason\":\"Custom backend reason\"}");
+  });
+
+  it("recognizes only the structured upload-conflict skip error", () => {
+    expect(
+      isUploadConflictSkippedApiError(
+        new DriveApiError(
+          "Upload skipped because the target already exists",
+          409,
+          "UPLOAD_CONFLICT_SKIPPED",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isUploadConflictSkippedApiError(
+        new DriveApiError("Upload conflict", 409, "UPLOAD_CONFLICT"),
+      ),
+    ).toBe(false);
+    expect(
+      isUploadConflictSkippedApiError(
+        new DriveApiError(
+          "Unexpected server failure",
+          500,
+          "UPLOAD_CONFLICT_SKIPPED",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      isUploadConflictSkippedApiError(
+        Object.assign(new Error("Upload skipped"), {
+          code: "UPLOAD_CONFLICT_SKIPPED",
+        }),
+      ),
+    ).toBe(false);
   });
 });

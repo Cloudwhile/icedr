@@ -16,6 +16,7 @@ import {
   fetchTransfers,
   getApiBaseUrl,
   getAuthHeaders,
+  isUploadConflictSkippedApiError,
   readDriveApiError,
   updateTransfer,
   type DriveSpaceScope,
@@ -234,7 +235,7 @@ export function createUploadDriveFileTask({
     lastProgress = normalizedProgress;
     status = nextStatus;
     onProgress?.({
-      fileName: file.name,
+      fileName: intent.fileName,
       loadedBytes,
       progress: normalizedProgress,
       remainingSeconds,
@@ -416,14 +417,23 @@ export function createUploadDriveFileTask({
     throwIfControlled();
 
     if (!completionResponse.ok) {
+      const error = await createDriveFetchError(completionResponse, "Upload completion failed");
+      if (isUploadConflictSkippedApiError(error)) {
+        emitProgress(file.size, 96, "canceled");
+        throw error;
+      }
       emitProgress(file.size, 96, "failed");
       await syncTransfer("failed", 96);
-      const error = await createDriveFetchError(completionResponse, "Upload completion failed");
       throw error;
     }
+    const completedNode = (await completionResponse.json()) as FileNodeResponse;
+    intent = {
+      ...currentIntent,
+      fileName: completedNode.name,
+    };
     emitProgress(file.size, 100, "completed");
     status = "completed";
-    return (await completionResponse.json()) as FileNodeResponse;
+    return completedNode;
   };
 
   const start = () => {
