@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import { serializableTransactionMaxAttempts } from '../../common/database/serializable-transaction-retry';
 import { createFileNodesRepository as createRepository } from './file-nodes.repository.spec-helpers';
 
 function storedNode(id: string) {
@@ -802,6 +803,7 @@ describe('FileNodesRepository', () => {
         conflictStrategy: 'rename',
         fileName: 'Report (2).pdf',
         objectKey: 'uploaded-object',
+        parentNodeId: 'folder-1',
         requestedFileName: 'Report.pdf',
         sizeBytes: 32,
         workspaceId: 'workspace-default',
@@ -816,6 +818,14 @@ describe('FileNodesRepository', () => {
     expect(transaction.mock.calls[0]?.[1]).toEqual({
       isolationLevel: 'Serializable',
     });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          directoryKey: 'folder-1',
+          parentNodeId: 'folder-1',
+        }) as unknown,
+      }),
+    );
     expect(create.mock.calls.map(([input]) => input.data.name)).toEqual([
       'Report (2).pdf',
       'Report (3).pdf',
@@ -989,7 +999,9 @@ describe('FileNodesRepository', () => {
         message: 'File version changed while the upload was being completed',
       },
     });
-    expect(createVersion).toHaveBeenCalledTimes(5);
+    expect(createVersion).toHaveBeenCalledTimes(
+      serializableTransactionMaxAttempts,
+    );
     expect(tx.fileNode.update).not.toHaveBeenCalled();
   });
 

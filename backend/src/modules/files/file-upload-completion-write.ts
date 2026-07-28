@@ -129,6 +129,7 @@ export async function completeFileNodeUploadWrite(
               const fileName =
                 conflictStrategy === 'rename'
                   ? await resolveAvailableUploadName(tx, {
+                      directoryKey: requestedStorageKeys.directoryKey,
                       ownerScopeKey: requestedStorageKeys.ownerScopeKey,
                       parentNodeId,
                       requestedFileName,
@@ -223,6 +224,7 @@ export async function completeFileNodeUploadWrite(
 async function resolveAvailableUploadName(
   tx: Pick<Prisma.TransactionClient, 'fileNode'>,
   input: {
+    directoryKey: string;
     ownerScopeKey: string;
     parentNodeId: string | null;
     requestedFileName: string;
@@ -233,7 +235,7 @@ async function resolveAvailableUploadName(
   const siblings = await tx.fileNode.findMany({
     where: {
       archivedAt: null,
-      directoryKey: input.parentNodeId ?? '',
+      directoryKey: input.directoryKey,
       ownerScopeKey: input.ownerScopeKey,
       parentNodeId: input.parentNodeId,
       spaceScope: input.spaceScope,

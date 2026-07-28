@@ -1,4 +1,4 @@
-const serializableTransactionMaxAttempts = 5;
+export const serializableTransactionMaxAttempts = 5;
 const retryBaseDelayMs = 10;
 const retryMaxDelayMs = 100;
 
