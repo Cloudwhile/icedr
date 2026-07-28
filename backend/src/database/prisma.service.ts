@@ -436,6 +436,26 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       'space_scope',
       "TEXT NOT NULL DEFAULT 'workspace'",
     );
+    await this.ensureSqliteColumn(
+      'upload_sessions',
+      'requested_file_name',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await this.ensureSqliteColumn(
+      'upload_sessions',
+      'conflict_target_node_id',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn(
+      'upload_sessions',
+      'conflict_target_object_key',
+      'TEXT',
+    );
+    await this.activeClient.$executeRawUnsafe(
+      `UPDATE "upload_sessions"
+       SET "requested_file_name" = "file_name"
+       WHERE "requested_file_name" = ''`,
+    );
     await this.activeClient.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
     );

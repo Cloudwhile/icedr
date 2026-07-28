@@ -23,6 +23,10 @@ import {
   FileStorageUsageRepository,
   type FileNodeSpaceFilter,
 } from './file-storage-usage.repository';
+import {
+  completeFileNodeUploadWrite,
+  isFileNodeNameConstraintError,
+} from './file-upload-completion-write';
 
 export type { StoredFileVersionResponse } from './file-node-versions.repository';
 
@@ -400,131 +404,23 @@ export class FileNodesRepository {
     dto: CompleteUploadDto & {
       conflictStrategy?: UploadConflictStrategy;
       conflictTargetNodeId?: string;
+      conflictTargetObjectKey?: string;
       ownerUserId?: string;
+      requestedFileName?: string;
     },
     completionClaim?: { sessionId: string; completionToken: string },
   ) {
-    const now = new Date();
-    const parentNodeId = dto.parentNodeId ?? null;
-    const spaceScope = dto.spaceScope ?? 'workspace';
-    const requestedStorageKeys = createFileNodeStorageKeys({
-      archived: false,
-      id: dto.conflictTargetNodeId ?? '',
-      name: dto.fileName,
-      ownerUserId: dto.ownerUserId,
-      parentNodeId,
-      spaceScope,
-    });
-    const row = await this.executeFileNodeWrite(() =>
-      this.prisma.$transaction(async (tx) => {
-        const existing = dto.conflictTargetNodeId
-          ? await tx.fileNode.findFirst({
-              where: {
-                id: dto.conflictTargetNodeId,
-                archivedAt: null,
-                directoryKey: requestedStorageKeys.directoryKey,
-                nameKey: requestedStorageKeys.nameKey,
-                ownerScopeKey: requestedStorageKeys.ownerScopeKey,
-                parentNodeId,
-                spaceScope,
-                workspaceId: dto.workspaceId,
-              },
-            })
-          : null;
-        if (dto.conflictTargetNodeId && !existing?.objectKey) {
-          throw new ConflictException(
-            'Upload conflict target changed while the upload was running',
-          );
-        }
-
-        let fileNode: FileNode;
-        if (existing?.objectKey) {
-          if (dto.conflictStrategy !== 'overwrite') {
-            await this.versionsRepository.createVersionForNode(tx, existing, {
-              remark: 'Replaced by upload',
-              uploadedBy: dto.owner ?? existing.ownerName,
-            });
-          }
-          const ownerUserId = dto.ownerUserId ?? existing.ownerUserId;
-          const storageKeys = createFileNodeStorageKeys({
-            archived: false,
-            id: existing.id,
-            name: dto.fileName,
-            ownerUserId,
-            parentNodeId: existing.parentNodeId,
-            spaceScope: existing.spaceScope,
-          });
-          fileNode = await tx.fileNode.update({
-            where: { id: existing.id },
-            data: {
-              ...storageKeys,
-              kind: this.getKind(dto.fileName, dto.mimeType),
-              mimeType: dto.mimeType ?? 'application/octet-stream',
-              name: dto.fileName,
-              objectKey: dto.objectKey,
-              ownerUserId,
-              ownerName: dto.owner ?? existing.ownerName,
-              sizeBytes: BigInt(dto.sizeBytes),
-              updatedAt: now,
-            },
-          });
-        } else {
-          const id = `node_${randomBytes(12).toString('base64url')}`;
-          const ownerUserId = dto.ownerUserId ?? null;
-          const storageKeys = createFileNodeStorageKeys({
-            archived: false,
-            id,
-            name: dto.fileName,
-            ownerUserId,
-            parentNodeId,
-            spaceScope,
-          });
-          fileNode = await tx.fileNode.create({
-            data: {
-              id,
-              workspaceId: dto.workspaceId,
-              spaceScope,
-              parentNodeId,
-              ...storageKeys,
-              name: dto.fileName,
-              kind: this.getKind(dto.fileName, dto.mimeType),
-              mimeType: dto.mimeType ?? 'application/octet-stream',
-              sizeBytes: BigInt(dto.sizeBytes),
-              objectKey: dto.objectKey,
-              ownerUserId,
-              ownerName: dto.owner ?? '',
-              starred: false,
-              archivedAt: null,
-              createdAt: now,
-              updatedAt: now,
-            },
-          });
-        }
-
-        if (completionClaim) {
-          const persisted = await tx.uploadSession.updateMany({
-            where: {
-              id: completionClaim.sessionId,
-              status: 'running',
-              completionToken: completionClaim.completionToken,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-            },
-            data: {
-              nodeId: fileNode.id,
-              completionStartedAt: now,
-              updatedAt: now,
-            },
-          });
-          if (persisted.count !== 1) {
-            throw new ConflictException(
-              'Upload completion claim changed before the file node was persisted',
-            );
-          }
-        }
-        return fileNode;
-      }),
+    const completed = await completeFileNodeUploadWrite(
+      this.prisma,
+      this.versionsRepository,
+      (fileName, mimeType) => this.getKind(fileName, mimeType),
+      dto,
+      completionClaim,
     );
-    return this.mapRow(row);
+    return {
+      displacedObjectKey: completed.displacedObjectKey,
+      node: this.mapRow(completed.fileNode),
+    };
   }
 
   private async collectDescendants(parentId: string) {
@@ -904,30 +800,4 @@ export class FileNodesRepository {
       previewCapability: resolveFilePreviewCapability(mapped),
     };
   }
-}
-
-function isFileNodeNameConstraintError(error: unknown) {
-  if (
-    !error ||
-    typeof error !== 'object' ||
-    !('code' in error) ||
-    error.code !== 'P2002'
-  ) {
-    return false;
-  }
-  const target = (error as { meta?: { target?: unknown } }).meta?.target;
-  if (typeof target === 'string') {
-    return target.includes('file_nodes_scope_directory_name_key');
-  }
-  if (!Array.isArray(target)) return false;
-  const normalizedFields = new Set(
-    target.map((field) => String(field).replaceAll('_', '').toLowerCase()),
-  );
-  return [
-    'workspaceid',
-    'spacescope',
-    'ownerscopekey',
-    'directorykey',
-    'namekey',
-  ].every((field) => normalizedFields.has(field));
 }

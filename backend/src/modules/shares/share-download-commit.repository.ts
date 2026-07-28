@@ -14,7 +14,7 @@ import {
   mapShareDownloadIntentRecord,
   type ShareDownloadIntentRecord,
 } from './shares.repository';
-import { retryPrismaSerializableTransaction } from './serializable-transaction-retry';
+import { retryPrismaSerializableTransaction } from '../../common/database/serializable-transaction-retry';
 
 type DownloadStartedMetadataFactory = (
   downloadCount: number,

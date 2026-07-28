@@ -8,6 +8,10 @@ import type {
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
 import {
+  createSuffixedFileName,
+  getFileNameConflictKey,
+} from '../../common/security/file-name-policy';
+import {
   createNode,
   docxMimeType,
   type TestUploadSession,
@@ -35,6 +39,7 @@ export type FileNodesRepositoryMocks = {
   commitDownloadIntent: jest.Mock;
   completeUpload: jest.Mock;
   failDownloadIntent: jest.Mock;
+  pruneVersions: jest.Mock;
   recordAudit: jest.Mock;
 };
 
@@ -289,8 +294,11 @@ export function createFileNodesRepositoryMock(input: {
     completeUpload: jest.fn(
       (
         dto: CompleteUploadDto & {
+          conflictStrategy?: 'overwrite' | 'rename' | 'skip' | 'version';
           conflictTargetNodeId?: string;
+          conflictTargetObjectKey?: string;
           ownerUserId?: string;
+          requestedFileName?: string;
         },
         completionClaim?: { sessionId: string; completionToken: string },
       ) => {
@@ -306,26 +314,60 @@ export function createFileNodesRepositoryMock(input: {
           sessions.set(completionClaim.sessionId, {
             ...session,
             nodeId: node.id,
+            fileName: node.name,
             completionStartedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
           return node;
         };
+        const requestedFileName = dto.requestedFileName ?? dto.fileName;
+        const conflictStrategy = dto.conflictStrategy ?? 'version';
         const targetIndex = dto.conflictTargetNodeId
           ? nodes.findIndex((node) => node.id === dto.conflictTargetNodeId)
-          : nodes.findIndex(
-              (node) =>
-                !node.archivedAt &&
-                node.workspaceId === dto.workspaceId &&
-                node.parentNodeId === (dto.parentNodeId ?? null) &&
-                node.spaceScope === (dto.spaceScope ?? 'workspace') &&
-                node.name === dto.fileName,
-            );
+          : -1;
+        if (dto.conflictTargetNodeId && targetIndex < 0) {
+          throw new ConflictException({
+            code: 'UPLOAD_CONFLICT_TARGET_CHANGED',
+            message:
+              'Upload conflict target changed while the upload was running',
+          });
+        }
         if (targetIndex >= 0 && nodes[targetIndex].objectKey) {
           const existing = nodes[targetIndex];
+          const expectedOwner =
+            (dto.spaceScope ?? 'workspace') === 'personal'
+              ? (dto.ownerUserId ?? null)
+              : existing.ownerUserId;
+          if (
+            existing.archivedAt ||
+            existing.workspaceId !== dto.workspaceId ||
+            existing.parentNodeId !== (dto.parentNodeId ?? null) ||
+            existing.spaceScope !== (dto.spaceScope ?? 'workspace') ||
+            existing.ownerUserId !== expectedOwner ||
+            getFileNameConflictKey(existing.name) !==
+              getFileNameConflictKey(requestedFileName) ||
+            (conflictStrategy === 'overwrite' &&
+              existing.objectKey !== dto.conflictTargetObjectKey)
+          ) {
+            throw new ConflictException({
+              code: 'UPLOAD_CONFLICT_TARGET_CHANGED',
+              message:
+                'Upload conflict target changed while the upload was running',
+            });
+          }
+          if (
+            conflictStrategy !== 'overwrite' &&
+            conflictStrategy !== 'version'
+          ) {
+            throw new ConflictException({
+              code: 'UPLOAD_CONFLICT_TARGET_CHANGED',
+              message:
+                'Upload conflict target changed while the upload was running',
+            });
+          }
           const node = createNode({
             ...existing,
-            name: dto.fileName,
+            name: requestedFileName,
             kind: 'doc',
             mimeType: dto.mimeType ?? 'application/octet-stream',
             sizeBytes: dto.sizeBytes,
@@ -335,13 +377,57 @@ export function createFileNodesRepositoryMock(input: {
             updatedAt: new Date().toISOString(),
           });
           nodes[targetIndex] = node;
-          return Promise.resolve(persistClaim(node));
+          return Promise.resolve({
+            displacedObjectKey:
+              conflictStrategy === 'overwrite' ? existing.objectKey : null,
+            node: persistClaim(node),
+          });
+        }
+        const scopedSiblings = nodes.filter(
+          (node) =>
+            !node.archivedAt &&
+            node.workspaceId === dto.workspaceId &&
+            node.parentNodeId === (dto.parentNodeId ?? null) &&
+            node.spaceScope === (dto.spaceScope ?? 'workspace') &&
+            ((dto.spaceScope ?? 'workspace') !== 'personal' ||
+              node.ownerUserId === (dto.ownerUserId ?? null)),
+        );
+        const conflictKeys = new Set(
+          scopedSiblings.map((node) => getFileNameConflictKey(node.name)),
+        );
+        let resolvedFileName = requestedFileName;
+        if (
+          conflictKeys.has(getFileNameConflictKey(requestedFileName)) &&
+          conflictStrategy === 'skip'
+        ) {
+          throw new ConflictException({
+            code: 'UPLOAD_CONFLICT_SKIPPED',
+            message: 'File upload skipped because a same-name item exists',
+          });
+        }
+        if (conflictStrategy === 'rename') {
+          for (
+            let index = 2;
+            conflictKeys.has(getFileNameConflictKey(resolvedFileName));
+            index += 1
+          ) {
+            resolvedFileName = createSuffixedFileName(
+              requestedFileName,
+              ` (${index})`,
+            );
+          }
+        } else if (
+          conflictKeys.has(getFileNameConflictKey(requestedFileName))
+        ) {
+          throw new ConflictException(
+            'File node name conflicts with an existing item',
+          );
         }
         const node = createNode({
           id: `node_${nodes.length + 1}`,
           workspaceId: dto.workspaceId,
           parentNodeId: dto.parentNodeId ?? null,
-          name: dto.fileName,
+          name: resolvedFileName,
           kind: 'doc',
           mimeType: dto.mimeType ?? 'application/octet-stream',
           sizeBytes: dto.sizeBytes,
@@ -355,7 +441,10 @@ export function createFileNodesRepositoryMock(input: {
           updatedAt: new Date().toISOString(),
         });
         nodes.push(node);
-        return Promise.resolve(persistClaim(node));
+        return Promise.resolve({
+          displacedObjectKey: null,
+          node: persistClaim(node),
+        });
       },
     ),
     createPreviewArtifact: jest.fn(

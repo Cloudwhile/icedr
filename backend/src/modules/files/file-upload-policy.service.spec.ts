@@ -10,6 +10,7 @@ import {
 } from './file-upload-test-harness.helper';
 
 describe('FileUploadService policies and sessions', () => {
+  let nodes: FileNodesServiceTestHarness['nodes'];
   let repository: FileNodesServiceTestHarness['repository'];
   let service: FileNodesServiceTestHarness['service'];
   let storage: FileNodesServiceTestHarness['storage'];
@@ -19,6 +20,7 @@ describe('FileUploadService policies and sessions', () => {
 
   beforeEach(() => {
     ({
+      nodes,
       repository,
       service,
       storage,
@@ -343,6 +345,86 @@ describe('FileUploadService policies and sessions', () => {
       95,
     );
     expect(transfers.resumeTransferInternal).not.toHaveBeenCalled();
+  });
+
+  it('replaces a reusable overwrite session when its target object changed', async () => {
+    const firstIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'overwrite',
+      fileName: 'ICEDR Roadmap.docx',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-overwrite-snapshot',
+    });
+    const target = nodes.find((node) => node.id === 'roadmap');
+    expect(target).toBeDefined();
+    if (!target) throw new Error('test target missing');
+    target.objectKey = 'objects/concurrent-roadmap.docx';
+
+    const replacementIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'overwrite',
+      fileName: 'ICEDR Roadmap.docx',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-overwrite-snapshot',
+    });
+    const replacementSession = await uploadSessions.findById(
+      replacementIntent.sessionId ?? '',
+    );
+
+    expect(replacementIntent.sessionId).not.toBe(firstIntent.sessionId);
+    expect(uploadSessionMocks.cancelSession).toHaveBeenCalledWith(
+      firstIntent.sessionId,
+      'running',
+      undefined,
+    );
+    expect(replacementSession).toMatchObject({
+      conflictTargetNodeId: 'roadmap',
+      conflictTargetObjectKey: 'objects/concurrent-roadmap.docx',
+    });
+  });
+
+  it('replaces a reusable version session when the same-name target id changed', async () => {
+    const firstIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'version',
+      fileName: 'ICEDR Roadmap.docx',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-version-snapshot',
+    });
+    const targetIndex = nodes.findIndex((node) => node.id === 'roadmap');
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+    const previousTarget = nodes[targetIndex];
+    if (!previousTarget) throw new Error('test target missing');
+    nodes[targetIndex] = createNode({
+      ...previousTarget,
+      id: 'roadmap-replacement',
+      objectKey: 'objects/replacement-roadmap.docx',
+    });
+
+    const replacementIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'version',
+      fileName: 'ICEDR Roadmap.docx',
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-version-snapshot',
+    });
+    const replacementSession = await uploadSessions.findById(
+      replacementIntent.sessionId ?? '',
+    );
+
+    expect(replacementIntent.sessionId).not.toBe(firstIntent.sessionId);
+    expect(uploadSessionMocks.cancelSession).toHaveBeenCalledWith(
+      firstIntent.sessionId,
+      'running',
+      undefined,
+    );
+    expect(replacementSession).toMatchObject({
+      conflictTargetNodeId: 'roadmap-replacement',
+    });
   });
 
   it('returns the resumed lifecycle after retrying a failed session', async () => {

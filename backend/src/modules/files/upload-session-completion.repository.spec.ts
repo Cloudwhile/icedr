@@ -779,4 +779,83 @@ describe('UploadSessionsRepository completion', () => {
       }) as unknown,
     });
   });
+
+  it('cancels both states when a claimed completion is skipped', async () => {
+    const updateTransfer = jest.fn(() =>
+      Promise.resolve([
+        createTransferTaskRow({
+          status: 'canceled',
+          failureCode: null,
+        }),
+      ]),
+    );
+    const updateSession = jest.fn((input: { data: Record<string, unknown> }) =>
+      Promise.resolve([
+        createUploadSessionRow({
+          ...input.data,
+          completionToken: null,
+          status: 'canceled',
+        }),
+      ]),
+    );
+    const createAudit = jest.fn(() => Promise.resolve({ id: 'audit-test' }));
+    const tx = {
+      transferTask: { updateManyAndReturn: updateTransfer },
+      uploadSession: { updateManyAndReturn: updateSession },
+      auditEvent: { create: createAudit },
+    };
+    const repository = new UploadSessionsRepository({
+      uploadSession: {
+        findUnique: jest.fn(() =>
+          Promise.resolve({ transferId: 'transfer_test' }),
+        ),
+      },
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+      ),
+    } as never);
+
+    await expect(
+      repository.cancelCompletionClaim(
+        'upload_session_test',
+        'completion-token',
+        { requestId: 'skip-race-1' },
+      ),
+    ).resolves.toMatchObject({
+      status: 'canceled',
+      failureCode: null,
+    });
+    expect(updateTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'canceled',
+          failureCode: null,
+        }) as unknown,
+      }),
+    );
+    expect(updateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'upload_session_test',
+          status: 'running',
+          completionToken: 'completion-token',
+        },
+        data: expect.objectContaining({
+          status: 'canceled',
+          failureCode: null,
+          completionToken: null,
+          completionStartedAt: null,
+        }) as unknown,
+      }),
+    );
+    expect(createAudit).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'transfer.canceled',
+        metadata: expect.objectContaining({
+          result: 'success',
+          requestId: 'skip-race-1',
+        }) as unknown,
+      }) as unknown,
+    });
+  });
 });

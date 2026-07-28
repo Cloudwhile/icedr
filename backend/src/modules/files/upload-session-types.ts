@@ -34,7 +34,10 @@ export type UploadSession = {
   objectKey: string;
   multipartUploadId: string | null;
   resumeKey: string | null;
+  requestedFileName: string;
   fileName: string;
+  conflictTargetNodeId: string | null;
+  conflictTargetObjectKey: string | null;
   parentNodeId: string | null;
   mimeType: string;
   sizeBytes: number;
@@ -96,7 +99,10 @@ export function mapUploadSession(row: PrismaUploadSession): UploadSession {
     objectKey: row.objectKey,
     multipartUploadId: row.multipartUploadId,
     resumeKey: row.resumeKey,
+    requestedFileName: row.requestedFileName,
     fileName: row.fileName,
+    conflictTargetNodeId: row.conflictTargetNodeId,
+    conflictTargetObjectKey: row.conflictTargetObjectKey,
     parentNodeId: row.parentNodeId,
     mimeType: row.mimeType,
     sizeBytes: Number(row.sizeBytes),

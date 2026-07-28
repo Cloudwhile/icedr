@@ -19,7 +19,10 @@ import {
   type UploadPartIntentResponse,
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
-import { FileUploadPolicyService } from './file-upload-policy.service';
+import {
+  FileUploadPolicyService,
+  type ResolvedUploadConflict,
+} from './file-upload-policy.service';
 import {
   assertUploadSessionComplete,
   assertWritableUploadSession,
@@ -103,7 +106,7 @@ export class FileUploadService {
         spaceScope,
         conflictStrategy: resolvedConflict.strategy,
         resumeKey,
-        fileName: resolvedConflict.fileName,
+        requestedFileName: fileName,
         parentNodeId: dto.parentNodeId ?? null,
         sizeBytes,
       });
@@ -111,6 +114,12 @@ export class FileUploadService {
         reusable = await this.ensureUploadSessionExpiry(reusable);
         if (reusable.status === 'expired') {
           // Keep the fixed historical deadline; a new intent is created below.
+        } else if (
+          !matchesReusableConflictSnapshot(reusable, resolvedConflict)
+        ) {
+          await this.cancelUploadSession(reusable.id, {
+            auditMetadata: options.auditMetadata,
+          });
         } else if (!canReuseUploadSession(reusable, distributedStorage)) {
           await this.cancelUploadSession(reusable.id, {
             auditMetadata: options.auditMetadata,
@@ -139,7 +148,7 @@ export class FileUploadService {
               currentStatus: current.status,
             });
           }
-          return toUploadIntent(resumed, parts, resolvedConflict.strategy);
+          return toUploadIntent(resumed, parts, resumed.conflictStrategy);
         }
       }
     }
@@ -175,7 +184,10 @@ export class FileUploadService {
         objectKey,
         multipartUploadId: multipartUpload?.uploadId ?? null,
         resumeKey: resumeKey ?? null,
+        requestedFileName: fileName,
         fileName: resolvedConflict.fileName,
+        conflictTargetNodeId: resolvedConflict.target?.id ?? null,
+        conflictTargetObjectKey: resolvedConflict.target?.objectKey ?? null,
         parentNodeId: dto.parentNodeId ?? null,
         mimeType: dto.mimeType ?? 'application/octet-stream',
         sizeBytes,
@@ -420,36 +432,40 @@ export class FileUploadService {
       spaceScope,
       { actorRole: options.actorRole, actorUserId: options.ownerUserId },
     );
-    const resolvedConflict = await this.uploadPolicy.resolveUploadConflict({
-      allowRename: false,
-      conflictStrategy,
-      explicitConflictStrategy: Boolean(dto.conflictStrategy),
-      fileName,
-      ownerUserId: options.ownerUserId,
-      parentNodeId: dto.parentNodeId ?? null,
-      spaceScope,
-      workspaceId: dto.workspaceId,
-    });
-    const normalizedDto = { ...dto, fileName: resolvedConflict.fileName };
-    this.uploadPolicy.assertUploadObjectKey(normalizedDto);
+    this.uploadPolicy.assertUploadObjectKey({ ...dto, fileName, spaceScope });
     if (!dto.uploadSessionId?.trim()) {
       throw new BadRequestException('Upload session is required');
     }
     const uploadSession = await this.requireCompletableUploadSession(
-      normalizedDto,
+      { ...dto, fileName, conflictStrategy, spaceScope },
       options.ownerUserId,
     );
+    const normalizedDto: CompleteUploadDto = {
+      ...dto,
+      conflictStrategy: uploadSession.conflictStrategy,
+      fileName: uploadSession.fileName,
+      parentNodeId: uploadSession.parentNodeId ?? undefined,
+      spaceScope: uploadSession.spaceScope,
+    };
     if (uploadSession.status === 'completed' && uploadSession.nodeId) {
-      const completedNode = await this.requirePersistedUploadNode(
-        uploadSession,
-        normalizedDto,
-      );
+      const completedNode =
+        await this.requirePersistedUploadNode(uploadSession);
       await this.completeUploadTransfer({
         auditMetadata: options.auditMetadata,
         transferId: uploadSession.transferId,
         nodeId: completedNode.id,
         ownerUserId: uploadSession.ownerUserId,
       });
+      await this.deleteStoredObjects(
+        await this.fileNodesRepository.pruneVersions(completedNode.id),
+      );
+      if (
+        uploadSession.conflictStrategy === 'overwrite' &&
+        uploadSession.conflictTargetObjectKey &&
+        uploadSession.conflictTargetObjectKey !== completedNode.objectKey
+      ) {
+        await this.deleteStoredObjects([uploadSession.conflictTargetObjectKey]);
+      }
       return completedNode;
     }
     const candidateParts = await this.uploadSessionsRepository.listParts(
@@ -462,6 +478,10 @@ export class FileUploadService {
         uploadSession.status as 'running' | 'failed',
       )) ?? (await this.throwUploadCompletionClaimConflict(uploadSession.id));
     let node;
+    let displacedObjectKey =
+      completionClaim.nodeId && completionClaim.conflictStrategy === 'overwrite'
+        ? completionClaim.conflictTargetObjectKey
+        : null;
     let claimedSession = completionClaim;
     try {
       const parts = await this.uploadSessionsRepository.listParts(
@@ -493,16 +513,17 @@ export class FileUploadService {
         );
       }
       if (claimedSession.nodeId) {
-        node = await this.requirePersistedUploadNode(
-          claimedSession,
-          normalizedDto,
-        );
+        node = await this.requirePersistedUploadNode(claimedSession);
       } else {
-        node = await this.fileNodesRepository.completeUpload(
+        const completed = await this.fileNodesRepository.completeUpload(
           {
             ...normalizedDto,
-            conflictStrategy: resolvedConflict.strategy,
-            conflictTargetNodeId: resolvedConflict.target?.id,
+            requestedFileName: claimedSession.requestedFileName,
+            conflictStrategy: claimedSession.conflictStrategy,
+            conflictTargetNodeId:
+              claimedSession.conflictTargetNodeId ?? undefined,
+            conflictTargetObjectKey:
+              claimedSession.conflictTargetObjectKey ?? undefined,
             owner: dto.owner?.trim() || undefined,
             ownerUserId: options.ownerUserId,
             spaceScope,
@@ -512,6 +533,8 @@ export class FileUploadService {
             completionToken: claimedSession.completionToken,
           },
         );
+        node = completed.node;
+        displacedObjectKey = completed.displacedObjectKey;
         claimedSession = { ...claimedSession, nodeId: node.id };
       }
       const completedSession =
@@ -531,6 +554,14 @@ export class FileUploadService {
         completionToken: claimedSession.completionToken,
       };
     } catch (error) {
+      if (isUploadConflictSkippedError(error)) {
+        await this.cancelSkippedUploadCompletion({
+          session: claimedSession,
+          completionToken: completionClaim.completionToken,
+          auditMetadata: options.auditMetadata,
+        });
+        throw error;
+      }
       await this.markUploadCompletionFailure({
         sessionId: uploadSession.id,
         completionToken: completionClaim.completionToken,
@@ -548,11 +579,8 @@ export class FileUploadService {
     await this.deleteStoredObjects(
       await this.fileNodesRepository.pruneVersions(node.id),
     );
-    if (
-      resolvedConflict.strategy === 'overwrite' &&
-      resolvedConflict.target?.objectKey
-    ) {
-      await this.deleteStoredObjects([resolvedConflict.target.objectKey]);
+    if (claimedSession.conflictStrategy === 'overwrite') {
+      await this.deleteStoredObjects([displacedObjectKey]);
     }
     await this.fileNodesRepository.recordAudit(
       'file.upload_completed',
@@ -560,21 +588,27 @@ export class FileUploadService {
       {
         metadata: {
           ...options.auditMetadata,
-          conflictStrategy: resolvedConflict.strategy,
-          requestedFileName: fileName,
-          resolvedFileName: resolvedConflict.fileName,
-          targetNodeId: resolvedConflict.target?.id ?? null,
+          conflictStrategy: claimedSession.conflictStrategy,
+          requestedFileName: claimedSession.requestedFileName,
+          resolvedFileName: node.name,
+          targetNodeId: claimedSession.conflictTargetNodeId,
         },
       },
     );
-    if (resolvedConflict.target && resolvedConflict.strategy === 'version') {
+    if (
+      claimedSession.conflictTargetNodeId &&
+      claimedSession.conflictStrategy === 'version'
+    ) {
       await this.fileNodesRepository.recordAudit(
         'file.version_created',
         node.id,
         { metadata: options.auditMetadata },
       );
     }
-    if (resolvedConflict.target && resolvedConflict.strategy === 'overwrite') {
+    if (
+      claimedSession.conflictTargetNodeId &&
+      claimedSession.conflictStrategy === 'overwrite'
+    ) {
       await this.fileNodesRepository.recordAudit(
         'file.upload_overwritten',
         node.id,
@@ -752,6 +786,27 @@ export class FileUploadService {
     }
   }
 
+  private async cancelSkippedUploadCompletion(input: {
+    session: UploadSession;
+    completionToken: string;
+    auditMetadata?: AuditMetadata;
+  }) {
+    const canceled = await this.uploadSessionsRepository.cancelCompletionClaim(
+      input.session.id,
+      input.completionToken,
+      input.auditMetadata,
+    );
+    if (!canceled) {
+      await this.throwUploadCompletionClaimConflict(input.session.id);
+    }
+    await this.deleteStoredObjects([input.session.objectKey]);
+    if (!input.session.multipartUploadId) {
+      await this.storageService
+        .deleteUploadSessionParts(input.session.id)
+        .catch(() => undefined);
+    }
+  }
+
   private async requireUpdatedCompletionClaim(
     sessionId: string,
     completionToken: string,
@@ -787,18 +842,17 @@ export class FileUploadService {
     });
   }
 
-  private async requirePersistedUploadNode(
-    session: UploadSession,
-    dto: CompleteUploadDto,
-  ) {
+  private async requirePersistedUploadNode(session: UploadSession) {
     const node = session.nodeId
       ? await this.fileNodesRepository.findById(session.nodeId)
       : null;
     if (
       !node ||
-      node.workspaceId !== dto.workspaceId ||
-      node.objectKey !== dto.objectKey ||
-      node.name !== dto.fileName
+      node.workspaceId !== session.workspaceId ||
+      node.objectKey !== session.objectKey ||
+      node.name !== session.fileName ||
+      node.parentNodeId !== session.parentNodeId ||
+      node.spaceScope !== session.spaceScope
     ) {
       throw new ConflictException({
         code: 'UPLOAD_COMPLETION_NODE_CONFLICT',
@@ -915,10 +969,11 @@ export class FileUploadService {
       dto.uploadSessionId,
       ownerUserId,
     );
+    const hasPersistedNode = Boolean(session.nodeId);
     if (
       session.workspaceId !== dto.workspaceId ||
       session.objectKey !== dto.objectKey ||
-      session.fileName !== dto.fileName ||
+      (!hasPersistedNode && session.fileName !== dto.fileName) ||
       session.sizeBytes !== dto.sizeBytes ||
       session.mimeType !== (dto.mimeType ?? session.mimeType) ||
       session.spaceScope !==
@@ -943,4 +998,36 @@ export class FileUploadService {
     }
     return session;
   }
+}
+
+function isUploadConflictSkippedError(error: unknown) {
+  if (!(error instanceof ConflictException)) return false;
+  const response = error.getResponse();
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'code' in response &&
+    response.code === 'UPLOAD_CONFLICT_SKIPPED'
+  );
+}
+
+function matchesReusableConflictSnapshot(
+  session: UploadSession,
+  conflict: ResolvedUploadConflict,
+) {
+  const targetNodeId = conflict.target?.id ?? null;
+  if (conflict.strategy === 'overwrite') {
+    return (
+      session.conflictTargetNodeId === targetNodeId &&
+      session.conflictTargetObjectKey === (conflict.target?.objectKey ?? null)
+    );
+  }
+  if (conflict.strategy === 'version') {
+    return session.conflictTargetNodeId === targetNodeId;
+  }
+  return (
+    targetNodeId === null &&
+    session.conflictTargetNodeId === null &&
+    session.conflictTargetObjectKey === null
+  );
 }

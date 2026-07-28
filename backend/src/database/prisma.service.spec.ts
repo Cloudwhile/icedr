@@ -140,7 +140,7 @@ describe('PrismaService', () => {
     expect(child.kill).not.toHaveBeenCalled();
   });
 
-  it('patches missing SQLite space scope columns on startup', async () => {
+  it('patches missing SQLite runtime columns on startup', async () => {
     const service = new PrismaService(
       config({
         'database.configured': false,
@@ -174,6 +174,18 @@ describe('PrismaService', () => {
       'ALTER TABLE "upload_sessions" ADD COLUMN "space_scope" TEXT NOT NULL DEFAULT \'workspace\'',
     );
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "upload_sessions" ADD COLUMN "requested_file_name" TEXT NOT NULL DEFAULT \'\'',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "upload_sessions" ADD COLUMN "conflict_target_node_id" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "upload_sessions" ADD COLUMN "conflict_target_object_key" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('SET "requested_file_name" = "file_name"'),
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
       'ALTER TABLE "file_nodes" ADD COLUMN "name_key" TEXT NOT NULL DEFAULT \'\'',
     );
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
@@ -187,7 +199,7 @@ describe('PrismaService', () => {
     );
   });
 
-  it('keeps existing SQLite space scope columns unchanged on startup', async () => {
+  it('keeps existing SQLite runtime columns unchanged on startup', async () => {
     const service = new PrismaService(
       config({
         'database.configured': false,
@@ -216,7 +228,12 @@ describe('PrismaService', () => {
             'owner_scope_key',
             'name_key',
           ],
-          upload_sessions: ['space_scope'],
+          upload_sessions: [
+            'space_scope',
+            'requested_file_name',
+            'conflict_target_node_id',
+            'conflict_target_object_key',
+          ],
         };
         return Promise.resolve(
           (table ? columns[table] : undefined)?.map((name) => ({ name })) ?? [],

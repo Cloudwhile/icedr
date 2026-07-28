@@ -74,4 +74,31 @@ describe('retryPrismaSerializableTransaction', () => {
     expect(operation).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
   });
+
+  it('retries caller-approved transaction conflicts with the same backoff', async () => {
+    const constraintConflict = Object.assign(
+      new Error('version number conflict'),
+      { code: 'P2002' },
+    );
+    const sleep = jest.fn(() => Promise.resolve());
+    const operation = jest
+      .fn<Promise<string>, []>()
+      .mockRejectedValueOnce(constraintConflict)
+      .mockResolvedValueOnce('committed');
+
+    await expect(
+      retryPrismaSerializableTransaction(operation, {
+        isRetryableError: (error) =>
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 'P2002',
+        random: () => 0,
+        sleep,
+      }),
+    ).resolves.toBe('committed');
+
+    expect(operation).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(5);
+  });
 });

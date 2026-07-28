@@ -7,6 +7,7 @@ import {
 import type { TestUploadSession } from './file-upload-test-fixtures.helper';
 
 export type UploadSessionMocks = {
+  cancelCompletionClaim: jest.Mock;
   cancelSession: jest.Mock;
   claimCompletion: jest.Mock;
   claimPartWrite: jest.Mock;
@@ -46,7 +47,10 @@ export function createUploadSessionsRepositoryMock(input: {
           objectKey: createInput.objectKey,
           multipartUploadId: createInput.multipartUploadId ?? null,
           resumeKey: createInput.resumeKey ?? null,
+          requestedFileName: createInput.requestedFileName,
           fileName: createInput.fileName,
+          conflictTargetNodeId: createInput.conflictTargetNodeId ?? null,
+          conflictTargetObjectKey: createInput.conflictTargetObjectKey ?? null,
           parentNodeId: createInput.parentNodeId ?? null,
           mimeType: createInput.mimeType,
           sizeBytes: createInput.sizeBytes,
@@ -79,7 +83,7 @@ export function createUploadSessionsRepositoryMock(input: {
             item.spaceScope === (findInput.spaceScope ?? 'workspace') &&
             item.conflictStrategy === findInput.conflictStrategy &&
             item.resumeKey === findInput.resumeKey &&
-            item.fileName === findInput.fileName &&
+            item.requestedFileName === findInput.requestedFileName &&
             item.parentNodeId === (findInput.parentNodeId ?? null) &&
             item.sizeBytes === findInput.sizeBytes &&
             item.completionToken === null &&
@@ -459,6 +463,29 @@ export function createUploadSessionsRepositoryMock(input: {
         return Promise.resolve(updated);
       },
     ),
+    cancelCompletionClaim: jest.fn((id: string, completionToken: string) => {
+      const session = sessions.get(id);
+      if (!session || session.completionToken !== completionToken) {
+        return Promise.resolve(null);
+      }
+      const now = new Date().toISOString();
+      const updated: TestUploadSession = {
+        ...session,
+        completionToken: null,
+        completionStartedAt: null,
+        failureCode: null,
+        status: 'canceled',
+        updatedAt: now,
+        lifecycle: createTransferTaskLifecycle({
+          status: 'canceled',
+          createdAt: session.createdAt,
+          updatedAt: now,
+          expiresAt: session.expiresAt,
+        }),
+      };
+      sessions.set(id, updated);
+      return Promise.resolve(updated);
+    }),
   } as unknown as UploadSessionsRepository;
 
   return {

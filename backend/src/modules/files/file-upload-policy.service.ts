@@ -140,9 +140,10 @@ export class FileUploadPolicyService {
     }
 
     if (input.conflictStrategy === 'skip') {
-      throw new ConflictException(
-        'File upload skipped because a same-name item exists',
-      );
+      throw new ConflictException({
+        code: 'UPLOAD_CONFLICT_SKIPPED',
+        message: 'File upload skipped because a same-name item exists',
+      });
     }
 
     if (input.conflictStrategy === 'rename' && input.allowRename) {

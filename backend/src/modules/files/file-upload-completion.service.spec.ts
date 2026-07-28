@@ -4,26 +4,31 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Readable } from 'stream';
+import { createNode, docxMimeType } from './file-upload-test-fixtures.helper';
 import {
   createFileNodesServiceTestHarness,
   type FileNodesServiceTestHarness,
 } from './file-upload-test-harness.helper';
 
 describe('FileUploadService completion leases', () => {
+  let nodes: FileNodesServiceTestHarness['nodes'];
   let repository: FileNodesServiceTestHarness['repository'];
   let repositoryMocks: FileNodesServiceTestHarness['repositoryMocks'];
   let service: FileNodesServiceTestHarness['service'];
   let storage: FileNodesServiceTestHarness['storage'];
   let transfers: FileNodesServiceTestHarness['transfers'];
+  let uploadSessions: FileNodesServiceTestHarness['uploadSessions'];
   let uploadSessionMocks: FileNodesServiceTestHarness['uploadSessionMocks'];
 
   beforeEach(() => {
     ({
+      nodes,
       repository,
       repositoryMocks,
       service,
       storage,
       transfers,
+      uploadSessions,
       uploadSessionMocks,
     } = createFileNodesServiceTestHarness());
   });
@@ -315,6 +320,154 @@ describe('FileUploadService completion leases', () => {
       intent.sessionId,
       'failed',
     );
+  });
+
+  it('recovers a persisted concurrent rename using the old intent name', async () => {
+    const original = nodes.find((node) => node.id === 'roadmap');
+    if (!original) throw new Error('test target missing');
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'rename',
+      fileName: original.name,
+      mimeType: docxMimeType,
+      fileSizeBytes: 4096,
+    });
+    expect(intent.fileName).toBe('ICEDR Roadmap (2).docx');
+    nodes.push(
+      createNode({
+        ...original,
+        id: 'concurrent-rename',
+        name: 'ICEDR Roadmap (2).docx',
+        objectKey: 'objects/concurrent-rename.docx',
+      }),
+    );
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+    uploadSessionMocks.completeCompletionClaim.mockResolvedValueOnce(null);
+    const completionInput = {
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'rename' as const,
+      fileName: intent.fileName,
+      objectKey: intent.objectKey,
+      sizeBytes: 4096,
+      mimeType: docxMimeType,
+      transferId: intent.transferId,
+      uploadSessionId: intent.sessionId,
+    };
+
+    await expect(service.completeUpload(completionInput)).rejects.toMatchObject(
+      {
+        response: { code: 'UPLOAD_COMPLETION_CLAIM_CONFLICT' },
+      },
+    );
+    await expect(
+      service.completeUpload(completionInput),
+    ).resolves.toMatchObject({
+      name: 'ICEDR Roadmap (3).docx',
+      objectKey: intent.objectKey,
+    });
+
+    expect(repositoryMocks.completeUpload).toHaveBeenCalledTimes(1);
+    expect(storage.completeMultipartUpload).toHaveBeenCalledTimes(1);
+    expect(uploadSessionMocks.claimCompletion).toHaveBeenNthCalledWith(
+      2,
+      intent.sessionId,
+      'failed',
+    );
+  });
+
+  it('cancels a completion-time skip race without exposing a failed transfer', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'skip',
+      fileName: 'Concurrent Skip.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+    });
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+    (repository.completeUpload as jest.Mock).mockRejectedValueOnce(
+      new ConflictException({
+        code: 'UPLOAD_CONFLICT_SKIPPED',
+        message: 'File upload skipped because a same-name item exists',
+      }),
+    );
+
+    await expect(
+      service.completeUpload({
+        workspaceId: 'workspace-default',
+        conflictStrategy: 'skip',
+        fileName: 'Concurrent Skip.pdf',
+        objectKey: intent.objectKey,
+        sizeBytes: 4096,
+        mimeType: 'application/pdf',
+        transferId: intent.transferId,
+        uploadSessionId: intent.sessionId,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'UPLOAD_CONFLICT_SKIPPED' },
+    });
+
+    expect(uploadSessionMocks.cancelCompletionClaim).toHaveBeenCalledWith(
+      intent.sessionId,
+      expect.any(String),
+      undefined,
+    );
+    expect(uploadSessionMocks.failCompletionClaim).not.toHaveBeenCalled();
+    await expect(
+      uploadSessions.findById(intent.sessionId ?? ''),
+    ).resolves.toMatchObject({
+      status: 'canceled',
+      failureCode: null,
+    });
+    expect(storage.deleteObject).toHaveBeenCalledWith(intent.objectKey);
+  });
+
+  it('retries overwrite cleanup when a completed request is replayed', async () => {
+    const displacedObjectKey =
+      'uploads/workspace-default/root/seed-roadmap.docx';
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'overwrite',
+      fileName: 'ICEDR Roadmap.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      fileSizeBytes: 4096,
+    });
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+    (storage.deleteObject as jest.Mock)
+      .mockRejectedValueOnce(new Error('cleanup interrupted'))
+      .mockResolvedValueOnce(undefined);
+    const completionInput = {
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'overwrite' as const,
+      fileName: 'ICEDR Roadmap.docx',
+      objectKey: intent.objectKey,
+      sizeBytes: 4096,
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      transferId: intent.transferId,
+      uploadSessionId: intent.sessionId,
+    };
+
+    await expect(
+      service.completeUpload(completionInput),
+    ).resolves.toMatchObject({ objectKey: intent.objectKey });
+    await expect(
+      service.completeUpload(completionInput),
+    ).resolves.toMatchObject({ objectKey: intent.objectKey });
+
+    expect(storage.deleteObject).toHaveBeenCalledTimes(2);
+    expect(storage.deleteObject).toHaveBeenNthCalledWith(1, displacedObjectKey);
+    expect(storage.deleteObject).toHaveBeenNthCalledWith(2, displacedObjectKey);
+    expect(repositoryMocks.pruneVersions).toHaveBeenCalledTimes(2);
   });
 
   it('continues multipart uploads when the transfer progress task is gone', async () => {
