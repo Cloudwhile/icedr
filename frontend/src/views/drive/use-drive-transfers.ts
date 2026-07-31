@@ -15,40 +15,75 @@ import {
   isUploadDriveFileControlError,
   type UploadConflictStrategy,
   type UploadDriveFileProgress,
+  type UploadDriveFileRecoverySnapshot,
   type UploadDriveFileTask,
 } from "@/features/file/actions";
 import {
   getDriveFileNameErrorMessageKey,
   validateDriveFileName,
 } from "@/features/file/file-name-policy";
-import { getTaskLifecycleGroup } from "@/features/file/task-lifecycle";
+import {
+  clearUploadRecoveryOwner,
+  clearUploadRecoveryBatch,
+  createUploadRecoveryDescriptor,
+  matchesUploadRecoveryFile,
+  readUploadRecoveryDescriptors,
+  removeUploadRecoveryDescriptor,
+  saveUploadRecoveryDescriptor,
+  type UploadRecoveryDescriptor,
+} from "@/features/file/upload-recovery";
 import type { DriveItem, DriveUserNav } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
 import {
+  cancelUploadSessionRecovery,
   deleteTransfer,
-  DriveApiError,
   fetchStorageUsage,
   fetchTransfers,
   isUploadConflictSkippedApiError,
   type DriveSpaceScope,
   type FileNodeResponse,
   type StorageUsage,
+  type TransferTaskFailureCode,
+  type TransferTaskStatus,
 } from "@/lib/drive-api";
 import type { TransferRow, UploadTelemetry } from "./drive-types";
+import {
+  createDefaultUploadMeta,
+  createLocalUploadLifecycle,
+  createLocalUploadTransferId,
+  createUploadBatchId,
+  getPendingUploadBytes,
+  hasUploadStorageCapacity,
+  isLocalUploadTransferId,
+  isUploadRecoveryPersistenceContextCurrent,
+  isStorageCapacityError,
+  mergeTransferRows,
+  normalizeUploadTelemetryStatus,
+  prepareUploadQueueGroups,
+  type UploadRecoveryPersistenceContext,
+  type UploadTaskMeta,
+} from "./drive-transfer-helpers";
+import { useUploadRecoveryHydration } from "./use-upload-recovery-hydration";
 import {
   analyzeUploadConflicts,
   planUploadConflictResolution,
   runUploadGroups,
 } from "./upload-conflict-planning";
 
-export type UploadTaskMeta = {
-  onCompleted: (node: FileNodeResponse) => void;
-  onFailed?: (error: unknown) => void;
-};
+export type { UploadTaskMeta } from "./drive-transfer-helpers";
+export { isStorageCapacityError } from "./drive-transfer-helpers";
 
 type UploadConflictPromptState = {
   conflictCount: number;
   fileNames: string[];
+};
+
+type StartUploadFileOptions = {
+  batchId?: string;
+  draftId?: string;
+  parentNodeId?: string | null;
+  prequeued?: boolean;
+  recoveryDescriptor?: UploadRecoveryDescriptor;
 };
 
 type UseDriveTransfersOptions = {
@@ -62,6 +97,7 @@ type UseDriveTransfersOptions = {
   showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;
   uploadActor?: string;
+  uploadOwnerUserId?: string;
   workspaceId: string | null;
   workspaceTimerRef: MutableRefObject<number | null>;
 };
@@ -77,6 +113,7 @@ export function useDriveTransfers({
   showFeedback,
   spaceScope,
   uploadActor,
+  uploadOwnerUserId,
   workspaceId,
   workspaceTimerRef,
 }: UseDriveTransfersOptions) {
@@ -88,9 +125,15 @@ export function useDriveTransfers({
   const [uploadConflictPrompt, setUploadConflictPrompt] = useState<UploadConflictPromptState | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const uploadConflictResolverRef = useRef<((strategy: UploadConflictStrategy | null) => void) | null>(null);
+  const uploadBatchCounterRef = useRef(0);
   const uploadDraftCounterRef = useRef(0);
+  const uploadRecoveryDescriptorsRef = useRef(new Map<string, UploadRecoveryDescriptor>());
+  const uploadRecoveryPersistRef = useRef(new Map<string, { progress: number; status: TransferTaskStatus; updatedAt: number }>());
+  const uploadRecoveryScopeGenerationRef = useRef(0);
+  const uploadRecoverySelectionRef = useRef<UploadRecoveryDescriptor | null>(null);
   const uploadTaskMetaRef = useRef(new Map<string, UploadTaskMeta>());
   const uploadTasksRef = useRef(new Map<string, UploadDriveFileTask>());
+  const uploadOwnerUserIdRef = useRef(uploadOwnerUserId);
   const workspaceIdRef = useRef(workspaceId);
   const spaceScopeRef = useRef(spaceScope);
 
@@ -101,16 +144,40 @@ export function useDriveTransfers({
     spaceScopeRef.current = spaceScope;
   }, [spaceScope]);
   useEffect(() => {
+    const previousOwnerUserId = uploadOwnerUserIdRef.current;
+    if (
+      previousOwnerUserId &&
+      previousOwnerUserId !== uploadOwnerUserId
+    ) {
+      clearUploadRecoveryOwner(previousOwnerUserId);
+    }
+    uploadOwnerUserIdRef.current = uploadOwnerUserId;
+  }, [uploadOwnerUserId]);
+  useEffect(() => {
+    uploadRecoveryScopeGenerationRef.current += 1;
+  }, [uploadOwnerUserId, workspaceId]);
+  useEffect(() => {
     const uploadTasks = uploadTasksRef.current;
     const uploadTaskMeta = uploadTaskMetaRef.current;
     return () => {
       uploadConflictResolverRef.current?.(null);
       uploadConflictResolverRef.current = null;
-      uploadTasks.forEach((task) => task.cancel());
+      uploadTasks.forEach((task) => task.detach());
       uploadTasks.clear();
       uploadTaskMeta.clear();
     };
   }, []);
+  useUploadRecoveryHydration({
+    setControllableTransferIds,
+    setUploadTelemetry,
+    showFeedback,
+    t,
+    uploadOwnerUserId,
+    uploadRecoveryDescriptorsRef,
+    uploadRecoveryPersistRef,
+    uploadTasksRef,
+    workspaceId,
+  });
 
   const visibleTransferRows = useMemo(
     () => mergeTransferRows(transferRows, Object.values(uploadTelemetry)),
@@ -176,7 +243,10 @@ export function useDriveTransfers({
     resolver?.(strategy);
   }, []);
   const syncControllableTransferIds = () => {
-    setControllableTransferIds(Array.from(uploadTasksRef.current.keys()));
+    setControllableTransferIds(Array.from(new Set([
+      ...uploadTasksRef.current.keys(),
+      ...uploadRecoveryDescriptorsRef.current.keys(),
+    ])));
   };
   const registerUploadTask = (transferId: string, task: UploadDriveFileTask, meta: UploadTaskMeta) => {
     const alreadyRegistered = uploadTasksRef.current.has(transferId);
@@ -190,6 +260,93 @@ export function useDriveTransfers({
     uploadTaskMetaRef.current.delete(transferId);
     if (removed) syncControllableTransferIds();
   };
+  const removeUploadRecovery = (descriptor: UploadRecoveryDescriptor | null | undefined) => {
+    if (!descriptor) return;
+    removeUploadRecoveryDescriptor(descriptor.sessionId);
+    uploadRecoveryDescriptorsRef.current.delete(descriptor.transferId);
+    uploadRecoveryPersistRef.current.delete(descriptor.transferId);
+    syncControllableTransferIds();
+  };
+  const clearSettledUploadRecoveryBatch = (batchId: string) => {
+    const records = readUploadRecoveryDescriptors().filter(
+      (record) =>
+        record.ownerUserId === uploadOwnerUserId &&
+        record.workspaceId === workspaceIdRef.current &&
+        record.batchId === batchId,
+    );
+    const hasRecoverableMember = records.some((record) =>
+      record.status === "pending" ||
+      record.status === "running" ||
+      record.status === "paused" ||
+      record.status === "failed",
+    );
+    if (hasRecoverableMember) return;
+    clearUploadRecoveryBatch(batchId);
+    records.forEach((record) => {
+      uploadRecoveryDescriptorsRef.current.delete(record.transferId);
+      uploadRecoveryPersistRef.current.delete(record.transferId);
+    });
+    syncControllableTransferIds();
+  };
+  const persistUploadRecovery = (
+    batchId: string,
+    context: UploadRecoveryPersistenceContext | null,
+    progress: UploadDriveFileProgress,
+    recovery: UploadDriveFileRecoverySnapshot,
+    force = false,
+  ) => {
+    if (
+      !context ||
+      !isUploadRecoveryPersistenceContextCurrent(context, {
+        generation: uploadRecoveryScopeGenerationRef.current,
+        ownerUserId: uploadOwnerUserIdRef.current,
+        workspaceId: workspaceIdRef.current,
+      }) ||
+      context.workspaceId !== recovery.workspaceId
+    ) {
+      return null;
+    }
+    const now = Date.now();
+    const previous = uploadRecoveryPersistRef.current.get(progress.transferId);
+    const shouldPersist =
+      force ||
+      !previous ||
+      previous.status !== progress.status ||
+      Math.abs(previous.progress - progress.progress) >= 1 ||
+      now - previous.updatedAt >= 1000;
+    const descriptor = createUploadRecoveryDescriptor({
+      batchId,
+      conflictStrategy: recovery.conflictStrategy,
+      contentFingerprint: recovery.contentFingerprint,
+      expiresAt: recovery.expiresAt,
+      failureCode: progress.failureCode,
+      fileLastModified: recovery.fileLastModified,
+      fileName: recovery.fileName,
+      fileSize: recovery.fileSize,
+      mimeType: recovery.mimeType,
+      ownerUserId: context.ownerUserId,
+      parentNodeId: recovery.parentNodeId,
+      progress: progress.progress,
+      resumeIdentity: recovery.resumeIdentity,
+      sessionId: recovery.sessionId,
+      spaceScope: recovery.spaceScope,
+      status: progress.status,
+      transferId: recovery.transferId,
+      updatedAt: new Date().toISOString(),
+      uploadedBytes: Math.min(recovery.fileSize, Math.max(0, progress.loadedBytes)),
+      workspaceId: recovery.workspaceId,
+    });
+    uploadRecoveryDescriptorsRef.current.set(progress.transferId, descriptor);
+    if (shouldPersist) {
+      saveUploadRecoveryDescriptor(descriptor);
+      uploadRecoveryPersistRef.current.set(progress.transferId, {
+        progress: progress.progress,
+        status: progress.status,
+        updatedAt: now,
+      });
+    }
+    return descriptor;
+  };
   const replaceUploadDraft = (draftId: string, progress: UploadDriveFileProgress) => {
     const updatedAt = new Date().toISOString();
     setUploadTelemetry((current) => {
@@ -199,6 +356,7 @@ export function useDriveTransfers({
       next[progress.transferId] = {
         ...previous,
         id: progress.transferId,
+        batchId: previous?.batchId ?? null,
         spaceScope: previous?.spaceScope ?? spaceScopeRef.current,
         workspaceId: progress.workspaceId,
         nodeId: null,
@@ -206,6 +364,14 @@ export function useDriveTransfers({
         name: progress.fileName,
         type: "upload",
         errorMessage: null,
+        failureCode: progress.failureCode,
+        lifecycle: createLocalUploadLifecycle(
+          progress.status,
+          updatedAt,
+          progress.failureCode,
+          progress.retryable,
+          previous?.lifecycle,
+        ),
         progress: progress.progress,
         status: progress.status,
         createdAt: previous?.createdAt ?? updatedAt,
@@ -222,18 +388,31 @@ export function useDriveTransfers({
     id: string,
     status: UploadTelemetry["status"],
     errorMessage?: string | null,
+    failureCode?: TransferTaskFailureCode | null,
   ) => {
     const updatedAt = new Date().toISOString();
     setUploadTelemetry((current) => {
       const row = current[id];
       if (!row) return current;
+      const resolvedFailureCode =
+        status === "failed"
+          ? failureCode ?? row.failureCode ?? "UPLOAD_FAILED"
+          : null;
       return {
         ...current,
         [id]: {
           ...row,
           status,
           updatedAt,
+          failureCode: resolvedFailureCode,
           errorMessage: errorMessage ?? (status === "failed" ? row.errorMessage ?? null : null),
+          lifecycle: createLocalUploadLifecycle(
+            normalizeUploadTelemetryStatus(status),
+            updatedAt,
+            resolvedFailureCode,
+            status === "failed",
+            row.lifecycle,
+          ),
           speedBytesPerSecond: null,
           remainingSeconds: null,
         },
@@ -254,12 +433,15 @@ export function useDriveTransfers({
     file: File,
     targetWorkspaceId: string,
     targetSpaceScope: DriveSpaceScope,
+    batchId: string,
+    initial?: Pick<UploadRecoveryDescriptor, "progress" | "uploadedBytes">,
   ) => {
     const createdAt = new Date().toISOString();
     setUploadTelemetry((current) => ({
       ...current,
       [id]: {
         id,
+        batchId,
         spaceScope: targetSpaceScope,
         workspaceId: targetWorkspaceId,
         nodeId: null,
@@ -267,11 +449,13 @@ export function useDriveTransfers({
         name: file.name,
         type: "upload",
         errorMessage: null,
-        progress: 0,
+        failureCode: null,
+        lifecycle: createLocalUploadLifecycle("pending", createdAt),
+        progress: initial?.progress ?? 0,
         status: "pending",
         createdAt,
         updatedAt: createdAt,
-        loadedBytes: 0,
+        loadedBytes: initial?.uploadedBytes ?? 0,
         totalBytes: file.size,
         speedBytesPerSecond: null,
         remainingSeconds: null,
@@ -292,33 +476,57 @@ export function useDriveTransfers({
       ]).then(() => createdNode))
       .then((createdNode) => {
         const transferId = task.getState().transferId;
+        const recovery = transferId
+          ? uploadRecoveryDescriptorsRef.current.get(transferId)
+          : null;
         unregisterUploadTask(transferId);
         if (draftId) unregisterUploadTask(draftId);
+        if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
         meta.onCompleted(createdNode);
       })
       .catch((error) => {
         const state = task.getState();
         if (isUploadConflictSkippedApiError(error)) {
+          const recovery = state.transferId
+            ? uploadRecoveryDescriptorsRef.current.get(state.transferId)
+            : null;
           unregisterUploadTask(state.transferId);
           if (draftId) unregisterUploadTask(draftId);
+          removeUploadRecovery(recovery);
+          if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
           removeUploadTelemetryRows(draftId, state.transferId);
           void refreshTransfers();
           showFeedback(t("upload.conflictSkipped", { count: 1 }), "neutral");
           return;
         }
         if (isUploadDriveFileControlError(error)) {
+          if (state.detached) return;
           const controlledId = state.transferId ?? draftId ?? null;
-          if (error.control === "canceled" || state.status === "canceled") unregisterUploadTask(controlledId);
+          const canceled = error.control === "canceled" || state.status === "canceled";
+          const recovery = state.transferId
+            ? uploadRecoveryDescriptorsRef.current.get(state.transferId)
+            : null;
+          if (canceled) {
+            unregisterUploadTask(controlledId);
+            removeUploadRecovery(recovery);
+            if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
+          }
           markUploadTelemetryStatus(
             state.transferId ?? draftId ?? "",
             error.control === "paused" ? "paused" : "canceled",
+            null,
+            state.failureCode,
           );
           void refreshTransfers();
           return;
         }
         if (isStorageCapacityError(error)) {
+          const recovery = state.transferId
+            ? uploadRecoveryDescriptorsRef.current.get(state.transferId)
+            : null;
           unregisterUploadTask(state.transferId);
           if (draftId) unregisterUploadTask(draftId);
+          removeUploadRecovery(recovery);
           removeUploadTelemetryRows(draftId, state.transferId);
           void refreshTransfers();
           meta.onFailed?.(error);
@@ -327,9 +535,19 @@ export function useDriveTransfers({
         if (state.transferId) {
           if (draftId) unregisterUploadTask(draftId);
           registerUploadTask(state.transferId, task, meta);
-          markUploadTelemetryStatus(state.transferId, "failed", getApiFeedback(error, "app.uploadFailed", "form"));
+          markUploadTelemetryStatus(
+            state.transferId,
+            "failed",
+            getApiFeedback(error, "app.uploadFailed", "form"),
+            state.failureCode,
+          );
         } else if (draftId) {
-          markUploadTelemetryStatus(draftId, "failed", getApiFeedback(error, "app.uploadFailed", "form"));
+          markUploadTelemetryStatus(
+            draftId,
+            "failed",
+            getApiFeedback(error, "app.uploadFailed", "form"),
+            state.failureCode,
+          );
         }
         void refreshTransfers();
         meta.onFailed?.(error);
@@ -342,20 +560,61 @@ export function useDriveTransfers({
     preflightUsage: StorageUsage | null = storageUsage,
     conflictStrategy: UploadConflictStrategy = "version",
     targetSpaceScope: DriveSpaceScope = spaceScopeRef.current,
+    options: StartUploadFileOptions = {},
   ) => {
     if (!workspaceId) {
       showFeedback(t("app.uploadFailed"), "error");
       return Promise.resolve();
     }
     const scopedPreflightUsage = preflightUsage?.spaceScope === targetSpaceScope ? preflightUsage : null;
-    const pendingUploadBytes = getPendingUploadBytes(Object.values(uploadTelemetry), targetSpaceScope);
-    if (!hasUploadStorageCapacity(scopedPreflightUsage, pendingUploadBytes, file.size)) {
+    const pendingUploadBytes = Math.max(
+      0,
+      getPendingUploadBytes(Object.values(uploadTelemetry), targetSpaceScope)
+      - (options.recoveryDescriptor?.fileSize ?? 0),
+    );
+    if (
+      !options.prequeued &&
+      !hasUploadStorageCapacity(
+        scopedPreflightUsage,
+        pendingUploadBytes,
+        file.size,
+      )
+    ) {
       showStorageInsufficient();
       return Promise.resolve();
     }
-    const draftId = createLocalUploadTransferId(++uploadDraftCounterRef.current);
+    const recoveryDescriptor = options.recoveryDescriptor;
+    const draftId =
+      options.draftId ??
+      recoveryDescriptor?.transferId ??
+      createLocalUploadTransferId(++uploadDraftCounterRef.current);
+    const batchId =
+      options.batchId ??
+      recoveryDescriptor?.batchId ??
+      createUploadBatchId(++uploadBatchCounterRef.current);
+    const targetParentNodeId =
+      options.parentNodeId !== undefined
+        ? options.parentNodeId
+        : recoveryDescriptor?.parentNodeId ?? currentFolderId;
     const targetWorkspaceId = workspaceId;
-    queueUploadTelemetry(draftId, file, targetWorkspaceId, targetSpaceScope);
+    const recoveryPersistenceContext: UploadRecoveryPersistenceContext | null =
+      uploadOwnerUserId
+        ? {
+            generation: uploadRecoveryScopeGenerationRef.current,
+            ownerUserId: uploadOwnerUserId,
+            workspaceId: targetWorkspaceId,
+          }
+        : null;
+    if (!options.prequeued) {
+      queueUploadTelemetry(
+        draftId,
+        file,
+        targetWorkspaceId,
+        targetSpaceScope,
+        batchId,
+        recoveryDescriptor,
+      );
+    }
     activateNav(targetNav);
     if (targetNav === "transfers") {
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
@@ -370,11 +629,21 @@ export function useDriveTransfers({
       onProgress: (progress) => {
         if (task) {
           registerUploadTask(progress.transferId, task, meta);
-          unregisterUploadTask(draftId);
+          if (draftId !== progress.transferId) unregisterUploadTask(draftId);
+        }
+        if (progress.recovery) {
+          persistUploadRecovery(
+            batchId,
+            recoveryPersistenceContext,
+            progress,
+            progress.recovery,
+            progress.status !== "running",
+          );
         }
         replaceUploadDraft(draftId, progress);
       },
-      parentNodeId: currentFolderId,
+      parentNodeId: targetParentNodeId,
+      recoverySessionId: recoveryDescriptor?.sessionId,
       spaceScope: targetSpaceScope,
       workspaceActor: uploadActor,
       workspaceId: targetWorkspaceId,
@@ -383,34 +652,76 @@ export function useDriveTransfers({
     return attachUploadPromise(task.start(), task, meta, draftId);
   };
   const pauseUploadTransfer = (id: string) => uploadTasksRef.current.get(id)?.pause();
+  const requestUploadRecoveryFile = (descriptor: UploadRecoveryDescriptor) => {
+    uploadRecoverySelectionRef.current = descriptor;
+    if (uploadInputRef.current) {
+      uploadInputRef.current.multiple = false;
+      uploadInputRef.current.click();
+    }
+  };
   const resumeUploadTransfer = (id: string) => {
     const task = uploadTasksRef.current.get(id);
-    if (!task || task.getState().status === "running") return;
+    if (!task) {
+      const recovery = uploadRecoveryDescriptorsRef.current.get(id);
+      if (recovery) requestUploadRecoveryFile(recovery);
+      return;
+    }
+    if (task.getState().status === "running") return;
     const meta = uploadTaskMetaRef.current.get(id) ?? createDefaultUploadMeta(t, showFeedback, getApiFeedback);
     attachUploadPromise(task.resume(), task, meta);
   };
   const retryUploadTransfer = (id: string) => {
     const task = uploadTasksRef.current.get(id);
-    if (!task || task.getState().status === "running") return;
+    if (!task) {
+      const recovery = uploadRecoveryDescriptorsRef.current.get(id);
+      if (recovery) requestUploadRecoveryFile(recovery);
+      return;
+    }
+    if (task.getState().status === "running") return;
     const meta = uploadTaskMetaRef.current.get(id) ?? createDefaultUploadMeta(t, showFeedback, getApiFeedback);
     markUploadTelemetryStatus(id, "pending");
     attachUploadPromise(task.start(), task, meta);
   };
   const cancelUploadTransfer = (id: string) => {
     const task = uploadTasksRef.current.get(id);
-    if (!task) return;
+    if (!task) {
+      const recovery = uploadRecoveryDescriptorsRef.current.get(id);
+      if (!recovery) return;
+      void cancelUploadSessionRecovery(recovery.sessionId)
+        .then(() => {
+          removeUploadRecovery(recovery);
+          clearSettledUploadRecoveryBatch(recovery.batchId);
+          markUploadTelemetryStatus(id, "canceled");
+          void refreshTransfers();
+          showFeedback(t("transfers.canceledToast"), "neutral");
+        })
+        .catch((error) => {
+          showFeedback(
+            getApiFeedback(error, "app.uploadFailed", "form"),
+            "error",
+          );
+        });
+      return;
+    }
     task.cancel();
+    const recovery = uploadRecoveryDescriptorsRef.current.get(id);
     unregisterUploadTask(id);
+    removeUploadRecovery(recovery);
+    if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
     markUploadTelemetryStatus(id, "canceled");
     void refreshTransfers();
     showFeedback(t("transfers.canceledToast"), "neutral");
   };
   const deleteTransferRow = (id: string) => {
     const task = uploadTasksRef.current.get(id);
+    const recovery = uploadRecoveryDescriptorsRef.current.get(id);
+    const telemetrySnapshot = uploadTelemetry[id];
     if (task) {
       task.cancel();
       unregisterUploadTask(id);
     }
+    removeUploadRecovery(recovery);
+    if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
     setUploadTelemetry((current) => {
       const next = { ...current };
       delete next[id];
@@ -421,18 +732,85 @@ export function useDriveTransfers({
       showFeedback(t("transfers.deleted"));
       return;
     }
-    void deleteTransfer(id)
+    const prepareDelete =
+      recovery &&
+      recovery.status !== "completed" &&
+      recovery.status !== "canceled" &&
+      recovery.status !== "expired"
+        ? cancelUploadSessionRecovery(recovery.sessionId)
+        : Promise.resolve();
+    void prepareDelete
+      .then(() => deleteTransfer(id))
       .then(() => showFeedback(t("transfers.deleted")))
       .catch((error) => {
+        if (recovery) {
+          saveUploadRecoveryDescriptor(recovery);
+          uploadRecoveryDescriptorsRef.current.set(id, recovery);
+          syncControllableTransferIds();
+        }
+        if (telemetrySnapshot) {
+          setUploadTelemetry((current) => ({
+            ...current,
+            [id]: telemetrySnapshot,
+          }));
+        }
         void refreshTransfers();
         showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
       });
   };
-  const triggerUpload = () => uploadInputRef.current?.click();
+  const triggerUpload = () => {
+    uploadRecoverySelectionRef.current = null;
+    if (uploadInputRef.current) {
+      uploadInputRef.current.multiple = true;
+      uploadInputRef.current.click();
+    }
+  };
   const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const selectedFiles = Array.from(event.target.files ?? []);
+    const recoveryDescriptor = uploadRecoverySelectionRef.current;
+    uploadRecoverySelectionRef.current = null;
     input.value = "";
+    input.multiple = true;
+    if (recoveryDescriptor) {
+      if (selectedFiles.length === 0) return;
+      const file = selectedFiles[0];
+      if (
+        selectedFiles.length !== 1 ||
+        !file ||
+        !workspaceId ||
+        workspaceId !== recoveryDescriptor.workspaceId ||
+        uploadOwnerUserId !== recoveryDescriptor.ownerUserId ||
+        new Date(recoveryDescriptor.expiresAt).getTime() <= Date.now()
+      ) {
+        removeUploadRecovery(recoveryDescriptor);
+        removeUploadTelemetryRows(recoveryDescriptor.transferId);
+        showFeedback(t("upload.recoveryUnavailable"), "error");
+        return;
+      }
+      if (!(await matchesUploadRecoveryFile(recoveryDescriptor, file))) {
+        showFeedback(t("upload.recoveryFileMismatch"), "error");
+        return;
+      }
+      const latestUsage = await fetchLatestStorageUsage(
+        recoveryDescriptor.workspaceId,
+        recoveryDescriptor.spaceScope,
+      );
+      void startUploadFile(
+        file,
+        createDefaultUploadMeta(t, showFeedback, getApiFeedback),
+        "transfers",
+        latestUsage,
+        recoveryDescriptor.conflictStrategy,
+        recoveryDescriptor.spaceScope,
+        {
+          batchId: recoveryDescriptor.batchId,
+          parentNodeId: recoveryDescriptor.parentNodeId,
+          recoveryDescriptor,
+        },
+      );
+      return;
+    }
     if (selectedFiles.length > 0 && workspaceId) {
       const invalidFile = selectedFiles.find((file) => !validateDriveFileName(file.name).ok);
       if (invalidFile) {
@@ -475,7 +853,21 @@ export function useDriveTransfers({
         showStorageInsufficient();
         return;
       }
-      void runUploadGroups(uploadPlan.uploadGroups, (file) => startUploadFile(file, {
+      const batchId = createUploadBatchId(++uploadBatchCounterRef.current);
+      const queuedGroups = prepareUploadQueueGroups(
+        uploadPlan.uploadGroups,
+        () => createLocalUploadTransferId(++uploadDraftCounterRef.current),
+      );
+      queuedGroups.flat().forEach(({ draftId, item: file }) => {
+        queueUploadTelemetry(
+          draftId,
+          file,
+          workspaceId,
+          targetSpaceScope,
+          batchId,
+        );
+      });
+      void runUploadGroups(queuedGroups, ({ draftId, item: file }) => startUploadFile(file, {
         onCompleted: () => showFeedback(t("app.uploaded")),
         onFailed: (error) => {
           if (isStorageCapacityError(error)) {
@@ -485,7 +877,11 @@ export function useDriveTransfers({
           }
           showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
         },
-      }, "transfers", latestUsage, conflictStrategy, targetSpaceScope));
+      }, "transfers", latestUsage, conflictStrategy, targetSpaceScope, {
+        batchId,
+        draftId,
+        prequeued: true,
+      }));
     }
   };
 
@@ -510,61 +906,5 @@ export function useDriveTransfers({
     uploadInputRef,
     uploadTelemetry,
     visibleTransferRows,
-  };
-}
-
-export function isStorageCapacityError(error: unknown) {
-  if (!(error instanceof DriveApiError)) return false;
-  return error.code === "STORAGE_QUOTA_EXCEEDED" || error.code === "STORAGE_PHYSICAL_CAPACITY_EXCEEDED";
-}
-
-function mergeTransferRows(rows: TransferRow[], telemetryRows: UploadTelemetry[]) {
-  const merged = new Map<string, TransferRow>();
-  rows.forEach((row) => merged.set(row.id, row));
-  telemetryRows.forEach((telemetry) => {
-    const existing = merged.get(telemetry.id);
-    merged.set(telemetry.id, {
-      ...existing,
-      ...telemetry,
-      createdAt: existing?.createdAt ?? telemetry.createdAt,
-    });
-  });
-  return Array.from(merged.values()).sort((left, right) => (
-    new Date(right.lifecycle?.createdAt ?? right.createdAt).getTime()
-    - new Date(left.lifecycle?.createdAt ?? left.createdAt).getTime()
-  ));
-}
-
-function getPendingUploadBytes(rows: UploadTelemetry[], spaceScope: DriveSpaceScope) {
-  return rows.reduce((total, row) => {
-    const lifecycleGroup = getTaskLifecycleGroup(row);
-    const pending = lifecycleGroup === "active" || lifecycleGroup === "paused";
-    return (row.spaceScope ?? "workspace") === spaceScope && pending
-      ? total + Math.max(0, row.totalBytes)
-      : total;
-  }, 0);
-}
-
-function hasUploadStorageCapacity(usage: StorageUsage | null, pendingBytes: number, incomingBytes: number) {
-  if (!usage || usage.quotaBytes === null) return true;
-  return usage.usedBytes + Math.max(0, pendingBytes) + Math.max(0, incomingBytes) <= usage.quotaBytes;
-}
-
-function createLocalUploadTransferId(counter: number) {
-  return `local-upload-${Date.now()}-${counter}`;
-}
-
-function isLocalUploadTransferId(id: string) {
-  return id.startsWith("local-upload-");
-}
-
-function createDefaultUploadMeta(
-  t: ReturnType<typeof useTranslations>,
-  showFeedback: UseDriveTransfersOptions["showFeedback"],
-  getApiFeedback: UseDriveTransfersOptions["getApiFeedback"],
-): UploadTaskMeta {
-  return {
-    onCompleted: () => showFeedback(t("app.uploaded")),
-    onFailed: (error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"),
   };
 }

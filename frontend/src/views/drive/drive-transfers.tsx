@@ -13,6 +13,7 @@ import {
   resolveTaskLifecycleErrorMessage,
   resolveTaskLifecycleStatus,
 } from "@/features/file/task-lifecycle";
+import { summarizeUploadProgress } from "@/features/file/upload-progress";
 import type { TransferRow, TransferStatus } from "./drive-types";
 import { formatRemainingTime } from "./drive-formatters";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
@@ -79,10 +80,8 @@ export function TransfersModule({
   const totalBytes = rows.reduce((sum, row) => sum + (row.totalBytes ?? row.loadedBytes ?? 0), 0);
   const loadedBytes = rows.reduce((sum, row) => sum + (row.loadedBytes ?? 0), 0);
   const totalSpeed = rows.reduce((sum, row) => sum + (row.speedBytesPerSecond ?? 0), 0);
-  const activeProgress =
-    uploadingRows.length > 0
-      ? Math.round(uploadingRows.reduce((sum, row) => sum + row.progress, 0) / uploadingRows.length)
-      : 0;
+  const uploadProgress = useMemo(() => summarizeUploadProgress(rows), [rows]);
+  const activeProgress = Math.round(uploadProgress.progress);
   const completionRate = rows.length > 0 ? Math.round((completedRows.length / rows.length) * 100) : 0;
   const sections: TransferSection[] = [
     { icon: "upload", id: "uploading", rows: uploadingRows, title: t("transfers.activeUploads") },
@@ -351,9 +350,16 @@ function TransferTableRow({
   const failureReason = status === "failed" || status === "expired"
     ? errorMessage ?? t(getTaskLifecycleFailureMessageKey(row))
     : null;
-  const canPause = controllable && status === "running";
-  const canResume = controllable && status === "paused";
-  const canRetry = canExecuteTaskRetry(row, controllable);
+  const recoveryHint = row.recoveryRequired ? row.recoveryHint?.trim() || null : null;
+  const canRecover = Boolean(
+    row.recoveryRequired
+    && onRetryTransfer
+    && status !== "completed"
+    && status !== "canceled",
+  );
+  const canPause = !row.recoveryRequired && controllable && status === "running";
+  const canResume = !row.recoveryRequired && controllable && status === "paused";
+  const canRetry = !row.recoveryRequired && canExecuteTaskRetry(row, controllable);
   const canCancel = controllable && (status === "pending" || status === "running" || status === "paused");
   const canDelete = Boolean(onDeleteTransfer);
   const progressColor = getTransferProgressColor(row, palette);
@@ -367,6 +373,7 @@ function TransferTableRow({
       <div className="drive-module-row-copy">
         <span className="drive-module-row-title icedr-truncate">{row.name}</span>
         {failureReason ? <span className="drive-transfer-row-error icedr-truncate">{failureReason}</span> : null}
+        {recoveryHint ? <span className="drive-module-row-meta icedr-truncate">{recoveryHint}</span> : null}
       </div>
 
       <span className="drive-transfer-size-cell icedr-truncate">{totalLabel}</span>
@@ -388,6 +395,16 @@ function TransferTableRow({
       </StatusPill>
 
       <div className="drive-transfer-actions">
+        {canRecover ? (
+          <ToolButton
+            label={status === "failed" || status === "expired" ? t("transfers.retry") : t("transfers.resume")}
+            palette={palette}
+            size="sm"
+            onClick={() => onRetryTransfer?.(row.id)}
+          >
+            <LocalIcon name={status === "failed" || status === "expired" ? "refresh" : "upload"} size={15} />
+          </ToolButton>
+        ) : null}
         {canPause ? (
           <ToolButton label={t("transfers.pause")} palette={palette} size="sm" onClick={() => onPauseTransfer?.(row.id)}>
             <LocalIcon name="pause" size={15} />
