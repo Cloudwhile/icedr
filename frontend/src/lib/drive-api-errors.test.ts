@@ -127,18 +127,18 @@ describe("drive api errors", () => {
   });
 
   it.each([
-    ["SHARE_REVOKED", "errors.shareRevoked"],
-    ["SHARE_VIEW_LIMIT_REACHED", "errors.shareViewLimitReached"],
-    ["SHARE_DOWNLOAD_LIMIT_REACHED", "errors.shareDownloadLimitReached"],
-    ["SHARE_ACCESS_SESSION_REQUIRED", "errors.shareAccessSessionRequired"],
-    ["SHARE_ACCESS_SESSION_INVALID", "errors.shareAccessSessionInvalid"],
-    ["SHARE_ACCESS_WAITING", "errors.shareAccessWaiting"],
-    ["SHARE_DOWNLOAD_DISABLED", "share.downloadBlocked"],
-    ["SHARE_PREVIEW_DISABLED", "share.previewBlocked"],
-  ])("maps structured anonymous share error %s", (code, messageKey) => {
+    ["SHARE_REVOKED", 410, "errors.shareRevoked"],
+    ["SHARE_VIEW_LIMIT_REACHED", 410, "errors.shareViewLimitReached"],
+    ["SHARE_DOWNLOAD_LIMIT_REACHED", 410, "errors.shareDownloadLimitReached"],
+    ["SHARE_ACCESS_SESSION_REQUIRED", 403, "errors.shareAccessSessionRequired"],
+    ["SHARE_ACCESS_SESSION_INVALID", 403, "errors.shareAccessSessionInvalid"],
+    ["SHARE_ACCESS_WAITING", 403, "errors.shareAccessWaiting"],
+    ["SHARE_DOWNLOAD_DISABLED", 403, "share.downloadBlocked"],
+    ["SHARE_PREVIEW_DISABLED", 403, "share.previewBlocked"],
+  ])("maps structured anonymous share error %s", (code, status, messageKey) => {
     expect(
       getDriveApiErrorMessage(
-        new DriveApiError("Opaque backend message", 410, code),
+        new DriveApiError("Opaque backend message", status, code),
         t,
         { scope: "share" },
       ),
