@@ -10,6 +10,7 @@ describe('SharesService email and account access', () => {
   let createEmailSession: SharesServiceHarness['createEmailSession'];
   let createRestartedService: SharesServiceHarness['createRestartedService'];
   let expectRateLimited: SharesServiceHarness['expectRateLimited'];
+  let expectShareError: SharesServiceHarness['expectShareError'];
   let mailService: SharesServiceHarness['mailService'];
   let repository: SharesServiceHarness['repository'];
   let sentCodes: SharesServiceHarness['sentCodes'];
@@ -21,6 +22,7 @@ describe('SharesService email and account access', () => {
       createEmailSession,
       createRestartedService,
       expectRateLimited,
+      expectShareError,
       mailService,
       repository,
       sentCodes,
@@ -333,7 +335,11 @@ describe('SharesService email and account access', () => {
         visitor,
       );
 
-    await expect(request()).rejects.toBeInstanceOf(ForbiddenException);
+    const error = await expectShareError(
+      request(),
+      'SHARE_ACCESS_SESSION_REQUIRED',
+    );
+    expect(error).toBeInstanceOf(ForbiddenException);
     expect(
       repository.auditEvents.find(
         (event) =>
@@ -361,7 +367,9 @@ describe('SharesService email and account access', () => {
         visitor,
       );
 
-    await expect(request()).rejects.toThrow('wait time has not elapsed');
+    const error = await expectShareError(request(), 'SHARE_ACCESS_WAITING');
+    expect(error.getStatus()).toBe(403);
+    expect(error.message).toBe('Share access wait time has not elapsed');
     expect(
       repository.auditEvents.find(
         (event) =>
@@ -542,9 +550,12 @@ describe('SharesService email and account access', () => {
         session.sessionId,
         { ...visitor, userAgent: 'Different Browser' },
       );
-    await expect(rejectedRequest()).rejects.toThrow(
-      'Share access session is invalid',
+    const error = await expectShareError(
+      rejectedRequest(),
+      'SHARE_ACCESS_SESSION_INVALID',
     );
+    expect(error.getStatus()).toBe(403);
+    expect(error.message).toBe('Share access session is invalid');
     const denied = repository.auditEvents.find(
       (event) =>
         event.action === 'share.access_denied' &&

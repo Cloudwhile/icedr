@@ -9,6 +9,7 @@ describe('SharesService preview and scope', () => {
   let configValues: SharesServiceHarness['configValues'];
   let createEmailSession: SharesServiceHarness['createEmailSession'];
   let expectRateLimited: SharesServiceHarness['expectRateLimited'];
+  let expectShareError: SharesServiceHarness['expectShareError'];
   let fileNodesService: SharesServiceHarness['fileNodesService'];
   let nodes: SharesServiceHarness['nodes'];
   let repository: SharesServiceHarness['repository'];
@@ -20,6 +21,7 @@ describe('SharesService preview and scope', () => {
       configValues,
       createEmailSession,
       expectRateLimited,
+      expectShareError,
       fileNodesService,
       nodes,
       repository,
@@ -70,9 +72,27 @@ describe('SharesService preview and scope', () => {
     await expect(
       repository.countAuditEvents('share.download_started'),
     ).resolves.toBe(0);
-    await expect(
+    const error = await expectShareError(
       service.createDownloadIntent(created.token, 'roadmap', session.sessionId),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+      'SHARE_DOWNLOAD_DISABLED',
+    );
+    expect(error).toBeInstanceOf(ForbiddenException);
+  });
+
+  it('returns a stable error when share previews are disabled', async () => {
+    const created = await service.createShare({
+      ...createDto(),
+      allowPreview: false,
+    });
+    const session = await createEmailSession(created.token);
+
+    const error = await expectShareError(
+      service.createPreviewIntent(created.token, 'roadmap', session.sessionId),
+      'SHARE_PREVIEW_DISABLED',
+    );
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(error.message).toBe('Preview is disabled for this share');
   });
 
   it('returns backend manifest downloads for folders without object keys', async () => {

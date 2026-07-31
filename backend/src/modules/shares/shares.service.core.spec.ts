@@ -14,6 +14,7 @@ describe('SharesService core', () => {
   let abuseProtection: SharesServiceHarness['abuseProtection'];
   let configValues: SharesServiceHarness['configValues'];
   let expectRateLimited: SharesServiceHarness['expectRateLimited'];
+  let expectShareError: SharesServiceHarness['expectShareError'];
   let fileNodesService: SharesServiceHarness['fileNodesService'];
   let repository: SharesServiceHarness['repository'];
   let service: SharesServiceHarness['service'];
@@ -24,6 +25,7 @@ describe('SharesService core', () => {
       abuseProtection,
       configValues,
       expectRateLimited,
+      expectShareError,
       fileNodesService,
       repository,
       service,
@@ -59,9 +61,11 @@ describe('SharesService core', () => {
   });
 
   it('throws not found for missing shares', async () => {
-    await expect(
+    const error = await expectShareError(
       service.getShare('missing', { ip: '203.0.113.30' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+      'SHARE_NOT_FOUND',
+    );
+    expect(error).toBeInstanceOf(NotFoundException);
 
     const denied = repository.auditEvents.find(
       (event) => event.action === 'share.access_denied',
@@ -77,9 +81,11 @@ describe('SharesService core', () => {
     const revoked = await service.revokeShare(created.token);
 
     expect(revoked.revokedAt).toEqual(expect.any(String));
-    await expect(service.getShare(created.token)).rejects.toBeInstanceOf(
-      GoneException,
+    const error = await expectShareError(
+      service.getShare(created.token),
+      'SHARE_REVOKED',
     );
+    expect(error).toBeInstanceOf(GoneException);
   });
 
   it('rejects expired shares', async () => {
@@ -90,9 +96,11 @@ describe('SharesService core', () => {
     });
     jest.setSystemTime(new Date('2026-07-03T00:00:00.000Z'));
 
-    await expect(service.getShare(created.token)).rejects.toBeInstanceOf(
-      GoneException,
+    const error = await expectShareError(
+      service.getShare(created.token),
+      'SHARE_EXPIRED',
     );
+    expect(error).toBeInstanceOf(GoneException);
   });
 
   it('records create, view, and revoke audit events', async () => {
@@ -186,9 +194,12 @@ describe('SharesService core', () => {
     const visitor = { ip: '203.0.113.40', userAgent: 'Spec Browser' };
 
     await service.getShare(created.token, visitor);
-    await expect(service.getShare(created.token, visitor)).rejects.toThrow(
-      'Share view limit has been reached',
+    const error = await expectShareError(
+      service.getShare(created.token, visitor),
+      'SHARE_VIEW_LIMIT_REACHED',
     );
+    expect(error.getStatus()).toBe(410);
+    expect(error.message).toBe('Share view limit has been reached');
 
     expect(consume).toHaveBeenCalledTimes(2);
   });
