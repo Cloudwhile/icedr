@@ -21,10 +21,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
 import {
   createReadStream,
   createWriteStream,
   type Dirent,
+  promises as fileSystem,
   type Stats,
 } from 'fs';
 import {
@@ -32,13 +34,12 @@ import {
   open,
   readFile,
   readdir,
-  rename,
   rm,
   stat,
   writeFile,
 } from 'fs/promises';
 import { dirname, relative, resolve, sep } from 'path';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import {
   RangeNotSatisfiableException,
@@ -136,14 +137,19 @@ export class StorageObjectService {
   }
 
   async createMultipartUploadPartUrl(input: {
+    expectedSize: number;
     objectKey: string;
     partIndex: number;
     uploadId: string;
   }) {
+    if (!Number.isSafeInteger(input.expectedSize) || input.expectedSize < 0) {
+      throw new BadRequestException('Expected upload chunk size is invalid');
+    }
     const expiresInSeconds = 900;
     const settings = await this.getResolvedSettings();
     const command = new UploadPartCommand({
       Bucket: this.getBucket(settings),
+      ContentLength: input.expectedSize,
       Key: input.objectKey,
       PartNumber: input.partIndex + 1,
       UploadId: input.uploadId,
@@ -231,13 +237,18 @@ export class StorageObjectService {
 
   async abortMultipartUpload(input: { objectKey: string; uploadId: string }) {
     const settings = await this.getResolvedSettings();
-    await this.createClient(settings).send(
-      new AbortMultipartUploadCommand({
-        Bucket: this.getBucket(settings),
-        Key: input.objectKey,
-        UploadId: input.uploadId,
-      }),
-    );
+    try {
+      await this.createClient(settings).send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.getBucket(settings),
+          Key: input.objectKey,
+          UploadId: input.uploadId,
+        }),
+      );
+    } catch (error) {
+      if (this.isNotFoundError(error)) return;
+      throw error;
+    }
   }
 
   async openObjectStream(input: {
@@ -357,12 +368,45 @@ export class StorageObjectService {
     sessionId: string,
     partIndex: number,
     stream: Readable,
+    expectedSize: number,
   ) {
+    if (!Number.isSafeInteger(expectedSize) || expectedSize < 0) {
+      throw new BadRequestException('Expected upload chunk size is invalid');
+    }
     const partPath = this.resolveUploadSessionPartPath(sessionId, partIndex);
+    const stagedPartPath = `${partPath}.${randomBytes(8).toString('hex')}.tmp`;
     await mkdir(dirname(partPath), { recursive: true });
-    await pipeline(stream, createWriteStream(partPath));
-    const fileStat = await stat(partPath);
-    return { sizeBytes: fileStat.size };
+    let writtenBytes = 0;
+    const enforceExpectedSize = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        writtenBytes += chunk.length;
+        if (writtenBytes > expectedSize) {
+          callback(
+            new BadRequestException('Upload chunk size does not match session'),
+          );
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+
+    try {
+      await pipeline(
+        stream,
+        enforceExpectedSize,
+        createWriteStream(stagedPartPath),
+      );
+      if (writtenBytes !== expectedSize) {
+        throw new BadRequestException(
+          'Upload chunk size does not match session',
+        );
+      }
+      await fileSystem.rename(stagedPartPath, partPath);
+      return { sizeBytes: writtenBytes };
+    } catch (error) {
+      await rm(stagedPartPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async composeUploadSessionParts(input: {
@@ -444,7 +488,7 @@ export class StorageObjectService {
           await rm(finalObjectPath, { force: true });
         }
         await input.refreshOperationLease?.();
-        await rename(stagedObjectPath, finalObjectPath);
+        await fileSystem.rename(stagedObjectPath, finalObjectPath);
       } else {
         await input.refreshOperationLease?.();
         const settings = await this.getResolvedSettings();
@@ -820,6 +864,7 @@ export class StorageObjectService {
       maybeError.code === 'ENOTDIR' ||
       maybeError.name === 'NotFound' ||
       maybeError.name === 'NoSuchKey' ||
+      maybeError.name === 'NoSuchUpload' ||
       maybeError.$metadata?.httpStatusCode === 404
     );
   }

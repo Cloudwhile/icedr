@@ -683,6 +683,30 @@ export type TransferResponse = {
   updatedAt: string;
 };
 
+export type UploadSessionRecoveryMode = "upload" | "completion-only";
+
+export type UploadSessionRecoveryResponse = {
+  chunkSizeBytes: number;
+  conflictStrategy: "overwrite" | "rename" | "skip" | "version";
+  expiresAt: string | null;
+  failureCode: TransferTaskFailureCode | null;
+  fileName: string;
+  lifecycle: TransferTaskLifecycle;
+  mimeType: string;
+  parentNodeId: string | null;
+  progress: number;
+  recoveryMode: UploadSessionRecoveryMode;
+  requestedFileName: string;
+  sessionId: string;
+  sizeBytes: number;
+  spaceScope: DriveSpaceScope;
+  status: TransferTaskStatus;
+  transferId: string;
+  uploadedBytes: number;
+  uploadedPartIndexes: number[];
+  workspaceId: string;
+};
+
 export type DownloadIntentResponse = {
   downloadId: string;
   nodeId: string;

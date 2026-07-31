@@ -20,10 +20,13 @@ type TransferRowBase = Omit<
   TransferResponse,
   "status" | "failureCode" | "expiresAt" | "lifecycle"
 > & {
+  batchId?: string | null;
   errorMessage?: string | null;
   expiresAt?: string | null;
   failureCode?: TransferTaskFailureCode | null;
   lifecycle?: TransferTaskLifecycle;
+  recoveryHint?: string | null;
+  recoveryRequired?: boolean;
   status: TransferStatusSource;
 } & Partial<TransferMetrics>;
 

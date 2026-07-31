@@ -35,6 +35,10 @@ const indexMigrations = [
     migrationName: '20260718121700_upload_completion_started_at_index',
     indexName: 'upload_sessions_completion_started_at_idx',
   },
+  {
+    migrationName: '20260730120000_upload_session_resume_identity_index',
+    indexName: 'upload_sessions_resume_identity_active_idx',
+  },
 ];
 
 main().catch((error) => {

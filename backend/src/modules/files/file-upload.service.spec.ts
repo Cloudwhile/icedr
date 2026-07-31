@@ -67,6 +67,12 @@ describe('FileUploadService intent and completion', () => {
       intent.objectKey,
       'application/pdf',
     );
+    expect(storage.createMultipartUploadPartUrl).toHaveBeenCalledWith({
+      expectedSize: 4096,
+      objectKey: intent.objectKey,
+      partIndex: 0,
+      uploadId: `multipart-${intent.objectKey}`,
+    });
     expect(storage.writeUploadSessionPart).not.toHaveBeenCalled();
     expect(storage.composeUploadSessionParts).not.toHaveBeenCalled();
     expect(storage.completeMultipartUpload).toHaveBeenCalledWith({
@@ -84,7 +90,10 @@ describe('FileUploadService intent and completion', () => {
       (storage.completeMultipartUpload as jest.Mock).mock
         .invocationCallOrder[0],
     );
-    expect(storage.assertObjectExists).toHaveBeenCalledWith(intent.objectKey);
+    expect(storage.assertObjectExists).toHaveBeenCalledWith(
+      intent.objectKey,
+      4096,
+    );
     expect(node.id).toMatch(/^node_/);
     expect(node.objectKey).toBe(intent.objectKey);
     expect(node.owner).toBe('Workspace User');
@@ -144,6 +153,55 @@ describe('FileUploadService intent and completion', () => {
     ).rejects.toBeInstanceOf(ConflictException);
 
     expect(storage.findMultipartUploadPart).not.toHaveBeenCalled();
+    expect(uploadSessionMocks.commitPartWrite).not.toHaveBeenCalled();
+  });
+
+  it('records multipart metadata from storage instead of the client payload', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Authoritative Part.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+    });
+    (storage.findMultipartUploadPart as jest.Mock).mockResolvedValueOnce({
+      eTag: '"server-etag"',
+      partIndex: 0,
+      sizeBytes: 4096,
+    });
+
+    await service.completeUploadPart(intent.sessionId ?? '', 0, {
+      eTag: '"client-etag"',
+      sizeBytes: 1,
+    });
+
+    expect(uploadSessionMocks.commitPartWrite).toHaveBeenCalledWith(
+      expect.stringMatching(/^part_/),
+      expect.objectContaining({
+        eTag: '"server-etag"',
+        sizeBytes: 4096,
+      }),
+    );
+  });
+
+  it('rejects multipart parts whose storage-reported size is unexpected', async () => {
+    const intent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Wrong Part Size.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+    });
+    (storage.findMultipartUploadPart as jest.Mock).mockResolvedValueOnce({
+      eTag: '"server-etag"',
+      partIndex: 0,
+      sizeBytes: 4095,
+    });
+
+    await expect(
+      service.completeUploadPart(intent.sessionId ?? '', 0, {
+        eTag: '"client-etag"',
+        sizeBytes: 4096,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(uploadSessionMocks.commitPartWrite).not.toHaveBeenCalled();
   });
 
@@ -485,7 +543,10 @@ describe('FileUploadService intent and completion', () => {
       }),
     ).resolves.toMatchObject({ objectKey: intent.objectKey });
 
-    expect(storage.assertObjectExists).toHaveBeenCalledWith(intent.objectKey);
+    expect(storage.assertObjectExists).toHaveBeenCalledWith(
+      intent.objectKey,
+      4096,
+    );
     expect(uploadSessionMocks.completeCompletionClaim).toHaveBeenCalledWith(
       intent.sessionId,
       expect.stringMatching(/^completion_/),

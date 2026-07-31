@@ -226,6 +226,19 @@ export class FileNodesController {
     });
   }
 
+  @Get('upload-sessions/:sessionId')
+  async getUploadSession(
+    @Param('sessionId') sessionId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const session = await this.adminGuard.requirePermission(
+      authorization,
+      'file',
+      'read',
+    );
+    return this.fileNodesService.getUploadSession(sessionId, session.user.id);
+  }
+
   @Get(':id')
   async getFileNode(
     @Param('id') id: string,

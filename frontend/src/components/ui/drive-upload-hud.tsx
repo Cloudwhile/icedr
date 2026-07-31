@@ -7,7 +7,8 @@ import { ProgressMeter } from "@/components/ui/progress-meter";
 import { LocalIcon } from "@/components/ui/app-icon";
 import { useTranslations } from "@/i18n/react";
 import { formatFileSize, type Locale, type Palette } from "@/features/file/model";
-import { getTaskLifecycleGroup, resolveTaskLifecycleStatus } from "@/features/file/task-lifecycle";
+import { resolveTaskLifecycleStatus } from "@/features/file/task-lifecycle";
+import { summarizeUploadProgress } from "@/features/file/upload-progress";
 import type { TransferRow } from "@/views/drive/drive-types";
 
 type DriveUploadHudProps = {
@@ -16,24 +17,6 @@ type DriveUploadHudProps = {
   palette: Palette;
   rows: TransferRow[];
 };
-
-function clampProgress(value: number | null | undefined) {
-  if (!Number.isFinite(value ?? NaN)) return 0;
-  return Math.max(0, Math.min(100, Math.round(value ?? 0)));
-}
-
-function getOverallProgress(rows: TransferRow[]) {
-  const byteRows = rows.filter((row) => row.totalBytes && row.totalBytes > 0 && row.loadedBytes !== undefined);
-
-  if (byteRows.length > 0) {
-    const totalBytes = byteRows.reduce((sum, row) => sum + (row.totalBytes ?? 0), 0);
-    const loadedBytes = byteRows.reduce((sum, row) => sum + Math.min(row.loadedBytes ?? 0, row.totalBytes ?? 0), 0);
-    return totalBytes > 0 ? clampProgress((loadedBytes / totalBytes) * 100) : 0;
-  }
-
-  const progressTotal = rows.reduce((sum, row) => sum + clampProgress(row.progress), 0);
-  return rows.length > 0 ? clampProgress(progressTotal / rows.length) : 0;
-}
 
 function getMetricLine(row: TransferRow, locale: Locale, t: ReturnType<typeof useTranslations>) {
   if (row.totalBytes && row.totalBytes > 0) {
@@ -52,24 +35,22 @@ export function DriveUploadHud({
   rows,
 }: DriveUploadHudProps) {
   const t = useTranslations();
-  const activeRows = useMemo(
-    () => rows.filter((row) => {
-      const lifecycleGroup = getTaskLifecycleGroup(row);
-      return lifecycleGroup === "active" || lifecycleGroup === "paused";
-    }).slice(0, 6),
-    [rows],
-  );
+  const progressSummary = useMemo(() => summarizeUploadProgress(rows), [rows]);
+  const visibleRows = progressSummary.activeRows.slice(0, 6);
   const canRenderPortal = typeof document !== "undefined";
-  const primaryRow = activeRows[0];
-  const overallProgress = getOverallProgress(activeRows);
+  const primaryRow = visibleRows[0];
+  const overallProgress = Math.round(progressSummary.progress);
   const primaryMetric = primaryRow ? getMetricLine(primaryRow, locale, t) : t("transfers.pending");
 
   const hud = (
-    <MotionPresence className="drive-upload-hud-presence" preset="toast" show={activeRows.length > 0}>
-      {activeRows.length > 0 ? (
+    <MotionPresence className="drive-upload-hud-presence" preset="toast" show={visibleRows.length > 0}>
+      {visibleRows.length > 0 ? (
         <div
           aria-label={t("nav.transfers")}
           className="drive-upload-hud"
+          data-progress-estimated={progressSummary.estimated ? "true" : undefined}
+          data-total-upload-count={progressSummary.activeRows.length}
+          data-visible-upload-count={visibleRows.length}
           onClick={onOpenTransfers}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -85,7 +66,7 @@ export function DriveUploadHud({
               <LocalIcon name={primaryRow && resolveTaskLifecycleStatus(primaryRow) === "paused" ? "pause" : "upload"} size={16} />
             </span>
             <div className="drive-upload-hud-title">
-              <span className="icedr-truncate">{primaryRow?.name ?? t("transfers.uploadActiveTitle", { count: activeRows.length })}</span>
+              <span className="icedr-truncate">{primaryRow?.name ?? t("transfers.uploadActiveTitle", { count: visibleRows.length })}</span>
               <span className="icedr-truncate">{primaryMetric}</span>
             </div>
             <span className="drive-upload-hud-percent">{overallProgress}%</span>

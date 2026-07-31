@@ -10,6 +10,7 @@ import type {
   SystemOverview,
   SystemUpdateStatus,
   TransferResponse,
+  TransferTaskFailureCode,
   TransferTaskStatus,
   UserStorageQuota,
   WorkspaceShareSettings,
@@ -124,6 +125,7 @@ export function updateTransfer(
   id: string,
   input: {
     expectedStatus?: TransferTaskStatus;
+    failureCode?: TransferTaskFailureCode;
     status: "running" | "paused" | "failed" | "canceled";
     progress?: number;
   },

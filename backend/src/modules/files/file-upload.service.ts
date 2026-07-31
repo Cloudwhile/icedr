@@ -17,12 +17,23 @@ import {
   type UploadChunkResponse,
   type UploadIntentResponse,
   type UploadPartIntentResponse,
+  type UploadSessionStatusResponse,
+  uploadResumeKeyMaxLength,
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
 import {
-  FileUploadPolicyService,
-  type ResolvedUploadConflict,
-} from './file-upload-policy.service';
+  type ExpiredStorageCleanupMode,
+  FileUploadExpiryManager,
+} from './file-upload-expiry.helper';
+import { FileUploadPolicyService } from './file-upload-policy.service';
+import {
+  isPrismaUniqueConstraintError,
+  matchesReusableConflictSnapshot,
+  matchesReusableUploadRequest,
+  normalizeUploadMimeType,
+  recoverConcurrentUploadIntent,
+  resumeReusableUploadIntent,
+} from './file-upload-resume.helper';
 import {
   assertUploadSessionComplete,
   assertWritableUploadSession,
@@ -30,6 +41,7 @@ import {
   getExpectedPartRange,
   getUploadedSessionState,
   toUploadIntent,
+  toUploadSessionStatus,
 } from './file-upload-session.helper';
 import {
   type UploadCompletionClaim,
@@ -42,13 +54,20 @@ type AuditMetadata = Record<string, unknown>;
 
 @Injectable()
 export class FileUploadService {
+  private readonly expiryManager: FileUploadExpiryManager;
+
   constructor(
     private readonly fileNodesRepository: FileNodesRepository,
     private readonly storageService: StorageService,
     private readonly transfersService: TransfersService,
     private readonly uploadSessionsRepository: UploadSessionsRepository,
     private readonly uploadPolicy: FileUploadPolicyService,
-  ) {}
+  ) {
+    this.expiryManager = new FileUploadExpiryManager(
+      uploadSessionsRepository,
+      storageService,
+    );
+  }
 
   async createUploadIntent(
     dto: CreateUploadIntentDto,
@@ -59,12 +78,16 @@ export class FileUploadService {
     } = {},
   ): Promise<UploadIntentResponse> {
     const fileName = this.uploadPolicy.normalizeNodeName(dto.fileName);
+    const mimeType = normalizeUploadMimeType(dto.mimeType);
     const conflictStrategy = this.uploadPolicy.normalizeUploadConflictStrategy(
       dto.conflictStrategy,
     );
     const distributedStorage =
       await this.storageService.distributedStorageEnabled();
-    const sizeBytes = Math.max(0, Math.trunc(dto.fileSizeBytes ?? 0));
+    const sizeBytes = dto.fileSizeBytes ?? 0;
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+      throw new BadRequestException('Upload file size is invalid');
+    }
     const spaceScope = this.uploadPolicy.normalizeSpaceScope(dto.spaceScope);
     await this.uploadPolicy.assertValidParent(
       dto.workspaceId,
@@ -99,21 +122,32 @@ export class FileUploadService {
       { distributedStorage },
     );
     const resumeKey = dto.resumeKey?.trim() || undefined;
+    if (resumeKey && resumeKey.length > uploadResumeKeyMaxLength) {
+      throw new BadRequestException('Upload resume key is too long');
+    }
     if (resumeKey && dto.fileSizeBytes !== undefined) {
       let reusable = await this.uploadSessionsRepository.findReusable({
         workspaceId: dto.workspaceId,
         ownerUserId: options.ownerUserId ?? null,
         spaceScope,
-        conflictStrategy: resolvedConflict.strategy,
         resumeKey,
-        requestedFileName: fileName,
-        parentNodeId: dto.parentNodeId ?? null,
-        sizeBytes,
       });
       if (reusable) {
-        reusable = await this.ensureUploadSessionExpiry(reusable);
+        reusable = await this.expiryManager.ensure(reusable);
         if (reusable.status === 'expired') {
           // Keep the fixed historical deadline; a new intent is created below.
+        } else if (
+          !matchesReusableUploadRequest(reusable, {
+            conflictStrategy: resolvedConflict.strategy,
+            mimeType,
+            parentNodeId: dto.parentNodeId ?? null,
+            requestedFileName: fileName,
+            sizeBytes,
+          })
+        ) {
+          await this.cancelUploadSession(reusable.id, {
+            auditMetadata: options.auditMetadata,
+          });
         } else if (
           !matchesReusableConflictSnapshot(reusable, resolvedConflict)
         ) {
@@ -125,30 +159,10 @@ export class FileUploadService {
             auditMetadata: options.auditMetadata,
           });
         } else {
-          const parts = await this.uploadSessionsRepository.listParts(
-            reusable.id,
+          return resumeReusableUploadIntent(
+            this.uploadSessionsRepository,
+            reusable,
           );
-          const uploaded = getUploadedSessionState(reusable, parts);
-          const resumed = await this.uploadSessionsRepository.resumeSession(
-            reusable.id,
-            reusable.status,
-            uploaded.progress,
-          );
-          if (!resumed) {
-            const current = await this.uploadSessionsRepository.findById(
-              reusable.id,
-            );
-            if (!current) {
-              throw new NotFoundException('Upload session not found');
-            }
-            throw new ConflictException({
-              code: 'UPLOAD_SESSION_STATE_CONFLICT',
-              message:
-                'Upload session status changed before the update was applied',
-              currentStatus: current.status,
-            });
-          }
-          return toUploadIntent(resumed, parts, resumed.conflictStrategy);
         }
       }
     }
@@ -170,10 +184,7 @@ export class FileUploadService {
     let session: UploadSession | null = null;
     try {
       multipartUpload = distributedStorage
-        ? await this.storageService.createMultipartUpload(
-            objectKey,
-            dto.mimeType ?? 'application/octet-stream',
-          )
+        ? await this.storageService.createMultipartUpload(objectKey, mimeType)
         : null;
       session = await this.uploadSessionsRepository.create({
         workspaceId: dto.workspaceId,
@@ -189,7 +200,7 @@ export class FileUploadService {
         conflictTargetNodeId: resolvedConflict.target?.id ?? null,
         conflictTargetObjectKey: resolvedConflict.target?.objectKey ?? null,
         parentNodeId: dto.parentNodeId ?? null,
-        mimeType: dto.mimeType ?? 'application/octet-stream',
+        mimeType,
         sizeBytes,
         chunkSizeBytes,
         expiresAt,
@@ -222,6 +233,22 @@ export class FileUploadService {
         transferId: transfer.id,
         ownerUserId: options.ownerUserId ?? null,
       });
+      if (resumeKey && !session && isPrismaUniqueConstraintError(error)) {
+        return recoverConcurrentUploadIntent(this.uploadSessionsRepository, {
+          conflict: resolvedConflict,
+          distributedStorage,
+          ensureExpiry: (candidate) =>
+            this.expiryManager.ensure(candidate, 'wait'),
+          mimeType,
+          ownerUserId: options.ownerUserId ?? null,
+          parentNodeId: dto.parentNodeId ?? null,
+          requestedFileName: fileName,
+          resumeKey,
+          sizeBytes,
+          spaceScope,
+          workspaceId: dto.workspaceId,
+        });
+      }
       throw error;
     }
   }
@@ -239,8 +266,9 @@ export class FileUploadService {
       );
     }
     const normalizedPartIndex = Math.trunc(partIndex);
-    getExpectedPartRange(session, normalizedPartIndex);
+    const expected = getExpectedPartRange(session, normalizedPartIndex);
     const signed = await this.storageService.createMultipartUploadPartUrl({
+      expectedSize: expected.sizeBytes,
       objectKey: session.objectKey,
       partIndex: normalizedPartIndex,
       uploadId: session.multipartUploadId,
@@ -255,12 +283,26 @@ export class FileUploadService {
     };
   }
 
+  async getUploadSession(
+    sessionId: string,
+    ownerUserId: string,
+  ): Promise<UploadSessionStatusResponse> {
+    const session = await this.requireUploadSession(
+      sessionId,
+      ownerUserId,
+      'background',
+    );
+    const parts = await this.uploadSessionsRepository.listParts(session.id);
+    return toUploadSessionStatus(session, parts);
+  }
+
   async completeUploadPart(
     sessionId: string,
     partIndex: number,
     dto: CompleteUploadPartDto,
     ownerUserId?: string,
   ): Promise<UploadChunkResponse> {
+    void dto;
     const session = await this.requireUploadSession(sessionId, ownerUserId);
     assertWritableUploadSession(session);
     if (!session.multipartUploadId) {
@@ -275,18 +317,19 @@ export class FileUploadService {
       (await this.throwUploadPartWriteClaimConflict(session.id));
     let runningSession: UploadSession;
     try {
-      let eTag = dto.eTag?.trim() || null;
-      let sizeBytes = dto.sizeBytes ?? expected.sizeBytes;
-      if (!eTag) {
-        const storedPart = await this.storageService.findMultipartUploadPart({
-          objectKey: session.objectKey,
-          partIndex: normalizedPartIndex,
-          uploadId: session.multipartUploadId,
-        });
-        eTag = storedPart.eTag;
-        sizeBytes = storedPart.sizeBytes ?? sizeBytes;
-      }
-      if (sizeBytes !== expected.sizeBytes) {
+      const storedPart = await this.storageService.findMultipartUploadPart({
+        objectKey: session.objectKey,
+        partIndex: normalizedPartIndex,
+        uploadId: session.multipartUploadId,
+      });
+      const eTag = storedPart.eTag;
+      const sizeBytes = storedPart.sizeBytes;
+      if (
+        !eTag.trim() ||
+        typeof sizeBytes !== 'number' ||
+        !Number.isSafeInteger(sizeBytes) ||
+        sizeBytes !== expected.sizeBytes
+      ) {
         throw new BadRequestException(
           'Upload chunk size does not match session',
         );
@@ -349,6 +392,7 @@ export class FileUploadService {
         session.id,
         normalizedPartIndex,
         stream,
+        expected.sizeBytes,
       );
       if (written.sizeBytes !== expected.sizeBytes) {
         throw new BadRequestException(
@@ -402,7 +446,16 @@ export class FileUploadService {
     await this.transitionUploadSession(session, 'canceled', {
       auditMetadata: options.auditMetadata,
     });
-    if (session.multipartUploadId) {
+    if (session.storageFinalizedAt) {
+      if (!session.nodeId) {
+        await this.deleteStoredObjects([session.objectKey]);
+      }
+      if (!session.multipartUploadId) {
+        await this.storageService
+          .deleteUploadSessionParts(session.id)
+          .catch(() => undefined);
+      }
+    } else if (session.multipartUploadId) {
       await this.storageService.abortMultipartUpload({
         objectKey: session.objectKey,
         uploadId: session.multipartUploadId,
@@ -421,6 +474,9 @@ export class FileUploadService {
       ownerUserId?: string;
     } = {},
   ) {
+    if (!Number.isSafeInteger(dto.sizeBytes) || dto.sizeBytes < 0) {
+      throw new BadRequestException('Upload file size is invalid');
+    }
     const fileName = this.uploadPolicy.normalizeNodeName(dto.fileName);
     const conflictStrategy = this.uploadPolicy.normalizeUploadConflictStrategy(
       dto.conflictStrategy,
@@ -444,6 +500,7 @@ export class FileUploadService {
       ...dto,
       conflictStrategy: uploadSession.conflictStrategy,
       fileName: uploadSession.fileName,
+      mimeType: uploadSession.mimeType,
       parentNodeId: uploadSession.parentNodeId ?? undefined,
       spaceScope: uploadSession.spaceScope,
     };
@@ -494,12 +551,10 @@ export class FileUploadService {
           normalizedDto.objectKey,
         );
       } else {
-        const objectAlreadyFinalized = claimedSession.multipartUploadId
-          ? await this.storageService.objectExists(normalizedDto.objectKey)
-          : await this.storageService.objectExists(
-              normalizedDto.objectKey,
-              claimedSession.sizeBytes,
-            );
+        const objectAlreadyFinalized = await this.storageService.objectExists(
+          normalizedDto.objectKey,
+          claimedSession.sizeBytes,
+        );
         if (!objectAlreadyFinalized) {
           await this.finalizeUploadObject(claimedSession, parts, normalizedDto);
         }
@@ -708,10 +763,6 @@ export class FileUploadService {
     session: UploadSession,
     objectKey: string,
   ) {
-    if (session.multipartUploadId) {
-      await this.storageService.assertObjectExists(objectKey);
-      return;
-    }
     await this.storageService.assertObjectExists(objectKey, session.sizeBytes);
   }
 
@@ -914,7 +965,11 @@ export class FileUploadService {
     }
   }
 
-  private async requireUploadSession(sessionId: string, ownerUserId?: string) {
+  private async requireUploadSession(
+    sessionId: string,
+    ownerUserId?: string,
+    cleanupMode: ExpiredStorageCleanupMode = 'wait',
+  ) {
     let session = await this.uploadSessionsRepository.findById(sessionId);
     if (
       !session ||
@@ -922,42 +977,7 @@ export class FileUploadService {
     ) {
       throw new NotFoundException('Upload session not found');
     }
-    session = await this.ensureUploadSessionExpiry(session);
-    return session;
-  }
-
-  private async ensureUploadSessionExpiry(session: UploadSession) {
-    if (!session.expiresAt) {
-      const fixedExpiry = new Date(
-        new Date(session.createdAt).getTime() + uploadSessionLifetimeMs,
-      );
-      const updated = await this.uploadSessionsRepository.setLegacyExpiry(
-        session.id,
-        fixedExpiry,
-      );
-      if (!updated) {
-        throw new ConflictException({
-          code: 'UPLOAD_SESSION_STATE_CONFLICT',
-          message:
-            'Upload session status changed before its deadline was persisted',
-        });
-      }
-      session = updated;
-    }
-    if (session.status === 'expired') {
-      const expired =
-        await this.uploadSessionsRepository.transitionFailureState(
-          session.id,
-          'expired',
-          { failureCode: 'UPLOAD_SESSION_EXPIRED' },
-        );
-      if (expired) {
-        session = expired;
-      } else {
-        session =
-          (await this.uploadSessionsRepository.findById(session.id)) ?? session;
-      }
-    }
+    session = await this.expiryManager.ensure(session, cleanupMode);
     return session;
   }
 
@@ -975,7 +995,10 @@ export class FileUploadService {
       session.objectKey !== dto.objectKey ||
       (!hasPersistedNode && session.fileName !== dto.fileName) ||
       session.sizeBytes !== dto.sizeBytes ||
-      session.mimeType !== (dto.mimeType ?? session.mimeType) ||
+      session.mimeType !==
+        (dto.mimeType === undefined
+          ? session.mimeType
+          : normalizeUploadMimeType(dto.mimeType)) ||
       session.spaceScope !==
         this.uploadPolicy.normalizeSpaceScope(dto.spaceScope) ||
       session.conflictStrategy !==
@@ -1008,26 +1031,5 @@ function isUploadConflictSkippedError(error: unknown) {
     response !== null &&
     'code' in response &&
     response.code === 'UPLOAD_CONFLICT_SKIPPED'
-  );
-}
-
-function matchesReusableConflictSnapshot(
-  session: UploadSession,
-  conflict: ResolvedUploadConflict,
-) {
-  const targetNodeId = conflict.target?.id ?? null;
-  if (conflict.strategy === 'overwrite') {
-    return (
-      session.conflictTargetNodeId === targetNodeId &&
-      session.conflictTargetObjectKey === (conflict.target?.objectKey ?? null)
-    );
-  }
-  if (conflict.strategy === 'version') {
-    return session.conflictTargetNodeId === targetNodeId;
-  }
-  return (
-    targetNodeId === null &&
-    session.conflictTargetNodeId === null &&
-    session.conflictTargetObjectKey === null
   );
 }

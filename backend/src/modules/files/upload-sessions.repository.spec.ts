@@ -68,10 +68,7 @@ describe('UploadSessionsRepository core and resume', () => {
 
     await expect(
       repository.findReusable({
-        conflictStrategy: 'version',
-        requestedFileName: 'legacy.bin',
         resumeKey: 'resume-test',
-        sizeBytes: 1024,
         workspaceId: 'workspace-default',
       }),
     ).resolves.toMatchObject({
@@ -109,7 +106,7 @@ describe('UploadSessionsRepository core and resume', () => {
     });
   });
 
-  it('matches current and legacy file names while enforcing fixed expiry', async () => {
+  it('finds the active resume identity before filtering expiry or recovery mode', async () => {
     let capturedWhere: Record<string, unknown> | undefined;
     const prisma = {
       uploadSession: {
@@ -122,33 +119,21 @@ describe('UploadSessionsRepository core and resume', () => {
     const repository = new UploadSessionsRepository(prisma as never);
 
     await repository.findReusable({
-      conflictStrategy: 'version',
-      requestedFileName: 'test.bin',
       ownerUserId: 'user-a',
       resumeKey: 'resume-test',
-      sizeBytes: 1024,
       workspaceId: 'workspace-default',
     });
 
     expect(capturedWhere).toMatchObject({
-      AND: [
-        {
-          OR: [
-            { requestedFileName: 'test.bin' },
-            { requestedFileName: null, fileName: 'test.bin' },
-          ],
-        },
-        {
-          OR: [{ expiresAt: null }, { expiresAt: {} }],
-        },
-      ],
+      workspaceId: 'workspace-default',
+      ownerUserId: 'user-a',
+      spaceScope: 'workspace',
+      resumeKey: 'resume-test',
       status: { in: ['running', 'paused', 'failed'] },
-      completionToken: null,
-      storageFinalizedAt: null,
     });
-    expect(
-      readPath(capturedWhere, ['AND', 1, 'OR', 1, 'expiresAt', 'gt']),
-    ).toBeInstanceOf(Date);
+    expect(capturedWhere).not.toHaveProperty('completionToken');
+    expect(capturedWhere).not.toHaveProperty('storageFinalizedAt');
+    expect(capturedWhere).not.toHaveProperty('expiresAt');
   });
 
   it('persists one legacy deadline on the task and session in order', async () => {
@@ -406,16 +391,32 @@ describe('UploadSessionsRepository core and resume', () => {
         where: {
           id: 'upload_session_test',
           status: 'failed',
-          completionToken: null,
-          storageFinalizedAt: null,
           expiresAt,
+          OR: [
+            { completionToken: null },
+            { completionStartedAt: null },
+            { completionStartedAt: { lte: expect.any(Date) as unknown } },
+          ],
         },
         data: expect.objectContaining({
           status: 'running',
           failureCode: null,
+          completionToken: null,
+          completionStartedAt: null,
         }) as unknown,
       }),
     );
+    expect(
+      readPath(updateSession.mock.calls as unknown, [
+        0,
+        0,
+        'where',
+        'OR',
+        2,
+        'completionStartedAt',
+        'lte',
+      ]),
+    ).toEqual(new Date('2026-07-18T00:45:00.000Z'));
     expect(updateTransfer.mock.invocationCallOrder[1]).toBeLessThan(
       updateSession.mock.invocationCallOrder[0],
     );
@@ -450,7 +451,7 @@ describe('UploadSessionsRepository core and resume', () => {
     expect(updateSession).not.toHaveBeenCalled();
   });
 
-  it('rolls back a resumed transfer when the session resume CAS loses', async () => {
+  it('keeps an active upload claim and rolls back its transfer resume', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-18T01:00:00.000Z'));
     let transferStatus = 'failed';
     let transferProgress = 20;
@@ -510,6 +511,17 @@ describe('UploadSessionsRepository core and resume', () => {
       transferProgress: 20,
       transferFailureCode: 'UPLOAD_FAILED',
     });
+    expect(updateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { completionToken: null },
+            { completionStartedAt: null },
+            { completionStartedAt: { lte: expect.any(Date) as unknown } },
+          ],
+        }) as unknown,
+      }),
+    );
     expect(updateTransfer.mock.invocationCallOrder[0]).toBeLessThan(
       updateSession.mock.invocationCallOrder[0],
     );

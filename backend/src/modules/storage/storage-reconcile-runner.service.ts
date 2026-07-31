@@ -225,9 +225,19 @@ export class StorageReconcileRunner {
             .catch(() => true);
           if (cleanupProtected) continue;
           cleanedUploadSessionIds.add(reference.uploadSessionId);
-          await this.objectStorage
-            .deleteUploadSessionParts(reference.uploadSessionId)
-            .catch(() => undefined);
+          if (
+            reference.multipartUploadId &&
+            reference.storageFinalizedAt === null
+          ) {
+            await this.objectStorage.abortMultipartUpload({
+              objectKey: reference.objectKey,
+              uploadId: reference.multipartUploadId,
+            });
+          } else {
+            await this.objectStorage
+              .deleteUploadSessionParts(reference.uploadSessionId)
+              .catch(() => undefined);
+          }
         }
       }
 

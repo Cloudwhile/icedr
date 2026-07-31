@@ -457,6 +457,20 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
        WHERE "requested_file_name" = ''`,
     );
     await this.activeClient.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "upload_sessions_resume_identity_active_idx"
+       ON "upload_sessions"(
+         "workspace_id",
+         "space_scope",
+         IFNULL("owner_user_id", ''),
+         "resume_key"
+       )
+       WHERE "resume_key" IS NOT NULL
+         AND "status" IN ('running', 'paused', 'failed')`,
+    );
+    await this.activeClient.$executeRawUnsafe(
+      'DROP INDEX IF EXISTS "upload_sessions_resume_key_active_idx"',
+    );
+    await this.activeClient.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
     );
     await this.activeClient.$executeRawUnsafe(

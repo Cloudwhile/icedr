@@ -195,6 +195,7 @@ export class UploadSessionLifecycleStore {
       return null;
     }
     const now = new Date();
+    const staleBefore = new Date(now.getTime() - uploadCompletionClaimLeaseMs);
     const finiteProgress = Number.isFinite(progress) ? progress : 0;
     const normalizedProgress = new Prisma.Decimal(
       Math.min(100, Math.max(0, Math.round(finiteProgress * 10) / 10)).toFixed(
@@ -252,13 +253,18 @@ export class UploadSessionLifecycleStore {
           where: {
             id,
             status: expectedStatus,
-            completionToken: null,
-            storageFinalizedAt: null,
             expiresAt: session.expiresAt,
+            OR: [
+              { completionToken: null },
+              { completionStartedAt: null },
+              { completionStartedAt: { lte: staleBefore } },
+            ],
           },
           data: {
             status: 'running',
             failureCode: null,
+            completionToken: null,
+            completionStartedAt: null,
             updatedAt: now,
           },
         });

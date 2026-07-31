@@ -1,8 +1,13 @@
-import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  UploadPartCommand,
+} from '@aws-sdk/client-s3';
 import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { promises as fileSystem } from 'fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { dirname } from 'path';
 import { Readable } from 'stream';
@@ -42,6 +47,56 @@ describe('StorageObjectService', () => {
     expect(signer).toHaveBeenCalledTimes(1);
   });
 
+  it('binds the expected multipart part size into the signed command', async () => {
+    const { service, signer } = createStorageTestContext();
+
+    await service.createMultipartUploadPartUrl({
+      expectedSize: 4096,
+      objectKey: 'workspace-default/root/file.pdf',
+      partIndex: 2,
+      uploadId: 'multipart-file',
+    });
+
+    const command: unknown = signer.mock.calls[0]?.[1];
+    expect(command).toBeInstanceOf(UploadPartCommand);
+    expect((command as UploadPartCommand).input).toMatchObject({
+      ContentLength: 4096,
+      Key: 'workspace-default/root/file.pdf',
+      PartNumber: 3,
+      UploadId: 'multipart-file',
+    });
+  });
+
+  it('treats an already missing multipart upload as successfully aborted', async () => {
+    const { objectStorage } = createStorageTestContext();
+    const send = jest
+      .fn()
+      .mockRejectedValueOnce({
+        name: 'NoSuchUpload',
+        $metadata: { httpStatusCode: 404 },
+      })
+      .mockRejectedValueOnce(new Error('storage unavailable'));
+    jest
+      .spyOn(
+        objectStorage as unknown as {
+          createClient: () => { send: typeof send };
+        },
+        'createClient',
+      )
+      .mockReturnValue({ send });
+
+    const input = {
+      objectKey: 'workspace-default/root/file.pdf',
+      uploadId: 'multipart-file',
+    };
+    await expect(objectStorage.abortMultipartUpload(input)).resolves.toBe(
+      undefined,
+    );
+    await expect(objectStorage.abortMultipartUpload(input)).rejects.toThrow(
+      'storage unavailable',
+    );
+  });
+
   it('only reports missing objects as absent', async () => {
     const { objectStorage, service } = createStorageTestContext();
     jest
@@ -79,6 +134,66 @@ describe('StorageObjectService', () => {
     }
   });
 
+  it('caps local chunks while streaming and removes failed staged parts', async () => {
+    const { service } = createStorageTestContext();
+    const sessionId = 'bounded-part-test';
+    const partDirectory = `backend/.tmp/.upload-parts/${sessionId}`;
+    const partPath = `${partDirectory}/0.part`;
+
+    try {
+      await service.writeUploadSessionPart(
+        sessionId,
+        0,
+        Readable.from(['old']),
+        3,
+      );
+      await expect(
+        service.writeUploadSessionPart(
+          sessionId,
+          0,
+          Readable.from(['too-large']),
+          3,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.writeUploadSessionPart(sessionId, 0, Readable.from(['no']), 3),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      await expect(readFile(partPath, 'utf8')).resolves.toBe('old');
+      await expect(readdir(partDirectory)).resolves.toEqual(['0.part']);
+    } finally {
+      await rm(partDirectory, { force: true, recursive: true });
+    }
+  });
+
+  it('preserves the committed local chunk when atomic publication fails', async () => {
+    const { service } = createStorageTestContext();
+    const sessionId = 'atomic-part-test';
+    const partDirectory = `backend/.tmp/.upload-parts/${sessionId}`;
+    const partPath = `${partDirectory}/0.part`;
+
+    try {
+      await service.writeUploadSessionPart(
+        sessionId,
+        0,
+        Readable.from(['old']),
+        3,
+      );
+      jest
+        .spyOn(fileSystem, 'rename')
+        .mockRejectedValueOnce(new Error('atomic publication failed'));
+
+      await expect(
+        service.writeUploadSessionPart(sessionId, 0, Readable.from(['new']), 3),
+      ).rejects.toThrow('atomic publication failed');
+
+      await expect(readFile(partPath, 'utf8')).resolves.toBe('old');
+      await expect(readdir(partDirectory)).resolves.toEqual(['0.part']);
+    } finally {
+      await rm(partDirectory, { force: true, recursive: true });
+    }
+  });
+
   it('isolates compose operations and fences a superseded publisher', async () => {
     const { objectStorage, service } = createStorageTestContext();
     const sessionId = 'compose-fence-test';
@@ -110,7 +225,12 @@ describe('StorageObjectService', () => {
 
     await mkdir(dirname(finalPath), { recursive: true });
     await writeFile(finalPath, 'x', 'utf8');
-    await service.writeUploadSessionPart(sessionId, 0, Readable.from(['old']));
+    await service.writeUploadSessionPart(
+      sessionId,
+      0,
+      Readable.from(['old']),
+      3,
+    );
     jest
       .spyOn(objectStorage, 'distributedStorageEnabled')
       .mockResolvedValue(false);
@@ -135,6 +255,7 @@ describe('StorageObjectService', () => {
         sessionId,
         0,
         Readable.from(['new']),
+        3,
       );
       newCompose = service.composeUploadSessionParts({
         expectedSize: 3,

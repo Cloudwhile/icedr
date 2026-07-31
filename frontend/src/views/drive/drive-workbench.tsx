@@ -381,6 +381,7 @@ export function DriveWorkbench({
     showFeedback,
     spaceScope,
     uploadActor,
+    uploadOwnerUserId: activeUser?.id,
     workspaceId,
     workspaceTimerRef,
   });
