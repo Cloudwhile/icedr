@@ -38,7 +38,7 @@ import {
   type SystemOverview,
   type WorkspaceResponse,
 } from "@/lib/drive-api";
-import { AuthGate } from "./auth-client";
+import { AuthGate } from "@/components/auth/auth-gate";
 import { LocalizedDriveShell } from "./drive-shell";
 import { AuditModule } from "./drive-modules";
 import { OAuthAdminSettingsPage } from "./drive-oauth-admin-settings";
@@ -183,7 +183,7 @@ export function AdminApp() {
   return (
     <LocalizedDriveShell>
       {(shellState) => (
-        <AuthGate>
+        <AuthGate palette={shellState.palette}>
           {(user) => <AdminPanelGate {...shellState} currentUser={user} />}
         </AuthGate>
       )}

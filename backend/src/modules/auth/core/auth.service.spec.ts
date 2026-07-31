@@ -210,6 +210,19 @@ async function expectInvalidResetCode(promise: Promise<unknown>) {
   });
 }
 
+async function expectSessionUnauthorized(
+  promise: Promise<unknown>,
+  code:
+    | 'AUTH_SESSION_REQUIRED'
+    | 'AUTH_SESSION_INVALID'
+    | 'AUTH_SESSION_EXPIRED',
+) {
+  await expect(promise).rejects.toMatchObject({
+    response: { code },
+    status: 401,
+  });
+}
+
 describe('AuthService', () => {
   afterEach(() => {
     jest.mocked(createOAuthProviderAdapter).mockReset();
@@ -265,6 +278,42 @@ describe('AuthService', () => {
     });
     expect(requireBootstrapCompleted).not.toHaveBeenCalled();
     expect(repository.deleteSessionByTokenHash).toHaveBeenCalled();
+  });
+
+  it('returns a stable code when a session is required', async () => {
+    const { service } = createService();
+
+    await expectSessionUnauthorized(
+      service.getCurrentUser(),
+      'AUTH_SESSION_REQUIRED',
+    );
+  });
+
+  it('returns a stable code when a bearer session is invalid', async () => {
+    const { repository, service } = createService();
+    repository.findSessionByTokenHash.mockResolvedValueOnce(null as never);
+
+    await expectSessionUnauthorized(
+      service.getCurrentUser('Bearer invalid-session'),
+      'AUTH_SESSION_INVALID',
+    );
+  });
+
+  it('returns a stable code and deletes an expired bearer session', async () => {
+    const { repository, service } = createService();
+    repository.findSessionByTokenHash.mockResolvedValueOnce({
+      tokenHash: 'expired-session-hash',
+      expiresAt: new Date(0).toISOString(),
+      user: createUserResponse(),
+    });
+
+    await expectSessionUnauthorized(
+      service.getCurrentUser('Bearer expired-session'),
+      'AUTH_SESSION_EXPIRED',
+    );
+    expect(repository.deleteSessionByTokenHash).toHaveBeenCalledWith(
+      'expired-session-hash',
+    );
   });
 
   it('uses one safe credential error for unknown email and wrong password', async () => {

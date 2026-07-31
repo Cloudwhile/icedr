@@ -112,7 +112,7 @@ describe("drive api errors", () => {
   it("uses share-specific messages for anonymous share access", () => {
     expect(
       getDriveApiErrorMessage(
-        new DriveApiError("Share link is expired", 410),
+        new DriveApiError("不参与判断的后端文案", 410, "SHARE_EXPIRED"),
         t,
         { scope: "share" },
       ),
@@ -124,6 +124,25 @@ describe("drive api errors", () => {
         { scope: "share" },
       ),
     ).toBe("errors.shareRateLimited");
+  });
+
+  it.each([
+    ["SHARE_REVOKED", 410, "errors.shareRevoked"],
+    ["SHARE_VIEW_LIMIT_REACHED", 410, "errors.shareViewLimitReached"],
+    ["SHARE_DOWNLOAD_LIMIT_REACHED", 410, "errors.shareDownloadLimitReached"],
+    ["SHARE_ACCESS_SESSION_REQUIRED", 403, "errors.shareAccessSessionRequired"],
+    ["SHARE_ACCESS_SESSION_INVALID", 403, "errors.shareAccessSessionInvalid"],
+    ["SHARE_ACCESS_WAITING", 403, "errors.shareAccessWaiting"],
+    ["SHARE_DOWNLOAD_DISABLED", 403, "share.downloadBlocked"],
+    ["SHARE_PREVIEW_DISABLED", 403, "share.previewBlocked"],
+  ])("maps structured anonymous share error %s", (code, status, messageKey) => {
+    expect(
+      getDriveApiErrorMessage(
+        new DriveApiError("Opaque backend message", status, code),
+        t,
+        { scope: "share" },
+      ),
+    ).toBe(messageKey);
   });
 
   it("prefers structured transfer failure messages in workspace and share scopes", () => {
@@ -141,14 +160,14 @@ describe("drive api errors", () => {
     );
   });
 
-  it("keeps backend reasons when no mapped message exists", () => {
+  it("uses a safe fallback instead of exposing an unmapped backend reason", () => {
     expect(
       getDriveApiErrorMessage(
         new DriveApiError("Custom backend reason", 418),
         t,
         { fallbackKey: "fallback" },
       ),
-    ).toBe("errors.withReason:{\"reason\":\"Custom backend reason\"}");
+    ).toBe("fallback");
   });
 
   it("recognizes only the structured upload-conflict skip error", () => {

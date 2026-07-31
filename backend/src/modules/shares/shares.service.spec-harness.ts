@@ -27,6 +27,7 @@ import {
   type CommitShareDownloadIntentInput,
 } from './share-download-commit.repository';
 import { ShareDownloadService } from './share-download.service';
+import type { ShareErrorCode } from './share-errors';
 import {
   ShareRateLimitExceededError,
   type ShareRateLimitRepository,
@@ -968,6 +969,27 @@ export function createSharesServiceHarness() {
     expect((caught as HttpException).getStatus()).toBe(429);
     return caught as HttpException;
   };
+  const expectShareError = async (
+    promise: Promise<unknown>,
+    code: ShareErrorCode,
+  ) => {
+    let caught: unknown;
+    try {
+      await promise;
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    const exception = caught as HttpException;
+    const response = exception.getResponse() as Record<string, unknown>;
+    expect(response).toMatchObject({
+      code,
+      statusCode: exception.getStatus(),
+    });
+    expect(typeof response.error).toBe('string');
+    expect(typeof response.message).toBe('string');
+    return exception;
+  };
 
   return {
     abuseProtection,
@@ -978,6 +1000,7 @@ export function createSharesServiceHarness() {
     createEmailSession,
     createRestartedService: createService,
     expectRateLimited,
+    expectShareError,
     fileNodesService,
     mailService,
     nodes,

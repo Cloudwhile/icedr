@@ -11,6 +11,7 @@ describe('SharesService download policy and concurrency', () => {
   let configValues: SharesServiceHarness['configValues'];
   let createEmailSession: SharesServiceHarness['createEmailSession'];
   let expectRateLimited: SharesServiceHarness['expectRateLimited'];
+  let expectShareError: SharesServiceHarness['expectShareError'];
   let repository: SharesServiceHarness['repository'];
   let service: SharesServiceHarness['service'];
   let storageService: SharesServiceHarness['storageService'];
@@ -20,6 +21,7 @@ describe('SharesService download policy and concurrency', () => {
       configValues,
       createEmailSession,
       expectRateLimited,
+      expectShareError,
       repository,
       service,
       storageService,
@@ -186,13 +188,16 @@ describe('SharesService download policy and concurrency', () => {
       maxDownloads: 1,
       remainingDownloads: 0,
     });
-    await expect(
+    const error = await expectShareError(
       service.downloadSharedNode(
         created.token,
         'roadmap',
         competingIntent.downloadId,
       ),
-    ).rejects.toThrow('Share download limit has been reached');
+      'SHARE_DOWNLOAD_LIMIT_REACHED',
+    );
+    expect(error.getStatus()).toBe(410);
+    expect(error.message).toBe('Share download limit has been reached');
     expect(storageService.openObjectStream).toHaveBeenCalledTimes(1);
 
     const storedShare = repository.findByToken(created.token);

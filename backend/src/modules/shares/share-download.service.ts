@@ -2,7 +2,6 @@ import { randomBytes } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
-  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,6 +21,7 @@ import { SharesRepository } from './shares.repository';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import { ShareDownloadCommitRepository } from './share-download-commit.repository';
 import { ShareContentService } from './share-content.service';
+import { createShareError, SHARE_ERROR_CODES } from './share-errors';
 import {
   normalizePolicyDomain,
   normalizePolicyEmailAllowlist,
@@ -306,16 +306,16 @@ export class ShareDownloadService {
         })
         .catch(() => undefined);
       if (commitResult.status === 'share-missing') {
-        throw new NotFoundException('Share link not found');
+        throw createShareError(SHARE_ERROR_CODES.NOT_FOUND);
       }
       if (commitResult.status === 'share-revoked') {
-        throw new GoneException('Share link is revoked');
+        throw createShareError(SHARE_ERROR_CODES.REVOKED);
       }
       if (commitResult.status === 'share-expired') {
-        throw new GoneException('Share link is expired');
+        throw createShareError(SHARE_ERROR_CODES.EXPIRED);
       }
       if (commitResult.status === 'download-limit-reached') {
-        throw new GoneException('Share download limit has been reached');
+        throw createShareError(SHARE_ERROR_CODES.DOWNLOAD_LIMIT_REACHED);
       }
       await this.abuseProtection.recordDenied({
         identifiers: { downloadId },
@@ -373,7 +373,7 @@ export class ShareDownloadService {
         resolved: false,
         shareToken: token,
       });
-      throw new NotFoundException('Share link not found');
+      throw createShareError(SHARE_ERROR_CODES.NOT_FOUND);
     }
     if (share.revokedAt) {
       await this.abuseProtection.consumeLookup({
@@ -387,7 +387,7 @@ export class ShareDownloadService {
         resolved: true,
         shareToken: token,
       });
-      throw new GoneException('Share link is revoked');
+      throw createShareError(SHARE_ERROR_CODES.REVOKED);
     }
     if (this.isExpiredShare(share)) {
       await this.abuseProtection.consumeLookup({
@@ -401,7 +401,7 @@ export class ShareDownloadService {
         resolved: true,
         shareToken: token,
       });
-      throw new GoneException('Share link is expired');
+      throw createShareError(SHARE_ERROR_CODES.EXPIRED);
     }
     return share;
   }
@@ -430,7 +430,7 @@ export class ShareDownloadService {
           'access_session_required',
           visitor,
         );
-        throw new ForbiddenException('Share access session is required');
+        throw createShareError(SHARE_ERROR_CODES.ACCESS_SESSION_REQUIRED);
       }
       const session = await this.sharesRepository.findAccessSession(
         accessSessionId,
@@ -447,7 +447,7 @@ export class ShareDownloadService {
           visitor,
           accessSessionId,
         );
-        throw new ForbiddenException('Share access session is invalid');
+        throw createShareError(SHARE_ERROR_CODES.ACCESS_SESSION_INVALID);
       }
       if (new Date(session.availableAt).getTime() > Date.now()) {
         await this.recordAccessIdentityDenied(
@@ -456,7 +456,7 @@ export class ShareDownloadService {
           visitor,
           accessSessionId,
         );
-        throw new ForbiddenException('Share access wait time has not elapsed');
+        throw createShareError(SHARE_ERROR_CODES.ACCESS_WAITING);
       }
       return session;
     }
@@ -606,7 +606,7 @@ export class ShareDownloadService {
 
   private assertDownloadLimitAvailable(decision: ShareDownloadPolicyDecision) {
     if (decision.remainingDownloads === 0) {
-      throw new GoneException('Share download limit has been reached');
+      throw createShareError(SHARE_ERROR_CODES.DOWNLOAD_LIMIT_REACHED);
     }
   }
 

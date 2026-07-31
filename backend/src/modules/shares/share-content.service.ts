@@ -1,12 +1,12 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { FileNodeResponse } from '../files/file-nodes.dto';
 import { FileNodesService } from '../files/file-nodes.service';
 import { ShareContentRepository } from './share-content.repository';
+import { createShareError, SHARE_ERROR_CODES } from './share-errors';
 import type {
   NormalizedCreateShareDto,
   ResolvedShareCreateScope,
@@ -154,10 +154,10 @@ export class ShareContentService {
     }
 
     if (action === 'download' && !share.allowDownload) {
-      throw new ForbiddenException('Downloads are disabled for this share');
+      throw createShareError(SHARE_ERROR_CODES.DOWNLOAD_DISABLED);
     }
     if (action === 'preview' && !share.allowPreview) {
-      throw new ForbiddenException('Preview is disabled for this share');
+      throw createShareError(SHARE_ERROR_CODES.PREVIEW_DISABLED);
     }
     if (scopeMode === 'entire-folder') {
       const existingMember = await this.contentRepository.findMember(

@@ -1,10 +1,8 @@
 import { findDriveItem, getChildItems, getItemKind, type DriveItem, type DriveItemKind } from "@/features/file/model";
 import {
-  createDriveApiResponseError,
   DriveApiError,
-  getApiBaseUrl,
-  getAuthHeaders,
-  readDriveApiError,
+  requestDriveApi,
+  type DriveApiAuthMode,
   type FilePreviewCapability,
   type ShareDownloadPolicy,
 } from "@/lib/drive-api";
@@ -107,13 +105,6 @@ type ShareApiResponse = RegisteredShare & {
   items?: RegisteredShareItem[];
 };
 
-export class ShareApiUnavailableError extends Error {
-  constructor() {
-    super(apiUnavailableMessage);
-    this.name = "ShareApiUnavailableError";
-  }
-}
-
 function mapShareApiResponse(response: ShareApiResponse): RegisteredShare {
   return {
     token: response.token,
@@ -145,67 +136,50 @@ function mapShareApiResponse(response: ShareApiResponse): RegisteredShare {
   };
 }
 
-async function requestShareApi<T>(path: string, init?: RequestInit): Promise<T> {
-  try {
-    const headers = new Headers(init?.headers);
-    headers.set("Content-Type", "application/json");
-    Object.entries(getAuthHeaders()).forEach(([key, value]) => headers.set(key, value));
-
-    const response = await fetch(`${getApiBaseUrl()}${path}`, {
-      ...init,
-      headers,
-    });
-
-    if (response.status === 404 || response.status === 410) return null as T;
-    if (!response.ok) {
-      throw createDriveApiResponseError(response, await readDriveApiError(response, apiUnavailableMessage));
-    }
-    return (await response.json()) as T;
-  } catch (error) {
-    if (error instanceof DriveApiError || error instanceof ShareApiUnavailableError) throw error;
-    throw new DriveApiError(apiUnavailableMessage, undefined, "DRIVE_API_UNAVAILABLE");
-  }
+function requestShareApi<T>(
+  path: string,
+  init?: RequestInit,
+  auth: Extract<DriveApiAuthMode, "optional" | "required"> = "required",
+): Promise<T> {
+  return requestDriveApi<T>(path, init, {
+    auth,
+    fallbackMessage: apiUnavailableMessage,
+    unauthorized: auth === "required" ? "session" : "local",
+  });
 }
 
 export async function createRegisteredShare(record: RegisteredShare) {
-  try {
-    const response = await requestShareApi<ShareApiResponse>("/shares", {
-      method: "POST",
-      body: JSON.stringify(record.selection ? {
-        workspaceId: record.workspaceId,
-        selection: record.selection,
-        allowDownload: record.allowDownload,
-        allowPreview: record.allowPreview,
-        expiresDays: record.expiresDays,
-        remark: record.remark,
-        policy: record.policy,
-      } : {
-        title: record.title,
-        workspaceId: record.workspaceId,
-        mode: record.mode,
-        owner: record.owner,
-        rootItemIds: record.rootItemIds,
-        allowedItemIds: record.allowedItemIds,
-        dynamicRootId: record.dynamicRootId,
-        allowDownload: record.allowDownload,
-        allowPreview: record.allowPreview,
-        expiresDays: record.expiresDays,
-        remark: record.remark,
-        policy: record.policy,
-      }),
-    });
-    return mapShareApiResponse(response);
-  } catch (error) {
-    if (error instanceof ShareApiUnavailableError) {
-      throw new DriveApiError(apiUnavailableMessage);
-    }
-    throw error;
-  }
+  const response = await requestShareApi<ShareApiResponse>("/shares", {
+    method: "POST",
+    body: JSON.stringify(record.selection ? {
+      workspaceId: record.workspaceId,
+      selection: record.selection,
+      allowDownload: record.allowDownload,
+      allowPreview: record.allowPreview,
+      expiresDays: record.expiresDays,
+      remark: record.remark,
+      policy: record.policy,
+    } : {
+      title: record.title,
+      workspaceId: record.workspaceId,
+      mode: record.mode,
+      owner: record.owner,
+      rootItemIds: record.rootItemIds,
+      allowedItemIds: record.allowedItemIds,
+      dynamicRootId: record.dynamicRootId,
+      allowDownload: record.allowDownload,
+      allowPreview: record.allowPreview,
+      expiresDays: record.expiresDays,
+      remark: record.remark,
+      policy: record.policy,
+    }),
+  });
+  return mapShareApiResponse(response);
 }
 
 export async function fetchRegisteredShare(token: string, accessSessionId?: string) {
   try {
-    const response = await requestShareApi<ShareApiResponse | null>(
+    const response = await requestShareApi<ShareApiResponse>(
       `/shares/${encodeURIComponent(token)}`,
       accessSessionId
         ? {
@@ -214,66 +188,37 @@ export async function fetchRegisteredShare(token: string, accessSessionId?: stri
             },
           }
         : undefined,
+      "optional",
     );
-    return response ? mapShareApiResponse(response) : undefined;
+    return mapShareApiResponse(response);
   } catch (error) {
-    if (error instanceof ShareApiUnavailableError) {
-      throw new DriveApiError(apiUnavailableMessage);
-    }
+    if (error instanceof DriveApiError && error.status === 404) return undefined;
     throw error;
   }
 }
 
 export async function fetchRegisteredShareManagement(token: string) {
-  try {
-    const response = await requestShareApi<ShareApiResponse | null>(
-      `/shares/${encodeURIComponent(token)}/management`,
-    );
-    return response ? mapShareApiResponse(response) : undefined;
-  } catch (error) {
-    if (error instanceof ShareApiUnavailableError) {
-      throw new DriveApiError(apiUnavailableMessage);
-    }
-    throw error;
-  }
+  const response = await requestShareApi<ShareApiResponse>(
+    `/shares/${encodeURIComponent(token)}/management`,
+  );
+  return mapShareApiResponse(response);
 }
 
 export async function fetchRegisteredShares() {
-  try {
-    const response = await requestShareApi<ShareApiResponse[]>("/shares");
-    return response.map(mapShareApiResponse);
-  } catch (error) {
-    if (error instanceof ShareApiUnavailableError) {
-      throw new DriveApiError(apiUnavailableMessage);
-    }
-    throw error;
-  }
+  const response = await requestShareApi<ShareApiResponse[]>("/shares");
+  return response.map(mapShareApiResponse);
 }
 
 export async function fetchRegisteredSharesForWorkspace(workspaceId: string) {
-  try {
-    const response = await requestShareApi<ShareApiResponse[]>(`/shares?workspaceId=${encodeURIComponent(workspaceId)}`);
-    return response.map(mapShareApiResponse);
-  } catch (error) {
-    if (error instanceof ShareApiUnavailableError) {
-      throw new DriveApiError(apiUnavailableMessage);
-    }
-    throw error;
-  }
+  const response = await requestShareApi<ShareApiResponse[]>(`/shares?workspaceId=${encodeURIComponent(workspaceId)}`);
+  return response.map(mapShareApiResponse);
 }
 
 export async function revokeRegisteredShare(token: string) {
-  try {
-    const response = await requestShareApi<ShareApiResponse | null>(`/shares/${encodeURIComponent(token)}`, {
-      method: "DELETE",
-    });
-    return response ? mapShareApiResponse(response) : undefined;
-  } catch (error) {
-    if (error instanceof ShareApiUnavailableError) {
-      throw new DriveApiError(apiUnavailableMessage);
-    }
-    throw error;
-  }
+  const response = await requestShareApi<ShareApiResponse>(`/shares/${encodeURIComponent(token)}`, {
+    method: "DELETE",
+  });
+  return mapShareApiResponse(response);
 }
 
 export function getShareItems(record: RegisteredShare, sourceItems?: DriveItem[]) {

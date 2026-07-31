@@ -1,6 +1,7 @@
 import {
   DriveApiError,
-  getAuthHeaders,
+  getStoredAuthToken,
+  handleDriveApiUnauthorized,
   type TransferTaskFailureCode,
 } from "@/lib/drive-api";
 
@@ -127,6 +128,7 @@ export function uploadChunkWithProgress({
 }) {
   return new Promise<UploadChunkResponse>((resolve, reject) => {
     const request = new XMLHttpRequest();
+    const requestToken = getStoredAuthToken();
     let settled = false;
     let stallTimer: ReturnType<typeof setTimeout> | null = null;
     const settle = (callback: () => void) => {
@@ -155,9 +157,9 @@ export function uploadChunkWithProgress({
     request.open("PUT", url);
     request.timeout = 120000;
     request.setRequestHeader("Content-Type", "application/octet-stream");
-    Object.entries(getAuthHeaders()).forEach(([key, value]) =>
-      request.setRequestHeader(key, value),
-    );
+    if (requestToken) {
+      request.setRequestHeader("Authorization", `Bearer ${requestToken}`);
+    }
     request.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
       armStallTimer();
@@ -184,15 +186,17 @@ export function uploadChunkWithProgress({
         }
         return;
       }
-      settle(() =>
-        reject(
-          createUploadXhrError(
-            request,
-            "Upload chunk failed",
-            "UPLOAD_FAILED",
-          ),
-        ),
+      const error = createUploadXhrError(
+        request,
+        "Upload chunk failed",
+        "UPLOAD_FAILED",
       );
+      handleDriveApiUnauthorized(error, {
+        auth: "required",
+        requestToken,
+        unauthorized: "session",
+      });
+      settle(() => reject(error));
     };
     request.onerror = () =>
       settle(() =>

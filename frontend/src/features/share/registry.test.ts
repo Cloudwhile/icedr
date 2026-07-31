@@ -3,6 +3,7 @@ import type { DriveItem } from "@/features/file/model";
 import {
   createRegisteredShare,
   fetchRegisteredShare,
+  fetchRegisteredShares,
   getShareItems,
   type RegisteredShare,
   type RegisteredShareItem,
@@ -175,6 +176,66 @@ describe("share registry create contract", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(url)).toMatch(/\/shares\/share-token$/);
     expect(new Headers(init.headers).get("x-share-access-session")).toBe("access-session-1");
+  });
+
+  it("returns undefined only when a public share is not found", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          {
+            code: "SHARE_NOT_FOUND",
+            message: "Share link not found",
+            statusCode: 404,
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    await expect(fetchRegisteredShare("missing-share")).resolves.toBeUndefined();
+  });
+
+  it("preserves a revoked share as a structured error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          {
+            code: "SHARE_REVOKED",
+            message: "Share link is revoked",
+            statusCode: 410,
+          },
+          { status: 410 },
+        ),
+      ),
+    );
+
+    await expect(fetchRegisteredShare("revoked-share")).rejects.toMatchObject({
+      code: "SHARE_REVOKED",
+      status: 410,
+    });
+  });
+
+  it("never turns management list failures into a null collection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          {
+            code: "SHARE_EXPIRED",
+            message: "Share link is expired",
+            statusCode: 410,
+          },
+          { status: 410 },
+        ),
+      ),
+    );
+
+    await expect(fetchRegisteredShares()).rejects.toMatchObject({
+      code: "SHARE_EXPIRED",
+      status: 410,
+    });
   });
 });
 

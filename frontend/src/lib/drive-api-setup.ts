@@ -75,6 +75,9 @@ export async function requestSetupApi<T>(
     return await requestDriveApi<T>(path, {
       ...init,
       headers,
+    }, {
+      auth: "none",
+      unauthorized: "local",
     });
   } catch (error) {
     if (isSetupAccessInvalidatingError(error)) clearStoredSetupToken();

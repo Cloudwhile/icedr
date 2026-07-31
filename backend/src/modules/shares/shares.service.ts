@@ -2,7 +2,6 @@ import { randomBytes, randomInt } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
-  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -34,6 +33,7 @@ import type {
 } from './shares.dto';
 import { ShareContentService } from './share-content.service';
 import type { ShareCreatorAccess } from './share-content.types';
+import { createShareError, SHARE_ERROR_CODES } from './share-errors';
 import { SharesRepository } from './shares.repository';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import { ShareDownloadService } from './share-download.service';
@@ -279,7 +279,7 @@ export class SharesService {
         access.actorRole !== 'owner' &&
         share.creatorUserId !== access.actorUserId)
     ) {
-      throw new NotFoundException('Share link not found');
+      throw createShareError(SHARE_ERROR_CODES.NOT_FOUND);
     }
     return this.shareContent.withContent(this.toPublicShare(share), {
       includeItems: true,
@@ -328,16 +328,16 @@ export class SharesService {
       { actor: options.actor },
     );
     if (viewRecord.missingShare) {
-      throw new NotFoundException('Share link not found');
+      throw createShareError(SHARE_ERROR_CODES.NOT_FOUND);
     }
     if (viewRecord.revoked) {
-      throw new GoneException('Share link is revoked');
+      throw createShareError(SHARE_ERROR_CODES.REVOKED);
     }
     if (viewRecord.expired) {
-      throw new GoneException('Share link is expired');
+      throw createShareError(SHARE_ERROR_CODES.EXPIRED);
     }
     if (!viewRecord.recorded) {
-      throw new GoneException('Share view limit has been reached');
+      throw createShareError(SHARE_ERROR_CODES.VIEW_LIMIT_REACHED);
     }
     const content = await this.shareContent.withContent(share, {
       includeItems: true,
@@ -370,7 +370,7 @@ export class SharesService {
 
   async revokeShare(token: string, auditMetadata: AuditMetadata = {}) {
     const share = await this.sharesRepository.revoke(token);
-    if (!share) throw new NotFoundException('Share link not found');
+    if (!share) throw createShareError(SHARE_ERROR_CODES.NOT_FOUND);
 
     await this.sharesRepository.recordAudit(
       'share.revoked',
@@ -596,7 +596,7 @@ export class SharesService {
         resolved: false,
         shareToken: token,
       });
-      throw new NotFoundException('Share link not found');
+      throw createShareError(SHARE_ERROR_CODES.NOT_FOUND);
     }
     if (share.revokedAt) {
       await this.abuseProtection.consumeLookup({
@@ -610,7 +610,7 @@ export class SharesService {
         resolved: true,
         shareToken: token,
       });
-      throw new GoneException('Share link is revoked');
+      throw createShareError(SHARE_ERROR_CODES.REVOKED);
     }
     if (this.isExpiredShare(share)) {
       await this.abuseProtection.consumeLookup({
@@ -624,7 +624,7 @@ export class SharesService {
         resolved: true,
         shareToken: token,
       });
-      throw new GoneException('Share link is expired');
+      throw createShareError(SHARE_ERROR_CODES.EXPIRED);
     }
     return share;
   }
@@ -709,7 +709,7 @@ export class SharesService {
           'access_session_required',
           visitor,
         );
-        throw new ForbiddenException('Share access session is required');
+        throw createShareError(SHARE_ERROR_CODES.ACCESS_SESSION_REQUIRED);
       }
       const session = await this.sharesRepository.findAccessSession(
         accessSessionId,
@@ -726,7 +726,7 @@ export class SharesService {
           visitor,
           accessSessionId,
         );
-        throw new ForbiddenException('Share access session is invalid');
+        throw createShareError(SHARE_ERROR_CODES.ACCESS_SESSION_INVALID);
       }
       if (new Date(session.availableAt).getTime() > Date.now()) {
         await this.recordAccessIdentityDenied(
@@ -735,7 +735,7 @@ export class SharesService {
           visitor,
           accessSessionId,
         );
-        throw new ForbiddenException('Share access wait time has not elapsed');
+        throw createShareError(SHARE_ERROR_CODES.ACCESS_WAITING);
       }
       return session;
     }

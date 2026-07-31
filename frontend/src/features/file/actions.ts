@@ -22,13 +22,10 @@ import {
 import {
   buildApiUrl,
   cancelUploadSessionRecovery,
-  createDriveApiResponseError,
   DriveApiError,
+  fetchDriveApiResponse,
   fetchTransfers,
-  getApiBaseUrl,
-  getAuthHeaders,
   isUploadConflictSkippedApiError,
-  readDriveApiError,
   updateTransfer,
   type DriveSpaceScope,
   type FileNodeResponse,
@@ -88,10 +85,6 @@ type UploadPartIntentResponse = {
   sessionId: string;
   uploadUrl: string;
 };
-
-async function createDriveFetchError(response: Response, fallback: string) {
-  return createDriveApiResponseError(response, await readDriveApiError(response, fallback));
-}
 
 export type UploadDriveFileProgress = {
   failureCode: TransferTaskFailureCode | null;
@@ -381,11 +374,11 @@ export function createUploadDriveFileTask({
     activeIntentAbort = new AbortController();
     let intentResponse: Response;
     try {
-      intentResponse = await fetch(
-        `${getApiBaseUrl()}/file-nodes/upload-intents`,
+      intentResponse = await fetchDriveApiResponse(
+        "/file-nodes/upload-intents",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          headers: { "Content-Type": "application/json" },
           signal: activeIntentAbort.signal,
           body: JSON.stringify({
             workspaceId,
@@ -398,15 +391,11 @@ export function createUploadDriveFileTask({
             resumeKey: resumeIdentity.resumeIdentity,
           }),
         },
+        { fallbackMessage: "Upload intent failed" },
       );
     } finally {
       activeIntentAbort = null;
     }
-    if (!intentResponse.ok) {
-      const error = await createDriveFetchError(intentResponse, "Upload intent failed");
-      throw error;
-    }
-
     intent = (await intentResponse.json()) as UploadIntentResponse;
     const currentIntent = intent;
     transferStatusCasQueue = createTaskStatusCasQueue({
@@ -545,48 +534,52 @@ export function createUploadDriveFileTask({
     let completionResponse: Response;
     try {
       activeCompletionAbort = new AbortController();
-      completionResponse = await fetch(`${getApiBaseUrl()}/file-nodes/upload-completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-          ...(workspaceActor ? { "X-Workspace-Actor": workspaceActor } : {}),
+      completionResponse = await fetchDriveApiResponse(
+        "/file-nodes/upload-completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(workspaceActor ? { "X-Workspace-Actor": workspaceActor } : {}),
+          },
+          signal: activeCompletionAbort.signal,
+          body: JSON.stringify({
+            workspaceId,
+            conflictStrategy: currentIntent.conflictStrategy,
+            fileName: currentIntent.fileName,
+            objectKey: currentIntent.objectKey,
+            sizeBytes: file.size,
+            parentNodeId: parentNodeId ?? undefined,
+            spaceScope,
+            mimeType: file.type || "application/octet-stream",
+            transferId: currentIntent.transferId,
+            uploadSessionId: currentIntent.sessionId,
+          }),
         },
-        signal: activeCompletionAbort.signal,
-        body: JSON.stringify({
-          workspaceId,
-          conflictStrategy: currentIntent.conflictStrategy,
-          fileName: currentIntent.fileName,
-          objectKey: currentIntent.objectKey,
-          sizeBytes: file.size,
-          parentNodeId: parentNodeId ?? undefined,
-          spaceScope,
-          mimeType: file.type || "application/octet-stream",
-          transferId: currentIntent.transferId,
-          uploadSessionId: currentIntent.sessionId,
-        }),
-      });
+        { fallbackMessage: "Upload completion failed" },
+      );
     } catch (error) {
       activeCompletionAbort = null;
       if (controlReason === "paused" || controlReason === "canceled") {
         throw new UploadDriveFileControlError(controlReason);
       }
-      await recordUploadFailure(error, file.size, lastProgress);
-      throw normalizeUploadError(error, "Upload completion failed");
-    }
-    activeCompletionAbort = null;
-    throwIfControlled();
-
-    if (!completionResponse.ok) {
-      const error = await createDriveFetchError(completionResponse, "Upload completion failed");
       if (isUploadConflictSkippedApiError(error)) {
         failureCode = null;
         emitProgress(file.size, 96, "canceled");
         throw error;
       }
-      await recordUploadFailure(error, file.size, 96);
-      throw error;
+      await recordUploadFailure(
+        error,
+        file.size,
+        error instanceof DriveApiError && error.status !== undefined
+          ? 96
+          : lastProgress,
+      );
+      throw normalizeUploadError(error, "Upload completion failed");
     }
+    activeCompletionAbort = null;
+    throwIfControlled();
+
     let completedNode: FileNodeResponse;
     try {
       const responseBody = (await completionResponse.json()) as unknown;
@@ -788,13 +781,11 @@ function getUploadedPartBytes(partIndexes: Set<number>, file: File, chunkSizeByt
 }
 
 async function createUploadPartIntent(sessionId: string, partIndex: number) {
-  const response = await fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/upload-intents`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  });
-  if (!response.ok) {
-    throw await createDriveFetchError(response, "Upload part intent failed");
-  }
+  const response = await fetchDriveApiResponse(
+    `/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/upload-intents`,
+    { method: "POST" },
+    { fallbackMessage: "Upload part intent failed" },
+  );
   return (await response.json()) as UploadPartIntentResponse;
 }
 
@@ -803,14 +794,15 @@ async function completeUploadPart(
   partIndex: number,
   input: { eTag?: string; sizeBytes: number },
 ) {
-  const response = await fetch(`${getApiBaseUrl()}/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw await createDriveFetchError(response, "Upload part completion failed");
-  }
+  const response = await fetchDriveApiResponse(
+    `/file-nodes/upload-sessions/${encodeURIComponent(sessionId)}/parts/${partIndex}/completions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    { fallbackMessage: "Upload part completion failed" },
+  );
   return (await response.json()) as UploadChunkResponse;
 }
 

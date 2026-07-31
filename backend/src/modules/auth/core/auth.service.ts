@@ -12,6 +12,10 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 import { MailService } from '../../admin/mail/mail.service';
 import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
+import {
+  AUTH_UNAUTHORIZED_CODES,
+  createAuthUnauthorizedError,
+} from '../../../common/security/auth-unauthorized-error';
 import { SettingsService } from '../../admin/settings/settings.service';
 import type {
   OAuthSettings,
@@ -888,15 +892,25 @@ export class AuthService {
   }> {
     await this.bootstrapState.requireCompleted();
     const token = this.extractBearerToken(authorization);
-    if (!token) throw new UnauthorizedException('Authentication is required');
+    if (!token) {
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.SESSION_REQUIRED,
+      );
+    }
 
     const session = await this.authRepository.findSessionByTokenHash(
       this.hashToken(token),
     );
-    if (!session) throw new UnauthorizedException('Session is invalid');
+    if (!session) {
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.SESSION_INVALID,
+      );
+    }
     if (new Date(session.expiresAt).getTime() < Date.now()) {
       await this.authRepository.deleteSessionByTokenHash(session.tokenHash);
-      throw new UnauthorizedException('Session has expired');
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.SESSION_EXPIRED,
+      );
     }
 
     return {
