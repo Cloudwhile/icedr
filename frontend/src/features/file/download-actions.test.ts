@@ -52,16 +52,18 @@ describe("download action lifecycle contract", () => {
 
     await downloadSharedDriveItem("share-token", item, "share-session-1");
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/shares/share-token/items/file-1/download-intents"),
-      expect.objectContaining({
-        body: JSON.stringify({ purpose: "download" }),
-        headers: expect.objectContaining({
-          "X-Share-Access-Session": "share-session-1",
-        }),
-        method: "POST",
-      }),
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(requestUrl).toContain(
+      "/shares/share-token/items/file-1/download-intents",
     );
+    expect(requestInit.body).toBe(JSON.stringify({ purpose: "download" }));
+    expect(requestInit.method).toBe("POST");
+    expect(
+      new Headers(requestInit.headers).get("X-Share-Access-Session"),
+    ).toBe("share-session-1");
     expect(openedUrl).toContain(
       "/api/shares/share-token/items/file-1/download?downloadId=download-1",
     );

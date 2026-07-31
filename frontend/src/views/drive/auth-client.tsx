@@ -30,48 +30,6 @@ import {
   getPasskeyErrorNotice,
 } from "@/features/auth/passkey-client-errors";
 import { getDriveApiErrorMessage } from "@/lib/drive-api-errors";
-export function AuthGate({
-  children
-}: {
-  children: React.ReactNode | ((user: AuthUser | null) => React.ReactNode);
-}) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [ready, setReady] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const nextPath = pathname || "/";
-    void (async () => {
-      try {
-        const setup = await fetchSetupStatus();
-        if (cancelled) return;
-        if (setup.needsSetup) {
-          router.replace(`/setup?next=${encodeURIComponent(nextPath)}`);
-          return;
-        }
-      } catch {
-        if (!cancelled) router.replace(`/setup?next=${encodeURIComponent(nextPath)}`);
-        return;
-      }
-
-      try {
-        const currentUser = await fetchCurrentUser();
-        if (cancelled) return;
-        setUser(currentUser);
-        setReady(true);
-      } catch {
-        if (!cancelled) router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
-        return;
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname, router]);
-  if (!ready) return null;
-  return typeof children === "function" ? children(user) : children;
-}
 type AuthPageMode = "login" | "register" | "forgot" | "reset";
 type PasswordResetStep = "request" | "verify" | "reset";
 type AuthStatus = AuthNoticeStatus | null;
@@ -147,13 +105,21 @@ function AuthPage({
     let cancelled = false;
     void fetchSetupStatus().then(setup => {
       if (!cancelled && setup.needsSetup) router.replace(`/setup?next=${encodeURIComponent(next || pathname || "/")}`);
-    }).catch(() => {
-      if (!cancelled) router.replace(`/setup?next=${encodeURIComponent(next || pathname || "/")}`);
+    }).catch((error) => {
+      if (!cancelled) {
+        setStatus({
+          message: getDriveApiErrorMessage(error, t, {
+            fallbackKey: "auth.failed",
+          }),
+          tone: "error",
+        });
+        setStatusMode(mode);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [next, pathname, router]);
+  }, [mode, next, pathname, router, t]);
   useEffect(() => {
     let cancelled = false;
     void Promise.all([fetchPublicSiteSettings(), fetchAuthSettings(), fetchIdentityConfig().catch(() => null)]).then(([site, settings, identity]) => {
@@ -169,7 +135,7 @@ function AuthPage({
   }, []);
   useEffect(() => {
     let cancelled = false;
-    void fetchCurrentUser().then(user => {
+    void fetchCurrentUser({ auth: "optional" }).then(user => {
       if (cancelled) return;
       if (user) {
         router.replace(next);

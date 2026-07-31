@@ -2,7 +2,10 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
-import { requestDriveApi } from "./drive-api-client";
+import {
+  requestDriveApi,
+  type DriveApiAuthMode,
+} from "./drive-api-client";
 import type {
   AdminSettings,
   AuthenticationMethodStatus,
@@ -32,11 +35,19 @@ import type {
 } from "./drive-api-types";
 
 export function fetchIdentityConfig() {
-  return requestDriveApi<IdentityConfigResponse>("/identity/oauth");
+  return requestDriveApi<IdentityConfigResponse>(
+    "/identity/oauth",
+    undefined,
+    publicRequest,
+  );
 }
 
 export function fetchPublicSiteSettings() {
-  return requestDriveApi<PublicSiteSettings>("/site/settings/public");
+  return requestDriveApi<PublicSiteSettings>(
+    "/site/settings/public",
+    undefined,
+    publicRequest,
+  );
 }
 
 export function fetchSiteSettings() {
@@ -57,6 +68,8 @@ export function fetchTranslationSettings() {
 export function fetchPublicTranslationSettings() {
   return requestDriveApi<TranslationSettings>(
     "/site/settings/public/translations",
+    undefined,
+    publicRequest,
   );
 }
 
@@ -71,7 +84,11 @@ export function upsertTranslationBundle(input: {
 }
 
 export function fetchAuthSettings() {
-  return requestDriveApi<AuthSettings>("/auth/settings");
+  return requestDriveApi<AuthSettings>(
+    "/auth/settings",
+    undefined,
+    publicRequest,
+  );
 }
 
 export function fetchWorkspaces() {
@@ -248,21 +265,25 @@ export function startOAuthLogin(providerId?: string) {
   const query = providerId
     ? `?providerId=${encodeURIComponent(providerId)}`
     : "";
-  return requestDriveApi<OAuthStartResponse>(`/auth/oauth/start${query}`);
+  return requestDriveApi<OAuthStartResponse>(
+    `/auth/oauth/start${query}`,
+    undefined,
+    publicRequest,
+  );
 }
 
 export function exchangeOAuthCode(input: { code: string }) {
   return requestDriveApi<AuthSession>("/auth/oauth/exchange", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, publicRequest);
 }
 
 export function completeOAuthCallback(input: { callbackUrl: string }) {
   return requestDriveApi<AuthSession>("/auth/oauth/callback", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, publicRequest);
 }
 
 export function createPasskeyRegistrationOptions(stepUpToken: string) {
@@ -274,6 +295,7 @@ export function createPasskeyRegistrationOptions(stepUpToken: string) {
       method: "POST",
       body: JSON.stringify({ stepUpToken }),
     },
+    reauthenticationRequest,
   );
 }
 
@@ -288,6 +310,7 @@ export function verifyPasskeyRegistration(input: {
       method: "POST",
       body: JSON.stringify(input),
     },
+    reauthenticationRequest,
   );
 }
 
@@ -299,6 +322,7 @@ export function createPasskeyAuthenticationOptions() {
     {
       method: "POST",
     },
+    publicRequest,
   );
 }
 
@@ -312,6 +336,7 @@ export function verifyPasskeyAuthentication(input: {
       method: "POST",
       body: JSON.stringify(input),
     },
+    publicRequest,
   );
 }
 
@@ -336,6 +361,7 @@ export function deletePasskey(id: string, stepUpToken: string) {
       method: "DELETE",
       body: JSON.stringify({ stepUpToken }),
     },
+    reauthenticationRequest,
   );
 }
 
@@ -350,13 +376,18 @@ export function reauthenticateWithPassword(password: string) {
       method: "POST",
       body: JSON.stringify({ password }),
     },
+    reauthenticationRequest,
   );
 }
 
 export function createPasskeyStepUpOptions() {
   return requestDriveApi<
     PasskeyCeremony<PublicKeyCredentialRequestOptionsJSON>
-  >("/auth/security/reauth/passkey-options", { method: "POST" });
+  >(
+    "/auth/security/reauth/passkey-options",
+    { method: "POST" },
+    reauthenticationRequest,
+  );
 }
 
 export function verifyPasskeyStepUp(input: {
@@ -369,6 +400,7 @@ export function verifyPasskeyStepUp(input: {
       method: "POST",
       body: JSON.stringify(input),
     },
+    reauthenticationRequest,
   );
 }
 
@@ -379,6 +411,7 @@ export function reauthenticateWithRecoveryCode(code: string) {
       method: "POST",
       body: JSON.stringify({ code }),
     },
+    reauthenticationRequest,
   );
 }
 
@@ -389,6 +422,7 @@ export function startOAuthStepUp(providerId?: string) {
   return requestDriveApi<OAuthStartResponse>(
     `/auth/security/reauth/oauth-start${query}`,
     { method: "POST" },
+    reauthenticationRequest,
   );
 }
 
@@ -399,6 +433,7 @@ export function exchangeOAuthStepUpCode(code: string) {
       method: "POST",
       body: JSON.stringify({ code }),
     },
+    reauthenticationRequest,
   );
 }
 
@@ -406,7 +441,7 @@ export function generateRecoveryCodes(stepUpToken: string) {
   return requestDriveApi<RecoveryCodeSet>("/auth/security/recovery-codes", {
     method: "POST",
     body: JSON.stringify({ stepUpToken }),
-  });
+  }, reauthenticationRequest);
 }
 
 export function registerLocalUser(input: {
@@ -417,14 +452,14 @@ export function registerLocalUser(input: {
   return requestDriveApi<AuthSession>("/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, publicRequest);
 }
 
 export function loginLocalUser(input: { email: string; password: string }) {
   return requestDriveApi<AuthSession>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, publicRequest);
 }
 
 export function logoutLocalUser() {
@@ -433,8 +468,13 @@ export function logoutLocalUser() {
   });
 }
 
-export function fetchCurrentUser() {
-  return requestDriveApi<AuthUser>("/auth/me");
+export function fetchCurrentUser(
+  options: { auth?: Extract<DriveApiAuthMode, "optional" | "required"> } = {},
+) {
+  return requestDriveApi<AuthUser>("/auth/me", undefined, {
+    auth: options.auth ?? "required",
+    unauthorized: "session",
+  });
 }
 
 export function updateCurrentUserProfile(input: UpdateCurrentUserInput) {
@@ -454,6 +494,7 @@ export function requestPasswordReset(input: {
       method: "POST",
       body: JSON.stringify(input),
     },
+    publicRequest,
   );
 }
 
@@ -464,6 +505,7 @@ export function verifyPasswordReset(input: { email: string; code: string }) {
       method: "POST",
       body: JSON.stringify(input),
     },
+    publicRequest,
   );
 }
 
@@ -475,6 +517,9 @@ export function confirmPasswordReset(input: {
   return requestDriveApi<AuthSession>("/auth/password-reset/confirm", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, publicRequest);
 }
+
+const publicRequest = { auth: "none" } as const;
+const reauthenticationRequest = { unauthorized: "reauth" } as const;
 

@@ -19,7 +19,7 @@ import { copyTextToClipboard, createShareUrl } from "@/features/file/actions";
 import { getDriveFileNameErrorMessageKey, validateDriveFileName } from "@/features/file/file-name-policy";
 import { createGeneratedFileTemplate, type GeneratedFileKind } from "@/features/file/generated-files";
 import { canOpenFilePreview, getDefaultFileOpenWith, getFileOpenWithOptions, getFileOpenWithStorageKey, type FileOpenWithApp } from "@/features/file/open-with";
-import { clearStoredAuthToken, createFolderNode, defaultPublicSiteSettings, fetchFileNode, fetchFileNodesByState, fetchPublicSiteSettings, fetchWorkspaces, fetchWorkspaceShareSettings, getDriveApiErrorMessage, isAuthExpiredApiError, logoutLocalUser, renameFileNode, resolvePublicSiteName, updateFileNodeState, type AuthUser, type DriveSpaceScope, type PublicSiteSettings, type WorkspaceResponse, type WorkspaceShareSettings } from "@/lib/drive-api";
+import { clearStoredAuthToken, createFolderNode, defaultPublicSiteSettings, fetchFileNode, fetchFileNodesByState, fetchPublicSiteSettings, fetchWorkspaces, fetchWorkspaceShareSettings, getDriveApiErrorMessage, logoutLocalUser, renameFileNode, resolvePublicSiteName, updateFileNodeState, type AuthUser, type DriveSpaceScope, type PublicSiteSettings, type WorkspaceResponse, type WorkspaceShareSettings } from "@/lib/drive-api";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
 import { DriveShareDialog } from "./drive-share-dialog";
 import { LegalFooter } from "./legal-footer";
@@ -158,7 +158,6 @@ export function DriveWorkbench({
     fallbackKey = "errors.unknown",
     scope: "form" | "global" | "share" = "global",
   ) => {
-    if (isAuthExpiredApiError(error)) clearStoredAuthToken();
     return getDriveApiErrorMessage(error, t, { fallbackKey, scope });
   }, [t]);
   const {

@@ -1,7 +1,6 @@
 import {
   ForbiddenException,
   ServiceUnavailableException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { AuthRepository } from '../../modules/auth/core/auth.repository';
@@ -54,7 +53,22 @@ describe('AdminGuardService', () => {
 
     await expect(
       guard.requirePermission(undefined, 'workspace', 'read'),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toMatchObject({
+      response: { code: 'AUTH_SESSION_REQUIRED' },
+      status: 401,
+    });
+  });
+
+  it('returns a stable code for an invalid bearer session', async () => {
+    const { repository } = createRepository(null);
+    const guard = createGuard(repository);
+
+    await expect(
+      guard.requirePermission(`Bearer ${token}`, 'workspace', 'read'),
+    ).rejects.toMatchObject({
+      response: { code: 'AUTH_SESSION_INVALID' },
+      status: 401,
+    });
   });
 
   it('deletes expired sessions before rejecting them', async () => {
@@ -65,7 +79,10 @@ describe('AdminGuardService', () => {
 
     await expect(
       guard.requirePermission(`Bearer ${token}`, 'audit', 'read'),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toMatchObject({
+      response: { code: 'AUTH_SESSION_EXPIRED' },
+      status: 401,
+    });
     expect(deleteSessionByTokenHash).toHaveBeenCalledWith(tokenHash);
   });
 

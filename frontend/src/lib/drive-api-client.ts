@@ -5,6 +5,24 @@ import {
   readDriveApiError,
 } from "./drive-api-errors";
 
+export type DriveApiAuthMode = "required" | "optional" | "none";
+export type DriveApiUnauthorizedPolicy = "local" | "reauth" | "session";
+
+export type DriveApiRequestOptions = {
+  auth?: DriveApiAuthMode;
+  fallbackMessage?: string;
+  unauthorized?: DriveApiUnauthorizedPolicy;
+};
+
+export type DriveApiAuthExpiredEvent = {
+  hadToken: boolean;
+};
+
+type DriveApiAuthExpiredListener = (event: DriveApiAuthExpiredEvent) => void;
+
+const authExpiredListeners = new Set<DriveApiAuthExpiredListener>();
+let authExpirationNotified = false;
+
 export function getApiBaseUrl() {
   const configuredBaseUrl = readConfiguredApiBaseUrl();
   const baseUrl =
@@ -53,11 +71,13 @@ export function getStoredAuthToken() {
 export function setStoredAuthToken(token: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(authTokenStorageKey, token);
+  authExpirationNotified = false;
 }
 
 export function clearStoredAuthToken() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(authTokenStorageKey);
+  authExpirationNotified = false;
 }
 
 export function getAuthHeaders(): Record<string, string> {
@@ -65,12 +85,26 @@ export function getAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function requestDriveApi<T>(path: string, init?: RequestInit) {
+export function subscribeDriveApiAuthExpired(listener: DriveApiAuthExpiredListener) {
+  authExpiredListeners.add(listener);
+  return () => {
+    authExpiredListeners.delete(listener);
+  };
+}
+
+export async function fetchDriveApiResponse(
+  path: string,
+  init?: RequestInit,
+  options: DriveApiRequestOptions = {},
+) {
+  const authMode = options.auth ?? "required";
+  const unauthorizedPolicy =
+    options.unauthorized ?? (authMode === "required" ? "session" : "local");
   const headers = new Headers(init?.headers);
-  headers.set("Accept", "application/json");
-  headers.set("Content-Type", "application/json");
-  const token = getStoredAuthToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const requestToken = authMode === "none" ? null : getStoredAuthToken();
+  if (requestToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${requestToken}`);
+  }
 
   let response: Response;
   try {
@@ -78,14 +112,43 @@ export async function requestDriveApi<T>(path: string, init?: RequestInit) {
       ...init,
       headers,
     });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) throw error;
     throw createDriveApiUnavailableError();
   }
 
   if (!response.ok) {
-    const apiError = await readDriveApiError(response);
-    throw createDriveApiResponseError(response, apiError);
+    const apiError = createDriveApiResponseError(
+      response,
+      await readDriveApiError(response, options.fallbackMessage),
+    );
+    handleDriveApiUnauthorized(apiError, {
+      auth: authMode,
+      requestToken,
+      unauthorized: unauthorizedPolicy,
+    });
+    throw apiError;
   }
+
+  return response;
+}
+
+export async function requestDriveApi<T>(
+  path: string,
+  init?: RequestInit,
+  options: DriveApiRequestOptions = {},
+) {
+  const headers = new Headers(init?.headers);
+  headers.set("Accept", "application/json");
+  headers.set("Content-Type", "application/json");
+  const response = await fetchDriveApiResponse(
+    path,
+    {
+      ...init,
+      headers,
+    },
+    options,
+  );
 
   if (response.status === 204) return undefined as T;
   if (isHtmlResponse(response)) {
@@ -102,3 +165,50 @@ function isHtmlResponse(response: Response) {
   return (response.headers.get("content-type") ?? "").includes("text/html");
 }
 
+export function handleDriveApiUnauthorized(
+  error: unknown,
+  {
+    auth = "required",
+    requestToken = auth === "none" ? null : getStoredAuthToken(),
+    unauthorized = auth === "required" ? "session" : "local",
+  }: DriveApiRequestOptions & { requestToken?: string | null } = {},
+) {
+  if (
+    !(error instanceof DriveApiError)
+    || error.status !== 401
+    || unauthorized === "local"
+    || (unauthorized === "reauth" && localReauthenticationCodes.has(error.code ?? ""))
+  ) {
+    return;
+  }
+  handleSessionUnauthorized(auth, requestToken);
+}
+
+function handleSessionUnauthorized(
+  authMode: DriveApiAuthMode,
+  requestToken: string | null,
+) {
+  if (typeof window === "undefined") return;
+  const currentToken = getStoredAuthToken();
+  if (currentToken !== requestToken) return;
+
+  if (requestToken) {
+    window.localStorage.removeItem(authTokenStorageKey);
+  }
+  if (authMode !== "required" || authExpirationNotified) return;
+
+  authExpirationNotified = true;
+  const event = { hadToken: Boolean(requestToken) };
+  authExpiredListeners.forEach((listener) => listener(event));
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+const localReauthenticationCodes = new Set([
+  "AUTH_RECOVERY_CODE_INVALID",
+  "AUTH_REAUTH_FAILED",
+  "AUTH_REAUTH_REQUIRED",
+  "PASSKEY_CEREMONY_UNAVAILABLE",
+]);

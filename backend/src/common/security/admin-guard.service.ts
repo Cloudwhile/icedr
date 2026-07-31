@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { AuthRepository } from '../../modules/auth/core/auth.repository';
 import { BootstrapStateService } from '../../modules/admin/setup/bootstrap-state.service';
@@ -12,6 +8,10 @@ import {
   type PermissionAction,
   type PermissionResource,
 } from './permission-policy';
+import {
+  AUTH_UNAUTHORIZED_CODES,
+  createAuthUnauthorizedError,
+} from './auth-unauthorized-error';
 
 @Injectable()
 export class AdminGuardService {
@@ -55,14 +55,24 @@ export class AdminGuardService {
   async requireSession(authorization?: string) {
     await this.bootstrapState.requireCompleted();
     const token = this.extractBearerToken(authorization);
-    if (!token) throw new UnauthorizedException('Authentication is required');
+    if (!token) {
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.SESSION_REQUIRED,
+      );
+    }
     const session = await this.authRepository.findSessionByTokenHash(
       this.hashToken(token),
     );
-    if (!session) throw new UnauthorizedException('Session is invalid');
+    if (!session) {
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.SESSION_INVALID,
+      );
+    }
     if (new Date(session.expiresAt).getTime() < Date.now()) {
       await this.authRepository.deleteSessionByTokenHash(session.tokenHash);
-      throw new UnauthorizedException('Session has expired');
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.SESSION_EXPIRED,
+      );
     }
     return session;
   }

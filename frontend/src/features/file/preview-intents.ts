@@ -1,10 +1,6 @@
 import type { DriveItem } from "@/features/file/model";
 import {
-  buildApiUrl,
-  createDriveApiResponseError,
-  getApiBaseUrl,
-  getAuthHeaders,
-  readDriveApiError,
+  fetchDriveApiResponse,
   type FilePreviewCapability,
   type PreviewRenderMode,
   type TransferTaskLifecycle,
@@ -30,15 +26,15 @@ export async function createFilePreviewIntent(
   itemId: DriveItem["id"],
   options: { signal?: AbortSignal } = {},
 ) {
-  const response = await fetch(
-    `${getApiBaseUrl()}/file-nodes/${encodeURIComponent(itemId)}/preview-intents`,
+  const response = await fetchDriveApiResponse(
+    `/file-nodes/${encodeURIComponent(itemId)}/preview-intents`,
     {
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       method: "POST",
       signal: options.signal,
     },
+    { fallbackMessage: "Preview intent failed" },
   );
-  if (!response.ok) throw await createDriveFetchError(response, "Preview intent failed");
   return (await response.json()) as PreviewIntentResponse;
 }
 
@@ -50,17 +46,18 @@ export async function createSharedPreviewIntent(
 ) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getAuthHeaders(),
   };
   if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
 
-  const response = await fetch(
-    `${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}/preview-intents`,
+  const response = await fetchDriveApiResponse(
+    `/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}/preview-intents`,
     { headers, method: "POST", signal: options.signal },
+    {
+      auth: "optional",
+      fallbackMessage: "Shared preview intent failed",
+      unauthorized: "local",
+    },
   );
-  if (!response.ok) {
-    throw await createDriveFetchError(response, "Shared preview intent failed");
-  }
   return (await response.json()) as PreviewIntentResponse;
 }
 
@@ -68,19 +65,23 @@ export async function fetchPreviewIntentStatus(
   intent: PreviewIntentResponse,
   options: { accessSessionId?: string; signal?: AbortSignal } = {},
 ) {
-  const headers: Record<string, string> = { ...getAuthHeaders() };
+  const headers: Record<string, string> = {};
   if (options.accessSessionId) headers["X-Share-Access-Session"] = options.accessSessionId;
   const statusUrl = appendPreviewId(intent.statusUrl, intent.previewId);
-  const response = await fetch(buildApiUrl(statusUrl), {
-    headers,
-    signal: options.signal,
-  });
-  if (!response.ok) throw await createDriveFetchError(response, "Preview status failed");
+  const shareRequest = /(?:^|\/)shares\//.test(statusUrl);
+  const response = await fetchDriveApiResponse(
+    statusUrl,
+    {
+      headers,
+      signal: options.signal,
+    },
+    {
+      auth: shareRequest ? "optional" : "required",
+      fallbackMessage: "Preview status failed",
+      unauthorized: shareRequest ? "local" : "session",
+    },
+  );
   return (await response.json()) as PreviewIntentResponse;
-}
-
-async function createDriveFetchError(response: Response, fallback: string) {
-  return createDriveApiResponseError(response, await readDriveApiError(response, fallback));
 }
 
 function appendPreviewId(statusUrl: string, previewId: string) {

@@ -283,10 +283,14 @@ export function sendShareEmailCode(token: string, email: string) {
     configured: boolean;
     delivery: string;
     expiresAt: string;
-  }>(`/shares/${encodeURIComponent(token)}/access-sessions/email-code`, {
-    method: "POST",
-    body: JSON.stringify({ email }),
-  });
+  }>(
+    `/shares/${encodeURIComponent(token)}/access-sessions/email-code`,
+    {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    },
+    { auth: "none" },
+  );
 }
 
 export function verifyShareEmailCode(
@@ -300,6 +304,7 @@ export function verifyShareEmailCode(
       method: "POST",
       body: JSON.stringify({ email, code }),
     },
+    { auth: "none" },
   );
 }
 

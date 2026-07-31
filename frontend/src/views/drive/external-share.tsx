@@ -19,6 +19,7 @@ import { ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
 import { collectShareDescendants, fetchRegisteredShare, getRegisteredShareParent, getShareItems, getVisibleRegisteredShareItems, type RegisteredShare, type RegisteredShareItem } from "@/features/share/registry";
 import type { ExternalSharePolicy } from "@/features/share/policy";
 import { AppImage } from "@/components/ui/app-image";
+import { ApiErrorState } from "@/components/ui/app-error-boundary";
 import { ReadOnlyFilePreview } from "@/components/ui/read-only-file-preview";
 import { PreviewLifecycleBoundary } from "@/components/ui/preview-lifecycle-boundary";
 import { ExternalShareHeroCard } from "./external-share-hero-card";
@@ -145,6 +146,7 @@ export function ExternalShareStandalone({
   token: string;
 }) {
   const t = useTranslations();
+  const router = useRouter();
   const palette = palettes[themeMode];
   const [resolvedShare, setResolvedShare] = useState<{
     token: string;
@@ -154,6 +156,7 @@ export function ExternalShareStandalone({
     share: initialShare?.token === token ? initialShare : null
   }));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadRevision, setLoadRevision] = useState(0);
   const [sourceItems, setSourceItems] = useState<DriveItem[]>(() => initialShare?.token === token ? initialShare.items?.map(item => mapRegisteredShareItemToDriveItem(item, initialShare)) ?? [] : []);
   const previewLoading = resolvedShare.token !== token;
   const registeredShare = previewLoading ? null : resolvedShare.share;
@@ -179,7 +182,10 @@ export function ExternalShareStandalone({
   }, [t, token]);
   useEffect(() => {
     let cancelled = false;
-    if (initialShare?.token === token && resolvedShare.token === token) {
+    if (
+      loadRevision === 0
+      && initialShare?.token === token
+    ) {
       return () => {
         cancelled = true;
       };
@@ -210,7 +216,12 @@ export function ExternalShareStandalone({
     return () => {
       cancelled = true;
     };
-  }, [initialShare?.token, resolvedShare.token, t, token]);
+  }, [initialShare?.token, loadRevision, t, token]);
+  const retryLoad = useCallback(() => {
+    setLoadError(null);
+    setResolvedShare({ token: "", share: null });
+    setLoadRevision((revision) => revision + 1);
+  }, []);
   return <div className="external-share-root" style={{
     minHeight: "100vh",
     background: "transparent",
@@ -218,45 +229,19 @@ export function ExternalShareStandalone({
     fontSize: "14px",
     letterSpacing: "0px"
   }}>
-      {previewLoading ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : !registeredShare || !collection ? <ExternalShareErrorState message={loadError ?? t("errors.shareUnavailable")} palette={palette} /> : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} onRefreshShare={refreshRegisteredShare} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
+      {previewLoading ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : !registeredShare || !collection ? (
+        <ApiErrorState
+          fillViewport
+          homeLabel={t("notFound.openHome")}
+          message={loadError ?? t("errors.shareUnavailable")}
+          onHome={() => router.push("/")}
+          onRetry={retryLoad}
+          palette={palette}
+          retryLabel={t("notFound.reload")}
+          title={t("share.unavailable")}
+        />
+      ) : <ExternalSharePreview key={token} collection={collection} expiresLabel={expiresLabel} locale={locale} onRefreshShare={refreshRegisteredShare} registeredShare={registeredShare} palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} sourceItems={sourceItems} themeMode={themeMode} totalSize={totalSize} />}
     </div>;
-}
-
-function ExternalShareErrorState({
-  message,
-  palette,
-}: {
-  message: string;
-  palette: Palette;
-}) {
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        background: palette.canvas,
-        color: palette.ink,
-        display: "flex",
-        justifyContent: "center",
-        minHeight: "100vh",
-        paddingBlock: "32px",
-        paddingInline: "18px",
-      }}
-    >
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          maxWidth: "360px",
-          textAlign: "center",
-        }}
-      >
-        <LocalIcon name="shield" size={28} />
-        <div style={{ fontSize: "15px", fontWeight: 700, letterSpacing: "0px" }}>{message}</div>
-      </div>
-    </div>
-  );
 }
 
 function ExternalSharePreview({
@@ -371,7 +356,7 @@ function ExternalSharePreview({
   }, [hasEmailCooldown]);
   useEffect(() => {
     let cancelled = false;
-    void fetchCurrentUser().then(user => {
+    void fetchCurrentUser({ auth: "optional" }).then(user => {
       if (!cancelled) setCurrentUser(user);
     }).catch(() => {
       if (!cancelled) setCurrentUser(null);
@@ -520,7 +505,6 @@ function ExternalSharePreview({
       setStage(session.waitSeconds > 0 ? "verified" : "download");
     }).catch((error) => {
       if (isAuthExpiredApiError(error)) {
-        redirectToLogin();
         return;
       }
       setFeedback({

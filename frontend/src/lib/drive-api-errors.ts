@@ -106,9 +106,6 @@ export function getDriveApiErrorMessage(
   const apiError = normalizeDriveApiError(error);
   const key = getDriveApiErrorMessageKey(apiError, options.scope ?? "global");
   if (key) return translate(key);
-  if (apiError.message && apiError.message !== "Drive API request failed") {
-    return translate("errors.withReason", { reason: apiError.message });
-  }
   return translate(options.fallbackKey ?? "errors.unknown");
 }
 
@@ -222,10 +219,9 @@ function getFormErrorMessageKey(error: DriveApiError): string | null {
 }
 
 function getShareErrorMessageKey(error: DriveApiError): string {
+  const codeMessageKey = getShareErrorCodeMessageKey(error.code);
+  if (codeMessageKey) return codeMessageKey;
   if (error.kind === "gone") {
-    const message = error.message.toLowerCase();
-    if (message.includes("revoked")) return "errors.shareRevoked";
-    if (message.includes("expired")) return "errors.shareExpired";
     return "errors.shareUnavailable";
   }
 
@@ -244,6 +240,36 @@ function getShareErrorMessageKey(error: DriveApiError): string {
       return "errors.formInvalid";
     default:
       return "errors.shareRequestFailed";
+  }
+}
+
+function getShareErrorCodeMessageKey(code?: string): string | null {
+  switch (code) {
+    case "SHARE_REVOKED":
+      return "errors.shareRevoked";
+    case "SHARE_EXPIRED":
+      return "errors.shareExpired";
+    case "SHARE_NOT_FOUND":
+      return "errors.shareUnavailable";
+    case "SHARE_VIEW_LIMIT_REACHED":
+      return "errors.shareViewLimitReached";
+    case "SHARE_DOWNLOAD_LIMIT_REACHED":
+      return "errors.shareDownloadLimitReached";
+    case "SHARE_ACCESS_SESSION_REQUIRED":
+      return "errors.shareAccessSessionRequired";
+    case "SHARE_ACCESS_SESSION_INVALID":
+      return "errors.shareAccessSessionInvalid";
+    case "SHARE_ACCESS_WAITING":
+      return "errors.shareAccessWaiting";
+    case "SHARE_DOWNLOAD_DISABLED":
+      return "share.downloadBlocked";
+    case "SHARE_PREVIEW_DISABLED":
+      return "share.previewBlocked";
+    case "SHARE_RATE_LIMITED":
+    case "SHARE_EMAIL_VERIFICATION_LOCKED":
+      return "errors.shareRateLimited";
+    default:
+      return null;
   }
 }
 

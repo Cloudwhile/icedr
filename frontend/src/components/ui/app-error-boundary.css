@@ -1,0 +1,71 @@
+.icedr-api-error-state {
+  color: var(--app-error-ink);
+  width: 100%;
+}
+
+.icedr-api-error-state.is-fill-viewport {
+  background: var(--app-error-canvas);
+  min-height: 100dvh;
+  padding: 64px 32px;
+}
+
+.icedr-api-error-content {
+  border-top: 3px solid var(--app-error-danger);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 620px;
+  padding-top: 24px;
+  width: 100%;
+}
+
+.icedr-app-error-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+}
+
+.icedr-app-error-heading > span {
+  margin-top: 2px;
+}
+
+.icedr-app-error-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.icedr-app-error-copy h1,
+.icedr-app-error-copy p {
+  margin: 0;
+}
+
+.icedr-app-error-copy h1 {
+  color: var(--app-error-ink);
+  font-size: 20px;
+  font-weight: 760;
+  line-height: 28px;
+}
+
+.icedr-app-error-copy p {
+  color: var(--app-error-muted);
+  font-size: 14px;
+  font-weight: 520;
+  line-height: 22px;
+  max-width: 520px;
+}
+
+.icedr-app-error-actions {
+  align-items: center;
+  border-top: 1px solid var(--app-error-hairline);
+  display: flex;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+@media (max-width: 540px) {
+  .icedr-api-error-state.is-fill-viewport {
+    padding: 40px 20px;
+  }
+}

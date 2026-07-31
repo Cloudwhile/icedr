@@ -22,6 +22,10 @@ import {
 import { AdminGuardService } from '../../../common/security/admin-guard.service';
 import { MailService } from '../../admin/mail/mail.service';
 import { BootstrapStateService } from '../../admin/setup/bootstrap-state.service';
+import {
+  AUTH_UNAUTHORIZED_CODES,
+  createAuthUnauthorizedError,
+} from '../../../common/security/auth-unauthorized-error';
 import { SettingsService } from '../../admin/settings/settings.service';
 import { AuthAuditService } from './auth-audit.service';
 import { AuthRepository } from './auth.repository';
@@ -109,7 +113,9 @@ export class PasskeyService {
       'manage-authenticators',
     );
     if (!stepUp) {
-      throw new UnauthorizedException('Recent authentication is required');
+      throw createAuthUnauthorizedError(
+        AUTH_UNAUTHORIZED_CODES.REAUTH_REQUIRED,
+      );
     }
     const existing = await this.passkeyRepository.listPasskeysForUser(
       session.user.id,
@@ -210,10 +216,9 @@ export class PasskeyService {
               'This Passkey cannot be removed until another authentication method is available',
           });
         }
-        throw new UnauthorizedException({
-          code: 'AUTH_REAUTH_REQUIRED',
-          message: 'Recent authentication is required',
-        });
+        throw createAuthUnauthorizedError(
+          AUTH_UNAUTHORIZED_CODES.REAUTH_REQUIRED,
+        );
       }
       throw error;
     }
@@ -480,10 +485,9 @@ export class PasskeyService {
       });
     } catch (error) {
       if (error instanceof PasskeyStateConflictError) {
-        throw new UnauthorizedException({
-          code: 'AUTH_REAUTH_REQUIRED',
-          message: 'Recent authentication is required',
-        });
+        throw createAuthUnauthorizedError(
+          AUTH_UNAUTHORIZED_CODES.REAUTH_REQUIRED,
+        );
       }
       throw error;
     }
@@ -695,10 +699,9 @@ export class PasskeyService {
       return this.toPasskeyResponse(created);
     } catch (error) {
       if (error instanceof PasskeyStateConflictError) {
-        throw new UnauthorizedException({
-          code: 'AUTH_REAUTH_REQUIRED',
-          message: 'Recent authentication is required',
-        });
+        throw createAuthUnauthorizedError(
+          AUTH_UNAUTHORIZED_CODES.REAUTH_REQUIRED,
+        );
       }
       throw error;
     }

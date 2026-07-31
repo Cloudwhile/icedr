@@ -31,7 +31,6 @@ import {
 import { useTranslations } from "@/i18n/react";
 import {
   defaultPublicSiteSettings,
-  DriveApiError,
   fetchAuthSettings,
   fetchMailSettings,
   fetchSiteSettings,
@@ -120,19 +119,6 @@ function getAdminSaveFailedMessage(
   error: unknown,
   t: ReturnType<typeof useTranslations>,
 ) {
-  if (error instanceof DriveApiError) {
-    if (error.message.includes("OAuth must be configured"))
-      return t("admin.oauthConfigRequired");
-    if (error.message.includes("Passkey must be configured"))
-      return t("admin.passkeyConfigRequired");
-    if (error.message.includes("OAuth issuer URL and client ID"))
-      return t("admin.oauthConfigRequired");
-    if (error.message.includes("OAuth client secret is required"))
-      return t("admin.oauthSecretRequired");
-    if (error.message && error.message !== "Drive API request failed") {
-      return t("admin.saveFailedWithReason", { reason: error.message });
-    }
-  }
   return getDriveApiErrorMessage(error, t, {
     fallbackKey: "admin.saveFailed",
     scope: "form",

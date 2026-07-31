@@ -6,13 +6,10 @@ import {
 import {
   buildApiUrl,
   createBatchFileDownloadIntents,
-  createDriveApiResponseError,
   createFileDownloadIntent,
   createFileVersionDownloadIntent,
   DriveApiError,
-  getApiBaseUrl,
-  getAuthHeaders,
-  readDriveApiError,
+  fetchDriveApiResponse,
   type ShareDownloadPolicyDecision,
   type TransferTaskLifecycle,
   type TransferTaskStatus,
@@ -41,20 +38,21 @@ export async function downloadSharedDriveItem(
 ) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getAuthHeaders(),
   };
   if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
-  const intentResponse = await fetch(
-    `${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`,
+  const intentResponse = await fetchDriveApiResponse(
+    `/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`,
     {
       body: JSON.stringify({ purpose: "download" }),
       headers,
       method: "POST",
     },
+    {
+      auth: "optional",
+      fallbackMessage: "Download intent failed",
+      unauthorized: "local",
+    },
   );
-  if (!intentResponse.ok) {
-    throw await createDriveFetchError(intentResponse, "Download intent failed");
-  }
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
   assertDownloadIntentUsable(intent);
@@ -68,20 +66,21 @@ export async function createSharedDriveItemBlobUrl(
 ) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getAuthHeaders(),
   };
   if (accessSessionId) headers["X-Share-Access-Session"] = accessSessionId;
-  const intentResponse = await fetch(
-    `${getApiBaseUrl()}/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`,
+  const intentResponse = await fetchDriveApiResponse(
+    `/shares/${encodeURIComponent(token)}/items/${encodeURIComponent(item.id)}/download-intents`,
     {
       body: JSON.stringify({ purpose: "preview" }),
       headers,
       method: "POST",
     },
+    {
+      auth: "optional",
+      fallbackMessage: "Download intent failed",
+      unauthorized: "local",
+    },
   );
-  if (!intentResponse.ok) {
-    throw await createDriveFetchError(intentResponse, "Download intent failed");
-  }
 
   const intent = (await intentResponse.json()) as DownloadIntentResponse;
   assertDownloadIntentUsable(intent);
@@ -151,13 +150,16 @@ export function assertDownloadIntentUsable(
 }
 
 async function createDownloadBlobUrl(downloadUrl: string) {
-  const response = await fetch(buildApiUrl(downloadUrl));
-  if (!response.ok) throw await createDriveFetchError(response, "Download failed");
+  const response = await fetchDriveApiResponse(
+    downloadUrl,
+    undefined,
+    {
+      auth: "none",
+      fallbackMessage: "Download failed",
+      unauthorized: "local",
+    },
+  );
   return URL.createObjectURL(await response.blob());
-}
-
-async function createDriveFetchError(response: Response, fallback: string) {
-  return createDriveApiResponseError(response, await readDriveApiError(response, fallback));
 }
 
 function openDownloadUrl(url: string) {

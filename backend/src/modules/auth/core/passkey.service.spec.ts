@@ -261,6 +261,28 @@ describe('PasskeyService ceremony options', () => {
       }),
     );
   });
+
+  it('returns a stable compatible 401 when recent authentication is required', async () => {
+    const { passkeyRepository, service } = createService();
+    passkeyRepository.findValidStepUpToken.mockResolvedValueOnce(null as never);
+
+    await expect(
+      service.createRegistrationOptions(
+        { stepUpToken: 'expired-step-up-token' },
+        'Bearer session',
+        request(),
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'AUTH_REAUTH_REQUIRED',
+        error: 'Unauthorized',
+        message: 'Recent authentication is required',
+        statusCode: 401,
+      },
+      status: 401,
+    });
+    expect(generateRegistrationOptions).not.toHaveBeenCalled();
+  });
 });
 
 describe('PasskeyService ceremony verification', () => {
