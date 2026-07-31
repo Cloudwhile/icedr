@@ -13,6 +13,8 @@ const migrationNames = [
   '20260718121500_upload_sessions_object_key_index',
   '20260718121600_upload_sessions_transfer_id_index',
   '20260718121700_upload_completion_started_at_index',
+  '20260730120000_upload_session_resume_identity_index',
+  '20260730120100_drop_legacy_upload_session_resume_index',
 ];
 const lifecycleTables = [
   'preview_artifacts',
@@ -30,7 +32,9 @@ const lifecycleIndexes = [
   'upload_sessions_object_key_idx',
   'upload_sessions_transfer_id_idx',
   'upload_sessions_completion_started_at_idx',
+  'upload_sessions_resume_identity_active_idx',
 ];
+const obsoleteIndexes = ['upload_sessions_resume_key_active_idx'];
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
@@ -51,7 +55,8 @@ async function main() {
       migrations: await queryMigrations(client),
       legacyStatuses: await queryLegacyStatuses(client),
       uploadSessionNodeBackfill: await queryUploadSessionNodeBackfill(client),
-      indexes: await queryIndexes(client),
+      indexes: await queryIndexes(client, lifecycleIndexes),
+      obsoleteIndexes: await queryIndexes(client, obsoleteIndexes),
     };
     const backupPath = readBackupPath(process.argv.slice(2));
     if (backupPath) {
@@ -161,7 +166,7 @@ async function queryUploadSessionNodeBackfill(client) {
   };
 }
 
-async function queryIndexes(client) {
+async function queryIndexes(client, indexNames) {
   const result = await client.query(
     `
       select
@@ -173,7 +178,7 @@ async function queryIndexes(client) {
       where index_class.relname = any($1::text[])
       order by index_class.relname
     `,
-    [lifecycleIndexes],
+    [indexNames],
   );
   return result.rows;
 }
