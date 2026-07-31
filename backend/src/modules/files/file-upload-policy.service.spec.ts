@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { uploadResumeKeyMaxLength } from './file-nodes.dto';
 import { createNode, docxMimeType } from './file-upload-test-fixtures.helper';
 import {
   createFileNodesServiceTestHarness,
@@ -347,6 +348,211 @@ describe('FileUploadService policies and sessions', () => {
     expect(transfers.resumeTransferInternal).not.toHaveBeenCalled();
   });
 
+  it('does not reuse a resume identity when the MIME type changes', async () => {
+    const firstIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Resume MIME.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-mime-change',
+    });
+
+    const replacementIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Resume MIME.pdf',
+      mimeType: 'text/plain',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-mime-change',
+    });
+
+    expect(replacementIntent.sessionId).not.toBe(firstIntent.sessionId);
+    expect(uploadSessionMocks.cancelSession).toHaveBeenCalledWith(
+      firstIntent.sessionId,
+      'running',
+      undefined,
+    );
+    expect(storage.createMultipartUpload).toHaveBeenLastCalledWith(
+      replacementIntent.objectKey,
+      'text/plain',
+    );
+  });
+
+  it('rejects oversized upload resume keys before creating a transfer', async () => {
+    await expect(
+      service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'Oversized Resume.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 4096,
+        resumeKey: 'x'.repeat(uploadResumeKeyMaxLength + 1),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transfers.createUploadTransfer).not.toHaveBeenCalled();
+  });
+
+  it('recovers the winning upload intent after a concurrent unique conflict', async () => {
+    const winnerIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Concurrent Resume.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-concurrent-winner',
+    });
+    const winner = await uploadSessions.findById(winnerIntent.sessionId ?? '');
+    if (!winner) throw new Error('test upload session missing');
+    uploadSessionMocks.findReusable
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(winner);
+    uploadSessionMocks.create.mockRejectedValueOnce(
+      Object.assign(new Error('unique constraint'), { code: 'P2002' }),
+    );
+
+    const recovered = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Concurrent Resume.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-concurrent-winner',
+    });
+
+    expect(recovered.sessionId).toBe(winnerIntent.sessionId);
+    expect(recovered.transferId).toBe(winnerIntent.transferId);
+    expect(storage.abortMultipartUpload).toHaveBeenCalledTimes(1);
+    expect(uploadSessionMocks.resumeSession).toHaveBeenCalledWith(
+      winner.id,
+      winner.status,
+      0,
+    );
+  });
+
+  it('returns a structured conflict when a unique-race winner is unavailable', async () => {
+    uploadSessionMocks.findReusable
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    uploadSessionMocks.create.mockRejectedValueOnce(
+      Object.assign(new Error('unique constraint'), { code: 'P2002' }),
+    );
+
+    let caught: unknown;
+    try {
+      await service.createUploadIntent({
+        workspaceId: 'workspace-default',
+        fileName: 'Concurrent Missing.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 4096,
+        resumeKey: 'resume-concurrent-missing',
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ConflictException);
+    expect((caught as ConflictException).getResponse()).toMatchObject({
+      code: 'UPLOAD_RESUME_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('replaces an active resume identity when conflict strategy changes', async () => {
+    const firstIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'version',
+      fileName: 'Strategy Change.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-strategy-change',
+    });
+
+    const replacementIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      conflictStrategy: 'rename',
+      fileName: 'Strategy Change.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-strategy-change',
+    });
+
+    expect(replacementIntent.sessionId).not.toBe(firstIntent.sessionId);
+    expect(replacementIntent.conflictStrategy).toBe('rename');
+    expect(uploadSessionMocks.cancelSession).toHaveBeenCalledWith(
+      firstIntent.sessionId,
+      'running',
+      undefined,
+    );
+  });
+
+  it('persists an expired resume candidate before creating its replacement', async () => {
+    const firstIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Expired Resume.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-expired-candidate',
+    });
+    const stored = await uploadSessions.findById(firstIntent.sessionId ?? '');
+    if (!stored) throw new Error('test upload session missing');
+    uploadSessionMocks.findReusable.mockResolvedValueOnce({
+      ...stored,
+      status: 'expired',
+    });
+
+    const replacementIntent = await service.createUploadIntent({
+      workspaceId: 'workspace-default',
+      fileName: 'Expired Resume.pdf',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 4096,
+      resumeKey: 'resume-expired-candidate',
+    });
+
+    expect(replacementIntent.sessionId).not.toBe(firstIntent.sessionId);
+    expect(uploadSessionMocks.transitionFailureState).toHaveBeenCalledWith(
+      firstIntent.sessionId,
+      'expired',
+      { failureCode: 'UPLOAD_SESSION_EXPIRED' },
+    );
+    expect(storage.abortMultipartUpload).toHaveBeenCalledWith({
+      objectKey: firstIntent.objectKey,
+      uploadId: `multipart-${firstIntent.objectKey}`,
+    });
+  });
+
+  it('returns expired session status without waiting for storage cleanup', async () => {
+    const intent = await service.createUploadIntent(
+      {
+        workspaceId: 'workspace-default',
+        fileName: 'Expired Status.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 4096,
+        resumeKey: 'resume-expired-status',
+      },
+      { ownerUserId: 'user-a' },
+    );
+    const stored = await uploadSessions.findById(intent.sessionId ?? '');
+    if (!stored) throw new Error('test upload session missing');
+    stored.status = 'expired';
+    let releaseCleanup: (() => void) | undefined;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const abortMultipartUpload = jest
+      .spyOn(storage, 'abortMultipartUpload')
+      .mockReturnValueOnce(cleanup);
+
+    await expect(
+      service.getUploadSession(intent.sessionId ?? '', 'user-a'),
+    ).resolves.toMatchObject({
+      sessionId: intent.sessionId,
+      status: 'expired',
+    });
+
+    expect(abortMultipartUpload).toHaveBeenCalledWith({
+      objectKey: intent.objectKey,
+      uploadId: `multipart-${intent.objectKey}`,
+    });
+    releaseCleanup?.();
+    await cleanup;
+  });
+
   it('replaces a reusable overwrite session when its target object changed', async () => {
     const firstIntent = await service.createUploadIntent({
       workspaceId: 'workspace-default',
@@ -452,6 +658,97 @@ describe('FileUploadService policies and sessions', () => {
       status: 'running',
       errorCode: null,
     });
+  });
+
+  it('recovers finalized failed sessions in completion-only mode', async () => {
+    const firstIntent = await service.createUploadIntent(
+      {
+        workspaceId: 'workspace-default',
+        fileName: 'Completion Recovery.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 4096,
+        resumeKey: 'resume-completion-recovery',
+      },
+      { ownerUserId: 'user-a' },
+    );
+    await service.completeUploadPart(firstIntent.sessionId ?? '', 0, {
+      eTag: '"etag-0"',
+      sizeBytes: 4096,
+    });
+    await uploadSessions.updateStatus(firstIntent.sessionId ?? '', 'failed', {
+      failureCode: 'UPLOAD_FAILED',
+    });
+    const failed = await uploadSessions.findById(firstIntent.sessionId ?? '');
+    if (!failed) throw new Error('test upload session missing');
+    failed.storageFinalizedAt = new Date().toISOString();
+
+    const resumedIntent = await service.createUploadIntent(
+      {
+        workspaceId: 'workspace-default',
+        fileName: 'Completion Recovery.pdf',
+        mimeType: 'application/pdf',
+        fileSizeBytes: 4096,
+        resumeKey: 'resume-completion-recovery',
+      },
+      { ownerUserId: 'user-a' },
+    );
+    const status = await service.getUploadSession(
+      resumedIntent.sessionId ?? '',
+      'user-a',
+    );
+
+    expect(resumedIntent).toMatchObject({
+      sessionId: firstIntent.sessionId,
+      recoveryMode: 'completion-only',
+    });
+    expect(status).toMatchObject({
+      sessionId: firstIntent.sessionId,
+      uploadedBytes: 4096,
+      uploadedPartIndexes: [0],
+      progress: 95,
+      recoveryMode: 'completion-only',
+      status: 'running',
+    });
+    for (const privateField of [
+      'objectKey',
+      'resumeKey',
+      'multipartUploadId',
+      'eTag',
+      'completionToken',
+      'ownerUserId',
+    ]) {
+      expect(status).not.toHaveProperty(privateField);
+    }
+    await expect(
+      service.createUploadPartIntent(
+        resumedIntent.sessionId ?? '',
+        0,
+        'user-a',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.getUploadSession(resumedIntent.sessionId ?? '', 'user-b'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    await expect(
+      service.completeUpload(
+        {
+          workspaceId: 'workspace-default',
+          fileName: 'Completion Recovery.pdf',
+          objectKey: resumedIntent.objectKey,
+          sizeBytes: 4096,
+          mimeType: 'application/pdf',
+          transferId: resumedIntent.transferId,
+          uploadSessionId: resumedIntent.sessionId,
+        },
+        { ownerUserId: 'user-a' },
+      ),
+    ).resolves.toMatchObject({ objectKey: resumedIntent.objectKey });
+    expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+    expect(storage.assertObjectExists).toHaveBeenCalledWith(
+      resumedIntent.objectKey,
+      4096,
+    );
   });
 
   it('rejects upload completion until every chunk has arrived', async () => {

@@ -38,7 +38,10 @@ export type TransferObjectReference = {
   updatedAt: string;
 };
 
-export type UploadSessionCleanupReference = UploadSessionStagingReference;
+export type UploadSessionCleanupReference = UploadSessionStagingReference & {
+  multipartUploadId: string | null;
+  objectKey: string;
+};
 
 type CreateBlobReconcileTaskInput = {
   actorUserId: string;
@@ -220,6 +223,8 @@ export class StorageReconcileRepository {
         createdAt: true,
         expiresAt: true,
         id: true,
+        multipartUploadId: true,
+        objectKey: true,
         status: true,
         storageFinalizedAt: true,
         transferId: true,
@@ -232,6 +237,8 @@ export class StorageReconcileRepository {
         completionToken: row.completionToken,
         createdAt: row.createdAt.toISOString(),
         expiresAt: row.expiresAt?.toISOString() ?? null,
+        multipartUploadId: row.multipartUploadId,
+        objectKey: row.objectKey,
         status: row.status,
         storageFinalizedAt: row.storageFinalizedAt?.toISOString() ?? null,
         transferId: row.transferId,

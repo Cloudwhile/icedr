@@ -47,6 +47,12 @@ describe('UploadSessionsRepository part writes', () => {
       },
       data: { updatedAt: expect.any(Date) as unknown },
     });
+    expect(
+      readPath(updateSession.mock.calls as unknown, [0, 0, 'where']),
+    ).toMatchObject({
+      id: 'upload_session_test',
+      storageFinalizedAt: null,
+    });
   });
 
   it('commits a part and releases only the exact write token atomically', async () => {
@@ -92,6 +98,7 @@ describe('UploadSessionsRepository part writes', () => {
         id: 'upload_session_test',
         status: 'running',
         completionToken: 'part-token',
+        storageFinalizedAt: null,
         OR: [{ expiresAt: null }, { expiresAt: {} }],
       },
     });
@@ -101,6 +108,7 @@ describe('UploadSessionsRepository part writes', () => {
         id: 'upload_session_test',
         status: 'running',
         completionToken: 'part-token',
+        storageFinalizedAt: null,
       },
       data: { completionToken: null, completionStartedAt: null },
     });

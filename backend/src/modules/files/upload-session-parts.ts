@@ -77,6 +77,7 @@ export class UploadSessionPartsStore {
           where: {
             id,
             status: 'running',
+            storageFinalizedAt: null,
             AND: [
               { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
               {
@@ -114,6 +115,7 @@ export class UploadSessionPartsStore {
           id: input.sessionId,
           status: 'running',
           completionToken: writeToken,
+          storageFinalizedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         },
         data: { completionStartedAt: now, updatedAt: now },
@@ -149,6 +151,7 @@ export class UploadSessionPartsStore {
           id: input.sessionId,
           status: 'running',
           completionToken: writeToken,
+          storageFinalizedAt: null,
         },
         data: {
           completionToken: null,

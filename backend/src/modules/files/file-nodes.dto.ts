@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -64,6 +65,7 @@ export const uploadConflictStrategies: UploadConflictStrategy[] = [
   'skip',
   'version',
 ];
+export const uploadResumeKeyMaxLength = 128;
 
 export class CreateUploadIntentDto {
   @IsString()
@@ -88,10 +90,12 @@ export class CreateUploadIntentDto {
 
   @IsInt()
   @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
   @IsOptional()
   fileSizeBytes?: number;
 
   @IsString()
+  @MaxLength(uploadResumeKeyMaxLength)
   @IsOptional()
   resumeKey?: string;
 
@@ -121,6 +125,7 @@ export class CompleteUploadDto {
 
   @IsInt()
   @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
   sizeBytes!: number;
 
   @IsString()
@@ -159,6 +164,7 @@ export class UploadChunkParamsDto {
 
   @IsInt()
   @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
   partIndex!: number;
 }
 
@@ -169,6 +175,7 @@ export class CompleteUploadPartDto {
 
   @IsInt()
   @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
   @IsOptional()
   sizeBytes?: number;
 }
@@ -508,7 +515,32 @@ export type UploadIntentResponse = {
   chunkSizeBytes?: number;
   uploadedBytes?: number;
   uploadedPartIndexes?: number[];
+  recoveryMode: UploadRecoveryMode;
   lifecycle: TransferTaskLifecycle;
+};
+
+export type UploadRecoveryMode = 'upload' | 'completion-only';
+
+export type UploadSessionStatusResponse = {
+  sessionId: string;
+  transferId: string;
+  workspaceId: string;
+  spaceScope: FileNodeSpaceScope;
+  parentNodeId: string | null;
+  fileName: string;
+  requestedFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  chunkSizeBytes: number;
+  uploadedBytes: number;
+  uploadedPartIndexes: number[];
+  progress: number;
+  status: TransferTaskStatus;
+  failureCode: TransferTaskLifecycle['errorCode'];
+  expiresAt: string | null;
+  lifecycle: TransferTaskLifecycle;
+  conflictStrategy: UploadConflictStrategy;
+  recoveryMode: UploadRecoveryMode;
 };
 
 export type UploadPartIntentResponse = {

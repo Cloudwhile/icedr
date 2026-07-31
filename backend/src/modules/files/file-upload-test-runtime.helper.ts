@@ -57,7 +57,12 @@ export function createTestStorage(): TestStorage {
       Promise.resolve({ key, uploadId: `multipart-${key}` }),
     ),
     createMultipartUploadPartUrl: jest.fn(
-      (input: { objectKey: string; partIndex: number; uploadId: string }) =>
+      (input: {
+        expectedSize: number;
+        objectKey: string;
+        partIndex: number;
+        uploadId: string;
+      }) =>
         Promise.resolve({
           expiresAt: new Date(Date.now() + 900000).toISOString(),
           expiresInSeconds: 900,
@@ -77,14 +82,23 @@ export function createTestStorage(): TestStorage {
       Promise.resolve({
         eTag: `"etag-${input.partIndex}"`,
         partIndex: input.partIndex,
-        sizeBytes: null,
+        sizeBytes: 4096,
       }),
     ),
     deleteUploadSessionParts: jest.fn(() => Promise.resolve()),
     writeUploadSessionPart: jest.fn(
-      async (_sessionId: string, _partIndex: number, stream: Readable) => ({
-        sizeBytes: await readStreamSize(stream),
-      }),
+      async (
+        _sessionId: string,
+        _partIndex: number,
+        stream: Readable,
+        expectedSize: number,
+      ) => {
+        const sizeBytes = await readStreamSize(stream);
+        if (sizeBytes !== expectedSize) {
+          throw new Error('Upload chunk size does not match session');
+        }
+        return { sizeBytes };
+      },
     ),
   } as unknown as TestStorage;
 }

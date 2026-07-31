@@ -332,6 +332,109 @@ describe('StorageReconcileRunner', () => {
     );
   });
 
+  it('aborts stale unfinalized multipart uploads during reconciliation', async () => {
+    const {
+      objectStorage,
+      createReconcileTask,
+      reconcileRepository,
+      service,
+      updateReconcileTask,
+    } = createStorageTestContext();
+    createReconcileTask.mockResolvedValue({ id: 'blobrec-multipart-cleanup' });
+    updateReconcileTask.mockImplementation(
+      (_id: string, input: Record<string, unknown>) =>
+        Promise.resolve({ id: 'blobrec-multipart-cleanup', ...input }),
+    );
+    (
+      reconcileRepository.listUploadSessionCleanupReferences as jest.Mock
+    ).mockResolvedValue([
+      {
+        completionStartedAt: null,
+        completionToken: null,
+        createdAt: new Date(0).toISOString(),
+        expiresAt: new Date(0).toISOString(),
+        multipartUploadId: 'multipart-stale',
+        objectKey: 'uploads/stale-multipart.bin',
+        status: 'expired',
+        storageFinalizedAt: null,
+        transferId: 'transfer-stale-multipart',
+        updatedAt: new Date(0).toISOString(),
+        uploadSessionId: 'session-stale-multipart',
+      },
+    ]);
+    jest.spyOn(objectStorage, 'listObjectKeys').mockResolvedValue([]);
+    const abortMultipartUpload = jest
+      .spyOn(objectStorage, 'abortMultipartUpload')
+      .mockResolvedValue();
+    const deleteUploadSessionParts = jest.spyOn(
+      objectStorage,
+      'deleteUploadSessionParts',
+    );
+
+    await service.reconcileObjects(
+      { cleanup: true, workspaceId: 'workspace-default' },
+      'admin-multipart-cleanup',
+    );
+
+    expect(abortMultipartUpload).toHaveBeenCalledWith({
+      objectKey: 'uploads/stale-multipart.bin',
+      uploadId: 'multipart-stale',
+    });
+    expect(deleteUploadSessionParts).not.toHaveBeenCalled();
+  });
+
+  it('fails reconciliation when multipart cleanup cannot be confirmed', async () => {
+    const {
+      objectStorage,
+      createReconcileTask,
+      reconcileRepository,
+      service,
+      updateReconcileTask,
+    } = createStorageTestContext();
+    createReconcileTask.mockResolvedValue({
+      id: 'blobrec-multipart-cleanup-failed',
+    });
+    updateReconcileTask.mockImplementation(
+      (_id: string, input: Record<string, unknown>) =>
+        Promise.resolve({ id: 'blobrec-multipart-cleanup-failed', ...input }),
+    );
+    (
+      reconcileRepository.listUploadSessionCleanupReferences as jest.Mock
+    ).mockResolvedValue([
+      {
+        completionStartedAt: null,
+        completionToken: null,
+        createdAt: new Date(0).toISOString(),
+        expiresAt: new Date(0).toISOString(),
+        multipartUploadId: 'multipart-stale',
+        objectKey: 'uploads/stale-multipart.bin',
+        status: 'expired',
+        storageFinalizedAt: null,
+        transferId: 'transfer-stale-multipart',
+        updatedAt: new Date(0).toISOString(),
+        uploadSessionId: 'session-stale-multipart',
+      },
+    ]);
+    jest.spyOn(objectStorage, 'listObjectKeys').mockResolvedValue([]);
+    jest
+      .spyOn(objectStorage, 'abortMultipartUpload')
+      .mockRejectedValue(new Error('multipart cleanup failed'));
+
+    await expect(
+      service.reconcileObjects(
+        { cleanup: true, workspaceId: 'workspace-default' },
+        'admin-multipart-cleanup',
+      ),
+    ).rejects.toThrow('multipart cleanup failed');
+    expect(updateReconcileTask).toHaveBeenLastCalledWith(
+      'blobrec-multipart-cleanup-failed',
+      expect.objectContaining({
+        failureCode: 'STORAGE_RECONCILE_FAILED',
+        status: 'failed',
+      }),
+    );
+  });
+
   it('cleans every stale session even when their transfer is missing', async () => {
     const {
       objectStorage,

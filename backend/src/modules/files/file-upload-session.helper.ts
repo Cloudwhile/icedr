@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import {
   type UploadConflictStrategy,
   type UploadIntentResponse,
+  type UploadSessionStatusResponse,
 } from './file-nodes.dto';
 import type {
   UploadSession,
@@ -36,7 +37,42 @@ export function toUploadIntent(
     chunkSizeBytes: session.chunkSizeBytes,
     uploadedBytes: uploaded.uploadedBytes,
     uploadedPartIndexes: uploaded.uploadedPartIndexes,
+    recoveryMode: getUploadRecoveryMode(session),
     lifecycle: session.lifecycle,
+  };
+}
+
+export function getUploadRecoveryMode(
+  session: Pick<UploadSession, 'storageFinalizedAt'>,
+) {
+  return session.storageFinalizedAt ? 'completion-only' : 'upload';
+}
+
+export function toUploadSessionStatus(
+  session: UploadSession,
+  parts: UploadSessionPart[],
+): UploadSessionStatusResponse {
+  const uploaded = getUploadedSessionState(session, parts);
+  return {
+    sessionId: session.id,
+    transferId: session.transferId,
+    workspaceId: session.workspaceId,
+    spaceScope: session.spaceScope,
+    parentNodeId: session.parentNodeId,
+    fileName: session.fileName,
+    requestedFileName: session.requestedFileName,
+    mimeType: session.mimeType,
+    sizeBytes: session.sizeBytes,
+    chunkSizeBytes: session.chunkSizeBytes,
+    uploadedBytes: uploaded.uploadedBytes,
+    uploadedPartIndexes: uploaded.uploadedPartIndexes,
+    progress: uploaded.progress,
+    status: session.status,
+    failureCode: session.failureCode,
+    expiresAt: session.expiresAt,
+    lifecycle: session.lifecycle,
+    conflictStrategy: session.conflictStrategy,
+    recoveryMode: getUploadRecoveryMode(session),
   };
 }
 
@@ -63,8 +99,16 @@ export function getExpectedPartRange(
   session: UploadSession,
   partIndex: number,
 ) {
-  if (!Number.isInteger(partIndex) || partIndex < 0) {
+  if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
     throw new BadRequestException('Upload chunk index is invalid');
+  }
+  if (
+    !Number.isSafeInteger(session.sizeBytes) ||
+    session.sizeBytes < 0 ||
+    !Number.isSafeInteger(session.chunkSizeBytes) ||
+    session.chunkSizeBytes <= 0
+  ) {
+    throw new BadRequestException('Upload session size is invalid');
   }
   const totalParts = getUploadSessionPartCount(session);
   if (partIndex >= totalParts) {
@@ -111,7 +155,7 @@ export function assertUploadSessionComplete(
 }
 
 export function assertWritableUploadSession(session: UploadSession) {
-  if (session.status !== 'running') {
+  if (session.status !== 'running' || session.storageFinalizedAt) {
     throw new BadRequestException('Upload session is not writable');
   }
 }

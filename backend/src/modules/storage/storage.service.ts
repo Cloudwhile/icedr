@@ -93,6 +93,7 @@ export class StorageService {
   }
 
   createMultipartUploadPartUrl(input: {
+    expectedSize: number;
     objectKey: string;
     partIndex: number;
     uploadId: string;
@@ -143,11 +144,13 @@ export class StorageService {
     sessionId: string,
     partIndex: number,
     stream: Readable,
+    expectedSize: number,
   ) {
     return this.objectStorage.writeUploadSessionPart(
       sessionId,
       partIndex,
       stream,
+      expectedSize,
     );
   }
 

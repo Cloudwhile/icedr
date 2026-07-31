@@ -15,6 +15,8 @@ export type UploadSessionMocks = {
   completeCompletionClaim: jest.Mock;
   create: jest.Mock;
   failCompletionClaim: jest.Mock;
+  findById: jest.Mock;
+  findReusable: jest.Mock;
   listParts: jest.Mock;
   markStorageFinalized: jest.Mock;
   persistCompletionNode: jest.Mock;
@@ -81,13 +83,7 @@ export function createUploadSessionsRepositoryMock(input: {
             item.workspaceId === findInput.workspaceId &&
             item.ownerUserId === (findInput.ownerUserId ?? null) &&
             item.spaceScope === (findInput.spaceScope ?? 'workspace') &&
-            item.conflictStrategy === findInput.conflictStrategy &&
             item.resumeKey === findInput.resumeKey &&
-            item.requestedFileName === findInput.requestedFileName &&
-            item.parentNodeId === (findInput.parentNodeId ?? null) &&
-            item.sizeBytes === findInput.sizeBytes &&
-            item.completionToken === null &&
-            item.storageFinalizedAt === null &&
             ['running', 'paused', 'failed'].includes(item.status),
         );
         return Promise.resolve(session ?? null);
@@ -108,7 +104,12 @@ export function createUploadSessionsRepositoryMock(input: {
     ),
     claimPartWrite: jest.fn((id: string) => {
       const session = sessions.get(id);
-      if (!session || session.status !== 'running' || session.completionToken) {
+      if (
+        !session ||
+        session.status !== 'running' ||
+        session.completionToken ||
+        session.storageFinalizedAt
+      ) {
         return Promise.resolve(null);
       }
       const now = new Date().toISOString();
@@ -232,7 +233,6 @@ export function createUploadSessionsRepositoryMock(input: {
           session.status !== expectedStatus ||
           !['running', 'paused', 'failed'].includes(session.status) ||
           session.completionToken ||
-          session.storageFinalizedAt ||
           !session.expiresAt ||
           new Date(session.expiresAt).getTime() <= Date.now()
         ) {

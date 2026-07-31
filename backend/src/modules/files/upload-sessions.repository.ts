@@ -85,42 +85,18 @@ export class UploadSessionsRepository {
   }
 
   async findReusable(input: {
-    requestedFileName: string;
-    parentNodeId?: string | null;
     ownerUserId?: string | null;
     resumeKey: string;
-    sizeBytes: number;
     spaceScope?: 'workspace' | 'personal';
-    conflictStrategy: 'overwrite' | 'rename' | 'skip' | 'version';
     workspaceId: string;
   }) {
-    const now = new Date();
     const row = await this.prisma.uploadSession.findFirst({
       where: {
         workspaceId: input.workspaceId,
         ownerUserId: input.ownerUserId ?? null,
         spaceScope: input.spaceScope ?? 'workspace',
-        conflictStrategy: input.conflictStrategy,
         resumeKey: input.resumeKey,
-        parentNodeId: input.parentNodeId ?? null,
-        sizeBytes: BigInt(input.sizeBytes),
         status: { in: ['running', 'paused', 'failed'] },
-        completionToken: null,
-        storageFinalizedAt: null,
-        AND: [
-          {
-            OR: [
-              { requestedFileName: input.requestedFileName },
-              {
-                requestedFileName: null,
-                fileName: input.requestedFileName,
-              },
-            ],
-          },
-          {
-            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-          },
-        ],
       },
       orderBy: { createdAt: 'desc' },
     });

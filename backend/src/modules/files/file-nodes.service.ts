@@ -40,6 +40,7 @@ import {
   type UploadChunkResponse,
   type UploadIntentResponse,
   type UploadPartIntentResponse,
+  type UploadSessionStatusResponse,
 } from './file-nodes.dto';
 import { FileNodesRepository } from './file-nodes.repository';
 import { resolveFilePreviewCapability } from './file-preview-policy';
@@ -161,6 +162,13 @@ export class FileNodesService {
       partIndex,
       ownerUserId,
     );
+  }
+
+  getUploadSession(
+    sessionId: string,
+    ownerUserId: string,
+  ): Promise<UploadSessionStatusResponse> {
+    return this.fileUploadService.getUploadSession(sessionId, ownerUserId);
   }
 
   completeUploadPart(
