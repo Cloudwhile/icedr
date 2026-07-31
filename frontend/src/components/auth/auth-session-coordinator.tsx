@@ -2,7 +2,10 @@ import { useEffect } from "react";
 import { showAppToast } from "@/components/ui/app-toast-store";
 import { useRouter } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
-import { subscribeDriveApiAuthExpired } from "@/lib/drive-api";
+import {
+  resetDriveApiAuthExpiredNotification,
+  subscribeDriveApiAuthExpired,
+} from "@/lib/drive-api";
 import { createLoginRedirect } from "./auth-session-navigation";
 
 const authEntryPaths = new Set([
@@ -22,7 +25,10 @@ export function AuthSessionCoordinator() {
     () =>
       subscribeDriveApiAuthExpired(({ hadToken }) => {
         const source = getCurrentInternalLocation();
-        if (authEntryPaths.has(window.location.pathname)) return;
+        if (authEntryPaths.has(window.location.pathname)) {
+          resetDriveApiAuthExpiredNotification();
+          return;
+        }
 
         if (hadToken) {
           showAppToast({

@@ -3,6 +3,7 @@ import {
   clearStoredAuthToken,
   getStoredAuthToken,
   requestDriveApi,
+  resetDriveApiAuthExpiredNotification,
   setStoredAuthToken,
   subscribeDriveApiAuthExpired,
 } from "./drive-api-client";
@@ -47,6 +48,24 @@ describe("drive api authentication policy", () => {
     expect(getStoredAuthToken()).toBeNull();
     expect(listener).toHaveBeenCalledOnce();
     expect(listener).toHaveBeenCalledWith({ hadToken: true });
+    unsubscribe();
+  });
+
+  it("can notify again after an authentication entry route ignores the event", async () => {
+    const listener = vi.fn(() => resetDriveApiAuthExpiredNotification());
+    const unsubscribe = subscribeDriveApiAuthExpired(listener);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(unauthorizedResponse()));
+
+    await expect(requestDriveApi("/workspaces")).rejects.toMatchObject({
+      status: 401,
+    });
+    await expect(requestDriveApi("/workspaces")).rejects.toMatchObject({
+      status: 401,
+    });
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenNthCalledWith(1, { hadToken: false });
+    expect(listener).toHaveBeenNthCalledWith(2, { hadToken: false });
     unsubscribe();
   });
 

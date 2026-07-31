@@ -92,6 +92,10 @@ export function subscribeDriveApiAuthExpired(listener: DriveApiAuthExpiredListen
   };
 }
 
+export function resetDriveApiAuthExpiredNotification() {
+  authExpirationNotified = false;
+}
+
 export async function fetchDriveApiResponse(
   path: string,
   init?: RequestInit,
