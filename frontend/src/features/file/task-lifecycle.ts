@@ -1,3 +1,5 @@
+import type { TransferTaskFailureCode } from "@/lib/drive-api";
+
 export const taskLifecycleStatuses = [
   "pending",
   "running",
@@ -103,9 +105,14 @@ export function createTaskStatusCasState(
       if (lastSyncedStatus !== expectedStatus) return false;
       return this.adopt(confirmedSource);
     },
-    createPatch(status: TaskPatchStatus, progress?: number) {
+    createPatch(
+      status: TaskPatchStatus,
+      progress?: number,
+      failureCode?: TransferTaskFailureCode,
+    ) {
       return {
         expectedStatus: lastSyncedStatus,
+        ...(status === "failed" && failureCode ? { failureCode } : {}),
         ...(progress === undefined ? {} : { progress }),
         status,
       };
@@ -131,8 +138,12 @@ export function createTaskStatusCasQueue({
   let tail = Promise.resolve();
   let latestRevision = 0;
 
-  const apply = async (status: TaskPatchStatus, progress?: number) => {
-    const patch = state.createPatch(status, progress);
+  const apply = async (
+    status: TaskPatchStatus,
+    progress?: number,
+    failureCode?: TransferTaskFailureCode,
+  ) => {
+    const patch = state.createPatch(status, progress, failureCode);
     try {
       const confirmed = await commit(patch);
       if (!state.confirm(patch.expectedStatus, confirmed) || state.getStatus() !== status) {
@@ -148,13 +159,17 @@ export function createTaskStatusCasQueue({
   };
 
   return {
-    enqueue(status: TaskPatchStatus, progress?: number) {
+    enqueue(
+      status: TaskPatchStatus,
+      progress?: number,
+      failureCode?: TransferTaskFailureCode,
+    ) {
       const revision = ++latestRevision;
       const operation = tail.then(() => {
         if (revision !== latestRevision) {
           throw new Error("Transfer update superseded by a newer intent");
         }
-        return apply(status, progress);
+        return apply(status, progress, failureCode);
       });
       tail = operation.then(() => undefined, () => undefined);
       return operation;

@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateTransferMock = vi.hoisted(() => vi.fn<(
   id: string,
-  input: { status: string },
+  input: {
+    expectedStatus?: string;
+    failureCode?: string;
+    progress?: number;
+    status: string;
+  },
 ) => Promise<{ status: string }>>());
 
 vi.mock("@/lib/drive-api", async (importOriginal) => {
@@ -108,6 +113,384 @@ describe("upload intent lifecycle", () => {
     await expect(task.start()).rejects.toThrow("Upload intent expired");
     expect(FakeXMLHttpRequest.requests).toHaveLength(0);
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("marks an upload-intent failure as retryable and reuses the v2 identity on retry", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    let intentAttempts = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        intentAttempts += 1;
+        if (intentAttempts === 1) {
+          return Promise.resolve(Response.json(
+            {
+              code: "UPLOAD_FAILED",
+              message: "Upload intent is temporarily unavailable",
+            },
+            { status: 503 },
+          ));
+        }
+        return Promise.resolve(Response.json({
+          conflictStrategy: "version",
+          expiresAt,
+          expiresInSeconds: 3600,
+          fileName: "retry-intent.txt",
+          headers: {},
+          lifecycle: createLifecycle("running", expiresAt),
+          objectKey: "objects/retry-intent.txt",
+          recoveryMode: "upload",
+          transferId: "transfer-retry-intent",
+          uploadMethod: "presigned-url",
+          uploadUrl: "https://storage.example/upload",
+        }));
+      }
+      if (url.endsWith("/file-nodes/upload-completions")) {
+        return Promise.resolve(Response.json({
+          id: "node-retry-intent",
+          name: "retry-intent.txt",
+        }));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["retry"], "retry-intent.txt", {
+        lastModified: 100,
+        type: "text/plain",
+      }),
+      workspaceId: "workspace-1",
+    });
+
+    await expect(task.start()).rejects.toMatchObject({
+      code: "UPLOAD_FAILED",
+      status: 503,
+    });
+    expect(task.getState()).toMatchObject({
+      failureCode: "UPLOAD_FAILED",
+      retryable: true,
+      status: "failed",
+    });
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+
+    const retry = task.start();
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    FakeXMLHttpRequest.requests[0]?.succeed();
+    await expect(retry).resolves.toMatchObject({ id: "node-retry-intent" });
+
+    const intentBodies = fetchMock.mock.calls
+      .filter(([input]) => String(input).endsWith("/file-nodes/upload-intents"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(intentBodies).toHaveLength(2);
+    expect(intentBodies[0].resumeKey).toMatch(
+      /^drive-upload-v2:[a-f0-9]{64}$/,
+    );
+    expect(intentBodies[1].resumeKey).toBe(intentBodies[0].resumeKey);
+  });
+
+  it("skips upload I/O for a completion-only recovery intent", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json({
+          chunkSizeBytes: 4,
+          conflictStrategy: "version",
+          expiresAt,
+          expiresInSeconds: 3600,
+          fileName: "finalized.txt",
+          headers: {},
+          lifecycle: createLifecycle("failed", expiresAt),
+          objectKey: "objects/finalized.txt",
+          recoveryMode: "completion-only",
+          sessionId: "session-finalized",
+          transferId: "transfer-finalized",
+          uploadMethod: "chunked",
+          uploadUrl: "/file-nodes/upload-sessions/session-finalized/parts",
+          uploadedBytes: 9,
+          uploadedPartIndexes: [0, 1, 2],
+        }));
+      }
+      if (url.endsWith("/file-nodes/upload-completions")) {
+        return Promise.resolve(Response.json({
+          id: "node-finalized",
+          name: "finalized.txt",
+        }));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["finalized"], "finalized.txt", {
+        type: "text/plain",
+      }),
+      workspaceId: "workspace-1",
+    });
+
+    await expect(task.start()).resolves.toMatchObject({ id: "node-finalized" });
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("detaches locally without canceling or pausing the server recovery session", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const onProgress = vi.fn();
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json({
+          chunkSizeBytes: 8,
+          conflictStrategy: "version",
+          expiresAt,
+          expiresInSeconds: 3600,
+          fileName: "detaché.txt",
+          headers: {},
+          lifecycle: createLifecycle("running", expiresAt),
+          objectKey: "private/object-key",
+          recoveryMode: "upload",
+          sessionId: "session-detached",
+          transferId: "transfer-detached",
+          uploadMethod: "chunked",
+          uploadUrl: "/file-nodes/upload-sessions/session-detached/parts",
+          uploadedBytes: 0,
+          uploadedPartIndexes: [],
+        }));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["detach me"], "detaché.txt", {
+        lastModified: 321,
+        type: "text/plain",
+      }),
+      onProgress,
+      workspaceId: "workspace-1",
+    });
+    const upload = task.start();
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    FakeXMLHttpRequest.requests[0]?.reportProgress(3, 8);
+
+    const recovery = onProgress.mock.lastCall?.[0].recovery;
+    expect(recovery).toMatchObject({
+      contentFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      fileLastModified: 321,
+      fileName: "detaché.txt",
+      resumeIdentity: expect.stringMatching(/^drive-upload-v2:[a-f0-9]{64}$/),
+      sessionId: "session-detached",
+      transferId: "transfer-detached",
+    });
+    expect(JSON.stringify(recovery)).not.toContain("objectKey");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      fileName: "detaché.txt",
+    });
+
+    task.detach();
+    await expect(upload).rejects.toMatchObject({ control: "paused" });
+    expect(task.getState()).toMatchObject({
+      detached: true,
+      retryable: false,
+      status: "paused",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(updateTransferMock).not.toHaveBeenCalledWith(
+      "transfer-detached",
+      expect.objectContaining({ status: "paused" }),
+    );
+  });
+
+  it("cancels the server recovery session only on explicit cancel", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json({
+          chunkSizeBytes: 8,
+          conflictStrategy: "version",
+          expiresAt,
+          expiresInSeconds: 3600,
+          fileName: "cancel.txt",
+          headers: {},
+          lifecycle: createLifecycle("running", expiresAt),
+          objectKey: "objects/cancel.txt",
+          recoveryMode: "upload",
+          sessionId: "session-cancel",
+          transferId: "transfer-cancel",
+          uploadMethod: "chunked",
+          uploadUrl: "/file-nodes/upload-sessions/session-cancel/parts",
+          uploadedBytes: 0,
+          uploadedPartIndexes: [],
+        }));
+      }
+      if (url.endsWith("/upload-sessions/session-cancel/cancel")) {
+        return Promise.resolve(Response.json({ ok: true }));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["cancel me"], "cancel.txt", { type: "text/plain" }),
+      workspaceId: "workspace-1",
+    });
+    const upload = task.start();
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+
+    task.cancel();
+    await expect(upload).rejects.toMatchObject({ control: "canceled" });
+    await vi.waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/file-nodes/upload-sessions/session-cancel/cancel",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    expect(task.getState()).toMatchObject({
+      detached: false,
+      retryable: false,
+      status: "canceled",
+    });
+  });
+
+  it("preserves a structured upload failure code in local and server state", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      conflictStrategy: "version",
+      expiresAt,
+      expiresInSeconds: 3600,
+      fileName: "expired-session.txt",
+      headers: {},
+      lifecycle: createLifecycle("running", expiresAt),
+      objectKey: "objects/expired-session.txt",
+      recoveryMode: "upload",
+      sessionId: "session-expired",
+      transferId: "transfer-expired",
+      uploadMethod: "presigned-url",
+      uploadUrl: "https://storage.example/upload",
+    }));
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["expired"], "expired-session.txt", {
+        type: "text/plain",
+      }),
+      workspaceId: "workspace-1",
+    });
+    const upload = task.start();
+    await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));
+    FakeXMLHttpRequest.requests[0]?.respondWithError(
+      410,
+      {
+        code: "UPLOAD_SESSION_EXPIRED",
+        message: "Upload session expired",
+      },
+    );
+
+    await expect(upload).rejects.toMatchObject({
+      code: "UPLOAD_SESSION_EXPIRED",
+      status: 410,
+    });
+    expect(task.getState()).toMatchObject({
+      failureCode: "UPLOAD_SESSION_EXPIRED",
+      retryable: true,
+      status: "failed",
+    });
+    await vi.waitFor(() =>
+      expect(updateTransferMock).toHaveBeenCalledWith(
+        "transfer-expired",
+        expect.objectContaining({
+          failureCode: "UPLOAD_SESSION_EXPIRED",
+          status: "failed",
+        }),
+      ),
+    );
+  });
+
+  it("preserves a structured failure from multipart part-intent creation", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/file-nodes/upload-intents")) {
+        return Promise.resolve(Response.json({
+          chunkSizeBytes: 4,
+          conflictStrategy: "version",
+          expiresAt,
+          expiresInSeconds: 3600,
+          fileName: "multipart.txt",
+          headers: {},
+          lifecycle: createLifecycle("running", expiresAt),
+          objectKey: "objects/multipart.txt",
+          recoveryMode: "upload",
+          sessionId: "session-multipart",
+          transferId: "transfer-multipart",
+          uploadMethod: "object-multipart",
+          uploadUrl: "",
+          uploadedBytes: 0,
+          uploadedPartIndexes: [],
+        }));
+      }
+      if (url.includes("/parts/0/upload-intents")) {
+        return Promise.resolve(Response.json(
+          {
+            code: "UPLOAD_SESSION_EXPIRED",
+            message: "Upload session expired",
+          },
+          { status: 410 },
+        ));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    updateTransferMock.mockImplementation((_id, input) =>
+      Promise.resolve({ status: input.status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const task = createUploadDriveFileTask({
+      file: new File(["multipart"], "multipart.txt", {
+        type: "text/plain",
+      }),
+      workspaceId: "workspace-1",
+    });
+
+    await expect(task.start()).rejects.toMatchObject({
+      code: "UPLOAD_SESSION_EXPIRED",
+      status: 410,
+    });
+    expect(task.getState()).toMatchObject({
+      failureCode: "UPLOAD_SESSION_EXPIRED",
+      retryable: true,
+      status: "failed",
+    });
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
   });
 
   it("reports the server-resolved name after an automatic rename", async () => {
@@ -279,7 +662,10 @@ describe("upload intent lifecycle", () => {
         return Promise.resolve(Response.json(intent));
       }
       if (url.endsWith("/file-nodes/upload-completions")) {
-        return Promise.resolve(Response.json({ id: "node-retry" }));
+        return Promise.resolve(Response.json({
+          id: "node-retry",
+          name: "retry.txt",
+        }));
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
@@ -316,7 +702,10 @@ describe("upload intent lifecycle", () => {
     runningConfirmation.resolve({ status: "running" });
     await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(2));
     FakeXMLHttpRequest.requests[1]?.succeed();
-    await expect(retry).resolves.toEqual({ id: "node-retry" });
+    await expect(retry).resolves.toEqual({
+      id: "node-retry",
+      name: "retry.txt",
+    });
   });
 
   it("does not resume upload I/O until the paused-to-running CAS is confirmed", async () => {
@@ -340,7 +729,10 @@ describe("upload intent lifecycle", () => {
         return Promise.resolve(Response.json(intent));
       }
       if (url.endsWith("/file-nodes/upload-completions")) {
-        return Promise.resolve(Response.json({ id: "node-resume" }));
+        return Promise.resolve(Response.json({
+          id: "node-resume",
+          name: "resume.txt",
+        }));
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
@@ -378,7 +770,10 @@ describe("upload intent lifecycle", () => {
     runningConfirmation.resolve({ status: "running" });
     await vi.waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(2));
     FakeXMLHttpRequest.requests[1]?.succeed();
-    await expect(resumed).resolves.toEqual({ id: "node-resume" });
+    await expect(resumed).resolves.toEqual({
+      id: "node-resume",
+      name: "resume.txt",
+    });
   });
 });
 
@@ -475,6 +870,7 @@ class FakeXMLHttpRequest {
   status = 0;
   timeout = 0;
   upload = { onprogress: null as ((event: ProgressEvent) => void) | null };
+  private readonly responseHeaders = new Map<string, string>();
 
   constructor() {
     FakeXMLHttpRequest.requests.push(this);
@@ -488,8 +884,8 @@ class FakeXMLHttpRequest {
     this.onerror?.();
   }
 
-  getResponseHeader() {
-    return null;
+  getResponseHeader(name: string) {
+    return this.responseHeaders.get(name.toLowerCase()) ?? null;
   }
 
   open() {}
@@ -497,6 +893,24 @@ class FakeXMLHttpRequest {
   send() {}
 
   setRequestHeader() {}
+
+  reportProgress(loaded: number, total: number) {
+    this.upload.onprogress?.({
+      lengthComputable: true,
+      loaded,
+      total,
+    } as ProgressEvent);
+  }
+
+  respondWithError(
+    status: number,
+    body: Record<string, unknown>,
+  ) {
+    this.status = status;
+    this.responseText = JSON.stringify(body);
+    this.responseHeaders.set("content-type", "application/json");
+    this.onload?.();
+  }
 
   succeed() {
     this.status = 200;

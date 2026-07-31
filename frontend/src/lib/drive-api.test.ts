@@ -102,4 +102,27 @@ describe("transfer api", () => {
       status: "running",
     }));
   });
+
+  it("sends a structured failure code with a failed transfer patch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "transfer-1",
+      status: "failed",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateTransfer("transfer-1", {
+      expectedStatus: "running",
+      failureCode: "UPLOAD_SESSION_EXPIRED",
+      progress: 42,
+      status: "failed",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(JSON.stringify({
+      expectedStatus: "running",
+      failureCode: "UPLOAD_SESSION_EXPIRED",
+      progress: 42,
+      status: "failed",
+    }));
+  });
 });

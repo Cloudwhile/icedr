@@ -28,6 +28,22 @@ describe("task lifecycle", () => {
     });
   });
 
+  it("adds a structured failure code only to a failed patch", () => {
+    const state = createTaskStatusCasState({ status: "running" });
+
+    expect(state.createPatch("failed", 42, "TRANSFER_STALLED")).toEqual({
+      expectedStatus: "running",
+      failureCode: "TRANSFER_STALLED",
+      progress: 42,
+      status: "failed",
+    });
+    expect(state.createPatch("paused", 42, "TRANSFER_STALLED")).toEqual({
+      expectedStatus: "running",
+      progress: 42,
+      status: "paused",
+    });
+  });
+
   it("advances the expected status only after a confirmed update", () => {
     const state = createTaskStatusCasState({ status: "failed" });
 

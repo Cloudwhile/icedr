@@ -5,3 +5,4 @@ export * from "./drive-api-files";
 export * from "./drive-api-setup";
 export * from "./drive-api-storage-transfers";
 export * from "./drive-api-types";
+export * from "./drive-api-upload-sessions";
