@@ -63,12 +63,15 @@ export async function createSharedPreviewIntent(
 
 export async function fetchPreviewIntentStatus(
   intent: PreviewIntentResponse,
-  options: { accessSessionId?: string; signal?: AbortSignal } = {},
+  options: {
+    accessSessionId?: string;
+    shared?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ) {
   const headers: Record<string, string> = {};
   if (options.accessSessionId) headers["X-Share-Access-Session"] = options.accessSessionId;
   const statusUrl = appendPreviewId(intent.statusUrl, intent.previewId);
-  const shareRequest = /(?:^|\/)shares\//.test(statusUrl);
   const response = await fetchDriveApiResponse(
     statusUrl,
     {
@@ -76,9 +79,9 @@ export async function fetchPreviewIntentStatus(
       signal: options.signal,
     },
     {
-      auth: shareRequest ? "optional" : "required",
+      auth: options.shared ? "optional" : "required",
       fallbackMessage: "Preview status failed",
-      unauthorized: shareRequest ? "local" : "session",
+      unauthorized: options.shared ? "local" : "session",
     },
   );
   return (await response.json()) as PreviewIntentResponse;

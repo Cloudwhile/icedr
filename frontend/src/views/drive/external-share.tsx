@@ -722,6 +722,7 @@ function SharePreviewDialog({
   const pollPreviewLifecycleIntent = useCallback(
     (intent: PreviewIntentResponse, signal: AbortSignal) => fetchPreviewIntentStatus(intent, {
       accessSessionId: accessSessionId ?? undefined,
+      shared: true,
       signal,
     }),
     [accessSessionId],
