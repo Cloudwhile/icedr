@@ -719,39 +719,31 @@ function FileTable({
               <th>
                 <DriveFileSelectBox checked={allSelected} indeterminate={indeterminate} label={t("files.selectAll")} palette={palette} onChange={(checked) => allFileIds.forEach((id) => toggleSelected(id, checked))} />
               </th>
-              <th>
-                <DriveTableSortHeader
-                  active={sortBy === "name"}
-                  direction={sortDirection}
-                  label={t("files.name")}
-                  onSort={() => onSortChange("name", "asc")}
-                />
-              </th>
+              <DriveTableSortHeader
+                active={sortBy === "name"}
+                direction={sortDirection}
+                label={t("files.name")}
+                onSort={() => onSortChange("name", "asc")}
+              />
               <th>{t("files.owner")}</th>
-              <th>
-                <DriveTableSortHeader
-                  active={sortBy === "sizeBytes"}
-                  direction={sortDirection}
-                  label={t("files.size")}
-                  onSort={() => onSortChange("sizeBytes", "desc")}
-                />
-              </th>
-              <th>
-                <DriveTableSortHeader
-                  active={sortBy === "createdAt"}
-                  direction={sortDirection}
-                  label={t("filters.created")}
-                  onSort={() => onSortChange("createdAt", "desc")}
-                />
-              </th>
-              <th>
-                <DriveTableSortHeader
-                  active={sortBy === "updatedAt"}
-                  direction={sortDirection}
-                  label={t("files.modified")}
-                  onSort={() => onSortChange("updatedAt", "desc")}
-                />
-              </th>
+              <DriveTableSortHeader
+                active={sortBy === "sizeBytes"}
+                direction={sortDirection}
+                label={t("files.size")}
+                onSort={() => onSortChange("sizeBytes", "desc")}
+              />
+              <DriveTableSortHeader
+                active={sortBy === "createdAt"}
+                direction={sortDirection}
+                label={t("filters.created")}
+                onSort={() => onSortChange("createdAt", "desc")}
+              />
+              <DriveTableSortHeader
+                active={sortBy === "updatedAt"}
+                direction={sortDirection}
+                label={t("files.modified")}
+                onSort={() => onSortChange("updatedAt", "desc")}
+              />
               <th aria-label={t("actions.more")} />
             </tr>
           </thead>

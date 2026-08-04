@@ -44,6 +44,7 @@ export function DriveFileSelectBox({
         event.stopPropagation();
         onChange(!checked);
       }}
+      onDoubleClick={(event) => event.stopPropagation()}
       role="checkbox"
       style={{
         "--select-bg": active ? palette.selected : "transparent",
@@ -102,16 +103,17 @@ export function DriveTableSortHeader({
   onSort: () => void;
 }) {
   return (
-    <button
-      {...buttonTypeAttr}
-      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : undefined}
-      className="drive-table-sort-header"
-      data-active={active ? "true" : undefined}
-      onClick={onSort}
-    >
-      <span>{label}</span>
-      <LocalIcon name={direction === "asc" ? "arrow_up" : "arrow_down"} size={12} />
-    </button>
+    <th aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : undefined}>
+      <button
+        {...buttonTypeAttr}
+        className="drive-table-sort-header"
+        data-active={active ? "true" : undefined}
+        onClick={onSort}
+      >
+        <span>{label}</span>
+        <LocalIcon name={direction === "asc" ? "arrow_up" : "arrow_down"} size={12} />
+      </button>
+    </th>
   );
 }
 
