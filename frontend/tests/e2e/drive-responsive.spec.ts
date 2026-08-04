@@ -14,7 +14,9 @@ const corsHeaders = {
 test.describe("responsive Drive workspace", () => {
   test("keeps the mobile list compact and exposes single- and multi-selection actions", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await mockDriveApi(page, {
+      activeNodes: [reportFile(), budgetFile(), folderNode("folder-keyboard", "Keyboard Folder", null)],
+    });
     await seedAuthenticatedDrive(page);
 
     await page.goto("/");
@@ -27,7 +29,9 @@ test.describe("responsive Drive workspace", () => {
     await expect(reportRow.locator(".drive-file-meta-text")).toContainText("KB");
     await expectNoHorizontalOverflow(page);
 
-    await page.getByRole("checkbox", { name: `Select ${reportFileName}` }).click();
+    await reportRow.focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("checkbox", { name: `Select ${reportFileName}` })).toBeChecked();
     const mobileToolbar = page.locator(".drive-mobile-workspace-tools:visible");
     await expect(mobileToolbar.getByRole("status")).toHaveText("1 selected");
     await expectSelectionActions(mobileToolbar);
@@ -42,6 +46,15 @@ test.describe("responsive Drive workspace", () => {
     await expect(mobileToolbar.getByRole("status")).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: `Select ${reportFileName}` })).not.toBeChecked();
     await expect(page.getByRole("checkbox", { name: `Select ${budgetFileName}` })).not.toBeChecked();
+
+    const folderRow = driveItem(page, "folder-keyboard");
+    await folderRow.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator('.drive-empty-state[data-state="folder-empty"]')).toBeVisible();
+    await expect(page.locator(".drive-address-bar-compact:visible").getByRole("button", {
+      name: "Keyboard Folder",
+      exact: true,
+    })).toBeVisible();
   });
 
   test("keeps the compact table and row actions reachable at the 900px boundary", async ({ page }) => {
@@ -134,36 +147,67 @@ test.describe("responsive Drive workspace", () => {
 
   test("collapses a deep mobile breadcrumb into a navigable ancestor menu", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    const directoryNames = [
+      "International Product Planning Archive for the 2026 Expansion Program",
+      "Regional Operations Compliance Records and Supporting Documentation",
+      "Quarterly Research Deliverables with References and Working Materials",
+      "Current Collaboration Materials, Decisions, Follow-ups, and Meeting Notes",
+    ];
     await mockDriveApi(page, {
       activeNodes: [
-        folderNode("level-1", "Level One", null),
-        folderNode("level-2", "Level Two", "level-1"),
-        folderNode("level-3", "Level Three", "level-2"),
-        folderNode("level-4", "Level Four", "level-3"),
+        folderNode("level-1", directoryNames[0], null),
+        folderNode("level-2", directoryNames[1], "level-1"),
+        folderNode("level-3", directoryNames[2], "level-2"),
+        folderNode("level-4", directoryNames[3], "level-3"),
       ],
     });
     await seedAuthenticatedDrive(page);
     await page.goto("/");
 
-    for (const name of ["Level One", "Level Two", "Level Three", "Level Four"]) {
+    for (const name of directoryNames) {
       await page.getByRole("button", { name, exact: true }).click();
     }
 
     const compactBreadcrumb = page.locator(".drive-address-bar-compact:visible");
     await expect(compactBreadcrumb.getByRole("button", { name: "Workspace", exact: true })).toBeVisible();
-    await expect(compactBreadcrumb.getByRole("button", { name: "Level Four", exact: true })).toBeVisible();
+    await expect(compactBreadcrumb.getByRole("button", { name: directoryNames[3], exact: true })).toBeVisible();
     await expect(compactBreadcrumb.getByRole("button", { name: "Directory: More" })).toBeVisible();
-    await expect(compactBreadcrumb.getByText("Level One", { exact: true })).toHaveCount(0);
+    await expect(compactBreadcrumb.getByText(directoryNames[0], { exact: true })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
 
     await compactBreadcrumb.getByRole("button", { name: "Directory: More" }).click();
     const ancestorMenu = page.getByRole("menu", { name: "Directory: More" });
-    await expect(ancestorMenu.getByRole("menuitem", { name: "Level One", exact: true })).toBeVisible();
-    await expect(ancestorMenu.getByRole("menuitem", { name: "Level Two", exact: true })).toBeVisible();
-    await expect(ancestorMenu.getByRole("menuitem", { name: "Level Three", exact: true })).toBeVisible();
-    await ancestorMenu.getByRole("menuitem", { name: "Level Two", exact: true }).click();
+    await expect(ancestorMenu.getByRole("menuitem", { name: directoryNames[0], exact: true })).toBeVisible();
+    await expect(ancestorMenu.getByRole("menuitem", { name: directoryNames[1], exact: true })).toBeVisible();
+    await expect(ancestorMenu.getByRole("menuitem", { name: directoryNames[2], exact: true })).toBeVisible();
+    await ancestorMenu.getByRole("menuitem", { name: directoryNames[1], exact: true }).click();
 
-    await expect(compactBreadcrumb.getByRole("button", { name: "Level Two", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Level Three", exact: true })).toBeVisible();
+    await expect(compactBreadcrumb.getByRole("button", { name: directoryNames[1], exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: directoryNames[2], exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("preserves search results through a transient failure and retries the current query", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const api = await mockDriveApi(page, { activeNodes: [budgetFile()], searchItems: [reportFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+
+    const search = page.getByRole("textbox", { name: "Search files, folders, share links..." });
+    await search.fill("Quarterly");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    api.failNextSearch = true;
+    await search.fill("Quarterly Report");
+
+    const errorBanner = page.locator(".drive-error-banner");
+    await expect(errorBanner).toBeVisible();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(errorBanner.getByRole("button", { name: "Try again" })).toBeVisible();
+
+    await errorBanner.getByRole("button", { name: "Try again" }).click();
+    await expect(errorBanner).toHaveCount(0);
+    await expect(driveItem(page, "file-report")).toBeVisible();
   });
 
   test("keeps the upload HUD, notification, and mobile toolbar from overlapping", async ({ page }) => {
@@ -289,6 +333,7 @@ type DriveApiState = {
   activeNodes: FileNode[];
   archivedNodes: FileNode[];
   failNextActiveFileList: boolean;
+  failNextSearch: boolean;
   searchItems: FileNode[];
   transfers: Transfer[];
 };
@@ -301,6 +346,7 @@ async function mockDriveApi(
     activeNodes: options.activeNodes ?? [reportFile(), budgetFile()],
     archivedNodes: options.archivedNodes ?? [],
     failNextActiveFileList: false,
+    failNextSearch: false,
     searchItems: options.searchItems ?? [],
     transfers: options.transfers ?? [],
   };
@@ -360,6 +406,11 @@ async function mockDriveApi(
       return;
     }
     if (method === "GET" && path === "/file-nodes/search") {
+      if (state.failNextSearch) {
+        state.failNextSearch = false;
+        await fulfillJson(route, { code: "SEARCH_UNAVAILABLE", message: "Temporary search failure" }, 503);
+        return;
+      }
       await fulfillJson(route, {
         items: state.searchItems.map((item) => ({ ...item, path: `/Workspace/${item.name}` })),
         limit: 100,
