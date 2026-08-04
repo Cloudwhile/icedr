@@ -2,11 +2,22 @@
 
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
 import { useState } from "react";
-import { MotionLayoutGroup, MotionList, MotionSurface } from "@/components/ui/motion";
+import { MotionLayoutGroup, MotionList } from "@/components/ui/motion";
 import { AppContextMenu, type AppContextMenuPosition } from "@/components/ui/app-context-menu";
-import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
+import type { AppMenuItem } from "@/components/ui/app-menu";
 import { DriveItemPreview } from "@/components/ui/drive-item-preview";
 import { InlineRenameInput } from "@/components/ui/inline-rename-input";
+import {
+  DriveFileCollectionStateView,
+  type DriveFileCollectionStateAction,
+} from "@/components/drive/file-collection-state";
+import { resolveDriveFileCollectionState } from "@/components/drive/file-collection-state-model";
+import {
+  DriveBatchToolbar,
+  DriveFileMoreActionsMenu,
+  DriveFileSelectBox,
+  DriveTableSortHeader,
+} from "@/components/drive/file-list-controls";
 import {
   formatDriveItemModified,
   formatFileSize,
@@ -14,12 +25,12 @@ import {
   sumDriveItemSizes,
   type DriveItem,
   type Locale,
-  type LocalIconName,
   type Palette,
 } from "@/features/file/model";
 import { isTextEditableFile } from "@/features/file/open-with";
 import { preventDriveEntryTextSelection } from "@/features/file/drive-entry-events";
-import { AnimatedCheckMark, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
+import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
+import { formatDriveItemDate, getFilePathHint } from "./drive-files-helpers";
 import type { DriveSortBy, DriveSortDirection } from "./drive-search-model";
 
 const buttonTypeAttr: { type?: "button" } = {
@@ -45,6 +56,7 @@ export type FilesModuleProps = {
   hasQuery: boolean;
   items: DriveItem[];
   loadingMore?: boolean;
+  searchLoading?: boolean;
   onArchiveItem: FileAction;
   onBlankGoRoot: () => void;
   onBlankGoUp: () => void;
@@ -52,6 +64,8 @@ export type FilesModuleProps = {
   onBlankSelect: () => void;
   onBlankRefresh: () => void;
   onCancelRenameItem: () => void;
+  onClearSearch?: () => void;
+  onRetrySearch?: () => void;
   onCommitRenameItem: (item: DriveItem, name: string) => boolean | Promise<boolean>;
   onCopyItem: FileAction;
   onCopyNodeItem: FileAction;
@@ -98,6 +112,7 @@ export function FilesModule({
   hasQuery,
   items,
   loadingMore,
+  searchLoading = false,
   onArchiveItem,
   onBlankGoRoot,
   onBlankGoUp,
@@ -105,6 +120,8 @@ export function FilesModule({
   onBlankSelect,
   onBlankRefresh,
   onCancelRenameItem,
+  onClearSearch,
+  onRetrySearch,
   onCommitRenameItem,
   onCopyItem,
   onCopyNodeItem,
@@ -145,6 +162,16 @@ export function FilesModule({
   const selectedItems = selected
     .map((id) => sourceItems.find((item) => item.id === id) ?? items.find((item) => item.id === id))
     .filter((item): item is DriveItem => Boolean(item));
+  const collectionState = resolveDriveFileCollectionState({
+    activeNav,
+    currentFolderId,
+    error,
+    hasQuery,
+    itemCount: items.length,
+    searchLoading,
+  });
+  const createFolderItem = createMenuItems.find((item) => item.value === "new-folder" && !item.disabled && item.onClick);
+  const uploadItem = createMenuItems.find((item) => item.value === "upload" && !item.disabled && item.onClick);
   const blankNavigationItems = [
     currentFolderId ? { icon: <LocalIcon name="arrow_up" size={15} />, label: t("files.parentDirectory"), onClick: onBlankGoUp, value: "go-up" } : null,
     currentFolderId ? { icon: <LocalIcon name="house" size={15} />, label: t("actions.goRoot"), onClick: onBlankGoRoot, value: "go-root" } : null,
@@ -210,20 +237,52 @@ export function FilesModule({
     toggleSelected(item.id, checked);
     setSelectionAnchorId(item.id);
   };
+  const retryActiveCollection = hasQuery && onRetrySearch ? onRetrySearch : onBlankRefresh;
+  const collectionStateActions: DriveFileCollectionStateAction[] = collectionState === "error"
+    ? [{ icon: "refresh", label: t("app.errorBoundary.retry"), onClick: retryActiveCollection, tone: "accent" }]
+    : collectionState === "search-empty"
+      ? [
+          ...(onClearSearch ? [{ icon: "cross" as const, label: t("app.searchClear"), onClick: onClearSearch }] : []),
+          { icon: "refresh", label: t("app.refresh"), onClick: onRetrySearch ?? onBlankRefresh },
+        ]
+      : collectionState === "folder-empty"
+        ? [
+            { icon: "arrow_up", label: t("files.parentDirectory"), onClick: onBlankGoUp },
+            { icon: "house", label: t("actions.goRoot"), onClick: onBlankGoRoot },
+            ...(createFolderItem?.onClick ? [{ icon: "folder" as const, label: t("actions.newFolder"), onClick: createFolderItem.onClick }] : []),
+            ...(uploadItem?.onClick ? [{ icon: "upload" as const, label: t("app.upload"), onClick: uploadItem.onClick }] : []),
+          ]
+        : collectionState === "root-empty"
+          ? [
+              ...(createFolderItem?.onClick ? [{ icon: "folder" as const, label: t("actions.newFolder"), onClick: createFolderItem.onClick }] : []),
+              ...(uploadItem?.onClick ? [{ icon: "upload" as const, label: t("app.upload"), onClick: uploadItem.onClick }] : []),
+              { icon: "refresh", label: t("app.refresh"), onClick: onBlankRefresh },
+            ]
+          : collectionState === "trash-empty" || collectionState === "collection-empty"
+            ? [{ icon: "refresh", label: t("app.refresh"), onClick: onBlankRefresh }]
+            : [];
 
   return (
     <MotionLayoutGroup>
       <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu}>
-        {error ? (
+        {error && collectionState === "ready" ? (
           <div className="drive-error-banner">
             <StatusPill palette={palette} tone="risk">
               {error}
             </StatusPill>
+            <ToolButton
+              label={t("app.errorBoundary.retry")}
+              onClick={retryActiveCollection}
+              palette={palette}
+              visual="surface"
+            >
+              <LocalIcon name="refresh" size={16} />
+            </ToolButton>
           </div>
         ) : null}
 
         {selectedItems.length > 1 ? (
-          <BatchToolbar
+          <DriveBatchToolbar
             activeNav={activeNav}
             items={selectedItems}
             onArchive={() => onBatchArchiveItems(selectedItems)}
@@ -242,8 +301,13 @@ export function FilesModule({
           />
         ) : null}
 
-        {items.length === 0 && !(activeNav === "drive" && currentFolderId) ? (
-          <EmptyState activeNav={activeNav} hasQuery={hasQuery} palette={palette} />
+        {collectionState !== "ready" ? (
+          <DriveFileCollectionStateView
+            actions={collectionStateActions}
+            error={error}
+            kind={collectionState}
+            palette={palette}
+          />
         ) : viewMode === "list" ? (
           <FileTable
             activeNav={activeNav}
@@ -362,177 +426,6 @@ function isDriveBlankMenuIgnored(target: HTMLElement) {
   );
 }
 
-function EmptyState({ activeNav, hasQuery, palette }: { activeNav: string; hasQuery: boolean; palette: Palette }) {
-  const t = useTranslations();
-  let icon: LocalIconName = "file";
-  let title = t("files.emptyTitle");
-
-  if (hasQuery) {
-    icon = "search";
-    title = t("files.emptySearchTitle");
-  } else if (activeNav === "trash") {
-    icon = "trash";
-    title = t("files.emptyTrashTitle");
-  }
-
-  return (
-    <MotionSurface key={`${activeNav}-${hasQuery ? "query" : "empty"}`} preset="surface" className="drive-empty-state">
-      <LocalIcon name={icon} size={28} color={palette.subtle} />
-      <span>{title}</span>
-    </MotionSurface>
-  );
-}
-
-function SelectBox({
-  checked,
-  indeterminate,
-  label,
-  onChange,
-  palette,
-  visible = true,
-}: {
-  checked: boolean;
-  indeterminate?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-  palette: Palette;
-  visible?: boolean;
-}) {
-  const active = checked || indeterminate;
-
-  return (
-    <button
-      {...buttonTypeAttr}
-      className="file-select-box"
-      role="checkbox"
-      aria-checked={indeterminate ? "mixed" : checked}
-      aria-label={label}
-      data-visible={visible || active ? "" : undefined}
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange(!checked);
-      }}
-      style={{
-        "--select-bg": active ? palette.selected : "transparent",
-        "--select-border": active ? palette.primary : palette.hairlineStrong,
-        "--select-color": palette.primaryHover,
-        "--select-focus": palette.focusRing,
-        "--select-hover-bg": active ? palette.selected : palette.surface2,
-        "--select-hover-border": palette.primary,
-      } as React.CSSProperties}
-    >
-      {checked ? <AnimatedCheckMark size={11} strokeWidth={2.7} /> : null}
-      {!checked && indeterminate ? <span className="file-select-box-indicator" /> : null}
-    </button>
-  );
-}
-
-function MoreActionsMenu({
-  actionItems,
-  palette,
-}: {
-  actionItems: AppMenuItem[];
-  palette: Palette;
-}) {
-  const t = useTranslations();
-  return (
-    <ActionMenu ariaLabel={t("actions.more")} items={actionItems} palette={palette}>
-      <button
-        {...buttonTypeAttr}
-        aria-label={t("actions.more")}
-        className="icedr-tool-button icedr-tool-button-sm icedr-file-menu-trigger drive-action-trigger"
-        style={{
-          "--tool-bg": "transparent",
-          "--tool-border": "transparent",
-          "--tool-color": palette.subtle,
-          "--tool-focus": palette.focusRing,
-          "--tool-hover-bg": palette.surface2,
-          "--tool-hover-border": palette.hairlineStrong,
-          "--tool-hover-color": palette.ink,
-        } as React.CSSProperties}
-      >
-        <LocalIcon name="menu7" size={16} />
-      </button>
-    </ActionMenu>
-  );
-}
-
-function BatchToolbar({
-  activeNav,
-  items,
-  onArchive,
-  onClear,
-  onCopy,
-  onCut,
-  onDeletePermanently,
-  onDownload,
-  onRestore,
-  onShare,
-  palette,
-  sourceItems,
-}: {
-  activeNav: string;
-  items: DriveItem[];
-  onArchive: () => void;
-  onClear: () => void;
-  onCopy: () => void;
-  onCut: () => void;
-  onDeletePermanently: () => void;
-  onDownload: () => void;
-  onRestore: () => void;
-  onShare: () => void;
-  palette: Palette;
-  sourceItems: DriveItem[];
-}) {
-  const t = useTranslations();
-  const locale = useLocale() as Locale;
-  const folderCount = items.filter((item) => getItemKind(item) === "folder").length;
-  const sizeLabel = formatFileSize(sumDriveItemSizes(items, sourceItems), locale);
-  const inTrash = activeNav === "trash" || items.every((item) => item.archivedAt);
-
-  return (
-    <div className="drive-batch-toolbar" data-drive-entry>
-      <div className="drive-batch-summary">
-        <span>{t("app.selected", { count: items.length })}</span>
-        <span>{t("files.batchScope", { files: items.length - folderCount, folders: folderCount, size: sizeLabel })}</span>
-      </div>
-      <div className="drive-batch-actions">
-        {inTrash ? (
-          <>
-            <ToolButton label={t("actions.restore")} palette={palette} onClick={onRestore}>
-              <LocalIcon name="refresh" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.deletePermanently")} palette={palette} tone="danger" onClick={onDeletePermanently}>
-              <LocalIcon name="trash" size={16} />
-            </ToolButton>
-          </>
-        ) : (
-          <>
-            <ToolButton label={t("actions.download")} palette={palette} onClick={onDownload}>
-              <LocalIcon name="download" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.copy")} palette={palette} onClick={onCopy}>
-              <LocalIcon name="copy" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.cut")} palette={palette} onClick={onCut}>
-              <LocalIcon name="cut" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.share")} palette={palette} onClick={onShare}>
-              <LocalIcon name="share2" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.archive")} palette={palette} tone="danger" onClick={onArchive}>
-              <LocalIcon name="trash" size={16} />
-            </ToolButton>
-          </>
-        )}
-        <ToolButton label={t("app.clear")} palette={palette} onClick={onClear}>
-          <LocalIcon name="cross" size={16} />
-        </ToolButton>
-      </div>
-    </div>
-  );
-}
-
 function buildFileActionItems({
   item,
   onArchive,
@@ -584,7 +477,7 @@ function buildFileActionItems({
     { icon: <LocalIcon name="document" size={15} />, label: t("actions.rename"), onClick: () => onRename(item), separatorBefore: true, value: "rename" },
     editable ? { icon: <LocalIcon name="visible" size={15} />, label: t("actions.edit"), onClick: () => onEdit(item), value: "edit" } : null,
     { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copy"), onClick: () => onCopyNode(item), value: "copy-node" },
-    { icon: <LocalIcon name="cut" size={15} />, label: t("actions.cut"), onClick: () => onMove(item), value: "cut-node" },
+    { icon: <LocalIcon name="cut" size={15} />, label: t("actions.move"), onClick: () => onMove(item), value: "move-node" },
     { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), separatorBefore: true, value: "details" },
     {
       icon: <LocalIcon name="star" size={15} color={item.starred ? palette.primaryHover : "currentColor"} />,
@@ -606,45 +499,31 @@ function openItemSurface(item: DriveItem, openFolder: (id: string) => void, open
   else openPreview(item.id);
 }
 
-function formatDriveItemDate(value: string | null | undefined, locale: Locale, timeZone?: string) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--";
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale.replace(/_/g, "-"), {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    ...(timeZone ? { timeZone } : {}),
-  }).format(date);
+function handleDriveItemKeyDown(
+  event: React.KeyboardEvent,
+  item: DriveItem,
+  checked: boolean,
+  openFolder: (id: string) => void,
+  openPreview: (id: string) => void,
+  onSelect: (item: DriveItem, checked: boolean) => void,
+) {
+  if (event.target !== event.currentTarget || event.repeat) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    openItemSurface(item, openFolder, openPreview);
+    return;
+  }
+  if (event.key === " ") {
+    event.preventDefault();
+    onSelect(item, !checked);
+  }
 }
 
-function getFilePathHint(item: DriveItem) {
-  return item.searchPath || item.originalPath || null;
-}
-
-function DriveTableSortHeader({
-  active,
-  direction,
-  label,
-  onSort,
-}: {
-  active: boolean;
-  direction: DriveSortDirection;
-  label: string;
-  onSort: () => void;
-}) {
-  return (
-    <button
-      {...buttonTypeAttr}
-      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : undefined}
-      className="drive-table-sort-header"
-      data-active={active ? "true" : undefined}
-      onClick={onSort}
-    >
-      <span>{label}</span>
-      <LocalIcon name={direction === "asc" ? "arrow_up" : "arrow_down"} size={12} />
-    </button>
-  );
+function handleParentDirectoryKeyDown(event: React.KeyboardEvent, goUp: () => void) {
+  if (event.target !== event.currentTarget || event.repeat) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  goUp();
 }
 
 function FileTable({
@@ -750,8 +629,10 @@ function FileTable({
 
     return (
       <tr
+        aria-selected={checked}
         key={item.id}
         data-drive-entry
+        data-drive-item-id={item.id}
         data-motion-row
         data-selected={checked ? "" : undefined}
         onClick={(event) => onSelectItem(event, item)}
@@ -760,10 +641,12 @@ function FileTable({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox)}
         onMouseDown={preventDriveEntryTextSelection}
+        tabIndex={0}
       >
         <td>
-          <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
+          <DriveFileSelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
         </td>
         <td>
           <span className="drive-file-name-button" data-renaming={isRenaming ? "" : undefined}>
@@ -779,7 +662,18 @@ function FileTable({
               />
             ) : (
               <>
-                <span className="drive-file-name-text icedr-truncate">{item.name}</span>
+                <button
+                  {...buttonTypeAttr}
+                  className="drive-file-name-text drive-file-open-button icedr-truncate"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openItemSurface(item, openFolder, openPreview);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  title={item.name}
+                >
+                  {item.name}
+                </button>
                 {item.shared ? <LocalIcon name="user_group" size={15} color={palette.subtle} /> : null}
                 <span className="drive-file-meta-text icedr-truncate">{metaLabel}</span>
               </>
@@ -794,10 +688,10 @@ function FileTable({
         <td>{modifiedLabel}</td>
         <td onClick={(event) => event.stopPropagation()}>
           <div className="drive-row-actions">
-            <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
+            <ToolButton className="drive-row-star-action" label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
               <LocalIcon name="star" size={16} color={item.starred ? palette.primaryHover : palette.subtle} />
             </ToolButton>
-            <MoreActionsMenu
+            <DriveFileMoreActionsMenu
               actionItems={actionItems}
               palette={palette}
             />
@@ -823,7 +717,7 @@ function FileTable({
           <thead>
             <tr>
               <th>
-                <SelectBox checked={allSelected} indeterminate={indeterminate} label={t("files.selectAll")} palette={palette} onChange={(checked) => allFileIds.forEach((id) => toggleSelected(id, checked))} />
+                <DriveFileSelectBox checked={allSelected} indeterminate={indeterminate} label={t("files.selectAll")} palette={palette} onChange={(checked) => allFileIds.forEach((id) => toggleSelected(id, checked))} />
               </th>
               <th>
                 <DriveTableSortHeader
@@ -863,7 +757,16 @@ function FileTable({
           </thead>
           <tbody>
             {currentFolderId ? (
-              <tr data-drive-entry data-motion-row onDoubleClick={(event) => { event.preventDefault(); goUp(); }} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
+              <tr
+                aria-label={t("files.parentDirectory")}
+                data-drive-entry
+                data-motion-row
+                onClick={goUp}
+                onContextMenu={(event) => event.preventDefault()}
+                onKeyDown={(event) => handleParentDirectoryKeyDown(event, goUp)}
+                onMouseDown={preventDriveEntryTextSelection}
+                tabIndex={0}
+              >
                 <td />
                 <td>
                   <span className="drive-file-name-button drive-parent-row-label">
@@ -987,9 +890,11 @@ function FileGrid({
 
     return (
       <div
+        aria-label={item.name}
         key={item.id}
         data-motion-row
         data-drive-entry
+        data-drive-item-id={item.id}
         data-selected={checked ? "" : undefined}
         className="drive-file-card icedr-select-parent"
         onClick={(event) => onSelectItem(event, item)}
@@ -998,12 +903,15 @@ function FileGrid({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox)}
         onMouseDown={preventDriveEntryTextSelection}
+        role="group"
+        tabIndex={0}
       >
         <div className="drive-card-visual">
           <DriveItemPreview className="drive-card-preview" iconSize={48} item={item} palette={palette} />
           <div className="drive-card-select">
-            <SelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
+            <DriveFileSelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
           </div>
         </div>
         <div className="drive-card-body">
@@ -1020,7 +928,18 @@ function FileGrid({
                 />
               ) : (
                 <>
-                  <span className="drive-card-file-name" title={item.name}>{item.name}</span>
+                  <button
+                    {...buttonTypeAttr}
+                    className="drive-card-file-name drive-file-open-button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openItemSurface(item, openFolder, openPreview);
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    title={item.name}
+                  >
+                    {item.name}
+                  </button>
                   {pathHint ? <span className="drive-card-path icedr-truncate" title={pathHint}>{pathHint}</span> : null}
                 </>
               )}
@@ -1029,10 +948,10 @@ function FileGrid({
           <div className="drive-card-meta">
             <span className="drive-card-size icedr-truncate">{itemSize}</span>
             <div className="drive-card-actions" onClick={(event) => event.stopPropagation()}>
-              <ToolButton label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
+              <ToolButton className="drive-card-star-action" label={item.starred ? t("actions.unstar") : t("actions.star")} palette={palette} size="sm" onClick={() => toggleStar(item.id)}>
                 <LocalIcon name="star" size={16} color={item.starred ? palette.primaryHover : palette.subtle} />
               </ToolButton>
-              <MoreActionsMenu
+              <DriveFileMoreActionsMenu
                 actionItems={actionItems}
                 palette={palette}
               />
@@ -1047,7 +966,7 @@ function FileGrid({
     <>
       <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid">
         {currentFolderId ? (
-          <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onDoubleClick={(event) => { event.preventDefault(); goUp(); }} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
+          <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onClick={goUp} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
             <div className="drive-card-visual">
               <div className="drive-card-preview drive-parent-card-preview">
                 <LocalIcon name="arrow_up" size={48} color={palette.primary} />

@@ -15,10 +15,14 @@
 }
 
 .drive-error-banner {
+  align-items: center;
   background: transparent;
   border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
   box-shadow: var(--drive-ui-shadow-tight);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
   padding: 12px 14px;
 }
 
@@ -257,6 +261,12 @@
   box-shadow: inset 2px 0 0 var(--drive-ui-blue-600), inset 0 0 0 1px rgba(94, 106, 210, 0.14);
 }
 
+.drive-table tbody tr:focus-visible,
+.drive-file-card:focus-visible {
+  outline: 2px solid var(--drive-focus);
+  outline-offset: -2px;
+}
+
 .drive-table td > .icedr-truncate,
 .drive-table td > span:not(.drive-file-name-button) {
   display: block;
@@ -284,6 +294,29 @@
   color: var(--drive-ui-ink);
   font-weight: 780;
   line-height: 18px;
+}
+
+.drive-file-open-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.drive-file-name-text.drive-file-open-button {
+  display: block;
+  width: 100%;
+}
+
+.drive-file-open-button:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--drive-focus);
+  outline-offset: 2px;
 }
 
 .drive-file-meta-text,
@@ -616,6 +649,7 @@
   max-height: 34px;
   overflow: hidden;
   overflow-wrap: anywhere;
+  width: 100%;
 }
 
 .drive-card-path {
@@ -672,11 +706,56 @@
   gap: 12px;
   justify-content: center;
   min-height: 280px;
+  padding: 28px 20px;
+  text-align: center;
 }
 
-.drive-empty-state span {
+.drive-empty-state-icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.drive-empty-state-icon.is-loading {
+  animation: drive-empty-state-spin 900ms linear infinite;
+}
+
+.drive-empty-state-title {
   color: var(--drive-ui-ink);
   font-weight: 760;
+}
+
+.drive-empty-state-actions {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.drive-empty-state-action {
+  align-items: center;
+  color: var(--drive-ui-muted);
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 5px;
+  line-height: 16px;
+  min-width: 56px;
+}
+
+.drive-empty-state-action-button.icedr-tool-button {
+  height: 48px;
+  min-width: 48px;
+  width: 48px;
+}
+
+@keyframes drive-empty-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .drive-load-more-tools {
@@ -685,4 +764,173 @@
 
 .drive-parent-row-label {
   color: var(--drive-ui-blue-600);
+}
+
+@media (max-width: 940px) {
+  .drive-error-banner .icedr-tool-button {
+    height: 44px;
+    min-width: 44px;
+    width: 44px;
+  }
+
+  .drive-batch-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .drive-files-module .drive-table-shell {
+    overflow-x: hidden;
+  }
+
+  .drive-files-module .drive-table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .drive-col-select {
+    width: 52px;
+  }
+
+  .drive-col-name {
+    width: auto;
+  }
+
+  .drive-col-owner,
+  .drive-col-size,
+  .drive-col-created,
+  .drive-col-modified {
+    display: none;
+    visibility: collapse;
+    width: 0;
+  }
+
+  .drive-col-actions {
+    width: 60px;
+  }
+
+  .drive-table th:nth-child(3),
+  .drive-table td:nth-child(3),
+  .drive-table th:nth-child(4),
+  .drive-table td:nth-child(4),
+  .drive-table th:nth-child(5),
+  .drive-table td:nth-child(5),
+  .drive-table th:nth-child(6),
+  .drive-table td:nth-child(6) {
+    display: none;
+  }
+
+  .drive-table th,
+  .drive-table td {
+    height: 68px;
+    padding-inline: 8px;
+  }
+
+  .drive-table th {
+    height: 48px;
+  }
+
+  .drive-table th:first-child,
+  .drive-table td:first-child,
+  .drive-table th:last-child,
+  .drive-table td:last-child {
+    padding-inline: 4px;
+  }
+
+  .drive-file-name-button {
+    gap: 0 8px;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+
+  .drive-file-name-text.drive-file-open-button {
+    align-items: center;
+    display: flex;
+    min-height: 44px;
+  }
+
+  .drive-file-meta-text {
+    max-width: 100%;
+  }
+
+  .drive-row-actions {
+    justify-content: center;
+  }
+
+  .drive-row-star-action {
+    display: none;
+  }
+
+  .drive-empty-state {
+    min-height: 240px;
+  }
+}
+
+@media (max-width: 760px) {
+  .drive-batch-toolbar {
+    display: none;
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  .file-select-box {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    height: 44px;
+    position: relative;
+    transform: none;
+    width: 44px;
+  }
+
+  .file-select-box::before {
+    background: var(--select-bg, transparent);
+    border: 1px solid var(--select-border, var(--drive-ui-line-strong));
+    border-radius: 6px;
+    content: "";
+    height: 20px;
+    left: 50%;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+  }
+
+  .file-select-box:hover {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .file-select-box > svg,
+  .file-select-box-indicator {
+    position: relative;
+    z-index: 1;
+  }
+
+  .drive-card-select .file-select-box {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    height: 44px;
+    opacity: 1;
+    width: 44px;
+  }
+
+  .drive-action-trigger.icedr-tool-button,
+  .drive-card-actions .icedr-tool-button,
+  .drive-batch-actions .icedr-tool-button {
+    height: 44px;
+    min-width: 44px;
+    width: 44px;
+  }
+
+  .drive-card-file-name.drive-file-open-button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drive-empty-state-icon.is-loading {
+    animation: none;
+  }
 }
