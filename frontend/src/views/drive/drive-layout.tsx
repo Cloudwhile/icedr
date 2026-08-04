@@ -9,6 +9,7 @@ import { ProgressMeter } from "@/components/ui/progress-meter";
 import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
 import { AppMenu, type AppMenuItem } from "@/components/ui/app-menu";
 import { AppImage } from "@/components/ui/app-image";
+import { ResponsiveBreadcrumbs } from "@/components/drive/responsive-breadcrumbs";
 import { formatFileSize, getItemKind, navItems, type DriveItem, type DriveUserNav, type Locale, type LocalIconName, type Palette } from "@/features/file/model";
 import type { AuthUser, StorageUsage } from "@/lib/drive-api";
 import { LocalIcon, ToolButton } from "./drive-primitives";
@@ -648,6 +649,7 @@ export type WorkspaceBarProps = {
   folderPath: DriveItem[];
   hasActionTarget: boolean;
   onDownloadSelection: () => void;
+  onClearSelection: () => void;
   onNavigateFolder: (id: string) => void;
   onNavigateRoot: () => void;
   onShareSelection: () => void;
@@ -655,6 +657,7 @@ export type WorkspaceBarProps = {
   onTriggerUpload: () => void;
   palette: Palette;
   rootLabel: string;
+  selectionCount: number;
   selectionMenuItems: AppMenuItem[];
   sortMenuItems: AppMenuItem[];
   setViewMode: (mode: DriveViewMode) => void;
@@ -667,6 +670,7 @@ export function WorkspaceBar({
   filtersActive,
   folderPath,
   hasActionTarget,
+  onClearSelection,
   onDownloadSelection,
   onNavigateFolder,
   onNavigateRoot,
@@ -675,6 +679,7 @@ export function WorkspaceBar({
   onTriggerUpload,
   palette,
   rootLabel,
+  selectionCount,
   selectionMenuItems,
   sortMenuItems,
   setViewMode,
@@ -693,8 +698,21 @@ export function WorkspaceBar({
   const activeNavIcon = navItems.find((item) => item.id === activeNav)?.icon ?? "folder";
   const moduleSubtitleKey = activeNav === "transfers" ? "transfers.subtitle" : null;
   const pathItems = isPathView ? folderPath : [];
-  const isRootCurrent = pathItems.length === 0;
   const hasWorkspaceTools = isPathView || isFileListView;
+  const currentDirectoryLabel = pathItems.at(-1)?.name ?? rootLabel;
+  const directoryLabel = t("app.directoryStructure");
+  const hasSelection = selectionCount > 0;
+  const trashRestoreAction = selectionMenuItems.find((item) => item.value === "restore");
+  const trashDeleteAction = selectionMenuItems.find((item) => item.value === "delete");
+  const mobileMenuButtonStyle = {
+    "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+    "--tool-border": palette.hairline,
+    "--tool-color": palette.subtle,
+    "--tool-focus": palette.focusRing,
+    "--tool-hover-bg": palette.surface2,
+    "--tool-hover-border": palette.hairlineStrong,
+    "--tool-hover-color": palette.ink,
+  } as React.CSSProperties;
 
   return (
     <div className="drive-workspace-bar" data-module={activeNav}>
@@ -702,32 +720,16 @@ export function WorkspaceBar({
         {isPathView ? (
           <div className="drive-workspace-heading-stack">
             <span className="drive-page-title icedr-truncate">{activeLabel}</span>
-            <nav className="drive-address-bar" aria-label={activeLabel}>
-              <button
-                {...buttonTypeAttr}
-                className="drive-address-segment drive-address-root icedr-truncate"
-                data-current={isRootCurrent ? "true" : undefined}
-                onClick={onNavigateRoot}
-              >
-                <span className="icedr-truncate">{rootLabel}</span>
-              </button>
-              {pathItems.map((item, index) => (
-                <span key={item.id} className="drive-address-segment-wrap">
-                  <span className="drive-address-separator">
-                    <LocalIcon name="arrow_right" size={13} />
-                  </span>
-                  <button
-                    {...buttonTypeAttr}
-                    className="drive-address-segment icedr-truncate"
-                    data-current={index === pathItems.length - 1 ? "true" : undefined}
-                    onClick={() => onNavigateFolder(item.id)}
-                  >
-                    <span className="icedr-truncate">{item.name}</span>
-                    {index === pathItems.length - 1 ? <LocalIcon name="arrow_down" size={12} /> : null}
-                  </button>
-                </span>
-              ))}
-            </nav>
+            <ResponsiveBreadcrumbs
+              ancestorMenuLabel={`${directoryLabel}: ${t("actions.more")}`}
+              ariaLabel={directoryLabel}
+              currentAnnouncement={`${directoryLabel}: ${currentDirectoryLabel}`}
+              items={pathItems}
+              onNavigateFolder={onNavigateFolder}
+              onNavigateRoot={onNavigateRoot}
+              palette={palette}
+              rootLabel={rootLabel}
+            />
           </div>
         ) : (
           <div className="drive-module-heading" aria-label={activeLabel}>
@@ -743,58 +745,34 @@ export function WorkspaceBar({
       </div>
 
       {hasWorkspaceTools ? (
-        <div className="drive-toolbar drive-workspace-tools" role="toolbar" aria-label={activeLabel}>
-          {isPathView ? (
-            <div className="drive-toolbar-group drive-toolbar-primary-group">
-              <ActionButton className="drive-upload-trigger" icon={<LocalIcon name="upload" size={17} />} palette={palette} tone="primary" onClick={onTriggerUpload}>
-                {t("app.upload")}
-              </ActionButton>
-              <AppMenu ariaLabel={t("actions.create")} items={createMenuItems} palette={palette}>
-                <ActionButton className="drive-create-trigger" icon={<LocalIcon name="plus" size={17} />} palette={palette}>
-                  {t("actions.create")}
+        <>
+          <div className="drive-toolbar drive-workspace-tools drive-workspace-tools-desktop" role="toolbar" aria-label={activeLabel}>
+            {isPathView ? (
+              <div className="drive-toolbar-group drive-toolbar-primary-group">
+                <ActionButton className="drive-upload-trigger" icon={<LocalIcon name="upload" size={17} />} palette={palette} tone="primary" onClick={onTriggerUpload}>
+                  {t("app.upload")}
                 </ActionButton>
-              </AppMenu>
-            </div>
-          ) : null}
-          {isFileListView ? (
-            <>
-              <div className="drive-toolbar-group drive-toolbar-action-group">
-                <ToolButton disabled={!hasActionTarget} label={t("actions.share")} palette={palette} visual="surface" onClick={onShareSelection}>
-                  <LocalIcon name="share2" size={17} />
-                </ToolButton>
-                <ToolButton disabled={!hasActionTarget} label={t("actions.download")} palette={palette} visual="surface" onClick={onDownloadSelection}>
-                  <LocalIcon name="download" size={17} />
-                </ToolButton>
-                <AppMenu ariaLabel={t("actions.more")} items={selectionMenuItems} palette={palette}>
-                  <button
-                    {...buttonTypeAttr}
-                    aria-label={t("actions.more")}
-                    className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-more-trigger"
-                    style={{
-                      "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
-                      "--tool-border": palette.hairline,
-                      "--tool-color": palette.subtle,
-                      "--tool-focus": palette.focusRing,
-                      "--tool-hover-bg": palette.surface2,
-                      "--tool-hover-border": palette.hairlineStrong,
-                      "--tool-hover-color": palette.ink,
-                    } as React.CSSProperties}
-                  >
-                    <LocalIcon name="menu7" size={17} />
-                  </button>
+                <AppMenu ariaLabel={t("actions.create")} items={createMenuItems} palette={palette}>
+                  <ActionButton className="drive-create-trigger" icon={<LocalIcon name="plus" size={17} />} palette={palette}>
+                    {t("actions.create")}
+                  </ActionButton>
                 </AppMenu>
               </div>
-              <div className="drive-toolbar-spacer" />
-              <div className="drive-toolbar-control-cluster">
-                <div className="drive-toolbar-group drive-toolbar-filter-group">
-                  <ToolButton active={filtersActive} label={t("app.filter")} palette={palette} visual="surface" onClick={onToggleFilters}>
-                    <LocalIcon name="slider" size={17} />
+            ) : null}
+            {isFileListView ? (
+              <>
+                <div className="drive-toolbar-group drive-toolbar-action-group">
+                  <ToolButton disabled={!hasActionTarget} label={t("actions.share")} palette={palette} visual="surface" onClick={onShareSelection}>
+                    <LocalIcon name="share2" size={17} />
                   </ToolButton>
-                  <AppMenu ariaLabel={t("filters.sort")} items={sortMenuItems} palette={palette}>
+                  <ToolButton disabled={!hasActionTarget} label={t("actions.download")} palette={palette} visual="surface" onClick={onDownloadSelection}>
+                    <LocalIcon name="download" size={17} />
+                  </ToolButton>
+                  <AppMenu ariaLabel={t("actions.more")} items={selectionMenuItems} palette={palette}>
                     <button
                       {...buttonTypeAttr}
-                      aria-label={t("filters.sort")}
-                      className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-sort-trigger"
+                      aria-label={t("actions.more")}
+                      className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-more-trigger"
                       style={{
                         "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
                         "--tool-border": palette.hairline,
@@ -805,26 +783,125 @@ export function WorkspaceBar({
                         "--tool-hover-color": palette.ink,
                       } as React.CSSProperties}
                     >
-                      <LocalIcon name="sort" size={17} />
+                      <LocalIcon name="menu7" size={17} />
                     </button>
                   </AppMenu>
                 </div>
-                <div className="drive-toolbar-group drive-toolbar-view-group">
-                  <SegmentedToolGroup
-                    ariaLabel={`${t("files.listView")} / ${t("files.gridView")}`}
-                    onChange={setViewMode}
-                    options={[
-                      { icon: <LocalIcon name="menu7" size={17} />, label: t("files.listView"), value: "list" },
-                      { icon: <LocalIcon name="grid" size={17} />, label: t("files.gridView"), value: "grid" },
-                    ]}
-                    palette={palette}
-                    value={viewMode}
-                  />
+                <div className="drive-toolbar-spacer" />
+                <div className="drive-toolbar-control-cluster">
+                  <div className="drive-toolbar-group drive-toolbar-filter-group">
+                    <ToolButton active={filtersActive} label={t("app.filter")} palette={palette} visual="surface" onClick={onToggleFilters}>
+                      <LocalIcon name="slider" size={17} />
+                    </ToolButton>
+                    <AppMenu ariaLabel={t("filters.sort")} items={sortMenuItems} palette={palette}>
+                      <button
+                        {...buttonTypeAttr}
+                        aria-label={t("filters.sort")}
+                        className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-sort-trigger"
+                        style={{
+                          "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+                          "--tool-border": palette.hairline,
+                          "--tool-color": palette.subtle,
+                          "--tool-focus": palette.focusRing,
+                          "--tool-hover-bg": palette.surface2,
+                          "--tool-hover-border": palette.hairlineStrong,
+                          "--tool-hover-color": palette.ink,
+                        } as React.CSSProperties}
+                      >
+                        <LocalIcon name="sort" size={17} />
+                      </button>
+                    </AppMenu>
+                  </div>
+                  <div className="drive-toolbar-group drive-toolbar-view-group">
+                    <SegmentedToolGroup
+                      ariaLabel={`${t("files.listView")} / ${t("files.gridView")}`}
+                      onChange={setViewMode}
+                      options={[
+                        { icon: <LocalIcon name="menu7" size={17} />, label: t("files.listView"), value: "list" },
+                        { icon: <LocalIcon name="grid" size={17} />, label: t("files.gridView"), value: "grid" },
+                      ]}
+                      palette={palette}
+                      value={viewMode}
+                    />
+                  </div>
                 </div>
+              </>
+            ) : null}
+          </div>
+          <div
+            aria-label={activeLabel}
+            className="drive-toolbar drive-mobile-workspace-tools"
+            data-selection-mode={hasSelection ? "true" : undefined}
+            role="toolbar"
+          >
+            {hasSelection ? (
+              <>
+                <span aria-live="polite" className="drive-mobile-selection-status" role="status">
+                  {t("app.selected", { count: selectionCount })}
+                </span>
+                <div className="drive-mobile-toolbar-actions">
+                  {activeNav === "trash" ? (
+                    <>
+                      <ToolButton disabled={trashRestoreAction?.disabled} label={t("actions.restore")} palette={palette} visual="surface" onClick={trashRestoreAction?.onClick}>
+                        <LocalIcon name="refresh" size={18} />
+                      </ToolButton>
+                      <ToolButton disabled={trashDeleteAction?.disabled} label={t("actions.deletePermanently")} palette={palette} tone="danger" visual="surface" onClick={trashDeleteAction?.onClick}>
+                        <LocalIcon name="trash" size={18} />
+                      </ToolButton>
+                    </>
+                  ) : (
+                    <>
+                      <ToolButton label={t("actions.share")} palette={palette} visual="surface" onClick={onShareSelection}>
+                        <LocalIcon name="share2" size={18} />
+                      </ToolButton>
+                      <ToolButton label={t("actions.download")} palette={palette} visual="surface" onClick={onDownloadSelection}>
+                        <LocalIcon name="download" size={18} />
+                      </ToolButton>
+                    </>
+                  )}
+                  <AppMenu ariaLabel={t("actions.more")} items={selectionMenuItems} palette={palette}>
+                    <button
+                      {...buttonTypeAttr}
+                      aria-label={t("actions.more")}
+                      className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-mobile-menu-trigger"
+                      style={mobileMenuButtonStyle}
+                    >
+                      <LocalIcon name="menu7" size={18} />
+                    </button>
+                  </AppMenu>
+                  <ToolButton label={t("actions.clearSelection")} palette={palette} visual="surface" onClick={onClearSelection}>
+                    <LocalIcon name="cross" size={18} />
+                  </ToolButton>
+                </div>
+              </>
+            ) : (
+              <div className="drive-mobile-toolbar-actions">
+                {isPathView ? (
+                  <>
+                    <ToolButton className="drive-mobile-upload-trigger" label={t("app.upload")} palette={palette} visual="surface" onClick={onTriggerUpload}>
+                      <LocalIcon name="upload" size={18} />
+                    </ToolButton>
+                    <AppMenu ariaLabel={t("actions.create")} items={createMenuItems} palette={palette}>
+                      <button
+                        {...buttonTypeAttr}
+                        aria-label={t("actions.create")}
+                        className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-mobile-menu-trigger"
+                        style={mobileMenuButtonStyle}
+                      >
+                        <LocalIcon name="plus" size={18} />
+                      </button>
+                    </AppMenu>
+                  </>
+                ) : null}
+                {isFileListView ? (
+                  <ToolButton active={filtersActive} label={t("app.filter")} palette={palette} visual="surface" onClick={onToggleFilters}>
+                    <LocalIcon name="slider" size={18} />
+                  </ToolButton>
+                ) : null}
               </div>
-            </>
-          ) : null}
-        </div>
+            )}
+          </div>
+        </>
       ) : null}
     </div>
   );

@@ -40,6 +40,7 @@
   box-sizing: border-box;
   color: var(--drive-ui-ink);
   display: flex;
+  flex: 0 0 auto;
   font-weight: 780;
   justify-content: space-between;
   min-height: 56px;
@@ -53,7 +54,14 @@
   display: grid;
   gap: 10px;
   grid-template-columns: auto minmax(0, 1fr);
+  margin: 0;
   min-width: 0;
+}
+
+.drive-details-heading:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--drive-focus);
+  outline-offset: 4px;
 }
 
 .drive-details-heading-icon {
@@ -71,10 +79,13 @@
 .drive-details-body {
   box-sizing: border-box;
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 11px;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   min-width: 0;
   padding: 0 14px 16px;
   width: 100%;
@@ -433,4 +444,39 @@
   display: flex;
   flex: 0 0 auto;
   gap: 4px;
+}
+
+@media (max-width: 1180px) {
+  .drive-workspace-content > .drive-details-panel {
+    align-self: stretch;
+    display: flex;
+    height: 100%;
+    max-height: none;
+    position: static;
+    top: auto;
+    width: 100%;
+    z-index: auto;
+  }
+
+  .drive-details-inner {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .drive-details-tabs button,
+  .drive-details-header > .icedr-tool-button,
+  .drive-details-quick-actions .icedr-tool-button,
+  .drive-version-actions .icedr-tool-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .drive-details-header > .icedr-tool-button {
+    height: 44px;
+    width: 44px;
+  }
+
+  .drive-details-quick-actions .icedr-tool-button {
+    height: 44px;
+  }
 }
