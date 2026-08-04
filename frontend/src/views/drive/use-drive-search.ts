@@ -54,7 +54,6 @@ export function useDriveSearch({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResultKey, setSearchResultKey] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchCursor, setSearchCursor] = useState({ key: "", offset: 0 });
   const [searchRetryVersion, setSearchRetryVersion] = useState(0);
   const [searchTotal, setSearchTotal] = useState(0);
   const [query, setQuery] = useState("");
@@ -72,6 +71,10 @@ export function useDriveSearch({
     spaceScope,
     workspaceId,
   }), [activeNav, query, searchContextParentNodeId, searchFilters, spaceScope, workspaceId]);
+  const [searchCursor, setSearchCursor] = useState({ key: searchRequestKey, offset: 0 });
+  if (searchCursor.key !== searchRequestKey) {
+    setSearchCursor({ key: searchRequestKey, offset: 0 });
+  }
   const searchOffset = searchCursor.key === searchRequestKey ? searchCursor.offset : 0;
   const searchCanLoadMore = serverSearchActive && searchResultKey === searchRequestKey && !searchLoading && searchItems.length < searchTotal;
   const searchLoadingMore = searchLoading && searchOffset > 0;

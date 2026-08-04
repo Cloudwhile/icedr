@@ -37,6 +37,7 @@ import { isStorageCapacityError, useDriveTransfers } from "./use-drive-transfers
 import { useDriveSearch } from "./use-drive-search";
 import { useDriveFileActions } from "./use-drive-file-actions";
 import { useDriveDetailsPanel } from "./use-drive-details-panel";
+import { createLatestDriveItemsRequestRunner } from "./drive-items-refresh";
 import {
   createUniqueDriveName,
   driveNavPaths,
@@ -117,6 +118,7 @@ export function DriveWorkbench({
   const spaceScopeRef = useRef<DriveSpaceScope>("workspace");
   const registeredSharesRef = useRef<RegisteredShare[]>([]);
   const driveItemsContextRef = useRef("");
+  const runLatestDriveItemsRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
   const activeUser = profileUserOverride?.id === currentUser?.id ? profileUserOverride : currentUser;
   const activeUserId = activeUser?.id;
   const activateNav = useCallback((nextNav: DriveUserNav, navigation: "push" | "replace" = "push") => {
@@ -323,30 +325,27 @@ export function DriveWorkbench({
   ) => {
     if (!targetWorkspaceId) return false;
     const targetContext = `${targetWorkspaceId}:${targetSpaceScope}`;
-    try {
-      const [activeNodes, archivedNodes] = await Promise.all([fetchFileNodesByState({
-        workspaceId: targetWorkspaceId,
-        spaceScope: targetSpaceScope,
-        state: "active"
-      }), fetchFileNodesByState({
-        workspaceId: targetWorkspaceId,
-        spaceScope: targetSpaceScope,
-        state: "archived"
-      })]);
+    return runLatestDriveItemsRequest(() => Promise.all([fetchFileNodesByState({
+      workspaceId: targetWorkspaceId,
+      spaceScope: targetSpaceScope,
+      state: "active"
+    }), fetchFileNodesByState({
+      workspaceId: targetWorkspaceId,
+      spaceScope: targetSpaceScope,
+      state: "archived"
+    })]), ([activeNodes, archivedNodes]) => {
       setDriveItems(withShareFlags(activeNodes.map(mapFileNodeToDriveItem), shares));
       setArchivedItems(withShareFlags(archivedNodes.map(mapFileNodeToDriveItem), shares));
       driveItemsContextRef.current = targetContext;
       setFilesError(null);
-      return true;
-    } catch (error) {
+    }, (error) => {
       if (driveItemsContextRef.current !== targetContext) {
         setDriveItems([]);
         setArchivedItems([]);
       }
       setFilesError(getApiFeedback(error, "files.loadFailed"));
-      return false;
-    }
-  }, [getApiFeedback]);
+    });
+  }, [getApiFeedback, runLatestDriveItemsRequest]);
   const refreshShares = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return [] as RegisteredShare[];
     try {

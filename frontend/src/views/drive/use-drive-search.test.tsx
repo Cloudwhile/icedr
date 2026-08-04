@@ -72,14 +72,79 @@ describe("useDriveSearch", () => {
       "second",
     ]);
   });
+
+  it("查询 A 加载更多后切换到 B 再返回 A 时从第一页重新搜索", async () => {
+    vi.mocked(searchFileNodes)
+      .mockResolvedValueOnce(searchResult("a-1", "A 第一页", { total: 101 }))
+      .mockResolvedValueOnce(searchResult("a-101", "A 第二页", { offset: 100, total: 101 }))
+      .mockResolvedValueOnce(searchResult("b-1", "B 第一页"))
+      .mockResolvedValueOnce(searchResult("a-return", "A 返回结果"));
+    const { result } = renderHook(() => useDriveSearch({
+      activeNav: "drive",
+      allKnownItems: [],
+      archivedItems: [],
+      currentFolderId: null,
+      currentSpaceRootLabel: "工作区",
+      driveItems: [],
+      getApiFeedback: () => "搜索失败",
+      registeredSharesRef: { current: [] },
+      searchEnabled: true,
+      spaceScope: "workspace",
+      workspaceId: "workspace-1",
+    }));
+
+    act(() => {
+      result.current.setQuery("A");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+    });
+    expect(result.current.searchCanLoadMore).toBe(true);
+
+    act(() => {
+      result.current.loadMoreSearchResults();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+    });
+
+    act(() => {
+      result.current.setQuery("B");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+    });
+
+    act(() => {
+      result.current.setQuery("A");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+    });
+
+    expect(vi.mocked(searchFileNodes).mock.calls.map(([request]) => ({
+      offset: request?.offset,
+      query: request?.query,
+    }))).toEqual([
+      { offset: 0, query: "A" },
+      { offset: 100, query: "A" },
+      { offset: 0, query: "B" },
+      { offset: 0, query: "A" },
+    ]);
+    expect(result.current.filteredFiles.map((item) => item.name)).toEqual(["A 返回结果"]);
+  });
 });
 
-function searchResult(id: string, name: string) {
+function searchResult(
+  id: string,
+  name: string,
+  { offset = 0, total = 1 }: { offset?: number; total?: number } = {},
+) {
   return {
     items: [createSearchItem(id, name)],
     limit: 100,
-    offset: 0,
-    total: 1,
+    offset,
+    total,
   };
 }
 
