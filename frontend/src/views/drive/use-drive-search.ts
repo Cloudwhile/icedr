@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type MutableRefObject } from "react";
 import { getChildItems, type DriveItem, type DriveUserNav } from "@/features/file/model";
 import { mapFileNodeToDriveItem } from "@/features/file/mappers";
 import { useTranslations } from "@/i18n/react";
@@ -29,7 +29,6 @@ type UseDriveSearchOptions = {
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   registeredSharesRef: MutableRefObject<RegisteredShare[]>;
   searchEnabled: boolean;
-  setFilesError: Dispatch<SetStateAction<string | null>>;
   spaceScope: DriveSpaceScope;
   workspaceId: string | null;
 };
@@ -45,7 +44,6 @@ export function useDriveSearch({
   getApiFeedback,
   registeredSharesRef,
   searchEnabled,
-  setFilesError,
   spaceScope,
   workspaceId,
 }: UseDriveSearchOptions) {
@@ -53,8 +51,10 @@ export function useDriveSearch({
   const [filtersActive, setFiltersActive] = useState(false);
   const [searchFilters, setSearchFilters] = useState<DriveSearchFilters>(defaultDriveSearchFilters);
   const [searchItems, setSearchItems] = useState<DriveItem[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchResultKey, setSearchResultKey] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchCursor, setSearchCursor] = useState({ key: "", offset: 0 });
+  const [searchRetryVersion, setSearchRetryVersion] = useState(0);
   const [searchTotal, setSearchTotal] = useState(0);
   const [query, setQuery] = useState("");
 
@@ -71,8 +71,12 @@ export function useDriveSearch({
     spaceScope,
     workspaceId,
   }), [activeNav, query, searchContextParentNodeId, searchFilters, spaceScope, workspaceId]);
+  const [searchCursor, setSearchCursor] = useState({ key: searchRequestKey, offset: 0 });
+  if (searchCursor.key !== searchRequestKey) {
+    setSearchCursor({ key: searchRequestKey, offset: 0 });
+  }
   const searchOffset = searchCursor.key === searchRequestKey ? searchCursor.offset : 0;
-  const searchCanLoadMore = serverSearchActive && searchItems.length < searchTotal;
+  const searchCanLoadMore = serverSearchActive && searchResultKey === searchRequestKey && !searchLoading && searchItems.length < searchTotal;
   const searchLoadingMore = searchLoading && searchOffset > 0;
   const fileModuleSourceItems = useMemo(() => {
     if (!serverSearchActive) return allKnownItems;
@@ -102,6 +106,8 @@ export function useDriveSearch({
     if (!serverSearchActive || !workspaceId) {
       const clearTimer = window.setTimeout(() => {
         setSearchItems([]);
+        setSearchError(null);
+        setSearchResultKey("");
         setSearchTotal(0);
         setSearchLoading(false);
       }, 0);
@@ -110,10 +116,6 @@ export function useDriveSearch({
 
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      if (searchOffset === 0) {
-        setSearchItems([]);
-        setSearchTotal(0);
-      }
       const state = searchFilters.state === "context"
         ? activeNav === "trash" ? "archived" : "active"
         : searchFilters.state;
@@ -123,6 +125,7 @@ export function useDriveSearch({
       const sizeRange = getSizeRangeFilter(searchFilters.size);
 
       setSearchLoading(true);
+      setSearchError(null);
       void searchFileNodes({
         workspaceId,
         query: query.trim() || undefined,
@@ -147,11 +150,11 @@ export function useDriveSearch({
           return [...current, ...nextItems.filter((item) => !currentIds.has(item.id))];
         });
         setSearchTotal(result.total);
-        setFilesError(null);
+        setSearchResultKey(searchRequestKey);
+        setSearchError(null);
       }).catch((error) => {
         if (cancelled) return;
-        if (searchOffset === 0) setSearchItems([]);
-        setFilesError(getApiFeedback(error, "files.loadFailed"));
+        setSearchError(getApiFeedback(error, "files.loadFailed"));
       }).finally(() => {
         if (!cancelled) setSearchLoading(false);
       });
@@ -161,7 +164,7 @@ export function useDriveSearch({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeNav, getApiFeedback, query, registeredSharesRef, searchContextParentNodeId, searchFilters, searchOffset, serverSearchActive, setFilesError, spaceScope, workspaceId]);
+  }, [activeNav, getApiFeedback, query, registeredSharesRef, searchContextParentNodeId, searchFilters, searchOffset, searchRequestKey, searchRetryVersion, serverSearchActive, spaceScope, workspaceId]);
 
   const applyDriveSort = (sortBy: DriveSortBy, sortDirection: DriveSortDirection) => {
     setSearchFilters((filters) => ({
@@ -184,9 +187,11 @@ export function useDriveSearch({
   };
   const resetSearchResults = () => {
     setSearchItems([]);
+    setSearchResultKey("");
     setSearchTotal(0);
     setSearchCursor({ key: "", offset: 0 });
   };
+  const retrySearch = () => setSearchRetryVersion((version) => version + 1);
 
   return {
     applyDriveSort,
@@ -198,7 +203,9 @@ export function useDriveSearch({
     loadMoreSearchResults,
     query,
     resetSearchResults,
+    retrySearch,
     searchCanLoadMore,
+    searchError,
     searchFilters,
     searchLoading,
     searchLoadingMore,

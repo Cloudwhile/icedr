@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import {
   formatDriveItemModified,
   formatFileSize,
@@ -95,6 +95,7 @@ export function DetailsPanel({
   });
   const [versionError, setVersionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DetailsPanelTab>("details");
+  const headingId = useId();
   const versions = versionState.itemId === versionItem?.id ? versionState.versions : [];
   const extension = displayItem ? getItemExtension(displayItem) : "";
   const detailRows = showingDirectorySummary
@@ -154,6 +155,19 @@ export function DetailsPanel({
     };
   }, [t, versionItem]);
 
+  const handlePanelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) {
+      return;
+    }
+    if (!event.currentTarget.contains(event.target as Node)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  };
+
   const downloadVersion = (version: FileVersionResponse) => {
     if (!versionItem) return;
     void downloadWorkspaceFileVersion(versionItem, version.id).catch(() => setVersionError(t("share.downloadFailed")));
@@ -185,10 +199,18 @@ export function DetailsPanel({
       key={`${displayName}-${selectedSize}`}
       preset="panel-right"
       className="drive-details-panel"
+      aria-labelledby={headingId}
+      onKeyDown={handlePanelKeyDown}
+      role="region"
     >
       <div className="drive-details-inner">
         <div className="drive-details-header">
-          <div className="drive-details-heading">
+          <h2
+            className="drive-details-heading"
+            data-drive-details-focus
+            id={headingId}
+            tabIndex={-1}
+          >
             <span className="drive-details-heading-icon" aria-hidden="true">
               {multiSelect ? (
                 <AnimatedCheckMark size={16} strokeWidth={2.3} />
@@ -199,7 +221,7 @@ export function DetailsPanel({
               )}
             </span>
             <span className="icedr-truncate">{displayName}</span>
-          </div>
+          </h2>
           <ToolButton label={t("app.close")} palette={palette} onClick={close}>
             <LocalIcon name="cross" size={17} />
           </ToolButton>

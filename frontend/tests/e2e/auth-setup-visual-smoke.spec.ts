@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const now = "2026-06-02T04:00:00.000Z";
 const validSetupToken = "fixed-test-setup-token-000000000001";
@@ -10,6 +10,51 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "DELETE, GET, OPTIONS, PATCH, POST, PUT",
   "Access-Control-Allow-Origin": "*",
 };
+
+test("keeps authentication text readable when a dark theme preference is stored", async ({ page }, testInfo) => {
+  await mockAuthSetupApi(page);
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("icedr.auth.token");
+    window.localStorage.setItem("icedr.ui.locale", "en");
+    window.localStorage.setItem("icedr.ui.themeMode", "dark");
+    window.localStorage.setItem("icedr.ui.themePreference", "dark");
+  });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1213, height: 943 });
+
+  await page.goto("/login");
+  const authPage = page.locator(".icedr-auth-page");
+  await expect(authPage).toBeVisible();
+  await expect(authPage).toHaveCSS("color-scheme", "light");
+
+  const emailInput = page.getByLabel("Email");
+  const passwordInput = page.getByLabel("Password");
+  const emailControl = page.locator(".icedr-auth-form-card .icedr-app-input").first();
+  await expectColorContrast(emailControl, "borderTopColor", 3);
+
+  await emailInput.fill("reader@example.com");
+  await passwordInput.fill("correct-horse-battery-staple");
+  await expectReadableTextContrast(page.locator(".icedr-auth-form-card .icedr-field-label"));
+  await expectReadableTextContrast(emailInput);
+  await expectReadableTextContrast(passwordInput);
+  await expectReadableTextContrast(page.getByRole("button", { name: "Continue with Passkey" }));
+  await expectReadableTextContrast(page.locator(".icedr-auth-links .icedr-auth-link"));
+  await expectReadableTextContrast(page.locator(".icedr-auth-panel footer span, .icedr-auth-panel footer a"));
+
+  const submitButton = page.getByRole("button", { name: "Sign in" });
+  await submitButton.hover();
+  await expectReadableTextContrast(submitButton);
+  await emailInput.clear();
+  await passwordInput.clear();
+
+  await page.getByRole("button", { name: "Continue with Passkey" }).click();
+  const passkeyAlert = page.getByRole("alert");
+  await expect(passkeyAlert).toContainText(
+    "This address does not match the Passkey configuration. Open the configured site address and try again.",
+  );
+  await expectReadableTextContrast(passkeyAlert);
+  await capture(page, "auth-login-dark-preference.png", testInfo);
+});
 
 test("visual smoke: renders auth and gated setup surfaces", async ({ page }, testInfo) => {
   const setupState = await mockAuthSetupApi(page);
@@ -176,6 +221,98 @@ async function capture(page: Page, name: string, testInfo: { outputPath: (path: 
   await page.screenshot({ fullPage: true, path: testInfo.outputPath(name) });
 }
 
+async function expectReadableTextContrast(locator: Locator, minimumRatio = 4.5) {
+  await expectColorContrast(locator, "color", minimumRatio);
+}
+
+async function expectColorContrast(
+  locator: Locator,
+  foregroundProperty: "borderTopColor" | "color",
+  minimumRatio: number,
+) {
+  await expect(locator.first()).toBeVisible();
+  const ratios = await locator.evaluateAll((elements, property) => {
+    type Rgba = { alpha: number; blue: number; green: number; red: number };
+    const parseColor = (value: string): Rgba | null => {
+      if (value.startsWith("color(srgb ")) {
+        const [channelsPart, alphaPart] = value.slice(11, -1).split("/");
+        const channels = channelsPart.trim().split(/\s+/).map(Number);
+        if (channels.length < 3 || channels.some(Number.isNaN)) return null;
+        return {
+          alpha: alphaPart === undefined ? 1 : Number(alphaPart.trim()),
+          blue: channels[2] * 255,
+          green: channels[1] * 255,
+          red: channels[0] * 255,
+        };
+      }
+      const channels = value.match(/[\d.]+/g)?.map(Number);
+      if (!channels || channels.length < 3) return null;
+      return {
+        alpha: channels[3] ?? 1,
+        blue: channels[2],
+        green: channels[1],
+        red: channels[0],
+      };
+    };
+    const composite = (foreground: Rgba, background: Rgba): Rgba => {
+      const alpha = foreground.alpha + background.alpha * (1 - foreground.alpha);
+      if (alpha === 0) return { alpha: 0, blue: 0, green: 0, red: 0 };
+      const channel = (foregroundChannel: number, backgroundChannel: number) =>
+        (foregroundChannel * foreground.alpha
+          + backgroundChannel * background.alpha * (1 - foreground.alpha)) / alpha;
+      return {
+        alpha,
+        blue: channel(foreground.blue, background.blue),
+        green: channel(foreground.green, background.green),
+        red: channel(foreground.red, background.red),
+      };
+    };
+    const luminance = ({ blue, green, red }: Rgba) => {
+      const linearize = (channel: number) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue);
+    };
+    const findOpaqueBackground = (element: Element): Rgba => {
+      const backgrounds: Rgba[] = [];
+      let current: Element | null = element;
+      while (current) {
+        const background = parseColor(window.getComputedStyle(current).backgroundColor);
+        if (background && background.alpha > 0) backgrounds.push(background);
+        current = current.parentElement;
+      }
+      return backgrounds.reverse().reduce(
+        (result, background) => composite(background, result),
+        { alpha: 1, blue: 255, green: 255, red: 255 },
+      );
+    };
+
+    return elements
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      })
+      .map((element) => {
+        const style = window.getComputedStyle(element);
+        const foreground = parseColor(style[property]);
+        if (!foreground) return 0;
+        const background = findOpaqueBackground(element);
+        const renderedForeground = composite(
+          { ...foreground, alpha: foreground.alpha * Number(style.opacity) },
+          background,
+        );
+        const foregroundLuminance = luminance(renderedForeground);
+        const backgroundLuminance = luminance(background);
+        return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+          / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+      });
+  }, foregroundProperty);
+
+  expect(ratios.length).toBeGreaterThan(0);
+  for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(minimumRatio);
+}
+
 async function expectNoHorizontalOverflow(page: Page) {
   const metrics = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
@@ -285,6 +422,21 @@ async function mockAuthSetupApi(page: Page) {
 
     if (method === "GET" && path === "/auth/me") {
       await fulfillJson(route, setupState.currentUser);
+      return;
+    }
+
+    if (method === "POST" && path === "/auth/passkeys/authentication-options") {
+      await fulfillJson(route, {
+        ceremonyId: "passkey-origin-mismatch",
+        expectedOrigin: "http://localhost:13000",
+        options: {
+          allowCredentials: [],
+          challenge: "AQIDBA",
+          rpId: "127.0.0.1",
+          timeout: 60_000,
+          userVerification: "preferred",
+        },
+      });
       return;
     }
 

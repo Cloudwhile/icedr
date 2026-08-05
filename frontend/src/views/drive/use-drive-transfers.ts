@@ -92,7 +92,7 @@ type UseDriveTransfersOptions = {
   currentFolderId: string | null;
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   queueWorkspaceLoading: () => void;
-  refreshDriveItems: () => Promise<void> | void;
+  refreshDriveItems: () => Promise<unknown> | void;
   setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
   showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;

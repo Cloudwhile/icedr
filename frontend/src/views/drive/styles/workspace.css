@@ -149,6 +149,17 @@
   padding: 0;
 }
 
+.drive-address-bar-compact,
+.drive-mobile-workspace-tools {
+  display: none;
+}
+
+.drive-address-segment-wrap {
+  align-items: center;
+  display: inline-flex;
+  min-width: 0;
+}
+
 .drive-address-home,
 .drive-address-segment {
   align-items: center;
@@ -177,6 +188,25 @@
   align-items: center;
   color: var(--drive-ui-subtle);
   display: inline-flex;
+}
+
+.drive-mobile-toolbar-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-mobile-selection-status {
+  color: var(--drive-ui-ink);
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 18px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drive-workspace-tools {
@@ -384,4 +414,82 @@
   border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
   box-shadow: var(--drive-ui-shadow-1);
+}
+
+@media (max-width: 760px) {
+  .drive-address-bar-full {
+    display: none;
+  }
+
+  .drive-address-bar-compact {
+    display: flex;
+    gap: 2px;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .drive-address-bar-compact .drive-address-root {
+    flex: 0 1 34%;
+    max-width: 34%;
+    min-width: 44px;
+  }
+
+  .drive-address-bar-compact .drive-address-root[data-current="true"] {
+    flex-basis: auto;
+    max-width: 100%;
+  }
+
+  .drive-address-bar-compact > .drive-address-segment-wrap:last-child {
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .drive-address-bar-compact > .drive-address-segment-wrap:last-child .drive-address-segment {
+    flex: 1 1 auto;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .drive-address-bar-compact .drive-address-segment {
+    min-height: 44px;
+  }
+
+  .drive-address-ancestor-wrap,
+  .drive-address-ancestor-wrap .icedr-menu-trigger-anchor {
+    flex: 0 0 auto;
+  }
+
+  .drive-address-ancestor-trigger {
+    justify-content: center;
+    min-width: 44px;
+    padding: 0;
+    width: 44px;
+  }
+
+  .drive-workspace-bar .drive-workspace-tools-desktop {
+    display: none;
+  }
+
+  .drive-workspace-bar .drive-mobile-workspace-tools {
+    align-items: center;
+    display: flex;
+    justify-content: flex-start;
+    min-height: 52px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .drive-workspace-bar .drive-mobile-workspace-tools[data-selection-mode="true"] {
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .drive-mobile-workspace-tools .icedr-tool-button,
+  .drive-mobile-menu-trigger {
+    border-radius: 8px;
+    height: 44px;
+    min-height: 44px;
+    min-width: 44px;
+    width: 44px;
+  }
 }

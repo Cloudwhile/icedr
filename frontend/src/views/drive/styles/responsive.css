@@ -40,8 +40,21 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  .drive-sidebar,
-  .drive-details-panel {
+  .drive-sidebar {
+    display: none;
+  }
+
+  .drive-workspace-content[data-details-open="true"] {
+    gap: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drive-workspace-content[data-details-open="true"] .drive-workspace-body {
+    display: none;
+  }
+
+  .drive-workspace-scroll[data-details-open="true"] .drive-workspace-bar,
+  .drive-workspace-scroll[data-details-open="true"] .drive-filter-panel-wrap {
     display: none;
   }
 
@@ -101,6 +114,13 @@
 }
 
 @media (max-width: 900px) {
+  .workspace-notification-region {
+    bottom: 108px;
+    max-height: max(76px, calc(100dvh - 430px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
   .drive-links-side-stack,
   .drive-risk-grid,
   .drive-module-side-stack,
@@ -198,11 +218,12 @@
   }
 
   .drive-table-shell {
-    overflow-x: auto;
+    overflow-x: hidden;
   }
 
   .drive-table {
-    min-width: 720px;
+    min-width: 0;
+    width: 100%;
   }
 
   .drive-grid {
@@ -221,7 +242,7 @@
   }
 
   .workspace-notification-region {
-    bottom: 14px;
+    bottom: 108px;
     left: 14px;
     width: min(420px, calc(100% - 28px));
   }

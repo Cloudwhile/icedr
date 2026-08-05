@@ -40,9 +40,7 @@ export function LegalFooter({
     fontSize: "12px",
     flexWrap: "wrap"
   }}>
-      <span style={{
-      color: palette.tertiary
-    }}>© 2026 {resolvedSiteName}</span>
+      <span>© 2026 {resolvedSiteName}</span>
       <div style={{
       alignItems: "center",
       display: "flex",

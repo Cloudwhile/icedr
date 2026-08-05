@@ -2,6 +2,7 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.98)),
     var(--auth-canvas);
+  color-scheme: light;
   height: 100dvh;
   min-height: 100dvh;
   overflow: hidden;
@@ -455,7 +456,7 @@
 }
 
 .icedr-auth-page .icedr-auth-primary-button[data-variant="primary"]:hover:not([data-disabled="true"]) {
-  background: #386ef6;
+  background: #3569ee;
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
 }
 
@@ -475,6 +476,13 @@
 .icedr-auth-primary-button[data-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.82;
+}
+
+.icedr-auth-primary-button[data-variant="secondary"][data-disabled="true"] {
+  background: #f7f9fc;
+  border-color: #d9e3f0;
+  color: #52617a;
+  opacity: 1;
 }
 
 .icedr-auth-button-content {
@@ -503,11 +511,11 @@
   padding-top: 14px;
 }
 
-.icedr-auth-form-card .icedr-app-field {
+.icedr-auth-form-card .icedr-field {
   gap: 7px;
 }
 
-.icedr-auth-form-card .icedr-app-field-label {
+.icedr-auth-form-card .icedr-field-label {
   color: #25324a;
   font-size: 12px;
   font-weight: 760;
@@ -515,16 +523,16 @@
 
 .icedr-auth-form-card .icedr-app-input {
   background: #ffffff;
-  border-color: #dbe5f1;
+  border-color: #7c8da6;
   min-height: 43px;
 }
 
 .icedr-auth-form-card .icedr-app-input:hover {
-  border-color: #ccd9eb;
+  border-color: #6f819d;
 }
 
 .icedr-auth-form-card .icedr-app-input:focus-within {
-  border-color: color-mix(in srgb, var(--auth-accent) 42%, #dbe5f1);
+  border-color: #5e6ad2;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--auth-accent) 11%, transparent);
 }
 
