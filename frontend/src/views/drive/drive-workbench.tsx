@@ -320,7 +320,6 @@ export function DriveWorkbench({
   }, []);
   const refreshDriveItems = useCallback(async (
     targetWorkspaceId = workspaceIdRef.current,
-    shares = registeredSharesRef.current,
     targetSpaceScope = spaceScopeRef.current,
   ) => {
     if (!targetWorkspaceId) return false;
@@ -334,8 +333,9 @@ export function DriveWorkbench({
       spaceScope: targetSpaceScope,
       state: "archived"
     })]), ([activeNodes, archivedNodes]) => {
-      setDriveItems(withShareFlags(activeNodes.map(mapFileNodeToDriveItem), shares));
-      setArchivedItems(withShareFlags(archivedNodes.map(mapFileNodeToDriveItem), shares));
+      const latestShares = registeredSharesRef.current;
+      setDriveItems(withShareFlags(activeNodes.map(mapFileNodeToDriveItem), latestShares));
+      setArchivedItems(withShareFlags(archivedNodes.map(mapFileNodeToDriveItem), latestShares));
       driveItemsContextRef.current = targetContext;
       setFilesError(null);
     }, (error) => {
@@ -461,8 +461,8 @@ export function DriveWorkbench({
       bootLoadingStartedRef.current = window.performance.now();
       void refreshWorkspaceList().then(async initialWorkspaceId => {
         if (!initialWorkspaceId) return;
-        const shares = await refreshShares(initialWorkspaceId);
-        await Promise.all([refreshDriveItems(initialWorkspaceId, shares), refreshShareSettings(initialWorkspaceId), refreshTransfers(initialWorkspaceId), refreshStorageUsage(initialWorkspaceId)]);
+        await refreshShares(initialWorkspaceId);
+        await Promise.all([refreshDriveItems(initialWorkspaceId), refreshShareSettings(initialWorkspaceId), refreshTransfers(initialWorkspaceId), refreshStorageUsage(initialWorkspaceId)]);
       }).finally(() => {
         const elapsed = window.performance.now() - bootLoadingStartedRef.current;
         const remaining = Math.max(0, 220 - elapsed);
@@ -506,7 +506,7 @@ export function DriveWorkbench({
     clearStorageUsage();
     queueWorkspaceLoading();
     void Promise.all([
-      refreshDriveItems(workspaceIdRef.current, registeredSharesRef.current, nextSpaceScope),
+      refreshDriveItems(workspaceIdRef.current, nextSpaceScope),
       refreshStorageUsage(workspaceIdRef.current, nextSpaceScope),
     ]).finally(() => {
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);

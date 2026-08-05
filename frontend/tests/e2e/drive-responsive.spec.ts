@@ -229,6 +229,23 @@ test.describe("responsive Drive workspace", () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test("keeps newly refreshed share flags when the file list finishes later", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    api.shares = [registeredShare()];
+    api.delayNextActiveFileListMs = 150;
+    await page.locator(".drive-header").getByRole("button", { name: "Refresh" }).click();
+    await expect(page.locator(".workspace-notification:visible")).toContainText("Workspace refreshed");
+
+    await page.getByRole("button", { name: "Shared", exact: true }).click();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(driveItem(page, "file-budget")).toHaveCount(0);
+  });
+
   test("preserves the last successful file list when refresh fails and keeps Retry reachable", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
@@ -328,13 +345,16 @@ type FileNode = Omit<
   originalPath: string | null;
 };
 type Transfer = ReturnType<typeof runningTransfer>;
+type RegisteredShare = ReturnType<typeof registeredShare>;
 
 type DriveApiState = {
   activeNodes: FileNode[];
   archivedNodes: FileNode[];
+  delayNextActiveFileListMs: number;
   failNextActiveFileList: boolean;
   failNextSearch: boolean;
   searchItems: FileNode[];
+  shares: RegisteredShare[];
   transfers: Transfer[];
 };
 
@@ -345,9 +365,11 @@ async function mockDriveApi(
   const state: DriveApiState = {
     activeNodes: options.activeNodes ?? [reportFile(), budgetFile()],
     archivedNodes: options.archivedNodes ?? [],
+    delayNextActiveFileListMs: 0,
     failNextActiveFileList: false,
     failNextSearch: false,
     searchItems: options.searchItems ?? [],
+    shares: [],
     transfers: options.transfers ?? [],
   };
 
@@ -421,6 +443,11 @@ async function mockDriveApi(
     }
     if (method === "GET" && path === "/file-nodes") {
       const listState = url.searchParams.get("state");
+      if (listState === "active" && state.delayNextActiveFileListMs > 0) {
+        const delayMs = state.delayNextActiveFileListMs;
+        state.delayNextActiveFileListMs = 0;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
       if (listState === "active" && state.failNextActiveFileList) {
         state.failNextActiveFileList = false;
         await fulfillJson(route, { code: "FILE_LIST_UNAVAILABLE", message: "Temporary file-list failure" }, 503);
@@ -434,7 +461,7 @@ async function mockDriveApi(
       return;
     }
     if (method === "GET" && path === "/shares") {
-      await fulfillJson(route, []);
+      await fulfillJson(route, state.shares);
       return;
     }
     if (method === "GET" && path === `/workspaces/${workspaceId}/share-settings`) {
@@ -572,6 +599,36 @@ function runningTransfer() {
     status: "running" as const,
     type: "upload" as const,
     updatedAt: now,
+    workspaceId,
+  };
+}
+
+function registeredShare() {
+  return {
+    allowDownload: true,
+    allowPreview: true,
+    allowedItemIds: ["file-report"],
+    createdAt: now,
+    dynamicRootId: null,
+    expiresDays: 7,
+    mode: "single-file",
+    owner: "Responsive Admin",
+    policy: {
+      allowedDomain: "",
+      downloadLimit: "",
+      expiresUnit: "days",
+      expiresValue: 7,
+      speedUnit: "KB/s",
+      speedValue: 0,
+      waitUnit: "seconds",
+      waitValue: 0,
+    },
+    remark: "",
+    revokedAt: null,
+    rootItemIds: ["file-report"],
+    title: reportFileName,
+    token: "responsive-share",
+    url: "http://127.0.0.1:13000/share/s/responsive-share",
     workspaceId,
   };
 }
