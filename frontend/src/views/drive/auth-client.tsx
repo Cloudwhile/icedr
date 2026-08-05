@@ -5,7 +5,7 @@ import Link from "@/compat/link";
 import { usePathname, useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Locale, type Palette, type ThemeMode } from "@/features/file/model";
+import { palettes, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { clearStoredAuthToken, confirmPasswordReset, defaultPublicSiteSettings, DriveApiError, exchangeOAuthCode, fetchAuthSettings, fetchCurrentUser, fetchIdentityConfig, fetchPublicSiteSettings, fetchSetupStatus, loginLocalUser, logoutLocalUser, registerLocalUser, requestPasswordReset, resolvePublicSiteName, startOAuthLogin, createPasskeyAuthenticationOptions, verifyPasskeyAuthentication, verifyPasswordReset, setStoredAuthToken, type AuthUser, type AuthSettings, type OAuthPublicProvider, type PublicSiteSettings } from "@/lib/drive-api";
 import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication } from "@simplewebauthn/browser";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
@@ -48,7 +48,7 @@ export function AuthRoute({
 }) {
   return <Suspense fallback={null}>
       <LocalizedDriveShell>
-        {shellState => <AuthPage {...shellState} mode={mode} />}
+        {shellState => <AuthPage {...shellState} mode={mode} palette={palettes.light} />}
       </LocalizedDriveShell>
     </Suspense>;
 }
