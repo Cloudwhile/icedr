@@ -177,7 +177,7 @@ button.icedr-surface-panel[data-hovered="true"] {
   background: var(--tooltip-bg, var(--surface-tertiary));
   border: 1px solid var(--tooltip-border, var(--border));
   border-radius: 8px;
-  box-shadow: var(--overlay-shadow);
+  box-shadow: var(--tooltip-shadow, var(--ui-shadow-popover));
   color: var(--tooltip-color, var(--foreground));
   font-size: 12px;
   font-weight: 650;
@@ -210,7 +210,7 @@ button.icedr-surface-panel[data-hovered="true"] {
   background: var(--menu-bg, var(--surface));
   border: 1px solid var(--menu-border, var(--border));
   border-radius: 8px;
-  box-shadow: var(--overlay-shadow);
+  box-shadow: var(--menu-shadow, var(--ui-shadow-popover));
   color: var(--menu-color, var(--foreground));
   display: flex;
   flex-direction: column;

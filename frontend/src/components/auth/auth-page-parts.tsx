@@ -194,7 +194,7 @@ function AuthCodeInput({
       onChange={handleChange}
       onComplete={handleComplete}
       style={{
-        "--auth-otp-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+        "--auth-otp-bg": palette.surface1,
         "--auth-otp-border": palette.hairlineStrong,
         "--auth-otp-filled": palette.selected,
         "--auth-otp-focus": palette.primary,

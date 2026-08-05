@@ -178,12 +178,13 @@ export function AppContextMenu({
       ref={menuRef}
       role="menu"
       style={{
-        "--menu-bg": palette.surface2,
+        "--menu-bg": palette.overlay,
         "--menu-border": palette.hairlineStrong,
         "--menu-color": palette.ink,
         "--menu-danger": palette.danger,
         "--menu-hover": palette.surface3,
         "--menu-focus": palette.focusRing,
+        "--menu-shadow": palette.shadowPopover,
         left: renderPosition.x,
         top: renderPosition.y,
       } as CSSProperties}

@@ -10,7 +10,7 @@
   background: var(--dialog-bg, var(--surface));
   border: 1px solid var(--dialog-border, var(--border));
   border-radius: 8px;
-  box-shadow: var(--overlay-shadow);
+  box-shadow: var(--dialog-shadow, var(--ui-shadow-dialog));
   color: var(--dialog-color, var(--foreground));
   overflow: hidden;
 }

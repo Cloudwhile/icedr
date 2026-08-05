@@ -43,7 +43,7 @@ export function ToolButton({
 }: ToolButtonProps) {
   const toneColor = tone === "danger" ? palette.danger : tone === "success" ? palette.success : palette.primaryHover;
   const activeColor = tone === "neutral" ? palette.ink : toneColor;
-  const surfaceBg = palette.canvas === "#010102" ? palette.surface1 : "transparent";
+  const surfaceBg = palette.controlSurface;
 
   return (
     <AppTooltip content={label} palette={palette} placement={tooltipPlacement}>

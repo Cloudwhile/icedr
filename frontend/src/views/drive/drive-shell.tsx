@@ -3,6 +3,7 @@
 import { I18nProvider, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { getIntlLocale, palettes, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
+import { createUiThemeVariables } from "@/features/file/theme-tokens";
 import { getLocaleDocument, getMessagesWithOverrides, parseTslnLocale } from "@/i18n/messages";
 import { defaultPublicSiteSettings, fetchPublicSiteSettings, fetchPublicTranslationSettings, type PublicSiteSettings } from "@/lib/drive-api";
 import { LocalIcon, ToolButton } from "./drive-primitives";
@@ -277,12 +278,16 @@ export function LocalizedDriveShell({
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = themeMode;
-    document.documentElement.classList.toggle("dark", themeMode === "dark");
-    document.documentElement.classList.toggle("light", themeMode === "light");
-    document.documentElement.lang = getIntlLocale(locale);
-    document.documentElement.style.colorScheme = themeMode;
-  }, [locale, themeMode]);
+    const root = document.documentElement;
+    root.dataset.theme = themeMode;
+    root.classList.toggle("dark", themeMode === "dark");
+    root.classList.toggle("light", themeMode === "light");
+    root.lang = getIntlLocale(locale);
+    root.style.colorScheme = themeMode;
+    Object.entries(createUiThemeVariables(palette)).forEach(([name, value]) => {
+      root.style.setProperty(name, value);
+    });
+  }, [locale, palette, themeMode]);
 
   return (
     <I18nProvider locale={locale} messages={activeMessages} timeZone={timeZone}>

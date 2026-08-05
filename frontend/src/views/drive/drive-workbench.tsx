@@ -15,6 +15,7 @@ import { DriveHiddenFileInput } from "@/components/ui/drive-hidden-file-input";
 import { UploadConflictDialog } from "@/components/ui/upload-conflict-dialog";
 import { AppLoading, LdrsLoadingState, WorkspaceSkeleton } from "@/components/common/ui/loading-state";
 import { findDriveItem, getChildItems, getFolderPath, getItemKind, type DriveItem, type DriveUserNav, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
+import { createDriveThemeVariables } from "@/features/file/theme-tokens";
 import { copyTextToClipboard, createShareUrl } from "@/features/file/actions";
 import { getDriveFileNameErrorMessageKey, validateDriveFileName } from "@/features/file/file-name-policy";
 import { createGeneratedFileTemplate, type GeneratedFileKind } from "@/features/file/generated-files";
@@ -833,25 +834,7 @@ export function DriveWorkbench({
       router.replace("/login");
     });
   };
-  return <div className="drive-shell" style={{
-    "--drive-accent": palette.primary,
-    "--drive-accent-hover": palette.primaryHover,
-    "--drive-accent-soft": palette.selected,
-    "--drive-border": palette.hairline,
-    "--drive-border-strong": palette.hairlineStrong,
-    "--drive-canvas": palette.canvas,
-    "--drive-danger": palette.danger,
-    "--drive-focus": palette.focusRing,
-    "--drive-muted": palette.muted,
-    "--drive-shadow": palette.canvas === "#010102" ? "none" : "0 1px 2px rgba(17, 18, 23, 0.04)",
-    "--drive-sidebar-bg": palette.canvas,
-    "--drive-subtle": palette.subtle,
-    "--drive-surface": palette.surface1,
-    "--drive-surface-2": palette.surface2,
-    "--drive-surface-3": palette.surface3,
-    "--drive-text": palette.ink,
-    "--drive-workspace-bg": palette.canvas === "#010102" ? palette.surface1 : "#f7f8fa"
-  } as React.CSSProperties}>
+  return <div className="drive-shell" data-theme={themeMode} style={createDriveThemeVariables(palette) as React.CSSProperties}>
       <AppHeader currentUser={activeUser} activeScopeLabel={searchScopeLabel} searchLoading={searchLoading} searchResultCount={serverSearchActive ? searchTotal : filteredFiles.length} searchResults={filteredFiles} brandLogo={brandLogo} onOpenSearchResult={openSearchResult} onOpenAdmin={openAdmin} onLogout={logout} onOpenSettings={openSettings} onRefresh={refreshWorkspace} palette={palette} query={query} setQuery={setQuery} siteName={resolvePublicSiteName(siteSettings.siteName)} openSidebar={() => setSidebarOpen(true)} />
 
       <div className="drive-main-grid" style={{

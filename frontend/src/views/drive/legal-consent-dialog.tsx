@@ -65,14 +65,14 @@ export function LegalConsentDialog({
     setPageIndex(value => (value + direction + legalPages.length) % legalPages.length);
   };
   return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && closeDialog()} style={{
-        background: "rgba(0, 0, 0, 0.52)"
+        background: palette.backdrop
       }}>
         <Modal.Container placement="center">
           <Modal.Dialog style={{
-          background: palette.canvas,
+          background: palette.overlay,
           borderColor: palette.hairlineStrong,
           borderWidth: "1px",
-          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.52)",
+          boxShadow: palette.shadowDialog,
           color: palette.ink,
           maxHeight: "calc(100dvh - 28px)",
           overflow: "hidden",

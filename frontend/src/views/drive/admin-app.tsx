@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -19,6 +20,7 @@ import {
   type Palette,
   type ThemeMode,
 } from "@/features/file/model";
+import { createUiThemeVariables } from "@/features/file/theme-tokens";
 import { useTranslations } from "@/i18n/react";
 import {
   clearStoredAuthToken,
@@ -450,7 +452,7 @@ function AdminPanelGate({
   if (!canUseAdminPanel) return null;
 
   return (
-    <main className="admin-shell">
+    <main className="admin-shell" data-theme={themeMode} style={createUiThemeVariables(palette) as CSSProperties}>
       <aside className="admin-sidebar">
         <button
           className="admin-brand"

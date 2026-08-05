@@ -705,7 +705,7 @@ export function WorkspaceBar({
   const trashRestoreAction = selectionMenuItems.find((item) => item.value === "restore");
   const trashDeleteAction = selectionMenuItems.find((item) => item.value === "delete");
   const mobileMenuButtonStyle = {
-    "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+    "--tool-bg": palette.surface1,
     "--tool-border": palette.hairline,
     "--tool-color": palette.subtle,
     "--tool-focus": palette.focusRing,
@@ -774,7 +774,7 @@ export function WorkspaceBar({
                       aria-label={t("actions.more")}
                       className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-more-trigger"
                       style={{
-                        "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+                        "--tool-bg": palette.surface1,
                         "--tool-border": palette.hairline,
                         "--tool-color": palette.subtle,
                         "--tool-focus": palette.focusRing,
@@ -799,7 +799,7 @@ export function WorkspaceBar({
                         aria-label={t("filters.sort")}
                         className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-sort-trigger"
                         style={{
-                          "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+                          "--tool-bg": palette.surface1,
                           "--tool-border": palette.hairline,
                           "--tool-color": palette.subtle,
                           "--tool-focus": palette.focusRing,

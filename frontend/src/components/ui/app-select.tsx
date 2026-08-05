@@ -16,8 +16,8 @@ export type AppSelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "chil
 };
 
 export function AppSelect({ className, options, palette, style, ...props }: AppSelectProps) {
-  const inputBg = palette.canvas === "#010102" ? palette.surface1 : "#ffffff";
-  const inputHoverBg = palette.canvas === "#010102" ? palette.surface2 : "#ffffff";
+  const inputBg = palette.surface1;
+  const inputHoverBg = palette.surface2;
 
   return (
     <span

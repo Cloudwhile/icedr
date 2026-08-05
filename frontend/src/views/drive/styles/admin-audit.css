@@ -4,9 +4,9 @@
 
 .admin-shell .drive-audit-filter-panel {
   animation: admin-card-in 360ms var(--drive-ui-ease) both;
-  background: #ffffff;
-  border-color: #dfe7f2;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02), 0 18px 46px rgba(35, 56, 94, 0.035);
+  background: var(--ui-surface);
+  border-color: var(--ui-border-default);
+  box-shadow: var(--ui-shadow-card);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -15,12 +15,12 @@
 }
 
 .admin-shell .drive-audit-filter-panel[data-active="true"] {
-  border-color: rgba(94, 106, 210, 0.26);
+  border-color: color-mix(in srgb, var(--ui-accent) 36%, var(--ui-border-default));
 }
 
 .admin-shell .drive-audit-filter-panel-header {
   align-items: center;
-  border-bottom: 1px solid #eef3f8;
+  border-bottom: 1px solid var(--ui-border-subtle);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -31,7 +31,7 @@
 
 .admin-shell .drive-audit-filter-title {
   align-items: center;
-  color: #142033;
+  color: var(--ui-text-primary);
   display: flex;
   font-size: 15px;
   font-weight: 840;
@@ -44,10 +44,10 @@
 }
 
 .admin-shell .drive-audit-filter-title small {
-  background: #f6f8fc;
-  border: 1px solid #e4ebf5;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border-default);
   border-radius: 999px;
-  color: #66758e;
+  color: var(--ui-text-secondary);
   flex: 0 0 auto;
   font-size: 11px;
   font-weight: 780;
@@ -80,7 +80,7 @@
 }
 
 .admin-shell .drive-audit-filter > span:first-child {
-  color: #46556d;
+  color: var(--ui-text-secondary);
   font-size: 11px;
   font-weight: 760;
   line-height: 15px;
@@ -88,8 +88,8 @@
 
 .admin-shell .drive-audit-filter .icedr-app-select-shell,
 .admin-shell .drive-audit-filter .icedr-app-input {
-  background: #fcfdff;
-  border-color: #dbe4f0;
+  background: var(--ui-surface);
+  border-color: var(--ui-border-default);
   box-shadow: none;
   min-height: 38px;
 }
@@ -106,8 +106,8 @@
 
 .admin-shell .drive-audit-filter .icedr-app-select-shell:focus-within,
 .admin-shell .drive-audit-filter .icedr-app-input:focus-within {
-  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 42%, #dfe7f2);
-  box-shadow: 0 0 0 4px rgba(94, 106, 210, 0.1);
+  border-color: color-mix(in srgb, var(--ui-accent) 42%, var(--ui-border-default));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-focus-ring) 28%, transparent);
 }
 
 .admin-shell .drive-audit-split {
@@ -116,15 +116,15 @@
 
 .admin-shell .drive-audit-panel {
   animation: admin-card-in 400ms var(--drive-ui-ease) both;
-  background: #fff;
-  border-color: #dfe7f2;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02), 0 18px 46px rgba(35, 56, 94, 0.035);
+  background: var(--ui-surface);
+  border-color: var(--ui-border-default);
+  box-shadow: var(--ui-shadow-card);
   overflow: hidden;
 }
 
 .admin-shell .drive-audit-panel .drive-module-panel-header {
-  background: #fff;
-  border-bottom-color: #eef3f8;
+  background: var(--ui-surface);
+  border-bottom-color: var(--ui-border-subtle);
   min-height: 52px;
   padding-inline: 20px;
 }
@@ -136,8 +136,8 @@
 
 .admin-shell .drive-audit-table-toolbar {
   align-items: center;
-  background: #fbfdff;
-  border-bottom: 1px solid #eef3f8;
+  background: var(--ui-surface-subtle);
+  border-bottom: 1px solid var(--ui-border-subtle);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -148,7 +148,7 @@
 
 .admin-shell .drive-audit-table-summary {
   align-items: center;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   display: flex;
   flex-wrap: wrap;
   font-size: 12px;
@@ -158,12 +158,12 @@
 }
 
 .admin-shell .drive-audit-table-summary span:first-child {
-  color: #26354d;
+  color: var(--ui-text-primary);
   font-weight: 820;
 }
 
 .admin-shell .drive-audit-table-summary span + span::before {
-  background: #cbd5e1;
+  background: var(--ui-border-strong);
   border-radius: 50%;
   content: "";
   display: inline-block;
@@ -180,17 +180,17 @@
 }
 
 .admin-shell .drive-audit-table {
-  background: #fff;
+  background: var(--ui-surface);
 }
 
 .admin-shell .drive-audit-pagination {
-  background: #fbfdff;
+  background: var(--ui-surface-subtle);
   padding: 10px 20px 12px;
 }
 
 .admin-shell .drive-audit-pagination .icedr-app-select-shell {
-  background: #fff;
-  border-color: #dfe7f2;
+  background: var(--ui-surface);
+  border-color: var(--ui-border-default);
   min-height: 34px;
 }
 
@@ -220,8 +220,8 @@
 }
 
 .admin-shell .drive-audit-table .drive-module-table-head {
-  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
-  color: #66758e;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
   font-size: 11px;
   font-weight: 820;
   letter-spacing: 0;
@@ -236,24 +236,24 @@
 }
 
 .admin-shell .drive-audit-row {
-  background: #fff;
-  box-shadow: inset 3px 0 0 rgba(94, 106, 210, 0);
+  background: var(--ui-surface);
+  box-shadow: inset 3px 0 0 transparent;
   transition: background-color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
 }
 
 .admin-shell .drive-audit-row:hover {
-  background: #fbfdff;
-  box-shadow: inset 3px 0 0 rgba(94, 106, 210, 0.2), 0 10px 24px rgba(35, 56, 94, 0.038);
+  background: var(--ui-surface-subtle);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-accent) 48%, transparent);
   transform: translateY(-1px);
 }
 
 .admin-shell .drive-audit-row[data-result="failed"] {
-  box-shadow: inset 3px 0 0 rgba(239, 68, 68, 0.18);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-danger) 38%, transparent);
 }
 
 .admin-shell .drive-audit-row[data-result="failed"]:hover {
-  background: #fffafa;
-  box-shadow: inset 3px 0 0 rgba(239, 68, 68, 0.3), 0 8px 22px rgba(94, 35, 35, 0.028);
+  background: color-mix(in srgb, var(--ui-danger) 6%, var(--ui-surface));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-danger) 58%, transparent);
 }
 
 .admin-shell .drive-audit-time-cell {
@@ -264,14 +264,14 @@
 }
 
 .admin-shell .drive-audit-time-cell span:first-child {
-  color: #344258;
+  color: var(--ui-text-primary);
   font-size: 12px;
   font-weight: 780;
   line-height: 17px;
 }
 
 .admin-shell .drive-audit-time-cell span:last-child {
-  color: #7b8aa0;
+  color: var(--ui-text-tertiary);
   font-size: 11px;
   font-weight: 680;
   line-height: 15px;
@@ -286,13 +286,13 @@
 
 .admin-shell .drive-audit-actor-avatar {
   align-items: center;
-  background: linear-gradient(180deg, #f8fbff 0%, #edf3ff 100%);
-  border: 1px solid #dbe6ff;
+  background: var(--ui-selection);
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border-default));
   border-radius: 50%;
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   flex: 0 0 auto;
-  box-shadow: 0 5px 14px rgba(35, 56, 94, 0.065);
+  box-shadow: var(--ui-shadow-card);
   height: 34px;
   justify-content: center;
   overflow: hidden;
@@ -315,32 +315,32 @@
 }
 
 .admin-shell .drive-audit-actor-avatar[data-actor="visitor"] {
-  background: linear-gradient(180deg, #f4fbff 0%, #e7f6ff 100%);
-  border-color: #cdefff;
+  background: color-mix(in srgb, var(--ui-info) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-info) 28%, var(--ui-border-default));
   color: var(--drive-ui-info);
 }
 
 .admin-shell .drive-audit-actor-avatar[data-actor="account"] {
-  background: linear-gradient(180deg, #f1fff8 0%, #e2f8ef 100%);
-  border-color: #bcebd4;
+  background: color-mix(in srgb, var(--ui-success) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-success) 28%, var(--ui-border-default));
   color: var(--drive-ui-success);
 }
 
 .admin-shell .drive-audit-actor-avatar[data-actor="system"] {
-  background: linear-gradient(180deg, #ffffff 0%, #f2f5f9 100%);
-  border-color: #dfe7f2;
-  color: #64748b;
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border-default);
+  color: var(--ui-text-secondary);
 }
 
 .admin-shell .drive-audit-actor-avatar[data-tone="danger"] {
-  background: linear-gradient(180deg, #fff8f8 0%, #fff0f0 100%);
-  border-color: #ffd6d6;
+  background: color-mix(in srgb, var(--ui-danger) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-danger) 28%, var(--ui-border-default));
   color: var(--drive-ui-danger);
 }
 
 .admin-shell .drive-audit-actor-avatar[data-tone="green"] {
-  background: linear-gradient(180deg, #f4fbf6 0%, #e8f8ee 100%);
-  border-color: #ccebd6;
+  background: color-mix(in srgb, var(--ui-success) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-success) 28%, var(--ui-border-default));
   color: var(--drive-ui-success);
 }
 
@@ -355,7 +355,7 @@
 }
 
 .admin-shell .drive-audit-actor-meta {
-  color: #64748b;
+  color: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 680;
   line-height: 17px;
@@ -370,7 +370,7 @@
 }
 
 .admin-shell .drive-audit-object-cell {
-  color: #111827;
+  color: var(--ui-text-primary);
   font-size: 13px;
   font-weight: 800;
   line-height: 17px;
@@ -378,7 +378,7 @@
 }
 
 .admin-shell .drive-audit-name-cell {
-  color: #52637a;
+  color: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 720;
   line-height: 16px;
@@ -386,7 +386,7 @@
 }
 
 .admin-shell .drive-audit-content-cell {
-  color: #334155;
+  color: var(--ui-text-primary);
   font-size: 12px;
   font-weight: 760;
   line-height: 18px;
@@ -395,10 +395,10 @@
 
 .admin-shell .drive-audit-ip-cell {
   align-items: center;
-  background: #f7faff;
-  border: 1px solid #e0e8f3;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border-default);
   border-radius: 999px;
-  color: #34445c;
+  color: var(--ui-text-primary);
   display: inline-flex;
   font-size: 12px;
   font-weight: 720;
@@ -411,12 +411,12 @@
 }
 
 .admin-shell .drive-audit-ip-cell svg {
-  color: #7890b2;
+  color: var(--ui-text-tertiary);
   flex: 0 0 auto;
 }
 
 .admin-shell .drive-audit-ip-cell[data-empty="true"] {
-  color: #94a3b8;
+  color: var(--ui-text-disabled);
 }
 
 .admin-shell .drive-audit-table .icedr-status-pill {
@@ -426,10 +426,10 @@
 
 .admin-shell .drive-audit-action-cell {
   align-items: center;
-  background: #f9fbff;
-  border: 1px solid #dfe8f5;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border-default);
   border-radius: 999px;
-  color: #52637a;
+  color: var(--ui-text-secondary);
   display: inline-flex;
   font-size: 12px;
   font-weight: 820;
@@ -446,26 +446,26 @@
 }
 
 .admin-shell .drive-audit-action-cell[data-tone="accent"] {
-  background: #f2f5ff;
-  border-color: #dfe5ff;
+  background: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border-default));
   color: var(--drive-ui-blue-600);
 }
 
 .admin-shell .drive-audit-action-cell[data-tone="secure"] {
-  background: #f2fbf6;
-  border-color: #d8f0e0;
+  background: color-mix(in srgb, var(--ui-success) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-success) 28%, var(--ui-border-default));
   color: var(--drive-ui-success);
 }
 
 .admin-shell .drive-audit-action-cell[data-tone="risk"] {
-  background: #fff5f5;
-  border-color: #ffe1e1;
+  background: color-mix(in srgb, var(--ui-danger) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-danger) 28%, var(--ui-border-default));
   color: var(--drive-ui-danger);
 }
 
 .admin-shell .drive-audit-action-icon {
   align-items: center;
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--ui-surface) 72%, transparent);
   border: 1px solid currentColor;
   border-radius: 50%;
   color: currentColor;

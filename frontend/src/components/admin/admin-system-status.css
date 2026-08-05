@@ -7,8 +7,8 @@
 }
 
 .admin-system-status-summary {
-  background: #ffffff;
-  border: 1px solid #dfe7f2;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-default);
   border-radius: 8px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -26,37 +26,37 @@
 }
 
 .admin-system-status-metric + .admin-system-status-metric {
-  border-left: 1px solid #e7edf5;
+  border-left: 1px solid var(--ui-border-subtle);
 }
 
 .admin-system-status-metric[data-tone="success"] {
-  --admin-status-accent: #168a34;
-  --admin-status-soft: #eaf8ef;
-  --admin-status-border: #caead5;
+  --admin-status-accent: var(--ui-success);
+  --admin-status-soft: color-mix(in srgb, var(--ui-success) 10%, var(--ui-surface));
+  --admin-status-border: color-mix(in srgb, var(--ui-success) 28%, var(--ui-border-default));
 }
 
 .admin-system-status-metric[data-tone="warning"] {
-  --admin-status-accent: #c66b08;
-  --admin-status-soft: #fff5e8;
-  --admin-status-border: #f2d7b2;
+  --admin-status-accent: var(--ui-warning);
+  --admin-status-soft: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
+  --admin-status-border: color-mix(in srgb, var(--ui-warning) 28%, var(--ui-border-default));
 }
 
 .admin-system-status-metric[data-tone="primary"] {
-  --admin-status-accent: #345ecb;
-  --admin-status-soft: #eef3ff;
-  --admin-status-border: #d9e3ff;
+  --admin-status-accent: var(--ui-accent);
+  --admin-status-soft: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface));
+  --admin-status-border: color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border-default));
 }
 
 .admin-system-status-metric[data-tone="storage"] {
-  --admin-status-accent: #087c77;
-  --admin-status-soft: #e9f8f6;
-  --admin-status-border: #cceae6;
+  --admin-status-accent: var(--ui-info);
+  --admin-status-soft: color-mix(in srgb, var(--ui-info) 10%, var(--ui-surface));
+  --admin-status-border: color-mix(in srgb, var(--ui-info) 28%, var(--ui-border-default));
 }
 
 .admin-system-status-metric[data-tone="neutral"] {
-  --admin-status-accent: #56657d;
-  --admin-status-soft: #f2f5f8;
-  --admin-status-border: #e0e6ed;
+  --admin-status-accent: var(--ui-text-secondary);
+  --admin-status-soft: var(--ui-surface-subtle);
+  --admin-status-border: var(--ui-border-default);
 }
 
 .admin-system-status-metric-icon {
@@ -78,14 +78,14 @@
 }
 
 .admin-system-status-metric-copy small {
-  color: #66758a;
+  color: var(--ui-text-secondary);
   font-size: 11px;
   font-weight: 720;
   line-height: 15px;
 }
 
 .admin-system-status-metric-copy strong {
-  color: #172033;
+  color: var(--ui-text-primary);
   font-size: 15px;
   font-weight: 820;
   line-height: 20px;
@@ -101,8 +101,8 @@
 }
 
 .admin-system-status-section {
-  background: #ffffff;
-  border: 1px solid #dfe7f2;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-default);
   border-radius: 8px;
   min-width: 0;
   overflow: hidden;
@@ -110,8 +110,8 @@
 
 .admin-system-status-section > header {
   align-items: center;
-  border-bottom: 1px solid #e7edf5;
-  color: #345ecb;
+  border-bottom: 1px solid var(--ui-border-subtle);
+  color: var(--ui-accent);
   display: flex;
   gap: 8px;
   min-height: 44px;
@@ -119,7 +119,7 @@
 }
 
 .admin-system-status-section h2 {
-  color: #172033;
+  color: var(--ui-text-primary);
   font-size: 14px;
   font-weight: 810;
   line-height: 20px;
@@ -141,18 +141,18 @@
 }
 
 .admin-system-status-section dl > div + div {
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--ui-border-subtle);
 }
 
 .admin-system-status-section dt {
-  color: #66758a;
+  color: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 680;
   line-height: 18px;
 }
 
 .admin-system-status-section dd {
-  color: #172033;
+  color: var(--ui-text-primary);
   font-size: 12px;
   font-weight: 760;
   line-height: 18px;
@@ -170,11 +170,11 @@
 
   .admin-system-status-metric:nth-child(3) {
     border-left: 0;
-    border-top: 1px solid #e7edf5;
+    border-top: 1px solid var(--ui-border-subtle);
   }
 
   .admin-system-status-metric:nth-child(4) {
-    border-top: 1px solid #e7edf5;
+    border-top: 1px solid var(--ui-border-subtle);
   }
 }
 
@@ -186,7 +186,7 @@
 
   .admin-system-status-metric + .admin-system-status-metric {
     border-left: 0;
-    border-top: 1px solid #e7edf5;
+    border-top: 1px solid var(--ui-border-subtle);
   }
 
   .admin-system-status-section dl > div {

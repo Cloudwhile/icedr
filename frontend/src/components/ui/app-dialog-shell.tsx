@@ -35,15 +35,16 @@ export function AppDialogShell({
       className="icedr-dialog-backdrop"
       isOpen={open}
       onOpenChange={onOpenChange}
-      style={{ "--dialog-backdrop": "rgba(0, 0, 0, 0.48)" } as CSSProperties}
+      style={{ "--dialog-backdrop": palette.backdrop } as CSSProperties}
     >
       <Modal.Container className={cn("icedr-dialog-container", containerClassName)} placement={placement} scroll={scroll} size={size}>
         <Modal.Dialog
           className={cn("icedr-dialog", className)}
           style={{
-            "--dialog-bg": palette.canvas,
+            "--dialog-bg": palette.overlay,
             "--dialog-border": palette.hairlineStrong,
             "--dialog-color": palette.ink,
+            "--dialog-shadow": palette.shadowDialog,
             ...style,
           } as CSSProperties}
         >

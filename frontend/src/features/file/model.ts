@@ -98,13 +98,18 @@ export type DriveItem = {
 };
 
 export type Palette = {
+  backdrop: string;
+  controlBorder: string;
+  controlSurface: string;
   primary: string;
   primaryHover: string;
+  inverseInk: string;
   ink: string;
   muted: string;
   subtle: string;
   tertiary: string;
   canvas: string;
+  overlay: string;
   surface1: string;
   surface2: string;
   surface3: string;
@@ -118,17 +123,26 @@ export type Palette = {
   secure: string;
   selected: string;
   focusRing: string;
+  shadowCard: string;
+  shadowDialog: string;
+  shadowPopover: string;
+  workspaceSurface: string;
 };
 
 export const palettes: Record<ThemeMode, Palette> = {
   dark: {
+    backdrop: "rgba(0, 0, 0, 0.58)",
+    controlBorder: "#23252a",
+    controlSurface: "#0f1011",
     primary: "#5e6ad2",
     primaryHover: "#828fff",
+    inverseInk: "#ffffff",
     ink: "#f7f8f8",
     muted: "#d0d6e0",
     subtle: "#8a8f98",
     tertiary: "#62666d",
     canvas: "#010102",
+    overlay: "#141516",
     surface1: "#0f1011",
     surface2: "#141516",
     surface3: "#18191a",
@@ -142,15 +156,24 @@ export const palettes: Record<ThemeMode, Palette> = {
     secure: "#7a7fad",
     selected: "#171a2f",
     focusRing: "rgba(94, 106, 210, 0.5)",
+    shadowCard: "none",
+    shadowDialog: "0 24px 80px rgba(0, 0, 0, 0.48)",
+    shadowPopover: "0 18px 48px rgba(0, 0, 0, 0.48)",
+    workspaceSurface: "#0f1011",
   },
   light: {
+    backdrop: "rgba(1, 1, 2, 0.52)",
+    controlBorder: "#bdc2cf",
+    controlSurface: "transparent",
     primary: "#5e6ad2",
     primaryHover: "#4f5cc6",
+    inverseInk: "#ffffff",
     ink: "#111217",
     muted: "#343843",
     subtle: "#62666d",
     tertiary: "#8a8f98",
     canvas: "#f5f6f6",
+    overlay: "#ffffff",
     surface1: "#ffffff",
     surface2: "#f6f7f7",
     surface3: "#eef0f4",
@@ -164,6 +187,10 @@ export const palettes: Record<ThemeMode, Palette> = {
     secure: "#666da4",
     selected: "#eef0ff",
     focusRing: "rgba(94, 106, 210, 0.35)",
+    shadowCard: "0 1px 2px rgba(17, 18, 23, 0.06), 0 8px 24px rgba(17, 18, 23, 0.06)",
+    shadowDialog: "0 24px 80px rgba(17, 18, 23, 0.2)",
+    shadowPopover: "0 18px 48px rgba(17, 18, 23, 0.14)",
+    workspaceSurface: "#f7f8fa",
   },
 };
 

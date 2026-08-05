@@ -44,7 +44,7 @@ export function SegmentedToolGroup<T extends string>({
       size={size}
       style={{
         "--segmented-bg": "transparent",
-        "--segmented-border": palette.canvas === "#010102" ? palette.hairline : palette.hairlineStrong,
+        "--segmented-border": palette.controlBorder,
         "--segmented-focus": palette.focusRing,
         "--segmented-separator": "transparent",
       } as CSSProperties}

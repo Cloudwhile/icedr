@@ -10,7 +10,7 @@
 
 .drive-share-dialog-scrim {
   appearance: none;
-  background: rgba(14, 20, 34, 0.24);
+  background: var(--share-dialog-backdrop);
   border: 0;
   cursor: default;
   inset: 0;
@@ -18,18 +18,12 @@
   position: absolute;
 }
 
-.drive-share-dialog-layer[data-theme="dark"] .drive-share-dialog-scrim {
-  background: rgba(0, 0, 0, 0.48);
-}
-
 .drive-share-dialog {
   animation: drive-share-dialog-in 360ms var(--motion-ease-emphasized) both;
   background: var(--share-dialog-bg);
   border: 1px solid var(--share-dialog-border-strong);
   border-radius: 8px;
-  box-shadow:
-    0 28px 70px rgba(15, 23, 42, 0.18),
-    0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--share-dialog-shadow);
   color: var(--share-dialog-text);
   display: flex;
   flex-direction: column;
