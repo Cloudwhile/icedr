@@ -30,7 +30,7 @@ type UseDriveFileActionsOptions = {
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   queueWorkspaceLoading: () => void;
   refreshDriveItems: () => Promise<unknown>;
-  refreshStorageUsage: () => Promise<void>;
+  refreshStorageUsage: () => Promise<unknown>;
   setSelected: Dispatch<SetStateAction<string[]>>;
   setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
   showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;

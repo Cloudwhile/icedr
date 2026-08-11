@@ -12,13 +12,13 @@ export function createLatestDriveItemsRequestRunner() {
     try {
       result = await request();
     } catch (error) {
-      if (requestId !== latestRequestId) return false;
+      if (requestId !== latestRequestId) return { status: "superseded" } as const;
       onError(error);
-      return false;
+      return { error, status: "failed" } as const;
     }
 
-    if (requestId !== latestRequestId) return false;
+    if (requestId !== latestRequestId) return { status: "superseded" } as const;
     onSuccess(result);
-    return true;
+    return { status: "success" } as const;
   };
 }

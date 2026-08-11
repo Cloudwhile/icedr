@@ -5,9 +5,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
 } from "react";
 import { showWorkspaceNotification, type WorkspaceNotificationTone } from "@/components/ui/workspace-notification-store";
 import {
@@ -69,6 +66,11 @@ import {
   planUploadConflictResolution,
   runUploadGroups,
 } from "./upload-conflict-planning";
+import {
+  driveRefreshFailed,
+  driveRefreshSkipped,
+  driveRefreshSucceeded,
+} from "./drive-refresh-result";
 
 export type { UploadTaskMeta } from "./drive-transfer-helpers";
 export { isStorageCapacityError } from "./drive-transfer-helpers";
@@ -91,15 +93,12 @@ type UseDriveTransfersOptions = {
   currentDirectoryItems: DriveItem[];
   currentFolderId: string | null;
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
-  queueWorkspaceLoading: () => void;
   refreshDriveItems: () => Promise<unknown> | void;
-  setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
   showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;
   uploadActor?: string;
   uploadOwnerUserId?: string;
   workspaceId: string | null;
-  workspaceTimerRef: MutableRefObject<number | null>;
 };
 
 export function useDriveTransfers({
@@ -107,15 +106,12 @@ export function useDriveTransfers({
   currentDirectoryItems,
   currentFolderId,
   getApiFeedback,
-  queueWorkspaceLoading,
   refreshDriveItems,
-  setWorkspaceLoading,
   showFeedback,
   spaceScope,
   uploadActor,
   uploadOwnerUserId,
   workspaceId,
-  workspaceTimerRef,
 }: UseDriveTransfersOptions) {
   const t = useTranslations();
   const [transferRows, setTransferRows] = useState<TransferRow[]>([]);
@@ -136,6 +132,8 @@ export function useDriveTransfers({
   const uploadOwnerUserIdRef = useRef(uploadOwnerUserId);
   const workspaceIdRef = useRef(workspaceId);
   const spaceScopeRef = useRef(spaceScope);
+  const transferRowsWorkspaceIdRef = useRef<string | null>(null);
+  const storageUsageContextRef = useRef("");
 
   useEffect(() => {
     workspaceIdRef.current = workspaceId;
@@ -184,25 +182,47 @@ export function useDriveTransfers({
     [transferRows, uploadTelemetry],
   );
   const refreshTransfers = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
-    if (!targetWorkspaceId) return;
+    if (!targetWorkspaceId) return driveRefreshSkipped("transfers");
     try {
-      setTransferRows(await fetchTransfers({ workspaceId: targetWorkspaceId, limit: 100 }));
-    } catch {
-      setTransferRows([]);
+      const rows = await fetchTransfers({ workspaceId: targetWorkspaceId, limit: 100 });
+      transferRowsWorkspaceIdRef.current = targetWorkspaceId;
+      setTransferRows(rows);
+      return driveRefreshSucceeded("transfers");
+    } catch (error) {
+      const stale = transferRowsWorkspaceIdRef.current === targetWorkspaceId;
+      if (!stale) setTransferRows([]);
+      return driveRefreshFailed(
+        "transfers",
+        getApiFeedback(error, "app.refreshFailed"),
+        stale,
+      );
     }
-  }, []);
+  }, [getApiFeedback]);
   const refreshStorageUsage = useCallback(async (
     targetWorkspaceId = workspaceIdRef.current,
     targetSpaceScope = spaceScopeRef.current,
   ) => {
-    if (!targetWorkspaceId) return;
+    if (!targetWorkspaceId) return driveRefreshSkipped("storage");
+    const targetContext = `${targetWorkspaceId}:${targetSpaceScope}`;
     try {
-      setStorageUsage(await fetchStorageUsage(targetWorkspaceId, targetSpaceScope));
-    } catch {
-      setStorageUsage(null);
+      const usage = await fetchStorageUsage(targetWorkspaceId, targetSpaceScope);
+      storageUsageContextRef.current = targetContext;
+      setStorageUsage(usage);
+      return driveRefreshSucceeded("storage");
+    } catch (error) {
+      const stale = storageUsageContextRef.current === targetContext;
+      if (!stale) setStorageUsage(null);
+      return driveRefreshFailed(
+        "storage",
+        getApiFeedback(error, "app.refreshFailed"),
+        stale,
+      );
     }
+  }, [getApiFeedback]);
+  const clearStorageUsage = useCallback(() => {
+    storageUsageContextRef.current = "";
+    setStorageUsage(null);
   }, []);
-  const clearStorageUsage = useCallback(() => setStorageUsage(null), []);
   const fetchLatestStorageUsage = useCallback(async (
     targetWorkspaceId = workspaceIdRef.current,
     targetSpaceScope = spaceScopeRef.current,
@@ -210,6 +230,7 @@ export function useDriveTransfers({
     if (!targetWorkspaceId) return null;
     try {
       const usage = await fetchStorageUsage(targetWorkspaceId, targetSpaceScope);
+      storageUsageContextRef.current = `${targetWorkspaceId}:${targetSpaceScope}`;
       setStorageUsage(usage);
       return usage;
     } catch {
@@ -616,12 +637,6 @@ export function useDriveTransfers({
       );
     }
     activateNav(targetNav);
-    if (targetNav === "transfers") {
-      if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-      setWorkspaceLoading(false);
-    } else {
-      queueWorkspaceLoading();
-    }
     let task: UploadDriveFileTask | null = null;
     task = createUploadDriveFileTask({
       conflictStrategy,

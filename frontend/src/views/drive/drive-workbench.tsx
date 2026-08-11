@@ -13,6 +13,7 @@ import { FileOpenWithDialog } from "@/components/ui/file-open-with-dialog";
 import { DriveUploadHud } from "@/components/ui/drive-upload-hud";
 import { DriveHiddenFileInput } from "@/components/ui/drive-hidden-file-input";
 import { UploadConflictDialog } from "@/components/ui/upload-conflict-dialog";
+import { WorkspaceRefreshStatus } from "@/components/drive/workspace-refresh-status";
 import { AppLoading, LdrsLoadingState, WorkspaceSkeleton } from "@/components/common/ui/loading-state";
 import { findDriveItem, getChildItems, getFolderPath, getItemKind, type DriveItem, type DriveUserNav, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
 import { createDriveThemeVariables } from "@/features/file/theme-tokens";
@@ -39,6 +40,14 @@ import { useDriveSearch } from "./use-drive-search";
 import { useDriveFileActions } from "./use-drive-file-actions";
 import { useDriveDetailsPanel } from "./use-drive-details-panel";
 import { createLatestDriveItemsRequestRunner } from "./drive-items-refresh";
+import {
+  driveRefreshFailed,
+  driveRefreshSkipped,
+  driveRefreshSucceeded,
+  driveRefreshSuperseded,
+} from "./drive-refresh-result";
+import { useDriveRefreshFeedback } from "./use-drive-refresh-feedback";
+import { useDriveWorkspaceRefresh } from "./use-drive-workspace-refresh";
 import {
   createUniqueDriveName,
   driveNavPaths,
@@ -118,6 +127,8 @@ export function DriveWorkbench({
   const workspaceIdRef = useRef<string | null>(null);
   const spaceScopeRef = useRef<DriveSpaceScope>("workspace");
   const registeredSharesRef = useRef<RegisteredShare[]>([]);
+  const registeredSharesWorkspaceIdRef = useRef<string | null>(null);
+  const shareSettingsWorkspaceIdRef = useRef<string | null>(null);
   const driveItemsContextRef = useRef("");
   const runLatestDriveItemsRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
   const activeUser = profileUserOverride?.id === currentUser?.id ? profileUserOverride : currentUser;
@@ -162,7 +173,7 @@ export function DriveWorkbench({
   const workspaceRefreshLoading = workspaceLoading || bootLoading;
   const showSettingsSkeleton = workspaceRefreshLoading && activeModule === "settings";
   const showWorkspaceLoader = workspaceRefreshLoading && activeModule !== "settings";
-  const workspaceBusy = showSettingsSkeleton || showWorkspaceLoader;
+  const workspaceBlocking = showSettingsSkeleton || showWorkspaceLoader;
   const getApiFeedback = useCallback((
     error: unknown,
     fallbackKey = "errors.unknown",
@@ -323,9 +334,11 @@ export function DriveWorkbench({
     targetWorkspaceId = workspaceIdRef.current,
     targetSpaceScope = spaceScopeRef.current,
   ) => {
-    if (!targetWorkspaceId) return false;
+    if (!targetWorkspaceId) return driveRefreshSkipped("files");
     const targetContext = `${targetWorkspaceId}:${targetSpaceScope}`;
-    return runLatestDriveItemsRequest(() => Promise.all([fetchFileNodesByState({
+    const stale = driveItemsContextRef.current === targetContext;
+    let failureMessage = "";
+    const result = await runLatestDriveItemsRequest(() => Promise.all([fetchFileNodesByState({
       workspaceId: targetWorkspaceId,
       spaceScope: targetSpaceScope,
       state: "active"
@@ -340,39 +353,57 @@ export function DriveWorkbench({
       driveItemsContextRef.current = targetContext;
       setFilesError(null);
     }, (error) => {
-      if (driveItemsContextRef.current !== targetContext) {
+      if (!stale) {
         setDriveItems([]);
         setArchivedItems([]);
       }
-      setFilesError(getApiFeedback(error, "files.loadFailed"));
+      failureMessage = getApiFeedback(error, "files.loadFailed");
+      setFilesError(failureMessage);
     });
+
+    if (result.status === "success") return driveRefreshSucceeded("files");
+    if (result.status === "superseded") return driveRefreshSuperseded("files");
+    return driveRefreshFailed("files", failureMessage || getApiFeedback(result.error, "files.loadFailed"), stale);
   }, [getApiFeedback, runLatestDriveItemsRequest]);
   const refreshShares = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
-    if (!targetWorkspaceId) return [] as RegisteredShare[];
+    if (!targetWorkspaceId) return driveRefreshSkipped("shares");
     try {
       const shares = await fetchRegisteredSharesForWorkspace(targetWorkspaceId);
+      registeredSharesWorkspaceIdRef.current = targetWorkspaceId;
       registeredSharesRef.current = shares;
       setRegisteredShares(shares);
       setLinksError(null);
       setDriveItems(current => withShareFlags(current, shares));
       setArchivedItems(current => withShareFlags(current, shares));
-      return shares;
+      return driveRefreshSucceeded("shares");
     } catch (error) {
-      registeredSharesRef.current = [];
-      setRegisteredShares([]);
-      setLinksError(getApiFeedback(error, "share.apiUnavailable"));
-      return [] as RegisteredShare[];
+      const stale = registeredSharesWorkspaceIdRef.current === targetWorkspaceId;
+      const message = getApiFeedback(error, "share.apiUnavailable");
+      if (!stale) {
+        registeredSharesWorkspaceIdRef.current = null;
+        registeredSharesRef.current = [];
+        setRegisteredShares([]);
+        setDriveItems(current => withShareFlags(current, []));
+        setArchivedItems(current => withShareFlags(current, []));
+      }
+      setLinksError(message);
+      return driveRefreshFailed("shares", message, stale);
     }
   }, [getApiFeedback]);
   const refreshShareSettings = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
-    if (!targetWorkspaceId) return;
+    if (!targetWorkspaceId) return driveRefreshSkipped("shareSettings");
     try {
       const settings = await fetchWorkspaceShareSettings(targetWorkspaceId);
+      shareSettingsWorkspaceIdRef.current = targetWorkspaceId;
       setShareSettings(settings);
       setShareSettingsError(null);
+      return driveRefreshSucceeded("shareSettings");
     } catch (error) {
-      setShareSettings(null);
-      setShareSettingsError(getApiFeedback(error, "admin.loadFailed"));
+      const stale = shareSettingsWorkspaceIdRef.current === targetWorkspaceId;
+      const message = getApiFeedback(error, "admin.loadFailed");
+      if (!stale) setShareSettings(null);
+      setShareSettingsError(message);
+      return driveRefreshFailed("shareSettings", message, stale);
     }
   }, [getApiFeedback]);
   const queueWorkspaceLoading = () => {
@@ -411,15 +442,12 @@ export function DriveWorkbench({
     currentDirectoryItems,
     currentFolderId,
     getApiFeedback,
-    queueWorkspaceLoading,
     refreshDriveItems,
-    setWorkspaceLoading,
     showFeedback,
     spaceScope,
     uploadActor,
     uploadOwnerUserId: activeUser?.id,
     workspaceId,
-    workspaceTimerRef,
   });
   const {
     archiveItems,
@@ -450,6 +478,24 @@ export function DriveWorkbench({
     workspaceId,
     workspaceTimerRef,
   });
+  const handleWorkspaceRefreshComplete = useDriveRefreshFeedback(locale);
+  const refreshTasks = useMemo(() => ({
+    files: () => refreshDriveItems(),
+    shares: () => refreshShares(),
+    shareSettings: () => refreshShareSettings(),
+    storage: () => refreshStorageUsage(),
+    transfers: () => refreshTransfers(),
+  }), [refreshDriveItems, refreshShareSettings, refreshShares, refreshStorageUsage, refreshTransfers]);
+  const {
+    lastSummary: workspaceRefreshSummary,
+    refreshing: workspaceRefreshing,
+    refreshWorkspace,
+  } = useDriveWorkspaceRefresh({
+    disabled: bootLoading,
+    onComplete: handleWorkspaceRefreshComplete,
+    tasks: refreshTasks,
+  });
+  const workspaceBusy = workspaceBlocking || workspaceRefreshing;
   useEffect(() => {
     let cancelled = false;
     const progressTimer = window.setTimeout(() => {
@@ -464,6 +510,11 @@ export function DriveWorkbench({
         if (!initialWorkspaceId) return;
         await refreshShares(initialWorkspaceId);
         await Promise.all([refreshDriveItems(initialWorkspaceId), refreshShareSettings(initialWorkspaceId), refreshTransfers(initialWorkspaceId), refreshStorageUsage(initialWorkspaceId)]);
+      }).catch((error) => {
+        if (cancelled) return;
+        const message = getApiFeedback(error, "files.loadFailed");
+        setFilesError(message);
+        showFeedback(message, "error");
       }).finally(() => {
         const elapsed = window.performance.now() - bootLoadingStartedRef.current;
         const remaining = Math.max(0, 220 - elapsed);
@@ -480,18 +531,7 @@ export function DriveWorkbench({
       window.clearTimeout(progressTimer);
       window.clearTimeout(blockingTimer);
     };
-  }, [refreshDriveItems, refreshShareSettings, refreshShares, refreshStorageUsage, refreshTransfers, refreshWorkspaceList]);
-  const refreshWorkspace = () => {
-    if (bootLoading) return;
-    if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-    setWorkspaceLoading(true);
-    void Promise.all([refreshDriveItems(), refreshShares(), refreshShareSettings(), refreshTransfers(), refreshStorageUsage()]).then(([filesRefreshed]) => filesRefreshed).catch(() => false).then((filesRefreshed) => {
-      workspaceTimerRef.current = window.setTimeout(() => {
-        setWorkspaceLoading(false);
-        if (filesRefreshed) showFeedback(t("app.refreshed"));
-      }, 180);
-    });
-  };
+  }, [getApiFeedback, refreshDriveItems, refreshShareSettings, refreshShares, refreshStorageUsage, refreshTransfers, refreshWorkspaceList, showFeedback]);
   const selectSpaceScope = (nextSpaceScope: DriveSpaceScope) => {
     if (nextSpaceScope === spaceScopeRef.current) return;
     spaceScopeRef.current = nextSpaceScope;
@@ -505,13 +545,12 @@ export function DriveWorkbench({
     setSidebarOpen(false);
     resetSearchResults();
     clearStorageUsage();
-    queueWorkspaceLoading();
+    setWorkspaceLoading(true);
     void Promise.all([
       refreshDriveItems(workspaceIdRef.current, nextSpaceScope),
       refreshStorageUsage(workspaceIdRef.current, nextSpaceScope),
     ]).finally(() => {
-      if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-      workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);
+      setWorkspaceLoading(false);
     });
   };
   const openSearchResult = (item: DriveItem) => {
@@ -528,8 +567,6 @@ export function DriveWorkbench({
     router.push("/admin");
   };
   const openTransfers = () => {
-    if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-    setWorkspaceLoading(false);
     activateNav("transfers");
     setCurrentFolderId(null);
     setSelected([]);
@@ -674,7 +711,6 @@ export function DriveWorkbench({
   const openFolder = (id: string) => {
     const item = findDriveItem(id, allKnownItems);
     if (!item || getItemKind(item) !== "folder") return;
-    queueWorkspaceLoading();
     activateNav("drive");
     setCurrentFolderId(id);
     setSelected([]);
@@ -683,7 +719,6 @@ export function DriveWorkbench({
     setDetailsOpen(false);
   };
   const openRoot = () => {
-    queueWorkspaceLoading();
     activateNav("drive");
     setCurrentFolderId(null);
     setSelected([]);
@@ -695,7 +730,6 @@ export function DriveWorkbench({
   const navigateFolderPath = (id: string) => {
     const item = findDriveItem(id, allKnownItems);
     if (!item || getItemKind(item) !== "folder") return;
-    queueWorkspaceLoading();
     activateNav("drive");
     setCurrentFolderId(id);
     setSelected([]);
@@ -705,7 +739,6 @@ export function DriveWorkbench({
   };
   const goUp = () => {
     const parentId = findDriveItem(currentFolderId ?? "", allKnownItems)?.parentId ?? null;
-    queueWorkspaceLoading();
     activateNav("drive");
     setCurrentFolderId(parentId);
     setSelected([]);
@@ -713,7 +746,6 @@ export function DriveWorkbench({
     setFocusedItemId(null);
   };
   const setDirectoryViewMode = (mode: "list" | "grid") => {
-    if (mode !== viewMode) queueWorkspaceLoading();
     setViewMode(mode);
   };
   const openPreview = (id: string) => {
@@ -826,7 +858,6 @@ export function DriveWorkbench({
     setFocusedItemId(null);
     setDetailsOpen(false);
     setSidebarOpen(false);
-    queueWorkspaceLoading();
   };
   const logout = () => {
     void logoutLocalUser().catch(() => undefined).finally(() => {
@@ -835,7 +866,7 @@ export function DriveWorkbench({
     });
   };
   return <div className="drive-shell" data-theme={themeMode} style={createDriveThemeVariables(palette) as React.CSSProperties}>
-      <AppHeader currentUser={activeUser} activeScopeLabel={searchScopeLabel} searchLoading={searchLoading} searchResultCount={serverSearchActive ? searchTotal : filteredFiles.length} searchResults={filteredFiles} brandLogo={brandLogo} onOpenSearchResult={openSearchResult} onOpenAdmin={openAdmin} onLogout={logout} onOpenSettings={openSettings} onRefresh={refreshWorkspace} palette={palette} query={query} setQuery={setQuery} siteName={resolvePublicSiteName(siteSettings.siteName)} openSidebar={() => setSidebarOpen(true)} />
+      <AppHeader currentUser={activeUser} activeScopeLabel={searchScopeLabel} searchLoading={searchLoading} searchResultCount={serverSearchActive ? searchTotal : filteredFiles.length} searchResults={filteredFiles} brandLogo={brandLogo} onOpenSearchResult={openSearchResult} onOpenAdmin={openAdmin} onLogout={logout} onOpenSettings={openSettings} onRefresh={refreshWorkspace} palette={palette} query={query} refreshing={workspaceRefreshing} setQuery={setQuery} siteName={resolvePublicSiteName(siteSettings.siteName)} openSidebar={() => setSidebarOpen(true)} />
 
       <div className="drive-main-grid" style={{
       "--drive-grid-columns": "var(--drive-ui-sidebar-width) minmax(0, 1fr)"
@@ -844,11 +875,6 @@ export function DriveWorkbench({
         navigateFolderPath(id);
         setSidebarOpen(false);
       }} onNavigateRoot={openRoot} onSelectPersonalSpace={() => selectSpaceScope("personal")} palette={palette} sidebarOpen={sidebarOpen} spaceScope={spaceScope} storageUsage={storageUsage} onSelectWorkspaceSpace={() => selectSpaceScope("workspace")} setActiveNav={id => {
-        if (id !== activeNav && id !== "transfers") queueWorkspaceLoading();
-        if (id === "transfers") {
-          if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-          setWorkspaceLoading(false);
-        }
         activateNav(id);
         if (id !== "drive") setCurrentFolderId(null);
         setSelected([]);
@@ -883,6 +909,12 @@ export function DriveWorkbench({
                   viewMode={viewMode}
                 />
               ) : null}
+              <WorkspaceRefreshStatus
+                onRetry={() => void refreshWorkspace()}
+                palette={palette}
+                refreshing={workspaceRefreshing}
+                summary={workspaceRefreshSummary}
+              />
               {activeModule === "drive" && filtersActive ? (
                 <DriveFilterPanel
                   filters={searchFilters}

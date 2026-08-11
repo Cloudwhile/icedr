@@ -39,6 +39,7 @@ export type DriveHeaderProps = {
   openSidebar: () => void;
   palette: Palette;
   query: string;
+  refreshing: boolean;
   setQuery: Dispatch<SetStateAction<string>>;
   siteName: string;
 };
@@ -55,6 +56,7 @@ export function AppHeader({
   openSidebar,
   palette,
   query,
+  refreshing,
   searchLoading,
   searchResultCount,
   searchResults,
@@ -96,7 +98,7 @@ export function AppHeader({
 
       <div className="drive-header-actions">
         <div className="drive-header-secondary">
-          <ToolButton label={t("app.refresh")} palette={palette} tooltipPlacement="bottom" onClick={onRefresh}>
+          <ToolButton disabled={refreshing} isPending={refreshing} label={t("app.refresh")} palette={palette} tooltipPlacement="bottom" onClick={onRefresh}>
             <LocalIcon name="refresh" size={17} />
           </ToolButton>
         </div>

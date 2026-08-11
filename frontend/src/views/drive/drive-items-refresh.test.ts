@@ -12,9 +12,9 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     b.resolve("B");
-    await expect(requestB).resolves.toBe(true);
+    await expect(requestB).resolves.toEqual({ status: "success" });
     a.resolve("A");
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
 
     expect(state.succeed).toHaveBeenCalledTimes(1);
     expect(state.value).toBe("B");
@@ -31,9 +31,9 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     b.resolve("B");
-    await expect(requestB).resolves.toBe(true);
+    await expect(requestB).resolves.toEqual({ status: "success" });
     a.reject(new Error("A 加载失败"));
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
 
     expect(state.fail).not.toHaveBeenCalled();
     expect(state.value).toBe("B");
@@ -50,11 +50,11 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     a.resolve("A");
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
     expect(state.succeed).not.toHaveBeenCalled();
 
     b.resolve("B");
-    await expect(requestB).resolves.toBe(true);
+    await expect(requestB).resolves.toEqual({ status: "success" });
     expect(state.value).toBe("B");
   });
 
@@ -68,11 +68,13 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     a.reject(new Error("A 加载失败"));
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
     expect(state.fail).not.toHaveBeenCalled();
 
     b.reject(new Error("B 加载失败"));
-    await expect(requestB).resolves.toBe(false);
+    const outcome = await requestB;
+    expect(outcome.status).toBe("failed");
+    expect(outcome).toHaveProperty("error", expect.any(Error));
     expect(state.fail).toHaveBeenCalledTimes(1);
     expect(state.error).toBe("B 加载失败");
   });

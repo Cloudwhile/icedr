@@ -246,6 +246,47 @@ test.describe("responsive Drive workspace", () => {
     await expect(driveItem(page, "file-budget")).toHaveCount(0);
   });
 
+  test("keeps the current list interactive while a duplicate refresh joins the in-flight request", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    const requestsBeforeRefresh = api.activeFileListRequests;
+    const refreshButton = page.locator(".drive-header").getByRole("button", { name: "Refresh" });
+    api.delayNextActiveFileListMs = 300;
+    await refreshButton.dispatchEvent("click");
+    await refreshButton.dispatchEvent("click");
+
+    await expect(refreshButton).toBeDisabled();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(driveItem(page, "file-budget")).toBeVisible();
+    await expect(page.locator(".workspace-notification:visible")).toContainText("Workspace refreshed");
+    expect(api.activeFileListRequests).toBe(requestsBeforeRefresh + 1);
+  });
+
+  test("reports an auxiliary refresh failure without replacing it with a success message", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    api.failNextShares = true;
+    await page.locator(".drive-header").getByRole("button", { name: "Refresh" }).click();
+
+    const notification = page.locator(".workspace-notification:visible");
+    await expect(notification).toContainText("Some workspace content could not be refreshed");
+    await expect(notification).toContainText("Share links");
+    await expect(notification).not.toContainText("Workspace refreshed");
+    const refreshStatus = page.locator(".drive-refresh-status");
+    await expect(refreshStatus).toContainText("Some workspace content could not be refreshed");
+    await expect(refreshStatus).toContainText("Share links");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(driveItem(page, "file-budget")).toBeVisible();
+  });
+
   test("preserves the last successful file list when refresh fails and keeps Retry reachable", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
@@ -349,9 +390,11 @@ type RegisteredShare = ReturnType<typeof registeredShare>;
 
 type DriveApiState = {
   activeNodes: FileNode[];
+  activeFileListRequests: number;
   archivedNodes: FileNode[];
   delayNextActiveFileListMs: number;
   failNextActiveFileList: boolean;
+  failNextShares: boolean;
   failNextSearch: boolean;
   searchItems: FileNode[];
   shares: RegisteredShare[];
@@ -364,9 +407,11 @@ async function mockDriveApi(
 ) {
   const state: DriveApiState = {
     activeNodes: options.activeNodes ?? [reportFile(), budgetFile()],
+    activeFileListRequests: 0,
     archivedNodes: options.archivedNodes ?? [],
     delayNextActiveFileListMs: 0,
     failNextActiveFileList: false,
+    failNextShares: false,
     failNextSearch: false,
     searchItems: options.searchItems ?? [],
     shares: [],
@@ -443,6 +488,9 @@ async function mockDriveApi(
     }
     if (method === "GET" && path === "/file-nodes") {
       const listState = url.searchParams.get("state");
+      if (listState === "active") {
+        state.activeFileListRequests += 1;
+      }
       if (listState === "active" && state.delayNextActiveFileListMs > 0) {
         const delayMs = state.delayNextActiveFileListMs;
         state.delayNextActiveFileListMs = 0;
@@ -461,6 +509,11 @@ async function mockDriveApi(
       return;
     }
     if (method === "GET" && path === "/shares") {
+      if (state.failNextShares) {
+        state.failNextShares = false;
+        await fulfillJson(route, { code: "SHARES_UNAVAILABLE", message: "Temporary shares failure" }, 503);
+        return;
+      }
       await fulfillJson(route, state.shares);
       return;
     }
