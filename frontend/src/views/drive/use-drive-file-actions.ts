@@ -9,18 +9,14 @@ import {
 import type { DriveItem, DriveUserNav } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
 import {
-  batchArchiveFileNodes,
   batchMoveFileNodes,
-  batchRestoreFileNodes,
   copyFileNode,
   moveFileNode,
-  permanentlyDeleteFileNode,
-  restoreFileNode,
-  updateFileNodeState,
   type DriveSpaceScope,
   type FileNodeResponse,
 } from "@/lib/drive-api";
 import { isFolderWithinItems, type DriveClipboardState } from "./drive-workbench-helpers";
+import { useDriveDestructiveActions } from "./use-drive-destructive-actions";
 
 type UseDriveFileActionsOptions = {
   activeItem?: DriveItem;
@@ -30,7 +26,7 @@ type UseDriveFileActionsOptions = {
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   queueWorkspaceLoading: () => void;
   refreshDriveItems: () => Promise<unknown>;
-  refreshStorageUsage: () => Promise<void>;
+  refreshStorageUsage: () => Promise<unknown>;
   setSelected: Dispatch<SetStateAction<string[]>>;
   setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
   showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
@@ -78,6 +74,14 @@ export function useDriveFileActions({
     });
   }, [t]);
   const getActionItems = (items: DriveItem[]) => items.length > 0 ? items : activeItem ? [activeItem] : [];
+  const destructiveActions = useDriveDestructiveActions({
+    activeItem,
+    getApiFeedback,
+    refreshDriveItems,
+    refreshStorageUsage,
+    setSelected,
+    showFeedback,
+  });
   const copyItemsLink = async (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
     if (actionItems.length === 0) {
@@ -102,82 +106,6 @@ export function useDriveFileActions({
     void downloadWorkspaceDriveItem(actionItems[0], workspaceId ?? undefined)
       .then(() => showFeedback(t("app.downloaded")))
       .catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
-  };
-  const archiveItems = (items: DriveItem[]) => {
-    const actionItems = getActionItems(items);
-    if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
-      return;
-    }
-    const archiveAction = actionItems.length === 1
-      ? updateFileNodeState(actionItems[0].id, { archived: true }).then((node) => ({
-        failed: [],
-        succeeded: [node],
-        summary: { failed: 0, requested: 1, succeeded: 1 },
-      }))
-      : batchArchiveFileNodes(actionItems.map((item) => item.id));
-    void archiveAction
-      .then((result) => Promise.all([refreshDriveItems(), refreshStorageUsage()]).then(() => result))
-      .then((result) => {
-        setSelected((current) => current.filter((id) => !result.succeeded.some((item) => item.id === id)));
-        if (actionItems.length === 1) showFeedback(t("app.archived", { count: 1 }));
-        else showBatchResult(result.summary, result.failed);
-      })
-      .catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
-  };
-  const restoreItems = (items: DriveItem[]) => {
-    const actionItems = getActionItems(items);
-    if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
-      return;
-    }
-    const restoreAction = actionItems.length === 1
-      ? restoreFileNode(actionItems[0].id).then((node) => ({
-        failed: [],
-        succeeded: [node],
-        summary: { failed: 0, requested: 1, succeeded: 1 },
-      }))
-      : batchRestoreFileNodes(actionItems.map((item) => item.id));
-    void restoreAction
-      .then((result) => Promise.all([refreshDriveItems(), refreshStorageUsage()]).then(() => result))
-      .then((result) => {
-        setSelected((current) => current.filter((id) => !result.succeeded.some((item) => item.id === id)));
-        if (actionItems.length === 1) showFeedback(t("app.refreshed"));
-        else showBatchResult(result.summary, result.failed);
-      })
-      .catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
-  };
-  const deletePermanentlyItems = (items: DriveItem[]) => {
-    const actionItems = getActionItems(items);
-    if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
-      return;
-    }
-    void Promise.allSettled(actionItems.map((item) => permanentlyDeleteFileNode(item.id)))
-      .then((results) => {
-        const succeededIds = actionItems
-          .filter((_, index) => results[index].status === "fulfilled")
-          .map((item) => item.id);
-        const failed = actionItems
-          .map((item, index) => ({ item, result: results[index] }))
-          .filter((entry): entry is { item: DriveItem; result: PromiseRejectedResult } => entry.result.status === "rejected")
-          .map(({ item, result }) => ({
-            id: item.id,
-            message: result.reason instanceof Error ? result.reason.message : t("app.uploadFailed"),
-          }));
-        return Promise.all([refreshDriveItems(), refreshStorageUsage()]).then(() => ({
-          failed: actionItems.length - succeededIds.length,
-          failedItems: failed,
-          requested: actionItems.length,
-          succeeded: succeededIds.length,
-          succeededIds,
-        }));
-      })
-      .then((result) => {
-        setSelected((current) => current.filter((id) => !result.succeededIds.includes(id)));
-        showBatchResult(result, result.failedItems);
-      })
-      .catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
   };
   const setClipboardItems = (items: DriveItem[], mode: DriveClipboardState["mode"]) => {
     const actionItems = getActionItems(items).filter((item) => !item.archivedAt);
@@ -256,17 +184,15 @@ export function useDriveFileActions({
   };
 
   return {
-    archiveItems,
     canPasteClipboard,
     copyItem: (item: DriveItem) => setClipboardItems([item], "copy"),
     copyItems: (items: DriveItem[]) => setClipboardItems(items, "copy"),
     copyItemsLink,
     cutItems: (items: DriveItem[]) => setClipboardItems(items, "move"),
-    deletePermanentlyItems,
     downloadItems,
     getActionItems,
     moveItem: (item: DriveItem) => setClipboardItems([item], "move"),
     pasteClipboard,
-    restoreItems,
+    ...destructiveActions,
   };
 }

@@ -5,9 +5,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
 } from "react";
 import { showWorkspaceNotification, type WorkspaceNotificationTone } from "@/components/ui/workspace-notification-store";
 import {
@@ -69,6 +66,13 @@ import {
   planUploadConflictResolution,
   runUploadGroups,
 } from "./upload-conflict-planning";
+import {
+  driveRefreshFailed,
+  driveRefreshSkipped,
+  driveRefreshSucceeded,
+  driveRefreshSuperseded,
+} from "./drive-refresh-result";
+import { createLatestDriveItemsRequestRunner } from "./drive-items-refresh";
 
 export type { UploadTaskMeta } from "./drive-transfer-helpers";
 export { isStorageCapacityError } from "./drive-transfer-helpers";
@@ -91,15 +95,12 @@ type UseDriveTransfersOptions = {
   currentDirectoryItems: DriveItem[];
   currentFolderId: string | null;
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
-  queueWorkspaceLoading: () => void;
   refreshDriveItems: () => Promise<unknown> | void;
-  setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
   showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;
   uploadActor?: string;
   uploadOwnerUserId?: string;
   workspaceId: string | null;
-  workspaceTimerRef: MutableRefObject<number | null>;
 };
 
 export function useDriveTransfers({
@@ -107,15 +108,12 @@ export function useDriveTransfers({
   currentDirectoryItems,
   currentFolderId,
   getApiFeedback,
-  queueWorkspaceLoading,
   refreshDriveItems,
-  setWorkspaceLoading,
   showFeedback,
   spaceScope,
   uploadActor,
   uploadOwnerUserId,
   workspaceId,
-  workspaceTimerRef,
 }: UseDriveTransfersOptions) {
   const t = useTranslations();
   const [transferRows, setTransferRows] = useState<TransferRow[]>([]);
@@ -136,6 +134,10 @@ export function useDriveTransfers({
   const uploadOwnerUserIdRef = useRef(uploadOwnerUserId);
   const workspaceIdRef = useRef(workspaceId);
   const spaceScopeRef = useRef(spaceScope);
+  const transferRowsWorkspaceIdRef = useRef<string | null>(null);
+  const storageUsageContextRef = useRef("");
+  const runLatestTransfersRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
+  const runLatestStorageUsageRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
 
   useEffect(() => {
     workspaceIdRef.current = workspaceId;
@@ -184,25 +186,61 @@ export function useDriveTransfers({
     [transferRows, uploadTelemetry],
   );
   const refreshTransfers = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
-    if (!targetWorkspaceId) return;
-    try {
-      setTransferRows(await fetchTransfers({ workspaceId: targetWorkspaceId, limit: 100 }));
-    } catch {
-      setTransferRows([]);
-    }
-  }, []);
+    if (!targetWorkspaceId) return driveRefreshSkipped("transfers");
+    const stale = transferRowsWorkspaceIdRef.current === targetWorkspaceId;
+    let failureMessage = "";
+    const result = await runLatestTransfersRequest(
+      () => fetchTransfers({ workspaceId: targetWorkspaceId, limit: 100 }),
+      (rows) => {
+        transferRowsWorkspaceIdRef.current = targetWorkspaceId;
+        setTransferRows(rows);
+      },
+      (error) => {
+        failureMessage = getApiFeedback(error, "app.refreshFailed");
+        if (!stale) setTransferRows([]);
+      },
+    );
+
+    if (result.status === "success") return driveRefreshSucceeded("transfers");
+    if (result.status === "superseded") return driveRefreshSuperseded("transfers");
+    return driveRefreshFailed(
+      "transfers",
+      failureMessage || getApiFeedback(result.error, "app.refreshFailed"),
+      stale,
+    );
+  }, [getApiFeedback, runLatestTransfersRequest]);
   const refreshStorageUsage = useCallback(async (
     targetWorkspaceId = workspaceIdRef.current,
     targetSpaceScope = spaceScopeRef.current,
   ) => {
-    if (!targetWorkspaceId) return;
-    try {
-      setStorageUsage(await fetchStorageUsage(targetWorkspaceId, targetSpaceScope));
-    } catch {
-      setStorageUsage(null);
-    }
+    if (!targetWorkspaceId) return driveRefreshSkipped("storage");
+    const targetContext = `${targetWorkspaceId}:${targetSpaceScope}`;
+    const stale = storageUsageContextRef.current === targetContext;
+    let failureMessage = "";
+    const result = await runLatestStorageUsageRequest(
+      () => fetchStorageUsage(targetWorkspaceId, targetSpaceScope),
+      (usage) => {
+        storageUsageContextRef.current = targetContext;
+        setStorageUsage(usage);
+      },
+      (error) => {
+        failureMessage = getApiFeedback(error, "app.refreshFailed");
+        if (!stale) setStorageUsage(null);
+      },
+    );
+
+    if (result.status === "success") return driveRefreshSucceeded("storage");
+    if (result.status === "superseded") return driveRefreshSuperseded("storage");
+    return driveRefreshFailed(
+      "storage",
+      failureMessage || getApiFeedback(result.error, "app.refreshFailed"),
+      stale,
+    );
+  }, [getApiFeedback, runLatestStorageUsageRequest]);
+  const clearStorageUsage = useCallback(() => {
+    storageUsageContextRef.current = "";
+    setStorageUsage(null);
   }, []);
-  const clearStorageUsage = useCallback(() => setStorageUsage(null), []);
   const fetchLatestStorageUsage = useCallback(async (
     targetWorkspaceId = workspaceIdRef.current,
     targetSpaceScope = spaceScopeRef.current,
@@ -210,6 +248,7 @@ export function useDriveTransfers({
     if (!targetWorkspaceId) return null;
     try {
       const usage = await fetchStorageUsage(targetWorkspaceId, targetSpaceScope);
+      storageUsageContextRef.current = `${targetWorkspaceId}:${targetSpaceScope}`;
       setStorageUsage(usage);
       return usage;
     } catch {
@@ -616,12 +655,6 @@ export function useDriveTransfers({
       );
     }
     activateNav(targetNav);
-    if (targetNav === "transfers") {
-      if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-      setWorkspaceLoading(false);
-    } else {
-      queueWorkspaceLoading();
-    }
     let task: UploadDriveFileTask | null = null;
     task = createUploadDriveFileTask({
       conflictStrategy,

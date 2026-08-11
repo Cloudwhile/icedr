@@ -1,26 +1,29 @@
-.drive-shell {
-  --drive-ui-blue-700: #4f5cc6;
-  --drive-ui-blue-600: #5e6ad2;
-  --drive-ui-blue-500: #7382f0;
-  --drive-ui-blue-100: #eef1ff;
-  --drive-ui-blue-50: transparent;
-  --drive-ui-canvas: transparent;
-  --drive-ui-ink: #0f172a;
-  --drive-ui-line: #dfe6f0;
-  --drive-ui-line-strong: #c8d4e5;
-  --drive-ui-muted: #64748b;
-  --drive-ui-subtle: #8a97ad;
-  --drive-ui-surface: transparent;
-  --drive-ui-surface-soft: transparent;
-  --drive-ui-success: #16a34a;
-  --drive-ui-info: #0ea5e9;
-  --drive-ui-warning: #f59e0b;
-  --drive-ui-danger: #ef4444;
-  --drive-ui-purple: #8b5cf6;
-  --drive-ui-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 42px rgba(35, 56, 94, 0.045);
-  --drive-ui-shadow-2: 0 1px 2px rgba(15, 23, 42, 0.055), 0 22px 58px rgba(35, 56, 94, 0.075);
-  --drive-ui-shadow-tight: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 20px rgba(35, 56, 94, 0.035);
-  --drive-ui-shadow-hover: 0 1px 2px rgba(15, 23, 42, 0.05), 0 18px 48px rgba(35, 56, 94, 0.075);
+.drive-shell,
+.admin-shell {
+  --drive-ui-blue-700: var(--ui-accent-hover);
+  --drive-ui-blue-600: var(--ui-accent);
+  --drive-ui-blue-500: var(--ui-accent);
+  --drive-ui-blue-100: var(--ui-selection);
+  --drive-ui-blue-50: color-mix(in srgb, var(--ui-accent) 6%, transparent);
+  --drive-ui-canvas: var(--ui-canvas);
+  --drive-ui-ink: var(--ui-text-primary);
+  --drive-ui-line: var(--ui-border-default);
+  --drive-ui-line-strong: var(--ui-border-strong);
+  --drive-ui-muted: var(--ui-text-secondary);
+  --drive-ui-subtle: var(--ui-text-tertiary);
+  --drive-ui-surface: var(--ui-surface);
+  --drive-ui-surface-soft: var(--ui-surface-subtle);
+  --drive-ui-surface-raised: var(--ui-surface-raised);
+  --drive-ui-overlay: var(--ui-overlay);
+  --drive-ui-success: var(--ui-success);
+  --drive-ui-info: var(--ui-info);
+  --drive-ui-warning: var(--ui-warning);
+  --drive-ui-danger: var(--ui-danger);
+  --drive-ui-purple: var(--ui-secure);
+  --drive-ui-shadow-1: var(--ui-shadow-card);
+  --drive-ui-shadow-2: var(--ui-shadow-popover);
+  --drive-ui-shadow-tight: var(--ui-shadow-card);
+  --drive-ui-shadow-hover: var(--ui-shadow-card);
   --drive-ui-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --drive-ui-header-height: 80px;
   --drive-ui-sidebar-width: 266px;
@@ -32,6 +35,8 @@
 }
 
 .drive-shell,
-.drive-shell * {
+.drive-shell *,
+.admin-shell,
+.admin-shell * {
   letter-spacing: 0;
 }

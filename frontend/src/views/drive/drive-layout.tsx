@@ -39,6 +39,7 @@ export type DriveHeaderProps = {
   openSidebar: () => void;
   palette: Palette;
   query: string;
+  refreshing: boolean;
   setQuery: Dispatch<SetStateAction<string>>;
   siteName: string;
 };
@@ -55,6 +56,7 @@ export function AppHeader({
   openSidebar,
   palette,
   query,
+  refreshing,
   searchLoading,
   searchResultCount,
   searchResults,
@@ -96,7 +98,7 @@ export function AppHeader({
 
       <div className="drive-header-actions">
         <div className="drive-header-secondary">
-          <ToolButton label={t("app.refresh")} palette={palette} tooltipPlacement="bottom" onClick={onRefresh}>
+          <ToolButton disabled={refreshing} isPending={refreshing} label={t("app.refresh")} palette={palette} tooltipPlacement="bottom" onClick={onRefresh}>
             <LocalIcon name="refresh" size={17} />
           </ToolButton>
         </div>
@@ -705,7 +707,7 @@ export function WorkspaceBar({
   const trashRestoreAction = selectionMenuItems.find((item) => item.value === "restore");
   const trashDeleteAction = selectionMenuItems.find((item) => item.value === "delete");
   const mobileMenuButtonStyle = {
-    "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+    "--tool-bg": palette.surface1,
     "--tool-border": palette.hairline,
     "--tool-color": palette.subtle,
     "--tool-focus": palette.focusRing,
@@ -774,7 +776,7 @@ export function WorkspaceBar({
                       aria-label={t("actions.more")}
                       className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-more-trigger"
                       style={{
-                        "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+                        "--tool-bg": palette.surface1,
                         "--tool-border": palette.hairline,
                         "--tool-color": palette.subtle,
                         "--tool-focus": palette.focusRing,
@@ -799,7 +801,7 @@ export function WorkspaceBar({
                         aria-label={t("filters.sort")}
                         className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-sort-trigger"
                         style={{
-                          "--tool-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+                          "--tool-bg": palette.surface1,
                           "--tool-border": palette.hairline,
                           "--tool-color": palette.subtle,
                           "--tool-focus": palette.focusRing,

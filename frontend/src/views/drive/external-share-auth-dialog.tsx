@@ -94,19 +94,19 @@ export function ShareAuthDialog({
     <Modal.Backdrop
       isOpen={open}
       onOpenChange={(nextOpen) => !nextOpen && onClose()}
-      style={{ background: "rgba(0, 0, 0, 0.48)" }}
+      style={{ background: palette.backdrop }}
     >
       <Modal.Container placement="center">
         <Modal.Dialog
           style={{
-            background: palette.canvas,
+            background: palette.overlay,
             color: palette.ink,
             borderWidth: "1px",
             borderColor: palette.hairlineStrong,
             borderRadius: "8px",
             maxWidth: "420px",
             overflow: "hidden",
-            boxShadow: "0 24px 80px rgba(0, 0, 0, 0.48)",
+            boxShadow: palette.shadowDialog,
           }}
         >
           <Modal.Header

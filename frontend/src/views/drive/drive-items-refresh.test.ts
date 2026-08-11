@@ -12,9 +12,9 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     b.resolve("B");
-    await expect(requestB).resolves.toBe(true);
+    await expect(requestB).resolves.toEqual({ status: "success" });
     a.resolve("A");
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
 
     expect(state.succeed).toHaveBeenCalledTimes(1);
     expect(state.value).toBe("B");
@@ -31,9 +31,9 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     b.resolve("B");
-    await expect(requestB).resolves.toBe(true);
+    await expect(requestB).resolves.toEqual({ status: "success" });
     a.reject(new Error("A 加载失败"));
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
 
     expect(state.fail).not.toHaveBeenCalled();
     expect(state.value).toBe("B");
@@ -50,11 +50,11 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     a.resolve("A");
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
     expect(state.succeed).not.toHaveBeenCalled();
 
     b.resolve("B");
-    await expect(requestB).resolves.toBe(true);
+    await expect(requestB).resolves.toEqual({ status: "success" });
     expect(state.value).toBe("B");
   });
 
@@ -68,13 +68,40 @@ describe("createLatestDriveItemsRequestRunner", () => {
     const requestB = runLatest(() => b.promise, state.succeed, state.fail);
 
     a.reject(new Error("A 加载失败"));
-    await expect(requestA).resolves.toBe(false);
+    await expect(requestA).resolves.toEqual({ status: "superseded" });
     expect(state.fail).not.toHaveBeenCalled();
 
     b.reject(new Error("B 加载失败"));
-    await expect(requestB).resolves.toBe(false);
+    const outcome = await requestB;
+    expect(outcome.status).toBe("failed");
+    expect(outcome).toHaveProperty("error", expect.any(Error));
     expect(state.fail).toHaveBeenCalledTimes(1);
     expect(state.error).toBe("B 加载失败");
+  });
+
+  it("空间切换后只提交最新存储用量上下文", async () => {
+    const workspaceUsage = deferred<{ context: string; usedBytes: number }>();
+    const personalUsage = deferred<{ context: string; usedBytes: number }>();
+    const committed: Array<{ context: string; usedBytes: number }> = [];
+    const runLatest = createLatestDriveItemsRequestRunner();
+
+    const workspaceRequest = runLatest(
+      () => workspaceUsage.promise,
+      (usage) => committed.push(usage),
+      vi.fn(),
+    );
+    const personalRequest = runLatest(
+      () => personalUsage.promise,
+      (usage) => committed.push(usage),
+      vi.fn(),
+    );
+
+    personalUsage.resolve({ context: "workspace-1:personal", usedBytes: 20 });
+    await expect(personalRequest).resolves.toEqual({ status: "success" });
+    workspaceUsage.resolve({ context: "workspace-1:workspace", usedBytes: 10 });
+    await expect(workspaceRequest).resolves.toEqual({ status: "superseded" });
+
+    expect(committed).toEqual([{ context: "workspace-1:personal", usedBytes: 20 }]);
   });
 });
 

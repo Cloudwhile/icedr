@@ -5,11 +5,49 @@ import { expect, test, type Locator, type Page, type Route } from "@playwright/t
 const now = "2026-06-02T04:00:00.000Z";
 const validSetupToken = "fixed-test-setup-token-000000000001";
 
+function durationInMilliseconds(value: string) {
+  return value.endsWith("ms") ? Number.parseFloat(value) : Number.parseFloat(value) * 1_000;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Setup-Token",
   "Access-Control-Allow-Methods": "DELETE, GET, OPTIONS, PATCH, POST, PUT",
   "Access-Control-Allow-Origin": "*",
 };
+
+test("系统要求减少动态效果时保留静态状态指示", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+
+  const computed = await page.evaluate(() => {
+    const status = document.createElement("div");
+    status.setAttribute("role", "status");
+    status.textContent = "Loading";
+    status.style.animation = "reduced-motion-check 2s linear infinite";
+    status.style.scrollBehavior = "smooth";
+    status.style.transition = "transform 2s ease 1s";
+    document.body.append(status);
+
+    const styles = getComputedStyle(status);
+    return {
+      animationDuration: styles.animationDuration,
+      animationIterationCount: styles.animationIterationCount,
+      display: styles.display,
+      scrollBehavior: styles.scrollBehavior,
+      transitionDelay: styles.transitionDelay,
+      transitionDuration: styles.transitionDuration,
+      visibility: styles.visibility,
+    };
+  });
+
+  expect(durationInMilliseconds(computed.animationDuration)).toBeLessThanOrEqual(0.01);
+  expect(computed.animationIterationCount).toBe("1");
+  expect(durationInMilliseconds(computed.transitionDelay)).toBe(0);
+  expect(durationInMilliseconds(computed.transitionDuration)).toBeLessThanOrEqual(0.01);
+  expect(computed.scrollBehavior).toBe("auto");
+  expect(computed.display).not.toBe("none");
+  expect(computed.visibility).toBe("visible");
+});
 
 test("keeps authentication text readable when a dark theme preference is stored", async ({ page }, testInfo) => {
   await mockAuthSetupApi(page);

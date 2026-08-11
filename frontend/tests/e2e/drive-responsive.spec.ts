@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
+import { expectThemeSurfaces } from "./wcag-contrast";
 
 const now = "2026-07-31T08:00:00.000Z";
 const workspaceId = "workspace-responsive";
@@ -229,6 +230,66 @@ test.describe("responsive Drive workspace", () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test("keeps newly refreshed share flags when the file list finishes later", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    api.shares = [registeredShare()];
+    api.delayNextActiveFileListMs = 150;
+    await page.locator(".drive-header").getByRole("button", { name: "Refresh" }).click();
+    await expect(page.locator(".workspace-notification:visible")).toContainText("Workspace refreshed");
+
+    await page.getByRole("button", { name: "Shared", exact: true }).click();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(driveItem(page, "file-budget")).toHaveCount(0);
+  });
+
+  test("keeps the current list interactive while a duplicate refresh joins the in-flight request", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    const requestsBeforeRefresh = api.activeFileListRequests;
+    const refreshButton = page.locator(".drive-header").getByRole("button", { name: "Refresh" });
+    api.holdNextActiveFileList = true;
+    await refreshButton.dispatchEvent("click");
+    await refreshButton.dispatchEvent("click");
+
+    await expect.poll(() => Boolean(api.releaseHeldActiveFileList)).toBe(true);
+    await expect(refreshButton).toBeDisabled();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(driveItem(page, "file-budget")).toBeVisible();
+    api.releaseHeldActiveFileList?.();
+    await expect(page.locator(".workspace-notification:visible")).toContainText("Workspace refreshed");
+    expect(api.activeFileListRequests).toBe(requestsBeforeRefresh + 1);
+  });
+
+  test("reports an auxiliary refresh failure without replacing it with a success message", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+
+    api.failNextShares = true;
+    await page.locator(".drive-header").getByRole("button", { name: "Refresh" }).click();
+
+    const notification = page.locator(".workspace-notification:visible");
+    await expect(notification).toContainText("Some workspace content could not be refreshed");
+    await expect(notification).toContainText("Share links");
+    await expect(notification).not.toContainText("Workspace refreshed");
+    const refreshStatus = page.locator(".drive-refresh-status");
+    await expect(refreshStatus).toContainText("Some workspace content could not be refreshed");
+    await expect(refreshStatus).toContainText("Share links");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    await expect(driveItem(page, "file-budget")).toBeVisible();
+  });
+
   test("preserves the last successful file list when refresh fails and keeps Retry reachable", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const api = await mockDriveApi(page, { activeNodes: [reportFile(), budgetFile()] });
@@ -249,7 +310,151 @@ test.describe("responsive Drive workspace", () => {
     await expect(errorBanner).toHaveCount(0);
     await expect(driveItem(page, "file-report")).toBeVisible();
   });
+
+  test("confirms extension changes before sending a rename request", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, {
+      activeNodes: [fileNode({
+        id: "file-extension",
+        kind: "doc",
+        mimeType: "text/plain",
+        name: "report.txt",
+        parentNodeId: null,
+        sizeBytes: 2048,
+      })],
+    });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+
+    const row = driveItem(page, "file-extension");
+    await row.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Rename", exact: true }).click();
+
+    const renameInput = row.getByRole("textbox", { name: "Rename" });
+    await renameInput.fill("report.md");
+    await renameInput.press("Enter");
+
+    let dialog = page.getByRole("dialog").filter({ hasText: "Changing the extension" });
+    await expect(dialog).toContainText("Rename .txt to .md?");
+    expect(api.renamePatchRequests).toBe(0);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(api.renamePatchRequests).toBe(0);
+
+    await renameInput.press("Enter");
+    dialog = page.getByRole("dialog").filter({ hasText: "Changing the extension" });
+    await dialog.getByRole("button", { name: "Rename", exact: true }).click();
+
+    await expect.poll(() => api.renamePatchRequests).toBe(1);
+    await expect(row.getByRole("button", { name: "report.md", exact: true })).toBeVisible();
+  });
+
+  test("does not permanently delete a trash item before confirmation", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { archivedNodes: [archivedFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/trash");
+
+    const row = driveItem(page, "file-archived");
+    await row.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menu", { name: "More" })
+      .getByRole("menuitem", { name: "Delete permanently", exact: true })
+      .click();
+
+    const dialog = page.getByRole("dialog").filter({ hasText: "Delete permanently?" });
+    await expect(dialog).toContainText("This action cannot be undone");
+    expect(api.permanentDeleteRequests).toBe(0);
+    await dialog.getByRole("button", { name: "Delete permanently", exact: true }).click();
+
+    await expect.poll(() => api.permanentDeleteRequests).toBe(1);
+    await expect(row).toHaveCount(0);
+  });
+
+  test("offers Undo after archiving and reports the restored item accurately", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+
+    const row = driveItem(page, "file-report");
+    await row.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menu", { name: "More" })
+      .getByRole("menuitem", { name: "Move to trash", exact: true })
+      .click();
+
+    await expect.poll(() => api.archivePatchRequests).toBe(1);
+    const archiveNotification = page.locator(".workspace-notification").filter({ hasText: "Moved 1 to trash" });
+    await expect(archiveNotification).toBeVisible();
+    await archiveNotification.getByRole("button", { name: "Undo", exact: true }).click();
+
+    await expect.poll(() => api.restoreRequests).toBe(1);
+    await expect(page.locator(".workspace-notification").filter({ hasText: "Restored items: 1" })).toBeVisible();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+  });
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures screenshots and validates ${theme} Drive surface contrast`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await mockDriveApi(page, { theme });
+      await seedAuthenticatedDrive(page, theme);
+      await page.goto("/");
+
+      const reportRow = driveItem(page, "file-report");
+      await expect(reportRow).toBeVisible();
+      await expect(page.locator(".drive-shell")).toHaveAttribute("data-theme", theme);
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".drive-sidebar", text: ".drive-space-trigger-label" },
+        { surface: ".drive-table-shell", text: ".drive-file-name-text" },
+      ]);
+      await captureThemeShot(page, testInfo, theme, "root");
+
+      const tableShell = page.locator(".drive-table-shell");
+      const initialRowHeight = await reportRow.evaluate((element) => element.getBoundingClientRect().height);
+      await expect.poll(() => tableShell.evaluate((element) => element.scrollLeft)).toBe(0);
+      await reportRow.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Details", exact: true }).click();
+      const details = page.getByRole("region", { name: reportFileName });
+      await expect(details).toBeVisible();
+      await expect.poll(() => tableShell.evaluate((element) => element.scrollLeft)).toBe(0);
+      await expect.poll(() => reportRow.evaluate((element) => element.getBoundingClientRect().height)).toBe(initialRowHeight);
+      await expect(page.getByRole("columnheader", { name: "Owner" })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Created" })).toBeVisible();
+      await details.getByRole("button", { name: "More", exact: true }).click();
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".drive-details-inner", text: ".drive-details-heading" },
+        { surface: ".icedr-context-menu", text: ".icedr-context-menu-button" },
+      ]);
+      await captureThemeShot(page, testInfo, theme, "details-more");
+
+      await page.keyboard.press("Escape");
+      await reportRow.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Move to trash", exact: true }).click();
+      await page.goto("/trash");
+      const archivedRow = driveItem(page, "file-report");
+      await archivedRow.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Delete permanently", exact: true }).click();
+      await expect(page.getByRole("dialog")).toContainText("This action cannot be undone");
+      await expectThemeSurfaces(page, theme, [{ surface: ".icedr-dialog", text: ".icedr-confirmation-header h2" }]);
+      await captureThemeShot(page, testInfo, theme, "danger-dialog");
+
+      await page.goto("/settings?tab=security");
+      await expect(page.getByRole("region", { name: "Passkey devices" })).toContainText("Office security key");
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".drive-passkey-manager", text: ".drive-passkey-manager .drive-security-section-header span" },
+        { surface: ".drive-passkey-table-header", text: ".drive-passkey-table-header [role=\"columnheader\"]" },
+      ]);
+      await captureThemeShot(page, testInfo, theme, "settings-passkey");
+    });
+  }
 });
+
+async function captureThemeShot(page: Page, testInfo: TestInfo, theme: "light" | "dark", view: string) {
+  const fileName = `drive-theme-${theme}-${view}.png`;
+  const path = testInfo.outputPath(fileName);
+  await page.screenshot({ animations: "disabled", path });
+  await testInfo.attach(fileName, { contentType: "image/png", path });
+}
 
 async function openDetails(page: Page, itemId: string, itemName: string) {
   const row = driveItem(page, itemId);
@@ -328,27 +533,50 @@ type FileNode = Omit<
   originalPath: string | null;
 };
 type Transfer = ReturnType<typeof runningTransfer>;
+type RegisteredShare = ReturnType<typeof registeredShare>;
 
 type DriveApiState = {
   activeNodes: FileNode[];
+  activeFileListRequests: number;
+  archivePatchRequests: number;
   archivedNodes: FileNode[];
+  delayNextActiveFileListMs: number;
   failNextActiveFileList: boolean;
+  failNextShares: boolean;
   failNextSearch: boolean;
+  holdNextActiveFileList: boolean;
+  permanentDeleteRequests: number;
+  releaseHeldActiveFileList: (() => void) | null;
+  renamePatchRequests: number;
+  restoreRequests: number;
   searchItems: FileNode[];
+  shares: RegisteredShare[];
   transfers: Transfer[];
+  theme: "light" | "dark";
 };
 
 async function mockDriveApi(
   page: Page,
-  options: Partial<Pick<DriveApiState, "activeNodes" | "archivedNodes" | "searchItems" | "transfers">> = {},
+  options: Partial<Pick<DriveApiState, "activeNodes" | "archivedNodes" | "searchItems" | "theme" | "transfers">> = {},
 ) {
   const state: DriveApiState = {
     activeNodes: options.activeNodes ?? [reportFile(), budgetFile()],
+    activeFileListRequests: 0,
+    archivePatchRequests: 0,
     archivedNodes: options.archivedNodes ?? [],
+    delayNextActiveFileListMs: 0,
     failNextActiveFileList: false,
+    failNextShares: false,
     failNextSearch: false,
+    holdNextActiveFileList: false,
+    permanentDeleteRequests: 0,
+    releaseHeldActiveFileList: null,
+    renamePatchRequests: 0,
+    restoreRequests: 0,
     searchItems: options.searchItems ?? [],
+    shares: [],
     transfers: options.transfers ?? [],
+    theme: options.theme ?? "light",
   };
 
   await page.route("**/api/**", async (route) => {
@@ -371,7 +599,7 @@ async function mockDriveApi(
       return;
     }
     if (method === "GET" && path === "/auth/me") {
-      await fulfillJson(route, currentUser());
+      await fulfillJson(route, currentUser(state.theme));
       return;
     }
     if (method === "GET" && path === "/auth/settings") {
@@ -380,10 +608,33 @@ async function mockDriveApi(
         minimumAuthenticationMethods: 1,
         oauthConfigured: false,
         oauthEnabled: false,
-        passkeyConfigured: false,
-        passkeyEnabled: false,
+        passkeyConfigured: true,
+        passkeyEnabled: true,
         updatedAt: now,
       });
+      return;
+    }
+    if (method === "GET" && path === "/auth/security/methods") {
+      await fulfillJson(route, {
+        compliant: true,
+        methodCount: 2,
+        methods: { oauth: false, passkey: true, password: true, recoveryCodes: 0 },
+        minimumAuthenticationMethods: 1,
+      });
+      return;
+    }
+    if (method === "GET" && path === "/auth/passkeys") {
+      await fulfillJson(route, [{
+        aaguid: null,
+        backedUp: false,
+        createdAt: now,
+        deviceName: "Windows Hello",
+        deviceType: "singleDevice",
+        id: "passkey-office",
+        lastUsedAt: now,
+        name: "Office security key",
+        transports: ["internal"],
+      }]);
       return;
     }
     if (method === "GET" && path === "/site/settings/public") {
@@ -421,6 +672,21 @@ async function mockDriveApi(
     }
     if (method === "GET" && path === "/file-nodes") {
       const listState = url.searchParams.get("state");
+      if (listState === "active") {
+        state.activeFileListRequests += 1;
+      }
+      if (listState === "active" && state.holdNextActiveFileList) {
+        state.holdNextActiveFileList = false;
+        await new Promise<void>((resolve) => {
+          state.releaseHeldActiveFileList = resolve;
+        });
+        state.releaseHeldActiveFileList = null;
+      }
+      if (listState === "active" && state.delayNextActiveFileListMs > 0) {
+        const delayMs = state.delayNextActiveFileListMs;
+        state.delayNextActiveFileListMs = 0;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
       if (listState === "active" && state.failNextActiveFileList) {
         state.failNextActiveFileList = false;
         await fulfillJson(route, { code: "FILE_LIST_UNAVAILABLE", message: "Temporary file-list failure" }, 503);
@@ -434,7 +700,12 @@ async function mockDriveApi(
       return;
     }
     if (method === "GET" && path === "/shares") {
-      await fulfillJson(route, []);
+      if (state.failNextShares) {
+        state.failNextShares = false;
+        await fulfillJson(route, { code: "SHARES_UNAVAILABLE", message: "Temporary shares failure" }, 503);
+        return;
+      }
+      await fulfillJson(route, state.shares);
       return;
     }
     if (method === "GET" && path === `/workspaces/${workspaceId}/share-settings`) {
@@ -449,6 +720,65 @@ async function mockDriveApi(
       await fulfillJson(route, storageUsage());
       return;
     }
+    if (method === "PATCH" && /^\/file-nodes\/[^/]+\/state$/.test(path)) {
+      state.archivePatchRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      const node = state.activeNodes.find((item) => item.id === id);
+      if (!node) {
+        await fulfillJson(route, { code: "FILE_NOT_FOUND", message: "File not found" }, 404);
+        return;
+      }
+      const archivedNode: FileNode = {
+        ...node,
+        archivedAt: now,
+        archivedBy: "Responsive Admin",
+        originalPath: `/${node.name}`,
+      };
+      state.activeNodes = state.activeNodes.filter((item) => item.id !== id);
+      state.archivedNodes = [...state.archivedNodes.filter((item) => item.id !== id), archivedNode];
+      await fulfillJson(route, archivedNode);
+      return;
+    }
+    if (method === "PATCH" && /^\/file-nodes\/[^/]+$/.test(path)) {
+      state.renamePatchRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      const input = request.postDataJSON() as { name?: string };
+      const node = state.activeNodes.find((item) => item.id === id);
+      if (!node || !input.name) {
+        await fulfillJson(route, { code: "FILE_NOT_FOUND", message: "File not found" }, 404);
+        return;
+      }
+      const renamedNode = { ...node, name: input.name };
+      state.activeNodes = state.activeNodes.map((item) => item.id === id ? renamedNode : item);
+      await fulfillJson(route, renamedNode);
+      return;
+    }
+    if (method === "DELETE" && /^\/file-nodes\/[^/]+$/.test(path)) {
+      state.permanentDeleteRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      state.archivedNodes = state.archivedNodes.filter((item) => item.id !== id);
+      await fulfillJson(route, { deleted: 1, id, ok: true });
+      return;
+    }
+    if (method === "POST" && /^\/file-nodes\/[^/]+\/restore$/.test(path)) {
+      state.restoreRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      const node = state.archivedNodes.find((item) => item.id === id);
+      if (!node) {
+        await fulfillJson(route, { code: "FILE_NOT_FOUND", message: "File not found" }, 404);
+        return;
+      }
+      const restoredNode: FileNode = {
+        ...node,
+        archivedAt: null,
+        archivedBy: null,
+        originalPath: null,
+      };
+      state.archivedNodes = state.archivedNodes.filter((item) => item.id !== id);
+      state.activeNodes = [...state.activeNodes.filter((item) => item.id !== id), restoredNode];
+      await fulfillJson(route, restoredNode);
+      return;
+    }
 
     await route.fulfill({
       body: JSON.stringify({ message: `Unhandled ${method} ${path}` }),
@@ -460,13 +790,13 @@ async function mockDriveApi(
   return state;
 }
 
-async function seedAuthenticatedDrive(page: Page) {
-  await page.addInitScript(() => {
+async function seedAuthenticatedDrive(page: Page, theme: "light" | "dark" = "light") {
+  await page.addInitScript((initialTheme) => {
     window.localStorage.setItem("icedr.auth.token", "responsive-drive-token");
     window.localStorage.setItem("icedr.locale", "en_US");
     window.localStorage.setItem("icedr.ui.locale", "en");
-    window.localStorage.setItem("icedr.ui.themePreference", "light");
-  });
+    window.localStorage.setItem("icedr.ui.themePreference", initialTheme);
+  }, theme);
 }
 
 function reportFile() {
@@ -576,7 +906,37 @@ function runningTransfer() {
   };
 }
 
-function currentUser() {
+function registeredShare() {
+  return {
+    allowDownload: true,
+    allowPreview: true,
+    allowedItemIds: ["file-report"],
+    createdAt: now,
+    dynamicRootId: null,
+    expiresDays: 7,
+    mode: "single-file",
+    owner: "Responsive Admin",
+    policy: {
+      allowedDomain: "",
+      downloadLimit: "",
+      expiresUnit: "days",
+      expiresValue: 7,
+      speedUnit: "KB/s",
+      speedValue: 0,
+      waitUnit: "seconds",
+      waitValue: 0,
+    },
+    remark: "",
+    revokedAt: null,
+    rootItemIds: ["file-report"],
+    title: reportFileName,
+    token: "responsive-share",
+    url: "http://127.0.0.1:13000/share/s/responsive-share",
+    workspaceId,
+  };
+}
+
+function currentUser(theme: "light" | "dark" = "light") {
   return {
     avatarUrl: null,
     createdAt: now,
@@ -585,7 +945,7 @@ function currentUser() {
     id: "responsive-admin",
     locale: "en",
     role: "admin",
-    theme: "light",
+    theme,
     timezone: "UTC",
   };
 }

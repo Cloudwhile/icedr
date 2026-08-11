@@ -1,19 +1,27 @@
 import type { ReactNode } from "react";
+import type { LocalIconName } from "@/features/file/model";
 
 export type WorkspaceNotificationTone = "success" | "error" | "info" | "warning" | "neutral";
 
 export type WorkspaceNotificationOptions = {
+  actionIcon?: LocalIconName;
+  actionLabel?: string;
   debounceMs?: number;
   dedupeKey?: string;
   description?: ReactNode;
+  onAction?: () => boolean | void | Promise<boolean | void>;
   title: ReactNode;
   tone?: WorkspaceNotificationTone;
 };
 
 export type WorkspaceNotification = Required<Pick<WorkspaceNotificationOptions, "tone">> & {
+  actionIcon?: LocalIconName;
+  actionLabel?: string;
   createdAt: number;
+  dedupeKey?: string;
   description?: ReactNode;
   id: string;
+  onAction?: () => boolean | void | Promise<boolean | void>;
   title: ReactNode;
 };
 
@@ -21,32 +29,43 @@ const defaultNotificationDebounceMs = 900;
 const maxWorkspaceNotifications = 5;
 const listeners = new Set<() => void>();
 const recentNotificationTimestamps = new Map<string, number>();
+const pendingNotificationActions = new Set<string>();
 let notificationCounter = 0;
 let notifications: WorkspaceNotification[] = [];
 
 export function showWorkspaceNotification({
+  actionIcon,
+  actionLabel,
   debounceMs = defaultNotificationDebounceMs,
   dedupeKey,
   description,
+  onAction,
   title,
   tone = "success",
 }: WorkspaceNotificationOptions) {
-  const key = dedupeKey ?? createWorkspaceNotificationDedupeKey({ description, title, tone });
   const now = Date.now();
-  const recentTimestamp = recentNotificationTimestamps.get(key);
+  const hasExplicitDedupeKey = dedupeKey !== undefined;
 
-  if (recentTimestamp && now - recentTimestamp < debounceMs) return null;
+  if (!hasExplicitDedupeKey) {
+    const key = createWorkspaceNotificationDedupeKey({ description, title, tone });
+    const recentTimestamp = recentNotificationTimestamps.get(key);
+    if (recentTimestamp && now - recentTimestamp < debounceMs) return null;
 
-  recentNotificationTimestamps.set(key, now);
-  pruneRecentNotificationTimestamps(now);
+    recentNotificationTimestamps.set(key, now);
+    pruneRecentNotificationTimestamps(now);
+  }
 
   const id = `workspace-notification-${now}-${notificationCounter++}`;
   notifications = [
-    ...notifications,
+    ...notifications.filter((notification) => !hasExplicitDedupeKey || notification.dedupeKey !== dedupeKey),
     {
+      actionIcon,
+      actionLabel,
       createdAt: now,
+      dedupeKey,
       description,
       id,
+      onAction,
       title,
       tone,
     },
@@ -58,6 +77,23 @@ export function showWorkspaceNotification({
 export function closeWorkspaceNotification(id: string) {
   notifications = notifications.filter((notification) => notification.id !== id);
   emitWorkspaceNotifications();
+}
+
+export async function triggerWorkspaceNotificationAction(id: string) {
+  const notification = notifications.find((candidate) => candidate.id === id);
+  if (!notification?.onAction || pendingNotificationActions.has(id)) return false;
+
+  pendingNotificationActions.add(id);
+  try {
+    const accepted = await notification.onAction();
+    if (accepted === false) return false;
+
+    notifications = notifications.filter((candidate) => candidate.id !== id);
+    emitWorkspaceNotifications();
+    return true;
+  } finally {
+    pendingNotificationActions.delete(id);
+  }
 }
 
 export function subscribeWorkspaceNotifications(listener: () => void) {

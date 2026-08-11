@@ -16,8 +16,8 @@ export type AppTextareaProps = ComponentProps<typeof TextArea> & {
 };
 
 function fieldStyle(palette: Palette, invalid?: boolean): CSSProperties {
-  const inputBg = palette.canvas === "#010102" ? palette.surface1 : "#ffffff";
-  const inputHoverBg = palette.canvas === "#010102" ? palette.surface2 : "#ffffff";
+  const inputBg = palette.surface1;
+  const inputHoverBg = palette.surface2;
 
   return {
     "--app-field-bg": inputBg,

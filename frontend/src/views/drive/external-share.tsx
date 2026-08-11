@@ -739,7 +739,7 @@ function SharePreviewDialog({
     : t("preview.notConfigured");
   const loadBlobUrl = useCallback((targetItem: DriveItem) => createSharedDriveItemBlobUrl(shareToken, targetItem, accessSessionId ?? undefined), [accessSessionId, shareToken]);
   return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && onClose()} style={{
-        background: "rgba(0, 0, 0, 0.48)"
+        background: palette.backdrop
       }}>
         <Modal.Container placement="center">
           <Modal.Dialog style={{
@@ -751,7 +751,7 @@ function SharePreviewDialog({
           maxWidth: "980px",
           width: "min(980px, calc(100vw - 24px))",
           overflow: "hidden",
-          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.48)"
+          boxShadow: palette.shadowDialog
         }}>
             <Modal.Header style={{
             borderBottomWidth: "1px",

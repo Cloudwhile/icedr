@@ -797,7 +797,8 @@ function dialogVariables(palette: Palette) {
   return {
     "--share-dialog-accent": palette.primary,
     "--share-dialog-accent-hover": palette.primaryHover,
-    "--share-dialog-bg": palette.canvas === "#010102" ? palette.surface1 : "#ffffff",
+    "--share-dialog-backdrop": palette.backdrop,
+    "--share-dialog-bg": palette.overlay,
     "--share-dialog-border": palette.hairline,
     "--share-dialog-border-strong": palette.hairlineStrong,
     "--share-dialog-canvas": palette.canvas,
@@ -808,6 +809,7 @@ function dialogVariables(palette: Palette) {
     "--share-dialog-subtle": palette.subtle,
     "--share-dialog-surface": palette.surface1,
     "--share-dialog-surface-2": palette.surface2,
+    "--share-dialog-shadow": palette.shadowDialog,
     "--share-dialog-text": palette.ink,
   } as CSSProperties;
 }

@@ -1,5 +1,9 @@
 .drive-sidebar {
-  background: linear-gradient(180deg, rgba(250, 252, 255, 0.84), rgba(246, 249, 254, 0.62));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--drive-ui-surface-soft) 84%, transparent),
+    color-mix(in srgb, var(--drive-ui-canvas) 62%, transparent)
+  );
   border-right: 1px solid var(--drive-ui-line);
   display: block;
   height: calc(100dvh - var(--drive-ui-header-height));
@@ -31,11 +35,15 @@
 .drive-space-trigger {
   align-items: center;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.88)),
-    linear-gradient(135deg, rgba(94, 106, 210, 0.08), transparent 52%);
-  border: 1px solid #e0e8f4;
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--drive-ui-surface) 94%, transparent),
+      color-mix(in srgb, var(--drive-ui-surface-soft) 88%, transparent)
+    ),
+    linear-gradient(135deg, color-mix(in srgb, var(--drive-ui-blue-600) 8%, transparent), transparent 52%);
+  border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.018), 0 12px 26px rgba(35, 56, 94, 0.035);
+  box-shadow: var(--drive-ui-shadow-tight);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -49,8 +57,8 @@
 }
 
 .drive-space-trigger:hover {
-  border-color: #d2def0;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02), 0 16px 34px rgba(35, 56, 94, 0.055);
+  border-color: var(--drive-ui-line-strong);
+  box-shadow: var(--drive-ui-shadow-hover);
   transform: translateY(-1px);
 }
 
@@ -63,14 +71,18 @@
 
 .drive-space-trigger-main > span:first-child {
   align-items: center;
-  background: linear-gradient(180deg, #eef3ff, #e4ecff);
-  border: 1px solid #d8e2ff;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--drive-ui-blue-600) 8%, var(--drive-ui-surface)),
+    color-mix(in srgb, var(--drive-ui-blue-600) 14%, var(--drive-ui-surface))
+  );
+  border: 1px solid color-mix(in srgb, var(--drive-ui-blue-600) 18%, var(--drive-ui-line));
   border-radius: var(--drive-ui-radius);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   height: 34px;
   justify-content: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 8px 14px rgba(79, 128, 255, 0.12);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--drive-ui-surface) 78%, transparent), 0 8px 14px color-mix(in srgb, var(--drive-ui-blue-600) 12%, transparent);
   width: 34px;
 }
 
@@ -102,8 +114,8 @@
 
 .drive-space-meter .progress-bar__track,
 .drive-space-meter [data-slot="track"] {
-  background: #edf2f8;
-  border: 1px solid #dfe8f4;
+  background: var(--drive-ui-surface-raised);
+  border: 1px solid var(--drive-ui-line);
   height: 6px;
 }
 
@@ -112,7 +124,7 @@
 }
 
 .drive-space-inline-menu {
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--drive-ui-overlay) 92%, transparent);
   backdrop-filter: blur(18px);
   border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
@@ -144,7 +156,7 @@
 
 .drive-space-inline-item:hover,
 .drive-space-inline-item[data-active="true"] {
-  background: rgba(241, 246, 255, 0.82);
+  background: color-mix(in srgb, var(--drive-ui-blue-50) 82%, transparent);
   color: var(--drive-ui-blue-600);
 }
 
@@ -164,7 +176,7 @@
 }
 
 .drive-directory-tree {
-  border-top: 1px solid rgba(227, 232, 242, 0.88);
+  border-top: 1px solid color-mix(in srgb, var(--drive-ui-line) 88%, transparent);
   display: block;
   max-height: min(260px, 30dvh);
   min-height: 0;
@@ -197,7 +209,7 @@
 
 .drive-directory-tree-row {
   align-items: center;
-  color: #5d6b82;
+  color: var(--drive-ui-muted);
   display: grid;
   gap: 2px;
   grid-template-columns: 22px minmax(0, 1fr);
@@ -257,7 +269,7 @@
 }
 
 .drive-directory-tree-toggle:hover {
-  background: rgba(237, 243, 255, 0.82);
+  background: color-mix(in srgb, var(--drive-ui-blue-50) 82%, transparent);
   color: var(--drive-ui-blue-600);
 }
 
@@ -286,7 +298,7 @@
 }
 
 .drive-directory-tree-button > span:first-child {
-  color: #f0b236;
+  color: var(--drive-ui-warning);
 }
 
 .drive-directory-tree-row[aria-selected="true"] .drive-directory-tree-button > span:first-child {
@@ -311,7 +323,7 @@
 }
 
 .drive-sidebar-section-label {
-  color: #73819a;
+  color: var(--drive-ui-subtle);
   font-size: 12px;
   font-weight: 720;
   line-height: 1.25;
@@ -324,7 +336,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
-  color: #53627a;
+  color: var(--drive-ui-muted);
   display: flex;
   gap: 11px;
   min-height: 40px;
@@ -344,17 +356,17 @@
 }
 
 .drive-sidebar-item:hover {
-  background: rgba(246, 250, 255, 0.88);
-  border-color: #e5ebf5;
-  box-shadow: 0 8px 18px rgba(35, 56, 94, 0.03);
+  background: color-mix(in srgb, var(--drive-ui-surface-soft) 88%, transparent);
+  border-color: var(--drive-ui-line);
+  box-shadow: var(--drive-ui-shadow-tight);
   color: var(--drive-ui-ink);
   transform: translateX(2px);
 }
 
 .drive-sidebar-item[data-active="true"] {
-  background: linear-gradient(90deg, #edf3ff, rgba(247, 250, 255, 0.92));
-  border-color: #dfe6ff;
-  box-shadow: inset 3px 0 0 var(--drive-ui-blue-600), 0 8px 16px rgba(79, 128, 255, 0.055);
+  background: linear-gradient(90deg, var(--drive-ui-blue-100), color-mix(in srgb, var(--drive-ui-surface-soft) 92%, transparent));
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 18%, var(--drive-ui-line));
+  box-shadow: inset 3px 0 0 var(--drive-ui-blue-600), var(--drive-ui-shadow-tight);
   color: var(--drive-ui-blue-600);
 }
 
@@ -370,14 +382,14 @@
 }
 
 .drive-mobile-sidebar-backdrop {
-  background: rgba(15, 23, 42, 0.32);
+  background: var(--ui-backdrop);
   border: 0;
   inset: 0;
   position: absolute;
 }
 
 .drive-mobile-sidebar-panel {
-  background: rgba(250, 252, 255, 0.94);
+  background: color-mix(in srgb, var(--drive-ui-overlay) 94%, transparent);
   backdrop-filter: blur(18px);
   border-right: 1px solid var(--drive-ui-line);
   box-shadow: var(--drive-ui-shadow-2);

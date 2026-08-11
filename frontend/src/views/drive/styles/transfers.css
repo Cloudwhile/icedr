@@ -13,7 +13,7 @@
 
 .drive-transfers-module .drive-transfer-tabs {
   align-items: center;
-  border-bottom: 1px solid #e3ebf5;
+  border-bottom: 1px solid var(--drive-ui-line);
   display: flex;
   flex-wrap: wrap;
   gap: 30px;
@@ -27,7 +27,7 @@
   background: transparent;
   border: 0;
   border-radius: 7px 7px 0 0;
-  color: #596982;
+  color: var(--drive-ui-muted);
   display: inline-flex;
   font-size: 13px;
   font-weight: 780;
@@ -41,7 +41,7 @@
 }
 
 .drive-transfers-module .drive-transfer-tabs button:hover {
-  color: #111827;
+  color: var(--drive-ui-ink);
   transform: translateY(-1px);
 }
 
@@ -50,11 +50,11 @@
 }
 
 .drive-transfers-module .drive-transfer-tabs button[data-active="true"] {
-  color: #2563eb;
+  color: var(--drive-ui-blue-600);
 }
 
 .drive-transfers-module .drive-transfer-tabs button[data-active="true"]::after {
-  background: #2f6df6;
+  background: var(--drive-ui-blue-600);
   border-radius: 999px;
   bottom: -1px;
   content: "";
@@ -66,9 +66,9 @@
 
 .drive-transfers-module .drive-transfer-tabs strong {
   align-items: center;
-  background: #edf4ff;
+  background: var(--drive-ui-blue-100);
   border-radius: 999px;
-  color: #315fe8;
+  color: var(--drive-ui-blue-600);
   display: inline-flex;
   font-size: 12px;
   font-weight: 800;
@@ -89,10 +89,11 @@
 
 .drive-transfers-module .drive-module-stat-card {
   --transfer-stat-accent: var(--drive-ui-blue-600);
-  background: rgba(255, 255, 255, 0.76);
-  border-color: #e3ebf4;
+
+  background: color-mix(in srgb, var(--drive-ui-surface) 76%, transparent);
+  border-color: var(--drive-ui-line);
   border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.01), 0 12px 28px rgba(35, 56, 94, 0.016);
+  box-shadow: var(--drive-ui-shadow-1);
   min-height: 96px;
   min-width: 0;
   padding: 17px 18px 15px;
@@ -115,8 +116,8 @@
 }
 
 .drive-transfers-module .drive-module-stat-card:hover {
-  border-color: color-mix(in srgb, var(--transfer-stat-accent) 24%, #cbd7e8);
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.014), 0 18px 36px rgba(35, 56, 94, 0.032);
+  border-color: color-mix(in srgb, var(--transfer-stat-accent) 24%, var(--drive-ui-line));
+  box-shadow: var(--drive-ui-shadow-hover);
   transform: translateY(-1px);
 }
 
@@ -127,7 +128,7 @@
 }
 
 .drive-transfers-module .drive-module-stat-copy span:nth-child(2) {
-  color: #1f2937;
+  color: var(--drive-ui-ink);
   font-size: 13px;
   font-weight: 800;
   line-height: 18px;
@@ -138,7 +139,7 @@
 }
 
 .drive-transfers-module .drive-module-stat-copy strong {
-  color: #5f6d83;
+  color: var(--drive-ui-muted);
   display: -webkit-box;
   font-size: 11px;
   font-weight: 700;
@@ -188,10 +189,10 @@
 
 .drive-transfers-module .drive-transfer-queue-panel,
 .drive-transfers-module .drive-module-side-card {
-  background: rgba(255, 255, 255, 0.78);
-  border-color: #e3ebf4;
+  background: color-mix(in srgb, var(--drive-ui-surface) 78%, transparent);
+  border-color: var(--drive-ui-line);
   border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.01), 0 12px 28px rgba(35, 56, 94, 0.016);
+  box-shadow: var(--drive-ui-shadow-1);
 }
 
 .drive-transfers-module .drive-transfer-queue-panel {
@@ -201,8 +202,8 @@
 }
 
 .drive-transfers-module .drive-module-panel-header {
-  background: rgba(255, 255, 255, 0.68);
-  border-bottom-color: #eef3f8;
+  background: color-mix(in srgb, var(--drive-ui-surface) 68%, transparent);
+  border-bottom-color: var(--ui-border-subtle);
   min-height: 50px;
   padding-inline: 18px;
 }
@@ -213,8 +214,8 @@
 }
 
 .drive-transfers-module .drive-transfer-section {
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid #e3ebf4;
+  background: color-mix(in srgb, var(--drive-ui-surface) 76%, transparent);
+  border: 1px solid var(--drive-ui-line);
   border-bottom: 0;
   min-width: 0;
   overflow-x: auto;
@@ -225,14 +226,14 @@
 }
 
 .drive-transfers-module .drive-transfer-section:last-child {
-  border-bottom: 1px solid #e3ebf4;
+  border-bottom: 1px solid var(--drive-ui-line);
   border-radius: 0 0 8px 8px;
 }
 
 .drive-transfers-module .drive-transfer-section-header {
   align-items: center;
-  background: rgba(255, 255, 255, 0.74);
-  border-bottom: 1px solid #eef3f8;
+  background: color-mix(in srgb, var(--drive-ui-surface) 74%, transparent);
+  border-bottom: 1px solid var(--ui-border-subtle);
   box-sizing: border-box;
   display: flex;
   justify-content: space-between;
@@ -243,7 +244,7 @@
 
 .drive-transfers-module .drive-transfer-section-header > div:first-child {
   align-items: center;
-  color: #111827;
+  color: var(--drive-ui-ink);
   display: inline-flex;
   font-size: 13px;
   font-weight: 820;
@@ -253,9 +254,9 @@
 
 .drive-transfers-module .drive-transfer-section-header .icedr-status-pill {
   background: transparent !important;
-  border-color: #dde6f2 !important;
+  border-color: var(--drive-ui-line) !important;
   box-shadow: none !important;
-  color: #172033 !important;
+  color: var(--drive-ui-ink) !important;
   height: 24px;
   min-height: 24px;
   min-width: 24px;
@@ -283,8 +284,8 @@
 }
 
 .drive-transfers-module .drive-transfer-section .drive-transfer-section-table .drive-module-table-head {
-  background: rgba(248, 251, 255, 0.7);
-  color: #65738b;
+  background: color-mix(in srgb, var(--drive-ui-surface-soft) 70%, transparent);
+  color: var(--drive-ui-muted);
   font-size: 11px;
   letter-spacing: 0;
   min-height: 38px;
@@ -350,12 +351,12 @@
 
 .drive-transfers-module .drive-transfer-row {
   align-items: center;
-  background: rgba(255, 255, 255, 0.64);
+  background: color-mix(in srgb, var(--drive-ui-surface) 64%, transparent);
 }
 
 .drive-transfers-module .drive-transfer-row:hover {
-  background: rgba(249, 251, 255, 0.84);
-  box-shadow: 0 6px 14px rgba(35, 56, 94, 0.018);
+  background: color-mix(in srgb, var(--drive-ui-surface-raised) 84%, transparent);
+  box-shadow: var(--drive-ui-shadow-1);
   transform: translateY(-1px);
 }
 
@@ -364,7 +365,7 @@
 }
 
 .drive-transfers-module .drive-transfer-row[data-status="running"]:hover {
-  background: #f7faff;
+  background: var(--drive-ui-blue-50);
 }
 
 .drive-transfers-module .drive-transfer-row[data-status="paused"] {
@@ -386,7 +387,7 @@
 }
 
 .drive-transfers-module .drive-transfer-section .drive-module-row-title {
-  color: #111827;
+  color: var(--drive-ui-ink);
   font-size: 13px;
   font-weight: 800;
   line-height: 18px;
@@ -403,10 +404,10 @@
 
 .drive-transfers-module .drive-transfer-file-icon {
   align-items: center;
-  background: #fbfdff;
-  border: 1px solid #e3ebf6;
+  background: var(--drive-ui-surface-raised);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(35, 56, 94, 0.028);
+  box-shadow: var(--drive-ui-shadow-1);
   display: inline-flex;
   height: 31px;
   justify-content: center;
@@ -415,32 +416,32 @@
 }
 
 .drive-transfers-module .drive-transfer-file-icon[data-status="running"] {
-  background: #eef3ff;
-  border-color: #dbe5ff;
+  background: color-mix(in srgb, var(--drive-ui-blue-600) 10%, var(--drive-ui-surface));
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 26%, var(--drive-ui-line));
 }
 
 .drive-transfers-module .drive-transfer-file-icon[data-status="completed"] {
-  background: #ecfdf3;
-  border-color: #d9f4e2;
+  background: color-mix(in srgb, var(--drive-ui-success) 10%, var(--drive-ui-surface));
+  border-color: color-mix(in srgb, var(--drive-ui-success) 26%, var(--drive-ui-line));
 }
 
 .drive-transfers-module .drive-transfer-file-icon[data-status="paused"] {
-  background: #fff7e8;
-  border-color: #fde8bf;
+  background: color-mix(in srgb, var(--drive-ui-warning) 10%, var(--drive-ui-surface));
+  border-color: color-mix(in srgb, var(--drive-ui-warning) 28%, var(--drive-ui-line));
 }
 
 .drive-transfers-module .drive-transfer-file-icon[data-status="failed"] {
-  background: #fff1f1;
-  border-color: #ffd9d9;
+  background: color-mix(in srgb, var(--drive-ui-danger) 10%, var(--drive-ui-surface));
+  border-color: color-mix(in srgb, var(--drive-ui-danger) 28%, var(--drive-ui-line));
 }
 
 .drive-transfers-module .drive-transfer-status-mark {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #dfe8f4;
+  background: var(--drive-ui-surface-raised);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 999px;
   bottom: -4px;
-  box-shadow: 0 3px 8px rgba(35, 56, 94, 0.08);
+  box-shadow: var(--drive-ui-shadow-1);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   height: 14px;
@@ -471,7 +472,7 @@
 
 .drive-transfers-module .drive-transfer-progress-header {
   align-items: center;
-  color: #7b89a2;
+  color: var(--drive-ui-subtle);
   display: flex;
   font-size: 12px;
   gap: 10px;
@@ -480,13 +481,13 @@
 }
 
 .drive-transfers-module .drive-transfer-progress-header span:first-child {
-  color: #1f2937;
+  color: var(--drive-ui-ink);
   font-weight: 820;
   min-width: 34px;
 }
 
 .drive-transfers-module .drive-transfer-progress-header span:last-child {
-  color: #7b89a2;
+  color: var(--drive-ui-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -495,7 +496,7 @@
 .drive-transfers-module .drive-transfer-size-cell,
 .drive-transfers-module .drive-transfer-speed-cell,
 .drive-transfers-module .drive-transfer-time-cell {
-  color: #52617a;
+  color: var(--drive-ui-muted);
   display: block;
   font-size: 12px;
   font-weight: 700;
@@ -516,7 +517,7 @@
   --tool-hover-border: transparent;
   border-color: transparent !important;
   box-shadow: none !important;
-  color: #586780 !important;
+  color: var(--drive-ui-muted) !important;
   height: 28px;
   min-width: 28px;
   opacity: 0.9;
@@ -524,13 +525,13 @@
 }
 
 .drive-transfers-module .drive-transfer-actions .icedr-tool-button:hover {
-  color: #172033 !important;
+  color: var(--drive-ui-ink) !important;
   transform: translateY(-1px);
   opacity: 1;
 }
 
 .drive-transfers-module .drive-transfer-row .icedr-status-pill {
-  background: #ffffff !important;
+  background: var(--drive-ui-surface-raised) !important;
   box-shadow: none !important;
   min-height: 24px;
   min-width: 88px;
@@ -538,8 +539,8 @@
 }
 
 .drive-transfers-module .drive-module-side-card:hover {
-  border-color: #d9e4f1;
-  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.014), 0 16px 32px rgba(35, 56, 94, 0.026);
+  border-color: var(--drive-ui-line-strong);
+  box-shadow: var(--drive-ui-shadow-hover);
   transform: none;
 }
 
@@ -575,17 +576,17 @@
 }
 
 .drive-transfers-module .drive-transfer-setting-row > span:first-child {
-  color: #5f6d83;
+  color: var(--drive-ui-muted);
   font-size: 12px;
   font-weight: 720;
 }
 
 .drive-transfers-module .drive-transfer-setting-select {
   align-items: center;
-  background: #fbfdff;
-  border: 1px solid #e0e8f2;
+  background: var(--drive-ui-surface-raised);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 8px;
-  color: #1f2937;
+  color: var(--drive-ui-ink);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   height: 38px;
@@ -606,7 +607,7 @@
 }
 
 .drive-transfers-module .drive-transfer-setting-select svg {
-  color: #7b89a2;
+  color: var(--drive-ui-subtle);
   pointer-events: none;
 }
 
@@ -629,9 +630,9 @@
 }
 
 .drive-transfers-module .drive-transfer-setting-switch span {
-  background: #d7e1ee;
+  background: var(--ui-border-strong);
   border-radius: 999px;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--drive-ui-ink) 12%, transparent);
   display: block;
   height: 100%;
   transition: background-color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease);
@@ -639,9 +640,9 @@
 }
 
 .drive-transfers-module .drive-transfer-setting-switch span::after {
-  background: #fff;
+  background: var(--drive-ui-surface-raised);
   border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--drive-ui-shadow-1);
   content: "";
   height: 18px;
   left: 2px;
@@ -652,8 +653,8 @@
 }
 
 .drive-transfers-module .drive-transfer-setting-switch[data-checked="true"] span {
-  background: linear-gradient(90deg, #2f6df6, #6f7bf2);
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12), 0 0 0 3px rgba(47, 109, 246, 0.12);
+  background: linear-gradient(90deg, var(--drive-ui-blue-700), var(--drive-ui-blue-600));
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--drive-ui-ink) 12%, transparent), 0 0 0 3px color-mix(in srgb, var(--drive-ui-blue-600) 12%, transparent);
 }
 
 .drive-transfers-module .drive-transfer-setting-switch[data-checked="true"] span::after {
@@ -661,11 +662,11 @@
 }
 
 .drive-transfers-module .drive-transfer-settings-health {
-  border-top: 1px solid #eef3f9;
+  border-top: 1px solid var(--ui-border-subtle);
 }
 
 .drive-transfers-module .drive-transfer-settings-summary {
-  border-top: 1px solid #eef3f9;
+  border-top: 1px solid var(--ui-border-subtle);
   display: grid;
   gap: 0 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -673,7 +674,7 @@
 }
 
 .drive-transfers-module .drive-module-info-row {
-  border-bottom: 1px solid #edf2f8;
+  border-bottom: 1px solid var(--ui-border-subtle);
   min-height: 31px;
 }
 
@@ -682,11 +683,11 @@
 }
 
 .drive-transfers-module .drive-module-info-row span:first-child {
-  color: #64748b;
+  color: var(--drive-ui-muted);
 }
 
 .drive-transfers-module .drive-module-info-row span:last-child {
-  color: #111827;
+  color: var(--drive-ui-ink);
   font-weight: 780;
 }
 
@@ -705,14 +706,14 @@
 }
 
 .drive-transfers-module .drive-transfer-health > div span {
-  color: #5f6d83;
+  color: var(--drive-ui-muted);
   font-size: 12px;
   font-weight: 720;
   min-width: 0;
 }
 
 .drive-transfers-module .drive-transfer-health > div strong {
-  color: #111827;
+  color: var(--drive-ui-ink);
   font-size: 15px;
   font-weight: 840;
   line-height: 20px;
@@ -728,7 +729,7 @@
 
 .drive-transfers-module .drive-speed-legend {
   align-items: center;
-  color: #52617a;
+  color: var(--drive-ui-muted);
   display: flex;
   flex-wrap: wrap;
   font-size: 12px;
@@ -737,19 +738,19 @@
 }
 
 .drive-transfers-module .drive-speed-dot {
-  background: linear-gradient(180deg, #6f7bf2, #2f6df6);
+  background: linear-gradient(180deg, var(--drive-ui-blue-600), var(--drive-ui-blue-700));
   border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--drive-ui-blue-600) 10%, transparent);
   display: inline-flex;
   height: 7px;
   width: 7px;
 }
 
 .drive-transfers-module .drive-speed-chart {
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  border: 1px solid #e5ecf5;
+  background: linear-gradient(180deg, var(--drive-ui-surface) 0%, var(--drive-ui-surface-soft) 100%);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 8px;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--drive-ui-ink) 2%, transparent);
   height: 158px;
   overflow: hidden;
   position: relative;
@@ -757,8 +758,8 @@
 
 .drive-transfers-module .drive-speed-chart::before {
   background-image:
-    linear-gradient(#edf2f8 1px, transparent 1px),
-    linear-gradient(90deg, #edf2f8 1px, transparent 1px);
+    linear-gradient(var(--ui-border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ui-border-subtle) 1px, transparent 1px);
   background-size: 100% 34px, 52px 100%;
   content: "";
   inset: 0;
@@ -778,7 +779,7 @@
 .drive-transfers-module .drive-speed-samples {
   align-items: center;
   bottom: 8px;
-  color: #64748b;
+  color: var(--drive-ui-muted);
   display: flex;
   font-size: 10px;
   font-weight: 700;
@@ -800,7 +801,7 @@
 
 .drive-transfers-module .drive-speed-empty {
   align-items: center;
-  color: #94a3b8;
+  color: var(--drive-ui-subtle);
   display: flex;
   font-size: 12px;
   font-weight: 760;

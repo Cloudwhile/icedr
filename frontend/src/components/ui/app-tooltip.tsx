@@ -141,8 +141,9 @@ export function AppTooltip({
           role="tooltip"
           style={{
             "--tooltip-border": palette.hairlineStrong,
-            "--tooltip-bg": palette.surface3,
+            "--tooltip-bg": palette.overlay,
             "--tooltip-color": palette.ink,
+            "--tooltip-shadow": palette.shadowPopover,
             left: position.x,
             top: position.y,
           } as CSSProperties}

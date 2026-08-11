@@ -18,11 +18,11 @@
 
 .admin-shell .drive-system-save-all {
   align-items: center;
-  background: linear-gradient(180deg, #3567ff 0%, #2f5ceb 100%);
-  border: 1px solid #2f5ceb;
+  background: linear-gradient(180deg, var(--ui-accent) 0%, var(--ui-accent-hover) 100%);
+  border: 1px solid var(--ui-accent);
   border-radius: 8px;
-  box-shadow: 0 10px 22px rgba(49, 92, 216, 0.22);
-  color: #fff;
+  box-shadow: var(--ui-shadow-card);
+  color: var(--ui-text-inverse);
   display: inline-flex;
   gap: 8px;
   height: 36px;
@@ -40,7 +40,7 @@
 }
 
 .admin-shell .drive-system-save-all:hover {
-  box-shadow: 0 14px 28px rgba(94, 106, 210, 0.24);
+  box-shadow: var(--ui-shadow-popover);
   filter: saturate(1.04);
   transform: translateY(-1px);
 }
@@ -57,11 +57,9 @@
 
 .admin-shell .drive-system-settings-nav {
   animation: admin-card-in 360ms var(--drive-ui-ease) both;
-  background: rgba(255, 255, 255, 0.86);
-  border-color: #dfe7f2;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.012),
-    0 10px 28px rgba(35, 56, 94, 0.022);
+  background: color-mix(in srgb, var(--ui-surface) 86%, transparent);
+  border-color: var(--ui-border-default);
+  box-shadow: var(--ui-shadow-card);
   gap: 6px;
   min-height: 442px;
   padding: 11px;
@@ -70,7 +68,7 @@
 
 .admin-shell .drive-system-settings-nav a {
   border-radius: 8px;
-  color: #4f5f78;
+  color: var(--ui-text-secondary);
   font-size: 13px;
   font-weight: 760;
   min-height: 39px;
@@ -78,20 +76,20 @@
 }
 
 .admin-shell .drive-system-settings-nav a:hover {
-  background: #f7f9fc;
-  border-color: #e2e9f7;
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border-default);
   transform: translateX(2px);
 }
 
 .admin-shell .drive-system-settings-nav a[data-active="true"] {
-  background: linear-gradient(90deg, #edf3ff 0%, #f8faff 100%);
-  border-color: #dbe5ff;
+  background: var(--ui-selection);
+  border-color: color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border-default));
   box-shadow: inset 2px 0 0 var(--drive-ui-blue-600);
   color: var(--drive-ui-blue-600);
 }
 
 .admin-shell .drive-system-settings-nav a[data-disabled="true"] {
-  color: #65758f;
+  color: var(--ui-text-disabled);
   cursor: default;
   opacity: 0.78;
 }
@@ -104,19 +102,17 @@
 
 .admin-shell .drive-system-settings-main {
   animation: admin-card-in 400ms var(--drive-ui-ease) both;
-  background: #fff;
-  border: 1px solid #dde7f3;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-default);
   border-radius: var(--drive-ui-radius);
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.012),
-    0 12px 34px rgba(35, 56, 94, 0.025);
+  box-shadow: var(--ui-shadow-card);
   gap: 0;
   overflow: hidden;
 }
 
 .admin-shell .drive-platform-section-nav {
-  background: #f8faff;
-  border-bottom: 1px solid #e2e9f3;
+  background: var(--ui-surface-subtle);
+  border-bottom: 1px solid var(--ui-border-default);
   display: grid;
   gap: 6px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -128,7 +124,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   display: inline-flex;
   font-size: 12px;
   font-weight: 760;
@@ -145,21 +141,21 @@
 }
 
 .admin-shell .drive-platform-section-nav button:hover {
-  background: #fff;
-  border-color: #dfe7f2;
-  color: #26354d;
+  background: var(--ui-surface-raised);
+  border-color: var(--ui-border-default);
+  color: var(--ui-text-primary);
 }
 
 .admin-shell .drive-platform-section-nav button[data-active="true"] {
-  background: #fff;
-  border-color: #d8e2f1;
-  box-shadow: 0 1px 3px rgba(35, 56, 94, 0.06);
+  background: var(--ui-surface);
+  border-color: var(--ui-border-strong);
+  box-shadow: var(--ui-shadow-card);
   color: var(--drive-ui-blue-600);
 }
 
 .admin-shell .drive-platform-section-nav button[data-dirty="true"]::after {
   background: var(--drive-ui-warning);
-  border: 2px solid #fff;
+  border: 2px solid var(--ui-surface);
   border-radius: 999px;
   content: "";
   height: 8px;
@@ -178,7 +174,7 @@
 .admin-shell .drive-system-settings-block {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #e5edf6;
+  border-bottom: 1px solid var(--ui-border-subtle);
   border-radius: 0;
   box-shadow: none;
   gap: 17px;
@@ -225,7 +221,7 @@
 }
 
 .admin-shell .drive-system-settings-block-heading small {
-  color: #66758a;
+  color: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 650;
   line-height: 17px;
@@ -270,23 +266,23 @@
 }
 
 .admin-shell .drive-settings-label {
-  color: #56657d;
+  color: var(--ui-text-secondary);
   font-size: 11px;
   font-weight: 760;
   letter-spacing: 0;
 }
 
 .admin-shell .drive-settings-fact {
-  background: linear-gradient(180deg, #fcfdff 0%, #f8fbff 100%);
-  border-color: #e1e8f2;
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border-default);
   border-radius: 8px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  box-shadow: none;
   min-height: 50px;
   padding: 9px 12px;
 }
 
 .admin-shell .drive-settings-value {
-  color: #111827;
+  color: var(--ui-text-primary);
   font-weight: 780;
 }
 
@@ -296,20 +292,20 @@
 }
 
 .admin-shell .drive-system-breakdown-panel {
-  background: #fbfdff;
-  border-color: #e3eaf5;
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border-default);
   border-radius: 8px;
   box-shadow: none;
   padding: 13px;
 }
 
 .admin-shell .drive-system-breakdown-panel > span:first-child {
-  color: #111827;
+  color: var(--ui-text-primary);
   font-size: 13px;
 }
 
 .admin-shell .drive-system-breakdown-panel > div {
-  border-top-color: #edf2f8;
+  border-top-color: var(--ui-border-subtle);
   min-height: 30px;
 }
 
@@ -337,21 +333,19 @@
 }
 
 .admin-shell .drive-system-side-card {
-  background: #ffffff;
-  border-color: #dfe7f2;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.012),
-    0 10px 28px rgba(35, 56, 94, 0.022);
+  background: var(--ui-surface);
+  border-color: var(--ui-border-default);
+  box-shadow: var(--ui-shadow-card);
 }
 
 .admin-shell .drive-system-side-card-header {
-  border-bottom-color: #e7edf5;
+  border-bottom-color: var(--ui-border-subtle);
   min-height: 44px;
   padding-inline: 13px;
 }
 
 .admin-shell .drive-system-side-card-header span {
-  color: #111827;
+  color: var(--ui-text-primary);
   font-weight: 830;
 }
 
@@ -370,7 +364,7 @@
 }
 
 .admin-shell .drive-system-side-row span:first-child {
-  color: #64748b;
+  color: var(--ui-text-secondary);
   min-width: 0;
 }
 
@@ -387,7 +381,7 @@
 .admin-shell .drive-system-side-row span[data-tone="secure"]::before {
   background: var(--drive-ui-success);
   border-radius: 999px;
-  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-success) 12%, transparent);
   content: "";
   flex: 0 0 auto;
   height: 6px;
@@ -401,7 +395,7 @@
 }
 
 .admin-shell .drive-system-side-action:hover {
-  background: #f7f9ff;
+  background: var(--ui-surface-subtle);
   color: var(--drive-ui-blue-600);
 }
 
@@ -410,7 +404,7 @@
 }
 
 .admin-shell .drive-system-side-action svg {
-  color: #7b89a2;
+  color: var(--ui-text-tertiary);
 }
 
 .admin-shell .drive-system-side-action:hover svg {
@@ -419,8 +413,8 @@
 
 .admin-shell .drive-system-settings-block .icedr-app-input,
 .admin-shell .drive-system-settings-block .icedr-app-select-shell {
-  background: #fff;
-  border-color: #dfe7f2;
+  background: var(--ui-surface);
+  border-color: var(--ui-border-default);
   min-height: 38px;
 }
 
@@ -435,8 +429,8 @@
 
 .admin-shell .drive-system-settings-block .icedr-app-input:focus-within,
 .admin-shell .drive-system-settings-block .icedr-app-select-shell:focus-within {
-  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 42%, #dfe7f2);
-  box-shadow: 0 0 0 4px rgba(94, 106, 210, 0.1);
+  border-color: color-mix(in srgb, var(--ui-accent) 42%, var(--ui-border-default));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-focus-ring) 28%, transparent);
 }
 
 @media (max-width: 1320px) {

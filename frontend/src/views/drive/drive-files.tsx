@@ -13,7 +13,6 @@ import {
 } from "@/components/drive/file-collection-state";
 import { resolveDriveFileCollectionState } from "@/components/drive/file-collection-state-model";
 import {
-  DriveBatchToolbar,
   DriveFileMoreActionsMenu,
   DriveFileSelectBox,
   DriveTableSortHeader,
@@ -31,15 +30,25 @@ import { isTextEditableFile } from "@/features/file/open-with";
 import { preventDriveEntryTextSelection } from "@/features/file/drive-entry-events";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 import { formatDriveItemDate, getFilePathHint } from "./drive-files-helpers";
+import { handleDriveItemKeyDown, resolveDriveSelectionExtension } from "./drive-files-keyboard";
 import type { DriveSortBy, DriveSortDirection } from "./drive-search-model";
 
 const buttonTypeAttr: { type?: "button" } = {
   type: "button",
 };
 
+function getRenderedGridColumnCount(itemElement: HTMLElement) {
+  const grid = itemElement.closest<HTMLElement>(".drive-grid");
+  const template = grid ? getComputedStyle(grid).gridTemplateColumns.trim() : "";
+  if (!template || template === "none") return 1;
+  const repeatedColumns = /^repeat\(\s*(\d+)\s*,/.exec(template);
+  return repeatedColumns ? Number(repeatedColumns[1]) : template.split(/\s+/).length;
+}
+
 type FileAction = (item: DriveItem) => void;
 
 type FileSelectionHandlers = {
+  extendKeyboardSelection: (currentId: string, key: string, columnCount: number) => string | null;
   onSelectItem: (event: React.MouseEvent, item: DriveItem) => void;
   onSelectItemCheckbox: (item: DriveItem, checked: boolean) => void;
   selectSingleItem: (id: string) => void;
@@ -51,6 +60,7 @@ export type FilesModuleProps = {
   currentFolderId: string | null;
   canLoadMore?: boolean;
   canPaste: boolean;
+  destructivePending?: { archive: boolean; delete: boolean; restore: boolean };
   error: string | null;
   goUp: () => void;
   hasQuery: boolean;
@@ -71,13 +81,6 @@ export type FilesModuleProps = {
   onCopyNodeItem: FileAction;
   onDownloadItem: FileAction;
   onEditItem: FileAction;
-  onBatchArchiveItems: (items: DriveItem[]) => void;
-  onBatchCopyItems: (items: DriveItem[]) => void;
-  onBatchCutItems: (items: DriveItem[]) => void;
-  onBatchDeletePermanentlyItems: (items: DriveItem[]) => void;
-  onBatchDownloadItems: (items: DriveItem[]) => void;
-  onBatchRestoreItems: (items: DriveItem[]) => void;
-  onBatchShareItems: (items: DriveItem[]) => void;
   onDeletePermanentlyItem: FileAction;
   onLoadMore?: () => void;
   onMoveItem: FileAction;
@@ -107,6 +110,7 @@ export function FilesModule({
   currentFolderId,
   canLoadMore,
   canPaste,
+  destructivePending,
   error,
   goUp,
   hasQuery,
@@ -127,13 +131,6 @@ export function FilesModule({
   onCopyNodeItem,
   onDownloadItem,
   onEditItem,
-  onBatchArchiveItems,
-  onBatchCopyItems,
-  onBatchCutItems,
-  onBatchDeletePermanentlyItems,
-  onBatchDownloadItems,
-  onBatchRestoreItems,
-  onBatchShareItems,
   onDeletePermanentlyItem,
   onLoadMore,
   onMoveItem,
@@ -159,9 +156,6 @@ export function FilesModule({
   const t = useTranslations();
   const [blankContextMenu, setBlankContextMenu] = useState<AppContextMenuPosition | null>(null);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const selectedItems = selected
-    .map((id) => sourceItems.find((item) => item.id === id) ?? items.find((item) => item.id === id))
-    .filter((item): item is DriveItem => Boolean(item));
   const collectionState = resolveDriveFileCollectionState({
     activeNav,
     currentFolderId,
@@ -237,6 +231,38 @@ export function FilesModule({
     toggleSelected(item.id, checked);
     setSelectionAnchorId(item.id);
   };
+  const extendKeyboardSelection = (currentId: string, key: string, columnCount: number) => {
+    const visibleIds = items.map((item) => item.id);
+    const extension = resolveDriveSelectionExtension({
+      anchorId: selectionAnchorId,
+      columnCount,
+      currentId,
+      itemIds: visibleIds,
+      key,
+      viewMode,
+    });
+    if (!extension) return null;
+
+    const nextSelected = new Set(extension.selectedIds);
+    new Set([...selected, ...visibleIds]).forEach((id) => {
+      const nextChecked = nextSelected.has(id);
+      if (selected.includes(id) !== nextChecked) toggleSelected(id, nextChecked);
+    });
+    setSelectionAnchorId(extension.anchorId);
+    return extension.focusId;
+  };
+  const handleModuleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.key !== "Escape" ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      selected.length === 0 ||
+      document.querySelector('.drive-details-panel, [role="menu"], [role="dialog"][aria-modal="true"]')
+    ) return;
+    event.preventDefault();
+    onBlankSelect();
+    setSelectionAnchorId(null);
+  };
   const retryActiveCollection = hasQuery && onRetrySearch ? onRetrySearch : onBlankRefresh;
   const collectionStateActions: DriveFileCollectionStateAction[] = collectionState === "error"
     ? [{ icon: "refresh", label: t("app.errorBoundary.retry"), onClick: retryActiveCollection, tone: "accent" }]
@@ -264,7 +290,7 @@ export function FilesModule({
 
   return (
     <MotionLayoutGroup>
-      <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu}>
+      <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu} onKeyDown={handleModuleKeyDown}>
         {error && collectionState === "ready" ? (
           <div className="drive-error-banner">
             <StatusPill palette={palette} tone="risk">
@@ -279,26 +305,6 @@ export function FilesModule({
               <LocalIcon name="refresh" size={16} />
             </ToolButton>
           </div>
-        ) : null}
-
-        {selectedItems.length > 1 ? (
-          <DriveBatchToolbar
-            activeNav={activeNav}
-            items={selectedItems}
-            onArchive={() => onBatchArchiveItems(selectedItems)}
-            onClear={() => {
-              onBlankSelect();
-              setSelectionAnchorId(null);
-            }}
-            onCopy={() => onBatchCopyItems(selectedItems)}
-            onCut={() => onBatchCutItems(selectedItems)}
-            onDeletePermanently={() => onBatchDeletePermanentlyItems(selectedItems)}
-            onDownload={() => onBatchDownloadItems(selectedItems)}
-            onRestore={() => onBatchRestoreItems(selectedItems)}
-            onShare={() => onBatchShareItems(selectedItems)}
-            palette={palette}
-            sourceItems={sourceItems}
-          />
         ) : null}
 
         {collectionState !== "ready" ? (
@@ -322,6 +328,7 @@ export function FilesModule({
             onDownloadItem={onDownloadItem}
             onEditItem={onEditItem}
             onDeletePermanentlyItem={onDeletePermanentlyItem}
+            destructivePending={destructivePending}
             onMoveItem={onMoveItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
@@ -342,6 +349,7 @@ export function FilesModule({
             selectSingleItem={selectSingleItem}
             toggleSelected={toggleSelected}
             toggleStar={toggleStar}
+            extendKeyboardSelection={extendKeyboardSelection}
           />
         ) : (
           <FileGrid
@@ -357,6 +365,7 @@ export function FilesModule({
             onDownloadItem={onDownloadItem}
             onEditItem={onEditItem}
             onDeletePermanentlyItem={onDeletePermanentlyItem}
+            destructivePending={destructivePending}
             onMoveItem={onMoveItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
@@ -374,6 +383,7 @@ export function FilesModule({
             selectSingleItem={selectSingleItem}
             toggleSelected={toggleSelected}
             toggleStar={toggleStar}
+            extendKeyboardSelection={extendKeyboardSelection}
           />
         )}
         {canLoadMore && onLoadMore ? (
@@ -427,6 +437,7 @@ function isDriveBlankMenuIgnored(target: HTMLElement) {
 }
 
 function buildFileActionItems({
+  destructivePending,
   item,
   onArchive,
   onCopy,
@@ -444,6 +455,7 @@ function buildFileActionItems({
   palette,
   t,
 }: {
+  destructivePending?: FilesModuleProps["destructivePending"];
   item: DriveItem;
   onArchive: FileAction;
   onCopy: FileAction;
@@ -466,8 +478,8 @@ function buildFileActionItems({
   if (item.archivedAt) {
     return [
       { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), value: "details" },
-      { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), separatorBefore: true, value: "restore" },
-      { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), tone: "danger" as const, value: "delete-permanently" },
+      { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), disabled: destructivePending?.restore, separatorBefore: true, value: "restore" },
+      { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), disabled: destructivePending?.delete, tone: "danger" as const, value: "delete-permanently" },
     ];
   }
   const actionItems: AppMenuItem[] = [
@@ -488,7 +500,7 @@ function buildFileActionItems({
     { icon: <LocalIcon name="shield" size={15} />, label: t("actions.security"), onClick: () => onSecurity(item), value: "security" },
     item.archivedAt
       ? { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), value: "restore" }
-      : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), separatorBefore: true, tone: "danger", value: "archive" },
+      : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), disabled: destructivePending?.archive, separatorBefore: true, tone: "danger", value: "archive" },
   ].filter(Boolean) as AppMenuItem[];
 
   return actionItems;
@@ -497,26 +509,6 @@ function buildFileActionItems({
 function openItemSurface(item: DriveItem, openFolder: (id: string) => void, openPreview: (id: string) => void) {
   if (getItemKind(item) === "folder") openFolder(item.id);
   else openPreview(item.id);
-}
-
-function handleDriveItemKeyDown(
-  event: React.KeyboardEvent,
-  item: DriveItem,
-  checked: boolean,
-  openFolder: (id: string) => void,
-  openPreview: (id: string) => void,
-  onSelect: (item: DriveItem, checked: boolean) => void,
-) {
-  if (event.target !== event.currentTarget || event.repeat) return;
-  if (event.key === "Enter") {
-    event.preventDefault();
-    openItemSurface(item, openFolder, openPreview);
-    return;
-  }
-  if (event.key === " ") {
-    event.preventDefault();
-    onSelect(item, !checked);
-  }
 }
 
 function handleParentDirectoryKeyDown(event: React.KeyboardEvent, goUp: () => void) {
@@ -529,6 +521,7 @@ function handleParentDirectoryKeyDown(event: React.KeyboardEvent, goUp: () => vo
 function FileTable({
   activeNav,
   currentFolderId,
+  destructivePending,
   goUp,
   items,
   onArchiveItem,
@@ -559,19 +552,13 @@ function FileTable({
   selectSingleItem,
   toggleSelected,
   toggleStar,
+  extendKeyboardSelection,
 }: Omit<
   FilesModuleProps,
   | "createMenuItems"
   | "error"
   | "hasQuery"
   | "canPaste"
-  | "onBatchArchiveItems"
-  | "onBatchCopyItems"
-  | "onBatchCutItems"
-  | "onBatchDeletePermanentlyItems"
-  | "onBatchDownloadItems"
-  | "onBatchRestoreItems"
-  | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
   | "onBlankPaste"
@@ -589,6 +576,7 @@ function FileTable({
   const indeterminate = !allSelected && allFileIds.some((id) => selected.includes(id));
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
+    destructivePending,
     item,
     onArchive: onArchiveItem,
     onCopy: onCopyItem,
@@ -612,6 +600,11 @@ function FileTable({
     event.stopPropagation();
     if (!selected.includes(item.id)) selectSingleItem(item.id);
     setContextMenu({ item, position: { x: event.clientX, y: event.clientY } });
+  };
+  const openContextMenuFromKeyboard = (item: DriveItem, target: HTMLElement) => {
+    if (!selected.includes(item.id)) selectSingleItem(item.id);
+    const rect = target.getBoundingClientRect();
+    setContextMenu({ item, position: { x: rect.left + 24, y: rect.top + Math.min(rect.height, 32) } });
   };
 
   const renderItemRow = (item: DriveItem) => {
@@ -641,7 +634,7 @@ function FileTable({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, 1), openContextMenuFromKeyboard)}
         onMouseDown={preventDriveEntryTextSelection}
         tabIndex={0}
       >
@@ -793,6 +786,7 @@ function FileTable({
 
 function FileGrid({
   currentFolderId,
+  destructivePending,
   goUp,
   items,
   onArchiveItem,
@@ -819,19 +813,13 @@ function FileGrid({
   onSelectItemCheckbox,
   selectSingleItem,
   toggleStar,
+  extendKeyboardSelection,
 }: Omit<
   FilesModuleProps,
   | "createMenuItems"
   | "error"
   | "hasQuery"
   | "canPaste"
-  | "onBatchArchiveItems"
-  | "onBatchCopyItems"
-  | "onBatchCutItems"
-  | "onBatchDeletePermanentlyItems"
-  | "onBatchDownloadItems"
-  | "onBatchRestoreItems"
-  | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
   | "onBlankPaste"
@@ -848,6 +836,7 @@ function FileGrid({
   const [contextMenu, setContextMenu] = useState<{ item: DriveItem; position: AppContextMenuPosition } | null>(null);
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
+    destructivePending,
     item,
     onArchive: onArchiveItem,
     onCopy: onCopyItem,
@@ -872,6 +861,11 @@ function FileGrid({
     if (!selected.includes(item.id)) selectSingleItem(item.id);
     setContextMenu({ item, position: { x: event.clientX, y: event.clientY } });
   };
+  const openContextMenuFromKeyboard = (item: DriveItem, target: HTMLElement) => {
+    if (!selected.includes(item.id)) selectSingleItem(item.id);
+    const rect = target.getBoundingClientRect();
+    setContextMenu({ item, position: { x: rect.left + 24, y: rect.top + Math.min(rect.height, 32) } });
+  };
 
   const renderCard = (item: DriveItem) => {
     const checked = selected.includes(item.id);
@@ -883,6 +877,7 @@ function FileGrid({
     return (
       <div
         aria-label={item.name}
+        aria-selected={checked}
         key={item.id}
         data-motion-row
         data-drive-entry
@@ -895,9 +890,9 @@ function FileGrid({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, getRenderedGridColumnCount(event.currentTarget)), openContextMenuFromKeyboard)}
         onMouseDown={preventDriveEntryTextSelection}
-        role="group"
+        role="option"
         tabIndex={0}
       >
         <div className="drive-card-visual">
@@ -956,7 +951,7 @@ function FileGrid({
 
   return (
     <>
-      <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid">
+      <MotionList aria-label={t("app.refreshTarget.files")} aria-multiselectable="true" key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid" role="listbox">
         {currentFolderId ? (
           <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onClick={goUp} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
             <div className="drive-card-visual">
