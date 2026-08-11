@@ -13,7 +13,6 @@ import {
 } from "@/components/drive/file-collection-state";
 import { resolveDriveFileCollectionState } from "@/components/drive/file-collection-state-model";
 import {
-  DriveBatchToolbar,
   DriveFileMoreActionsMenu,
   DriveFileSelectBox,
   DriveTableSortHeader,
@@ -127,13 +126,6 @@ export function FilesModule({
   onCopyNodeItem,
   onDownloadItem,
   onEditItem,
-  onBatchArchiveItems,
-  onBatchCopyItems,
-  onBatchCutItems,
-  onBatchDeletePermanentlyItems,
-  onBatchDownloadItems,
-  onBatchRestoreItems,
-  onBatchShareItems,
   onDeletePermanentlyItem,
   onLoadMore,
   onMoveItem,
@@ -159,9 +151,6 @@ export function FilesModule({
   const t = useTranslations();
   const [blankContextMenu, setBlankContextMenu] = useState<AppContextMenuPosition | null>(null);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const selectedItems = selected
-    .map((id) => sourceItems.find((item) => item.id === id) ?? items.find((item) => item.id === id))
-    .filter((item): item is DriveItem => Boolean(item));
   const collectionState = resolveDriveFileCollectionState({
     activeNav,
     currentFolderId,
@@ -279,26 +268,6 @@ export function FilesModule({
               <LocalIcon name="refresh" size={16} />
             </ToolButton>
           </div>
-        ) : null}
-
-        {selectedItems.length > 1 ? (
-          <DriveBatchToolbar
-            activeNav={activeNav}
-            items={selectedItems}
-            onArchive={() => onBatchArchiveItems(selectedItems)}
-            onClear={() => {
-              onBlankSelect();
-              setSelectionAnchorId(null);
-            }}
-            onCopy={() => onBatchCopyItems(selectedItems)}
-            onCut={() => onBatchCutItems(selectedItems)}
-            onDeletePermanently={() => onBatchDeletePermanentlyItems(selectedItems)}
-            onDownload={() => onBatchDownloadItems(selectedItems)}
-            onRestore={() => onBatchRestoreItems(selectedItems)}
-            onShare={() => onBatchShareItems(selectedItems)}
-            palette={palette}
-            sourceItems={sourceItems}
-          />
         ) : null}
 
         {collectionState !== "ready" ? (
