@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
+import { resolve } from "node:path";
 
 const now = "2026-07-31T08:00:00.000Z";
 const workspaceId = "workspace-responsive";
@@ -388,7 +389,73 @@ test.describe("responsive Drive workspace", () => {
     await expect(page.locator(".workspace-notification").filter({ hasText: "Restored 1 item" })).toBeVisible();
     await expect(driveItem(page, "file-report")).toBeVisible();
   });
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`visually verifies the ${theme} Drive surfaces and overlays`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await mockDriveApi(page, { theme });
+      await seedAuthenticatedDrive(page, theme);
+      await page.goto("/");
+
+      const reportRow = driveItem(page, "file-report");
+      await expect(reportRow).toBeVisible();
+      await expect(page.locator(".drive-shell")).toHaveAttribute("data-theme", theme);
+      await expectThemeSurfaces(page, theme, [".drive-sidebar", ".drive-table-shell"]);
+      await captureThemeShot(page, testInfo, theme, "root");
+
+      const tableShell = page.locator(".drive-table-shell");
+      await expect.poll(() => tableShell.evaluate((element) => element.scrollLeft)).toBe(0);
+      await reportRow.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Details", exact: true }).click();
+      const details = page.getByRole("region", { name: reportFileName });
+      await expect(details).toBeVisible();
+      await expect.poll(() => tableShell.evaluate((element) => element.scrollLeft)).toBe(0);
+      await details.getByRole("button", { name: "More", exact: true }).click();
+      await expectThemeSurfaces(page, theme, [".drive-details-inner", ".icedr-context-menu"]);
+      await captureThemeShot(page, testInfo, theme, "details-more");
+
+      await page.keyboard.press("Escape");
+      await reportRow.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Move to trash", exact: true }).click();
+      await page.goto("/trash");
+      const archivedRow = driveItem(page, "file-report");
+      await archivedRow.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Delete permanently", exact: true }).click();
+      await expect(page.getByRole("dialog")).toContainText("This action cannot be undone");
+      await expectThemeSurfaces(page, theme, [".icedr-dialog"]);
+      await captureThemeShot(page, testInfo, theme, "danger-dialog");
+
+      await page.goto("/settings?tab=security");
+      await expect(page.getByRole("region", { name: "Passkey devices" })).toContainText("Office security key");
+      await expectThemeSurfaces(page, theme, [".drive-settings-section", ".drive-passkey-table-header"]);
+      await captureThemeShot(page, testInfo, theme, "settings-passkey");
+    });
+  }
 });
+
+async function captureThemeShot(page: Page, testInfo: TestInfo, theme: "light" | "dark", view: string) {
+  const fileName = `drive-theme-${theme}-${view}.png`;
+  const path = resolve(process.cwd(), "../output/playwright", fileName);
+  await page.screenshot({ animations: "disabled", path });
+  await testInfo.attach(fileName, { contentType: "image/png", path });
+}
+
+async function expectThemeSurfaces(page: Page, theme: "light" | "dark", selectors: string[]) {
+  for (const selector of selectors) {
+    const style = await page.locator(selector).first().evaluate((element) => {
+      const computed = getComputedStyle(element);
+      return { background: computed.backgroundColor, backgroundImage: computed.backgroundImage, color: computed.color };
+    });
+    expect(style.backgroundImage !== "none" || !isTransparentColor(style.background)).toBe(true);
+    expect(style.color).not.toBe(style.background);
+    if (theme === "dark") expect(style.background).not.toMatch(/^rgba?\(255,\s*255,\s*255(?:,\s*(?:1(?:\.0+)?))?\)$/);
+  }
+}
+
+function isTransparentColor(color: string) {
+  return color === "transparent" || /^rgba\([^)]*,\s*0(?:\.0+)?\)$/.test(color);
+}
 
 async function openDetails(page: Page, itemId: string, itemName: string) {
   const row = driveItem(page, itemId);
@@ -484,11 +551,12 @@ type DriveApiState = {
   searchItems: FileNode[];
   shares: RegisteredShare[];
   transfers: Transfer[];
+  theme: "light" | "dark";
 };
 
 async function mockDriveApi(
   page: Page,
-  options: Partial<Pick<DriveApiState, "activeNodes" | "archivedNodes" | "searchItems" | "transfers">> = {},
+  options: Partial<Pick<DriveApiState, "activeNodes" | "archivedNodes" | "searchItems" | "theme" | "transfers">> = {},
 ) {
   const state: DriveApiState = {
     activeNodes: options.activeNodes ?? [reportFile(), budgetFile()],
@@ -505,6 +573,7 @@ async function mockDriveApi(
     searchItems: options.searchItems ?? [],
     shares: [],
     transfers: options.transfers ?? [],
+    theme: options.theme ?? "light",
   };
 
   await page.route("**/api/**", async (route) => {
@@ -527,7 +596,7 @@ async function mockDriveApi(
       return;
     }
     if (method === "GET" && path === "/auth/me") {
-      await fulfillJson(route, currentUser());
+      await fulfillJson(route, currentUser(state.theme));
       return;
     }
     if (method === "GET" && path === "/auth/settings") {
@@ -536,10 +605,33 @@ async function mockDriveApi(
         minimumAuthenticationMethods: 1,
         oauthConfigured: false,
         oauthEnabled: false,
-        passkeyConfigured: false,
-        passkeyEnabled: false,
+        passkeyConfigured: true,
+        passkeyEnabled: true,
         updatedAt: now,
       });
+      return;
+    }
+    if (method === "GET" && path === "/auth/security/methods") {
+      await fulfillJson(route, {
+        compliant: true,
+        methodCount: 2,
+        methods: { oauth: false, passkey: true, password: true, recoveryCodes: 0 },
+        minimumAuthenticationMethods: 1,
+      });
+      return;
+    }
+    if (method === "GET" && path === "/auth/passkeys") {
+      await fulfillJson(route, [{
+        aaguid: null,
+        backedUp: false,
+        createdAt: now,
+        deviceName: "Windows Hello",
+        deviceType: "singleDevice",
+        id: "passkey-office",
+        lastUsedAt: now,
+        name: "Office security key",
+        transports: ["internal"],
+      }]);
       return;
     }
     if (method === "GET" && path === "/site/settings/public") {
@@ -688,13 +780,13 @@ async function mockDriveApi(
   return state;
 }
 
-async function seedAuthenticatedDrive(page: Page) {
-  await page.addInitScript(() => {
+async function seedAuthenticatedDrive(page: Page, theme: "light" | "dark" = "light") {
+  await page.addInitScript((initialTheme) => {
     window.localStorage.setItem("icedr.auth.token", "responsive-drive-token");
     window.localStorage.setItem("icedr.locale", "en_US");
     window.localStorage.setItem("icedr.ui.locale", "en");
-    window.localStorage.setItem("icedr.ui.themePreference", "light");
-  });
+    window.localStorage.setItem("icedr.ui.themePreference", initialTheme);
+  }, theme);
 }
 
 function reportFile() {
@@ -834,7 +926,7 @@ function registeredShare() {
   };
 }
 
-function currentUser() {
+function currentUser(theme: "light" | "dark" = "light") {
   return {
     avatarUrl: null,
     createdAt: now,
@@ -843,7 +935,7 @@ function currentUser() {
     id: "responsive-admin",
     locale: "en",
     role: "admin",
-    theme: "light",
+    theme,
     timezone: "UTC",
   };
 }
