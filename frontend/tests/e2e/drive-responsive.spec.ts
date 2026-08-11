@@ -307,6 +307,87 @@ test.describe("responsive Drive workspace", () => {
     await expect(errorBanner).toHaveCount(0);
     await expect(driveItem(page, "file-report")).toBeVisible();
   });
+
+  test("confirms extension changes before sending a rename request", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, {
+      activeNodes: [fileNode({
+        id: "file-extension",
+        kind: "doc",
+        mimeType: "text/plain",
+        name: "report.txt",
+        parentNodeId: null,
+        sizeBytes: 2048,
+      })],
+    });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+
+    const row = driveItem(page, "file-extension");
+    await row.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Rename", exact: true }).click();
+
+    const renameInput = row.getByRole("textbox", { name: "Rename" });
+    await renameInput.fill("report.md");
+    await renameInput.press("Enter");
+
+    let dialog = page.getByRole("dialog").filter({ hasText: "Changing the extension" });
+    await expect(dialog).toContainText("Rename .txt to .md?");
+    expect(api.renamePatchRequests).toBe(0);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(api.renamePatchRequests).toBe(0);
+
+    await renameInput.press("Enter");
+    dialog = page.getByRole("dialog").filter({ hasText: "Changing the extension" });
+    await dialog.getByRole("button", { name: "Rename", exact: true }).click();
+
+    await expect.poll(() => api.renamePatchRequests).toBe(1);
+    await expect(row.getByRole("button", { name: "report.md", exact: true })).toBeVisible();
+  });
+
+  test("does not permanently delete a trash item before confirmation", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { archivedNodes: [archivedFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/trash");
+
+    const row = driveItem(page, "file-archived");
+    await row.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menu", { name: "More" })
+      .getByRole("menuitem", { name: "Delete permanently", exact: true })
+      .click();
+
+    const dialog = page.getByRole("dialog").filter({ hasText: "Delete permanently?" });
+    await expect(dialog).toContainText("This action cannot be undone");
+    expect(api.permanentDeleteRequests).toBe(0);
+    await dialog.getByRole("button", { name: "Delete permanently", exact: true }).click();
+
+    await expect.poll(() => api.permanentDeleteRequests).toBe(1);
+    await expect(row).toHaveCount(0);
+  });
+
+  test("offers Undo after archiving and reports the restored item accurately", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = await mockDriveApi(page, { activeNodes: [reportFile()] });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+
+    const row = driveItem(page, "file-report");
+    await row.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menu", { name: "More" })
+      .getByRole("menuitem", { name: "Move to trash", exact: true })
+      .click();
+
+    await expect.poll(() => api.archivePatchRequests).toBe(1);
+    const archiveNotification = page.locator(".workspace-notification").filter({ hasText: "Moved 1 to trash" });
+    await expect(archiveNotification).toBeVisible();
+    await archiveNotification.getByRole("button", { name: "Undo", exact: true }).click();
+
+    await expect.poll(() => api.restoreRequests).toBe(1);
+    await expect(page.locator(".workspace-notification").filter({ hasText: "Restored 1 item" })).toBeVisible();
+    await expect(driveItem(page, "file-report")).toBeVisible();
+  });
 });
 
 async function openDetails(page: Page, itemId: string, itemName: string) {
@@ -391,11 +472,15 @@ type RegisteredShare = ReturnType<typeof registeredShare>;
 type DriveApiState = {
   activeNodes: FileNode[];
   activeFileListRequests: number;
+  archivePatchRequests: number;
   archivedNodes: FileNode[];
   delayNextActiveFileListMs: number;
   failNextActiveFileList: boolean;
   failNextShares: boolean;
   failNextSearch: boolean;
+  permanentDeleteRequests: number;
+  renamePatchRequests: number;
+  restoreRequests: number;
   searchItems: FileNode[];
   shares: RegisteredShare[];
   transfers: Transfer[];
@@ -408,11 +493,15 @@ async function mockDriveApi(
   const state: DriveApiState = {
     activeNodes: options.activeNodes ?? [reportFile(), budgetFile()],
     activeFileListRequests: 0,
+    archivePatchRequests: 0,
     archivedNodes: options.archivedNodes ?? [],
     delayNextActiveFileListMs: 0,
     failNextActiveFileList: false,
     failNextShares: false,
     failNextSearch: false,
+    permanentDeleteRequests: 0,
+    renamePatchRequests: 0,
+    restoreRequests: 0,
     searchItems: options.searchItems ?? [],
     shares: [],
     transfers: options.transfers ?? [],
@@ -527,6 +616,65 @@ async function mockDriveApi(
     }
     if (method === "GET" && path === "/storage/usage") {
       await fulfillJson(route, storageUsage());
+      return;
+    }
+    if (method === "PATCH" && /^\/file-nodes\/[^/]+\/state$/.test(path)) {
+      state.archivePatchRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      const node = state.activeNodes.find((item) => item.id === id);
+      if (!node) {
+        await fulfillJson(route, { code: "FILE_NOT_FOUND", message: "File not found" }, 404);
+        return;
+      }
+      const archivedNode: FileNode = {
+        ...node,
+        archivedAt: now,
+        archivedBy: "Responsive Admin",
+        originalPath: `/${node.name}`,
+      };
+      state.activeNodes = state.activeNodes.filter((item) => item.id !== id);
+      state.archivedNodes = [...state.archivedNodes.filter((item) => item.id !== id), archivedNode];
+      await fulfillJson(route, archivedNode);
+      return;
+    }
+    if (method === "PATCH" && /^\/file-nodes\/[^/]+$/.test(path)) {
+      state.renamePatchRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      const input = request.postDataJSON() as { name?: string };
+      const node = state.activeNodes.find((item) => item.id === id);
+      if (!node || !input.name) {
+        await fulfillJson(route, { code: "FILE_NOT_FOUND", message: "File not found" }, 404);
+        return;
+      }
+      const renamedNode = { ...node, name: input.name };
+      state.activeNodes = state.activeNodes.map((item) => item.id === id ? renamedNode : item);
+      await fulfillJson(route, renamedNode);
+      return;
+    }
+    if (method === "DELETE" && /^\/file-nodes\/[^/]+$/.test(path)) {
+      state.permanentDeleteRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      state.archivedNodes = state.archivedNodes.filter((item) => item.id !== id);
+      await fulfillJson(route, { deleted: 1, id, ok: true });
+      return;
+    }
+    if (method === "POST" && /^\/file-nodes\/[^/]+\/restore$/.test(path)) {
+      state.restoreRequests += 1;
+      const id = decodeURIComponent(path.split("/")[2]);
+      const node = state.archivedNodes.find((item) => item.id === id);
+      if (!node) {
+        await fulfillJson(route, { code: "FILE_NOT_FOUND", message: "File not found" }, 404);
+        return;
+      }
+      const restoredNode: FileNode = {
+        ...node,
+        archivedAt: null,
+        archivedBy: null,
+        originalPath: null,
+      };
+      state.archivedNodes = state.archivedNodes.filter((item) => item.id !== id);
+      state.activeNodes = [...state.activeNodes.filter((item) => item.id !== id), restoredNode];
+      await fulfillJson(route, restoredNode);
       return;
     }
 

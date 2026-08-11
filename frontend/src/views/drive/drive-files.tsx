@@ -52,6 +52,7 @@ export type FilesModuleProps = {
   currentFolderId: string | null;
   canLoadMore?: boolean;
   canPaste: boolean;
+  destructivePending?: { archive: boolean; delete: boolean; restore: boolean };
   error: string | null;
   goUp: () => void;
   hasQuery: boolean;
@@ -108,6 +109,7 @@ export function FilesModule({
   currentFolderId,
   canLoadMore,
   canPaste,
+  destructivePending,
   error,
   goUp,
   hasQuery,
@@ -324,6 +326,7 @@ export function FilesModule({
             onDownloadItem={onDownloadItem}
             onEditItem={onEditItem}
             onDeletePermanentlyItem={onDeletePermanentlyItem}
+            destructivePending={destructivePending}
             onMoveItem={onMoveItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
@@ -360,6 +363,7 @@ export function FilesModule({
             onDownloadItem={onDownloadItem}
             onEditItem={onEditItem}
             onDeletePermanentlyItem={onDeletePermanentlyItem}
+            destructivePending={destructivePending}
             onMoveItem={onMoveItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
@@ -431,6 +435,7 @@ function isDriveBlankMenuIgnored(target: HTMLElement) {
 }
 
 function buildFileActionItems({
+  destructivePending,
   item,
   onArchive,
   onCopy,
@@ -448,6 +453,7 @@ function buildFileActionItems({
   palette,
   t,
 }: {
+  destructivePending?: FilesModuleProps["destructivePending"];
   item: DriveItem;
   onArchive: FileAction;
   onCopy: FileAction;
@@ -470,8 +476,8 @@ function buildFileActionItems({
   if (item.archivedAt) {
     return [
       { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), value: "details" },
-      { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), separatorBefore: true, value: "restore" },
-      { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), tone: "danger" as const, value: "delete-permanently" },
+      { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), disabled: destructivePending?.restore, separatorBefore: true, value: "restore" },
+      { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), disabled: destructivePending?.delete, tone: "danger" as const, value: "delete-permanently" },
     ];
   }
   const actionItems: AppMenuItem[] = [
@@ -492,7 +498,7 @@ function buildFileActionItems({
     { icon: <LocalIcon name="shield" size={15} />, label: t("actions.security"), onClick: () => onSecurity(item), value: "security" },
     item.archivedAt
       ? { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), value: "restore" }
-      : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), separatorBefore: true, tone: "danger", value: "archive" },
+      : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), disabled: destructivePending?.archive, separatorBefore: true, tone: "danger", value: "archive" },
   ].filter(Boolean) as AppMenuItem[];
 
   return actionItems;
@@ -513,6 +519,7 @@ function handleParentDirectoryKeyDown(event: React.KeyboardEvent, goUp: () => vo
 function FileTable({
   activeNav,
   currentFolderId,
+  destructivePending,
   goUp,
   items,
   onArchiveItem,
@@ -574,6 +581,7 @@ function FileTable({
   const indeterminate = !allSelected && allFileIds.some((id) => selected.includes(id));
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
+    destructivePending,
     item,
     onArchive: onArchiveItem,
     onCopy: onCopyItem,
@@ -783,6 +791,7 @@ function FileTable({
 
 function FileGrid({
   currentFolderId,
+  destructivePending,
   goUp,
   items,
   onArchiveItem,
@@ -839,6 +848,7 @@ function FileGrid({
   const [contextMenu, setContextMenu] = useState<{ item: DriveItem; position: AppContextMenuPosition } | null>(null);
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
+    destructivePending,
     item,
     onArchive: onArchiveItem,
     onCopy: onCopyItem,
