@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
-import { resolve } from "node:path";
+import { expectThemeSurfaces } from "./wcag-contrast";
 
 const now = "2026-07-31T08:00:00.000Z";
 const workspaceId = "workspace-responsive";
@@ -256,13 +256,15 @@ test.describe("responsive Drive workspace", () => {
 
     const requestsBeforeRefresh = api.activeFileListRequests;
     const refreshButton = page.locator(".drive-header").getByRole("button", { name: "Refresh" });
-    api.delayNextActiveFileListMs = 300;
+    api.holdNextActiveFileList = true;
     await refreshButton.dispatchEvent("click");
     await refreshButton.dispatchEvent("click");
 
+    await expect.poll(() => Boolean(api.releaseHeldActiveFileList)).toBe(true);
     await expect(refreshButton).toBeDisabled();
     await expect(driveItem(page, "file-report")).toBeVisible();
     await expect(driveItem(page, "file-budget")).toBeVisible();
+    api.releaseHeldActiveFileList?.();
     await expect(page.locator(".workspace-notification:visible")).toContainText("Workspace refreshed");
     expect(api.activeFileListRequests).toBe(requestsBeforeRefresh + 1);
   });
@@ -386,12 +388,12 @@ test.describe("responsive Drive workspace", () => {
     await archiveNotification.getByRole("button", { name: "Undo", exact: true }).click();
 
     await expect.poll(() => api.restoreRequests).toBe(1);
-    await expect(page.locator(".workspace-notification").filter({ hasText: "Restored 1 item" })).toBeVisible();
+    await expect(page.locator(".workspace-notification").filter({ hasText: "Restored items: 1" })).toBeVisible();
     await expect(driveItem(page, "file-report")).toBeVisible();
   });
 
   for (const theme of ["light", "dark"] as const) {
-    test(`visually verifies the ${theme} Drive surfaces and overlays`, async ({ page }, testInfo) => {
+    test(`captures screenshots and validates ${theme} Drive surface contrast`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.emulateMedia({ reducedMotion: "reduce" });
       await mockDriveApi(page, { theme });
@@ -401,18 +403,28 @@ test.describe("responsive Drive workspace", () => {
       const reportRow = driveItem(page, "file-report");
       await expect(reportRow).toBeVisible();
       await expect(page.locator(".drive-shell")).toHaveAttribute("data-theme", theme);
-      await expectThemeSurfaces(page, theme, [".drive-sidebar", ".drive-table-shell"]);
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".drive-sidebar", text: ".drive-space-trigger-label" },
+        { surface: ".drive-table-shell", text: ".drive-file-name-text" },
+      ]);
       await captureThemeShot(page, testInfo, theme, "root");
 
       const tableShell = page.locator(".drive-table-shell");
+      const initialRowHeight = await reportRow.evaluate((element) => element.getBoundingClientRect().height);
       await expect.poll(() => tableShell.evaluate((element) => element.scrollLeft)).toBe(0);
       await reportRow.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Details", exact: true }).click();
       const details = page.getByRole("region", { name: reportFileName });
       await expect(details).toBeVisible();
       await expect.poll(() => tableShell.evaluate((element) => element.scrollLeft)).toBe(0);
+      await expect.poll(() => reportRow.evaluate((element) => element.getBoundingClientRect().height)).toBe(initialRowHeight);
+      await expect(page.getByRole("columnheader", { name: "Owner" })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Created" })).toBeVisible();
       await details.getByRole("button", { name: "More", exact: true }).click();
-      await expectThemeSurfaces(page, theme, [".drive-details-inner", ".icedr-context-menu"]);
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".drive-details-inner", text: ".drive-details-heading" },
+        { surface: ".icedr-context-menu", text: ".icedr-context-menu-button" },
+      ]);
       await captureThemeShot(page, testInfo, theme, "details-more");
 
       await page.keyboard.press("Escape");
@@ -423,12 +435,15 @@ test.describe("responsive Drive workspace", () => {
       await archivedRow.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("menu", { name: "More" }).getByRole("menuitem", { name: "Delete permanently", exact: true }).click();
       await expect(page.getByRole("dialog")).toContainText("This action cannot be undone");
-      await expectThemeSurfaces(page, theme, [".icedr-dialog"]);
+      await expectThemeSurfaces(page, theme, [{ surface: ".icedr-dialog", text: ".icedr-confirmation-header h2" }]);
       await captureThemeShot(page, testInfo, theme, "danger-dialog");
 
       await page.goto("/settings?tab=security");
       await expect(page.getByRole("region", { name: "Passkey devices" })).toContainText("Office security key");
-      await expectThemeSurfaces(page, theme, [".drive-settings-section", ".drive-passkey-table-header"]);
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".drive-passkey-manager", text: ".drive-passkey-manager .drive-security-section-header span" },
+        { surface: ".drive-passkey-table-header", text: ".drive-passkey-table-header [role=\"columnheader\"]" },
+      ]);
       await captureThemeShot(page, testInfo, theme, "settings-passkey");
     });
   }
@@ -436,25 +451,9 @@ test.describe("responsive Drive workspace", () => {
 
 async function captureThemeShot(page: Page, testInfo: TestInfo, theme: "light" | "dark", view: string) {
   const fileName = `drive-theme-${theme}-${view}.png`;
-  const path = resolve(process.cwd(), "../output/playwright", fileName);
+  const path = testInfo.outputPath(fileName);
   await page.screenshot({ animations: "disabled", path });
   await testInfo.attach(fileName, { contentType: "image/png", path });
-}
-
-async function expectThemeSurfaces(page: Page, theme: "light" | "dark", selectors: string[]) {
-  for (const selector of selectors) {
-    const style = await page.locator(selector).first().evaluate((element) => {
-      const computed = getComputedStyle(element);
-      return { background: computed.backgroundColor, backgroundImage: computed.backgroundImage, color: computed.color };
-    });
-    expect(style.backgroundImage !== "none" || !isTransparentColor(style.background)).toBe(true);
-    expect(style.color).not.toBe(style.background);
-    if (theme === "dark") expect(style.background).not.toMatch(/^rgba?\(255,\s*255,\s*255(?:,\s*(?:1(?:\.0+)?))?\)$/);
-  }
-}
-
-function isTransparentColor(color: string) {
-  return color === "transparent" || /^rgba\([^)]*,\s*0(?:\.0+)?\)$/.test(color);
 }
 
 async function openDetails(page: Page, itemId: string, itemName: string) {
@@ -545,7 +544,9 @@ type DriveApiState = {
   failNextActiveFileList: boolean;
   failNextShares: boolean;
   failNextSearch: boolean;
+  holdNextActiveFileList: boolean;
   permanentDeleteRequests: number;
+  releaseHeldActiveFileList: (() => void) | null;
   renamePatchRequests: number;
   restoreRequests: number;
   searchItems: FileNode[];
@@ -567,7 +568,9 @@ async function mockDriveApi(
     failNextActiveFileList: false,
     failNextShares: false,
     failNextSearch: false,
+    holdNextActiveFileList: false,
     permanentDeleteRequests: 0,
+    releaseHeldActiveFileList: null,
     renamePatchRequests: 0,
     restoreRequests: 0,
     searchItems: options.searchItems ?? [],
@@ -671,6 +674,13 @@ async function mockDriveApi(
       const listState = url.searchParams.get("state");
       if (listState === "active") {
         state.activeFileListRequests += 1;
+      }
+      if (listState === "active" && state.holdNextActiveFileList) {
+        state.holdNextActiveFileList = false;
+        await new Promise<void>((resolve) => {
+          state.releaseHeldActiveFileList = resolve;
+        });
+        state.releaseHeldActiveFileList = null;
       }
       if (listState === "active" && state.delayNextActiveFileListMs > 0) {
         const delayMs = state.delayNextActiveFileListMs;
