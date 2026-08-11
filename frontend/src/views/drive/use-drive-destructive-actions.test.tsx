@@ -115,6 +115,7 @@ describe("useDriveDestructiveActions", () => {
 
     expect(apiMocks.restoreFileNode).toHaveBeenCalledTimes(1);
     expect(result.current.restorePending).toBe(true);
+    expect(showFeedback).toHaveBeenCalledWith("app.actionInProgress", "neutral");
 
     restore.resolve(node("a"));
     await act(async () => {
@@ -152,6 +153,39 @@ describe("useDriveDestructiveActions", () => {
     });
 
     expect(apiMocks.batchRestoreFileNodes).toHaveBeenCalledWith(["a", "c"]);
+  });
+
+  it("恢复锁占用时拒绝第二个撤销并保留重试语义", async () => {
+    apiMocks.updateFileNodeState
+      .mockResolvedValueOnce(node("a"))
+      .mockResolvedValueOnce(node("b"));
+    const restore = deferred<ReturnType<typeof node>>();
+    apiMocks.restoreFileNode.mockReturnValue(restore.promise);
+    const showFeedback = vi.fn();
+    const { result } = renderDestructiveActions({ showFeedback });
+
+    await act(async () => {
+      await result.current.archiveItems([item("a")]);
+      await result.current.archiveItems([item("b")]);
+    });
+
+    const firstUndo = notificationMocks.showWorkspaceNotification.mock.calls[0][0].onAction;
+    const secondUndo = notificationMocks.showWorkspaceNotification.mock.calls[1][0].onAction;
+    let firstResult!: Promise<boolean>;
+    let secondResult!: Promise<boolean>;
+    act(() => {
+      firstResult = firstUndo();
+      secondResult = secondUndo();
+    });
+
+    await expect(secondResult).resolves.toBe(false);
+    expect(showFeedback).toHaveBeenCalledWith("app.actionInProgress", "neutral");
+    expect(apiMocks.restoreFileNode).toHaveBeenCalledTimes(1);
+
+    restore.resolve(node("a"));
+    await act(async () => {
+      await expect(firstResult).resolves.toBe(true);
+    });
   });
 });
 

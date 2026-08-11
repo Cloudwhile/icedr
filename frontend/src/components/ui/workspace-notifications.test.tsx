@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { palettes } from "@/features/file/model";
 import {
@@ -48,10 +48,9 @@ afterEach(() => {
 });
 
 describe("workspace notifications", () => {
-  it("runs an action at most once and closes its notification first", () => {
-    const onAction = vi.fn(() => {
-      expect(getWorkspaceNotificationsSnapshot()).toHaveLength(0);
-    });
+  it("runs an accepted action at most once and then closes its notification", async () => {
+    const action = deferred<boolean>();
+    const onAction = vi.fn(() => action.promise);
     const id = showWorkspaceNotification({
       actionLabel: "Undo",
       debounceMs: 0,
@@ -61,20 +60,46 @@ describe("workspace notifications", () => {
     });
 
     expect(id).not.toBeNull();
-    expect(triggerWorkspaceNotificationAction(id!)).toBe(true);
-    expect(triggerWorkspaceNotificationAction(id!)).toBe(false);
+    const firstTrigger = triggerWorkspaceNotificationAction(id!);
+    await expect(triggerWorkspaceNotificationAction(id!)).resolves.toBe(false);
     expect(onAction).toHaveBeenCalledTimes(1);
+    expect(getWorkspaceNotificationsSnapshot()).toHaveLength(1);
+
+    action.resolve(true);
+    await expect(firstTrigger).resolves.toBe(true);
+    expect(getWorkspaceNotificationsSnapshot()).toHaveLength(0);
+  });
+
+  it("keeps a notification when its action is not accepted", async () => {
+    const id = showWorkspaceNotification({
+      actionLabel: "Undo",
+      dedupeKey: "busy-undo",
+      onAction: () => false,
+      title: "Moved to trash",
+    });
+
+    await expect(triggerWorkspaceNotificationAction(id!)).resolves.toBe(false);
+    expect(getWorkspaceNotificationsSnapshot()).toHaveLength(1);
   });
 
   it("keeps only the latest notification for an explicit dedupe key", () => {
-    showWorkspaceNotification({ debounceMs: 0, dedupeKey: "unique-archive", title: "First" });
-    showWorkspaceNotification({ debounceMs: 0, dedupeKey: "unique-archive", title: "Second" });
+    showWorkspaceNotification({ dedupeKey: "unique-archive", title: "First" });
+    showWorkspaceNotification({ dedupeKey: "unique-archive", title: "Second" });
 
     expect(getWorkspaceNotificationsSnapshot()).toHaveLength(1);
     expect(getWorkspaceNotificationsSnapshot()[0]?.title).toBe("Second");
   });
 
-  it("renders an icon action with an accessible label", () => {
+  it("debounces notifications that use the generated content key", () => {
+    const firstId = showWorkspaceNotification({ title: "Repeated refresh result" });
+    const secondId = showWorkspaceNotification({ title: "Repeated refresh result" });
+
+    expect(firstId).not.toBeNull();
+    expect(secondId).toBeNull();
+    expect(getWorkspaceNotificationsSnapshot()).toHaveLength(1);
+  });
+
+  it("renders an icon action with an accessible label", async () => {
     const onAction = vi.fn();
     act(() => {
       showWorkspaceNotification({
@@ -94,6 +119,14 @@ describe("workspace notifications", () => {
     fireEvent.click(action);
 
     expect(onAction).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("Moved to trash")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Moved to trash")).not.toBeInTheDocument());
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}

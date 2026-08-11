@@ -81,16 +81,21 @@ export function useDriveItemRename({
   }, [extensionRenamePrompt, performRename, settleExtensionRename]);
 
   const commitRenameItem = useCallback(async (item: DriveItem, rawName: string) => {
-    const name = rawName.trim();
-    if (!name || name === item.name) {
+    const candidateName = rawName.trim();
+    if (!candidateName) {
       setRenamingItemId(null);
       return true;
     }
 
-    const nameValidation = validateDriveFileName(name);
+    const nameValidation = validateDriveFileName(candidateName);
     if (!nameValidation.ok) {
       showFeedback(t(getDriveFileNameErrorMessageKey(nameValidation.code), nameValidation.values), "error");
       return false;
+    }
+    const name = nameValidation.name;
+    if (name === item.name) {
+      setRenamingItemId(null);
+      return true;
     }
 
     if (item.hasContent) {

@@ -96,4 +96,18 @@ describe("useDriveItemRename", () => {
     expect(result.current.extensionRenamePrompt).toBeNull();
     expect(renameFileNodeMock).toHaveBeenCalledTimes(1);
   });
+
+  it("submits the normalized form of a decomposed Unicode name", async () => {
+    const options = createOptions();
+    const { result } = renderHook(() => useDriveItemRename(options));
+    const decomposedName = "café.txt".normalize("NFD");
+
+    await act(async () => {
+      await expect(result.current.commitRenameItem(item, decomposedName)).resolves.toBe(true);
+    });
+
+    expect(decomposedName).not.toBe("café.txt");
+    expect(result.current.extensionRenamePrompt).toBeNull();
+    expect(renameFileNodeMock).toHaveBeenCalledWith(item.id, "café.txt");
+  });
 });

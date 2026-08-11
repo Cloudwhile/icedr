@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   showWorkspaceNotification,
+  type WorkspaceNotificationOptions,
   type WorkspaceNotificationTone,
 } from "@/components/ui/workspace-notification-store";
 import type { DriveItem } from "@/features/file/model";
@@ -54,7 +55,10 @@ export function useDriveDestructiveActions({
 
   const showBatchResult = useCallback((
     result: FileOperationResult,
-    notificationExtras: Record<string, unknown> = {},
+    notificationExtras: Pick<
+      WorkspaceNotificationOptions,
+      "actionIcon" | "actionLabel" | "dedupeKey" | "onAction"
+    > = {},
   ) => {
     const notification = {
       description: result.failed.length > 0
@@ -68,7 +72,11 @@ export function useDriveDestructiveActions({
   }, [t]);
 
   const restoreIds = useCallback(async (ids: string[]) => {
-    if (ids.length === 0 || restoreLockRef.current) return;
+    if (ids.length === 0) return false;
+    if (restoreLockRef.current) {
+      showFeedback(t("app.actionInProgress"), "neutral");
+      return false;
+    }
 
     restoreLockRef.current = true;
     setRestorePending(true);
@@ -90,6 +98,7 @@ export function useDriveDestructiveActions({
       restoreLockRef.current = false;
       setRestorePending(false);
     }
+    return true;
   }, [getApiFeedback, refreshAfterMutation, setSelected, showBatchResult, showFeedback, t]);
 
   const archiveItems = useCallback(async (items: DriveItem[]) => {
@@ -116,9 +125,7 @@ export function useDriveDestructiveActions({
           actionIcon: "refresh" as const,
           actionLabel: t("actions.undo"),
           dedupeKey: `drive-archive-${++archiveNotificationSequenceRef.current}-${[...succeededIds].sort().join("|")}`,
-          onAction: () => {
-            void restoreIds(succeededIds);
-          },
+          onAction: () => restoreIds(succeededIds),
         }
         : {};
 

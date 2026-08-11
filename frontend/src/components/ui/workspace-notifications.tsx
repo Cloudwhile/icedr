@@ -58,7 +58,9 @@ export function WorkspaceNotificationStack({
                     palette={palette}
                     size="sm"
                     tooltipPlacement="top"
-                    onClick={() => triggerWorkspaceNotificationAction(notification.id)}
+                    onClick={() => {
+                      void triggerWorkspaceNotificationAction(notification.id);
+                    }}
                   >
                     <LocalIcon name={notification.actionIcon} size={14} />
                   </ToolButton>
@@ -66,7 +68,9 @@ export function WorkspaceNotificationStack({
                   <button
                     aria-label={notification.actionLabel}
                     className="workspace-notification-action-label"
-                    onClick={() => triggerWorkspaceNotificationAction(notification.id)}
+                    onClick={() => {
+                      void triggerWorkspaceNotificationAction(notification.id);
+                    }}
                     type="button"
                   >
                     {notification.actionLabel}
