@@ -13,8 +13,10 @@ export function handleDriveItemKeyDown(
   extendSelection: (currentId: string, key: string) => string | null,
   openContextMenu: (item: DriveItem, target: HTMLElement) => void,
 ) {
-  if (event.target !== event.currentTarget || event.repeat || event.nativeEvent.isComposing) return;
-  if (isDriveContextMenuKey(event.key, event.shiftKey)) {
+  if (event.target !== event.currentTarget || event.nativeEvent.isComposing) return;
+  const contextMenuKey = isDriveContextMenuKey(event.key, event.shiftKey);
+  if (event.repeat && (event.key === "Enter" || event.key === " " || contextMenuKey)) return;
+  if (contextMenuKey) {
     event.preventDefault();
     event.stopPropagation();
     openContextMenu(item, event.currentTarget as HTMLElement);
@@ -27,7 +29,7 @@ export function handleDriveItemKeyDown(
       const surface = (event.currentTarget as HTMLElement).closest(".drive-files-module");
       Array.from(surface?.querySelectorAll<HTMLElement>("[data-drive-item-id]") ?? [])
         .find((candidate) => candidate.dataset.driveItemId === focusId)
-        ?.focus({ preventScroll: true });
+        ?.focus();
       return;
     }
   }
@@ -45,12 +47,14 @@ export function handleDriveItemKeyDown(
 
 export function resolveDriveSelectionExtension({
   anchorId,
+  columnCount = 1,
   currentId,
   itemIds,
   key,
   viewMode,
 }: {
   anchorId: string | null;
+  columnCount?: number;
   currentId: string;
   itemIds: string[];
   key: string;
@@ -61,8 +65,14 @@ export function resolveDriveSelectionExtension({
   const currentIndex = itemIds.indexOf(currentId);
   if (currentIndex < 0) return null;
 
+  const normalizedColumnCount = Number.isFinite(columnCount)
+    ? Math.max(1, Math.floor(columnCount))
+    : 1;
+  const step = viewMode === "grid" && (key === "ArrowUp" || key === "ArrowDown")
+    ? normalizedColumnCount
+    : 1;
   const direction = key === "ArrowUp" || key === "ArrowLeft" ? -1 : 1;
-  const focusIndex = Math.max(0, Math.min(itemIds.length - 1, currentIndex + direction));
+  const focusIndex = Math.max(0, Math.min(itemIds.length - 1, currentIndex + direction * step));
   const resolvedAnchorId = anchorId && itemIds.includes(anchorId) ? anchorId : currentId;
   const anchorIndex = itemIds.indexOf(resolvedAnchorId);
   const [start, end] = anchorIndex < focusIndex

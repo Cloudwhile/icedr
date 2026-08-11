@@ -129,6 +129,8 @@ export function DriveWorkbench({
   const shareSettingsWorkspaceIdRef = useRef<string | null>(null);
   const driveItemsContextRef = useRef("");
   const runLatestDriveItemsRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
+  const runLatestSharesRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
+  const runLatestShareSettingsRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
   const activeUser = profileUserOverride?.id === currentUser?.id ? profileUserOverride : currentUser;
   const activeUserId = activeUser?.id;
   const activateNav = useCallback((nextNav: DriveUserNav, navigation: "push" | "replace" = "push") => {
@@ -365,45 +367,65 @@ export function DriveWorkbench({
   }, [getApiFeedback, runLatestDriveItemsRequest]);
   const refreshShares = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return driveRefreshSkipped("shares");
-    try {
-      const shares = await fetchRegisteredSharesForWorkspace(targetWorkspaceId);
-      registeredSharesWorkspaceIdRef.current = targetWorkspaceId;
-      registeredSharesRef.current = shares;
-      setRegisteredShares(shares);
-      setLinksError(null);
-      setDriveItems(current => withShareFlags(current, shares));
-      setArchivedItems(current => withShareFlags(current, shares));
-      return driveRefreshSucceeded("shares");
-    } catch (error) {
-      const stale = registeredSharesWorkspaceIdRef.current === targetWorkspaceId;
-      const message = getApiFeedback(error, "share.apiUnavailable");
-      if (!stale) {
-        registeredSharesWorkspaceIdRef.current = null;
-        registeredSharesRef.current = [];
-        setRegisteredShares([]);
-        setDriveItems(current => withShareFlags(current, []));
-        setArchivedItems(current => withShareFlags(current, []));
-      }
-      setLinksError(message);
-      return driveRefreshFailed("shares", message, stale);
-    }
-  }, [getApiFeedback]);
+    const stale = registeredSharesWorkspaceIdRef.current === targetWorkspaceId;
+    let failureMessage = "";
+    const result = await runLatestSharesRequest(
+      () => fetchRegisteredSharesForWorkspace(targetWorkspaceId),
+      (shares) => {
+        registeredSharesWorkspaceIdRef.current = targetWorkspaceId;
+        registeredSharesRef.current = shares;
+        setRegisteredShares(shares);
+        setLinksError(null);
+        setDriveItems(current => withShareFlags(current, shares));
+        setArchivedItems(current => withShareFlags(current, shares));
+      },
+      (error) => {
+        failureMessage = getApiFeedback(error, "share.apiUnavailable");
+        if (!stale) {
+          registeredSharesWorkspaceIdRef.current = null;
+          registeredSharesRef.current = [];
+          setRegisteredShares([]);
+          setDriveItems(current => withShareFlags(current, []));
+          setArchivedItems(current => withShareFlags(current, []));
+        }
+        setLinksError(failureMessage);
+      },
+    );
+
+    if (result.status === "success") return driveRefreshSucceeded("shares");
+    if (result.status === "superseded") return driveRefreshSuperseded("shares");
+    return driveRefreshFailed(
+      "shares",
+      failureMessage || getApiFeedback(result.error, "share.apiUnavailable"),
+      stale,
+    );
+  }, [getApiFeedback, runLatestSharesRequest]);
   const refreshShareSettings = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return driveRefreshSkipped("shareSettings");
-    try {
-      const settings = await fetchWorkspaceShareSettings(targetWorkspaceId);
-      shareSettingsWorkspaceIdRef.current = targetWorkspaceId;
-      setShareSettings(settings);
-      setShareSettingsError(null);
-      return driveRefreshSucceeded("shareSettings");
-    } catch (error) {
-      const stale = shareSettingsWorkspaceIdRef.current === targetWorkspaceId;
-      const message = getApiFeedback(error, "admin.loadFailed");
-      if (!stale) setShareSettings(null);
-      setShareSettingsError(message);
-      return driveRefreshFailed("shareSettings", message, stale);
-    }
-  }, [getApiFeedback]);
+    const stale = shareSettingsWorkspaceIdRef.current === targetWorkspaceId;
+    let failureMessage = "";
+    const result = await runLatestShareSettingsRequest(
+      () => fetchWorkspaceShareSettings(targetWorkspaceId),
+      (settings) => {
+        shareSettingsWorkspaceIdRef.current = targetWorkspaceId;
+        setShareSettings(settings);
+        setShareSettingsError(null);
+      },
+      (error) => {
+        failureMessage = getApiFeedback(error, "admin.loadFailed");
+        if (!stale) setShareSettings(null);
+        setShareSettingsError(failureMessage);
+      },
+    );
+
+    if (result.status === "success") return driveRefreshSucceeded("shareSettings");
+    if (result.status === "superseded") return driveRefreshSuperseded("shareSettings");
+    return driveRefreshFailed(
+      "shareSettings",
+      failureMessage || getApiFeedback(result.error, "admin.loadFailed"),
+      stale,
+    );
+  }, [getApiFeedback, runLatestShareSettingsRequest]);
   const queueWorkspaceLoading = () => {
     if (bootLoading) return;
     if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
@@ -910,7 +932,7 @@ export function DriveWorkbench({
             <div className="drive-workspace-content" data-details-open={showDetailsPanel ? "true" : undefined}>
               <MotionSurface key={`${activeModule}-${currentFolderId ?? "root"}`} preset="surface" aria-busy={workspaceBusy} className="drive-workspace-body">
                 {showSettingsSkeleton ? <WorkspaceSkeleton activeModule={activeModule} palette={palette} viewMode={viewMode} /> : showWorkspaceLoader ? <LdrsLoadingState label={t("app.syncing")} palette={palette} minHeight="min(420px, calc(100dvh - 180px))" size={30} /> : <>
-                    {activeModule === "drive" ? <FilesModule activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBatchArchiveItems={archiveItems} onBatchCopyItems={copyItems} onBatchCutItems={cutItems} onBatchDeletePermanentlyItems={deletePermanentlyItems} onBatchDownloadItems={downloadItems} onBatchRestoreItems={restoreItems} onBatchShareItems={shareItems} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
+                    {activeModule === "drive" ? <FilesModule activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
                 setSelected([item.id]);
                 setShareOpen(true);
               }} onShowDetailsItem={showItemDetails} onSecurityItem={openItemSecurity} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} searchLoading={searchLoading} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} sortBy={searchFilters.sortBy} sortDirection={searchFilters.sortDirection} onSortChange={applyDriveSort} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}

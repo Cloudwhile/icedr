@@ -15,7 +15,8 @@ export type DriveRefreshOutcome =
   | { status: "skipped"; target: DriveRefreshTarget };
 
 export type DriveRefreshSummary = {
-  incomplete: DriveRefreshOutcome[];
+  failed: Extract<DriveRefreshOutcome, { status: "failed" }>[];
+  incomplete: Extract<DriveRefreshOutcome, { status: "skipped" | "superseded" }>[];
   status: "success" | "partial" | "failed";
   succeeded: DriveRefreshTarget[];
 };
@@ -44,11 +45,19 @@ export function summarizeDriveRefresh(outcomes: DriveRefreshOutcome[]): DriveRef
   const succeeded = outcomes
     .filter((outcome): outcome is Extract<DriveRefreshOutcome, { status: "success" }> => outcome.status === "success")
     .map((outcome) => outcome.target);
-  const incomplete = outcomes.filter((outcome) => outcome.status !== "success");
+  const failed = outcomes.filter(
+    (outcome): outcome is Extract<DriveRefreshOutcome, { status: "failed" }> => outcome.status === "failed",
+  );
+  const incomplete = outcomes.filter(
+    (outcome): outcome is Extract<DriveRefreshOutcome, { status: "skipped" | "superseded" }> => (
+      outcome.status === "skipped" || outcome.status === "superseded"
+    ),
+  );
 
   return {
+    failed,
     incomplete,
-    status: incomplete.length === 0
+    status: failed.length === 0
       ? "success"
       : succeeded.length > 0
         ? "partial"

@@ -78,6 +78,31 @@ describe("createLatestDriveItemsRequestRunner", () => {
     expect(state.fail).toHaveBeenCalledTimes(1);
     expect(state.error).toBe("B 加载失败");
   });
+
+  it("空间切换后只提交最新存储用量上下文", async () => {
+    const workspaceUsage = deferred<{ context: string; usedBytes: number }>();
+    const personalUsage = deferred<{ context: string; usedBytes: number }>();
+    const committed: Array<{ context: string; usedBytes: number }> = [];
+    const runLatest = createLatestDriveItemsRequestRunner();
+
+    const workspaceRequest = runLatest(
+      () => workspaceUsage.promise,
+      (usage) => committed.push(usage),
+      vi.fn(),
+    );
+    const personalRequest = runLatest(
+      () => personalUsage.promise,
+      (usage) => committed.push(usage),
+      vi.fn(),
+    );
+
+    personalUsage.resolve({ context: "workspace-1:personal", usedBytes: 20 });
+    await expect(personalRequest).resolves.toEqual({ status: "success" });
+    workspaceUsage.resolve({ context: "workspace-1:workspace", usedBytes: 10 });
+    await expect(workspaceRequest).resolves.toEqual({ status: "superseded" });
+
+    expect(committed).toEqual([{ context: "workspace-1:personal", usedBytes: 20 }]);
+  });
 });
 
 function deferred<T>() {

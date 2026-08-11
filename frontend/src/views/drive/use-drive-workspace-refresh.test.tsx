@@ -65,7 +65,7 @@ describe("runDriveRefreshTasks", () => {
     const summary = await runDriveRefreshTasks(tasks);
 
     expect(summary.status).toBe("partial");
-    expect(summary.incomplete).toContainEqual({
+    expect(summary.failed).toContainEqual({
       message: "分享接口不可用",
       stale: false,
       status: "failed",

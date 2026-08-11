@@ -18,6 +18,7 @@ describe("summarizeDriveRefresh", () => {
     ]);
 
     expect(summary.status).toBe("success");
+    expect(summary.failed).toEqual([]);
     expect(summary.incomplete).toEqual([]);
     expect(summary.succeeded).toHaveLength(5);
   });
@@ -30,9 +31,10 @@ describe("summarizeDriveRefresh", () => {
     ]);
 
     expect(summary.status).toBe("partial");
-    expect(summary.incomplete).toEqual([
+    expect(summary.failed).toEqual([
       { message: "分享加载失败", stale: true, status: "failed", target: "shares" },
     ]);
+    expect(summary.incomplete).toEqual([]);
   });
 
   it("没有成功模块时返回 failed", () => {
@@ -42,6 +44,7 @@ describe("summarizeDriveRefresh", () => {
     ]);
 
     expect(summary.status).toBe("failed");
+    expect(summary.failed).toHaveLength(2);
     expect(summary.succeeded).toEqual([]);
   });
 
@@ -51,7 +54,8 @@ describe("summarizeDriveRefresh", () => {
       driveRefreshSkipped("storage"),
     ]);
 
-    expect(summary.status).toBe("failed");
+    expect(summary.status).toBe("success");
+    expect(summary.failed).toEqual([]);
     expect(summary.incomplete.map((outcome) => outcome.status)).toEqual(["superseded", "skipped"]);
   });
 });

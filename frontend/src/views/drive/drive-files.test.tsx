@@ -29,6 +29,7 @@ const items: DriveItem[] = ["report.txt", "notes.txt", "brief.txt"].map((name, i
   sizeBytes: 128,
   starred: false,
 }));
+const gridItems = [...items, ...items.map((item, index) => ({ ...item, id: `file-${index + 4}`, name: `copy-${item.name}` }))];
 
 describe("FilesModule", () => {
   it("leaves multi-selection actions to the workspace toolbar", () => {
@@ -43,13 +44,6 @@ describe("FilesModule", () => {
         hasQuery={false}
         items={items}
         onArchiveItem={noop}
-        onBatchArchiveItems={noop}
-        onBatchCopyItems={noop}
-        onBatchCutItems={noop}
-        onBatchDeletePermanentlyItems={noop}
-        onBatchDownloadItems={noop}
-        onBatchRestoreItems={noop}
-        onBatchShareItems={noop}
         onBlankGoRoot={noop}
         onBlankGoUp={noop}
         onBlankPaste={noop}
@@ -107,6 +101,26 @@ describe("FilesModule", () => {
     expect(document.activeElement).toBe(rows[1]);
   });
 
+  it("uses the rendered grid column count for vertical range selection", () => {
+    render(<KeyboardFilesHarness fileItems={gridItems} viewMode="grid" />);
+    const grid = screen.getByRole("listbox", { name: "app.refreshTarget.files" });
+    grid.style.gridTemplateColumns = "repeat(3, 188px)";
+    const options = screen.getAllByRole("option");
+
+    expect(grid).toHaveAttribute("aria-multiselectable", "true");
+    fireEvent.click(options[0]);
+    options[0]?.focus();
+    fireEvent.keyDown(options[0], { key: "ArrowDown", shiftKey: true });
+
+    expect(document.activeElement).toBe(options[3]);
+    expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual(["true", "true", "true", "true", "false", "false"]);
+
+    fireEvent.keyDown(options[3], { key: "ArrowUp", shiftKey: true });
+
+    expect(document.activeElement).toBe(options[0]);
+    expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false", "false", "false"]);
+  });
+
   it.each([
     ["ContextMenu", false],
     ["F10", true],
@@ -132,7 +146,7 @@ describe("FilesModule", () => {
   });
 });
 
-function KeyboardFilesHarness({ viewMode }: { viewMode: "grid" | "list" }) {
+function KeyboardFilesHarness({ fileItems = items, viewMode }: { fileItems?: DriveItem[]; viewMode: "grid" | "list" }) {
   const [selected, setSelected] = useState<string[]>([]);
   return (
     <FilesModule
@@ -143,15 +157,8 @@ function KeyboardFilesHarness({ viewMode }: { viewMode: "grid" | "list" }) {
       error={null}
       goUp={noop}
       hasQuery={false}
-      items={items}
+      items={fileItems}
       onArchiveItem={noop}
-      onBatchArchiveItems={noop}
-      onBatchCopyItems={noop}
-      onBatchCutItems={noop}
-      onBatchDeletePermanentlyItems={noop}
-      onBatchDownloadItems={noop}
-      onBatchRestoreItems={noop}
-      onBatchShareItems={noop}
       onBlankGoRoot={noop}
       onBlankGoUp={noop}
       onBlankPaste={noop}
@@ -179,7 +186,7 @@ function KeyboardFilesHarness({ viewMode }: { viewMode: "grid" | "list" }) {
       selected={selected}
       sortBy="name"
       sortDirection="asc"
-      sourceItems={items}
+      sourceItems={fileItems}
       toggleSelected={(id, checked) => {
         setSelected((current) => checked
           ? current.includes(id) ? current : [...current, id]

@@ -22,8 +22,8 @@ export function WorkspaceRefreshStatus({
   const t = useTranslations();
   if (!summary || summary.status === "success") return null;
 
-  const failedModules = [...new Set(summary.incomplete.map((outcome) => getTargetLabel(outcome.target, t)))];
-  const stale = summary.incomplete.some((outcome) => outcome.status === "failed" && outcome.stale);
+  const failedModules = [...new Set(summary.failed.map((outcome) => getTargetLabel(outcome.target, t)))];
+  const stale = summary.failed.some((outcome) => outcome.stale);
 
   return (
     <div

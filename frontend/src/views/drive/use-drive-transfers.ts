@@ -70,7 +70,9 @@ import {
   driveRefreshFailed,
   driveRefreshSkipped,
   driveRefreshSucceeded,
+  driveRefreshSuperseded,
 } from "./drive-refresh-result";
+import { createLatestDriveItemsRequestRunner } from "./drive-items-refresh";
 
 export type { UploadTaskMeta } from "./drive-transfer-helpers";
 export { isStorageCapacityError } from "./drive-transfer-helpers";
@@ -134,6 +136,8 @@ export function useDriveTransfers({
   const spaceScopeRef = useRef(spaceScope);
   const transferRowsWorkspaceIdRef = useRef<string | null>(null);
   const storageUsageContextRef = useRef("");
+  const runLatestTransfersRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
+  const runLatestStorageUsageRequest = useMemo(() => createLatestDriveItemsRequestRunner(), []);
 
   useEffect(() => {
     workspaceIdRef.current = workspaceId;
@@ -183,42 +187,56 @@ export function useDriveTransfers({
   );
   const refreshTransfers = useCallback(async (targetWorkspaceId = workspaceIdRef.current) => {
     if (!targetWorkspaceId) return driveRefreshSkipped("transfers");
-    try {
-      const rows = await fetchTransfers({ workspaceId: targetWorkspaceId, limit: 100 });
-      transferRowsWorkspaceIdRef.current = targetWorkspaceId;
-      setTransferRows(rows);
-      return driveRefreshSucceeded("transfers");
-    } catch (error) {
-      const stale = transferRowsWorkspaceIdRef.current === targetWorkspaceId;
-      if (!stale) setTransferRows([]);
-      return driveRefreshFailed(
-        "transfers",
-        getApiFeedback(error, "app.refreshFailed"),
-        stale,
-      );
-    }
-  }, [getApiFeedback]);
+    const stale = transferRowsWorkspaceIdRef.current === targetWorkspaceId;
+    let failureMessage = "";
+    const result = await runLatestTransfersRequest(
+      () => fetchTransfers({ workspaceId: targetWorkspaceId, limit: 100 }),
+      (rows) => {
+        transferRowsWorkspaceIdRef.current = targetWorkspaceId;
+        setTransferRows(rows);
+      },
+      (error) => {
+        failureMessage = getApiFeedback(error, "app.refreshFailed");
+        if (!stale) setTransferRows([]);
+      },
+    );
+
+    if (result.status === "success") return driveRefreshSucceeded("transfers");
+    if (result.status === "superseded") return driveRefreshSuperseded("transfers");
+    return driveRefreshFailed(
+      "transfers",
+      failureMessage || getApiFeedback(result.error, "app.refreshFailed"),
+      stale,
+    );
+  }, [getApiFeedback, runLatestTransfersRequest]);
   const refreshStorageUsage = useCallback(async (
     targetWorkspaceId = workspaceIdRef.current,
     targetSpaceScope = spaceScopeRef.current,
   ) => {
     if (!targetWorkspaceId) return driveRefreshSkipped("storage");
     const targetContext = `${targetWorkspaceId}:${targetSpaceScope}`;
-    try {
-      const usage = await fetchStorageUsage(targetWorkspaceId, targetSpaceScope);
-      storageUsageContextRef.current = targetContext;
-      setStorageUsage(usage);
-      return driveRefreshSucceeded("storage");
-    } catch (error) {
-      const stale = storageUsageContextRef.current === targetContext;
-      if (!stale) setStorageUsage(null);
-      return driveRefreshFailed(
-        "storage",
-        getApiFeedback(error, "app.refreshFailed"),
-        stale,
-      );
-    }
-  }, [getApiFeedback]);
+    const stale = storageUsageContextRef.current === targetContext;
+    let failureMessage = "";
+    const result = await runLatestStorageUsageRequest(
+      () => fetchStorageUsage(targetWorkspaceId, targetSpaceScope),
+      (usage) => {
+        storageUsageContextRef.current = targetContext;
+        setStorageUsage(usage);
+      },
+      (error) => {
+        failureMessage = getApiFeedback(error, "app.refreshFailed");
+        if (!stale) setStorageUsage(null);
+      },
+    );
+
+    if (result.status === "success") return driveRefreshSucceeded("storage");
+    if (result.status === "superseded") return driveRefreshSuperseded("storage");
+    return driveRefreshFailed(
+      "storage",
+      failureMessage || getApiFeedback(result.error, "app.refreshFailed"),
+      stale,
+    );
+  }, [getApiFeedback, runLatestStorageUsageRequest]);
   const clearStorageUsage = useCallback(() => {
     storageUsageContextRef.current = "";
     setStorageUsage(null);

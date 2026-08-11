@@ -17,12 +17,12 @@ export function useDriveRefreshFeedback(locale: Locale) {
       return;
     }
 
-    const moduleNames = [...new Set(summary.incomplete.map((outcome) => getRefreshTargetLabel(outcome.target, t)))];
+    const moduleNames = [...new Set(summary.failed.map((outcome) => getRefreshTargetLabel(outcome.target, t)))];
     const modules = new Intl.ListFormat(getIntlLocale(locale), {
       style: "short",
       type: "conjunction",
     }).format(moduleNames);
-    const stale = summary.incomplete.some((outcome) => outcome.status === "failed" && outcome.stale);
+    const stale = summary.failed.some((outcome) => outcome.stale);
     showWorkspaceNotification({
       dedupeKey: `workspace-refresh-${summary.status}`,
       description: `${t("app.refreshFailedModules", { modules })}${stale ? ` ${t("app.refreshStaleHint")}` : ""}`,

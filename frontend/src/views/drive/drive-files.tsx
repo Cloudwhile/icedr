@@ -37,10 +37,18 @@ const buttonTypeAttr: { type?: "button" } = {
   type: "button",
 };
 
+function getRenderedGridColumnCount(itemElement: HTMLElement) {
+  const grid = itemElement.closest<HTMLElement>(".drive-grid");
+  const template = grid ? getComputedStyle(grid).gridTemplateColumns.trim() : "";
+  if (!template || template === "none") return 1;
+  const repeatedColumns = /^repeat\(\s*(\d+)\s*,/.exec(template);
+  return repeatedColumns ? Number(repeatedColumns[1]) : template.split(/\s+/).length;
+}
+
 type FileAction = (item: DriveItem) => void;
 
 type FileSelectionHandlers = {
-  extendKeyboardSelection: (currentId: string, key: string) => string | null;
+  extendKeyboardSelection: (currentId: string, key: string, columnCount: number) => string | null;
   onSelectItem: (event: React.MouseEvent, item: DriveItem) => void;
   onSelectItemCheckbox: (item: DriveItem, checked: boolean) => void;
   selectSingleItem: (id: string) => void;
@@ -73,13 +81,6 @@ export type FilesModuleProps = {
   onCopyNodeItem: FileAction;
   onDownloadItem: FileAction;
   onEditItem: FileAction;
-  onBatchArchiveItems: (items: DriveItem[]) => void;
-  onBatchCopyItems: (items: DriveItem[]) => void;
-  onBatchCutItems: (items: DriveItem[]) => void;
-  onBatchDeletePermanentlyItems: (items: DriveItem[]) => void;
-  onBatchDownloadItems: (items: DriveItem[]) => void;
-  onBatchRestoreItems: (items: DriveItem[]) => void;
-  onBatchShareItems: (items: DriveItem[]) => void;
   onDeletePermanentlyItem: FileAction;
   onLoadMore?: () => void;
   onMoveItem: FileAction;
@@ -230,10 +231,11 @@ export function FilesModule({
     toggleSelected(item.id, checked);
     setSelectionAnchorId(item.id);
   };
-  const extendKeyboardSelection = (currentId: string, key: string) => {
+  const extendKeyboardSelection = (currentId: string, key: string, columnCount: number) => {
     const visibleIds = items.map((item) => item.id);
     const extension = resolveDriveSelectionExtension({
       anchorId: selectionAnchorId,
+      columnCount,
       currentId,
       itemIds: visibleIds,
       key,
@@ -557,13 +559,6 @@ function FileTable({
   | "error"
   | "hasQuery"
   | "canPaste"
-  | "onBatchArchiveItems"
-  | "onBatchCopyItems"
-  | "onBatchCutItems"
-  | "onBatchDeletePermanentlyItems"
-  | "onBatchDownloadItems"
-  | "onBatchRestoreItems"
-  | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
   | "onBlankPaste"
@@ -639,7 +634,7 @@ function FileTable({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, extendKeyboardSelection, openContextMenuFromKeyboard)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, 1), openContextMenuFromKeyboard)}
         onMouseDown={preventDriveEntryTextSelection}
         tabIndex={0}
       >
@@ -825,13 +820,6 @@ function FileGrid({
   | "error"
   | "hasQuery"
   | "canPaste"
-  | "onBatchArchiveItems"
-  | "onBatchCopyItems"
-  | "onBatchCutItems"
-  | "onBatchDeletePermanentlyItems"
-  | "onBatchDownloadItems"
-  | "onBatchRestoreItems"
-  | "onBatchShareItems"
   | "onBlankGoRoot"
   | "onBlankGoUp"
   | "onBlankPaste"
@@ -889,6 +877,7 @@ function FileGrid({
     return (
       <div
         aria-label={item.name}
+        aria-selected={checked}
         key={item.id}
         data-motion-row
         data-drive-entry
@@ -901,9 +890,9 @@ function FileGrid({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, extendKeyboardSelection, openContextMenuFromKeyboard)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, getRenderedGridColumnCount(event.currentTarget)), openContextMenuFromKeyboard)}
         onMouseDown={preventDriveEntryTextSelection}
-        role="group"
+        role="option"
         tabIndex={0}
       >
         <div className="drive-card-visual">
@@ -962,7 +951,7 @@ function FileGrid({
 
   return (
     <>
-      <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid">
+      <MotionList aria-label={t("app.refreshTarget.files")} aria-multiselectable="true" key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid" role="listbox">
         {currentFolderId ? (
           <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onClick={goUp} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
             <div className="drive-card-visual">
