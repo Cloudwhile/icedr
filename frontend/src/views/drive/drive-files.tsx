@@ -30,6 +30,7 @@ import { isTextEditableFile } from "@/features/file/open-with";
 import { preventDriveEntryTextSelection } from "@/features/file/drive-entry-events";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 import { formatDriveItemDate, getFilePathHint } from "./drive-files-helpers";
+import { handleDriveItemKeyDown, resolveDriveSelectionExtension } from "./drive-files-keyboard";
 import type { DriveSortBy, DriveSortDirection } from "./drive-search-model";
 
 const buttonTypeAttr: { type?: "button" } = {
@@ -39,6 +40,7 @@ const buttonTypeAttr: { type?: "button" } = {
 type FileAction = (item: DriveItem) => void;
 
 type FileSelectionHandlers = {
+  extendKeyboardSelection: (currentId: string, key: string) => string | null;
   onSelectItem: (event: React.MouseEvent, item: DriveItem) => void;
   onSelectItemCheckbox: (item: DriveItem, checked: boolean) => void;
   selectSingleItem: (id: string) => void;
@@ -226,6 +228,37 @@ export function FilesModule({
     toggleSelected(item.id, checked);
     setSelectionAnchorId(item.id);
   };
+  const extendKeyboardSelection = (currentId: string, key: string) => {
+    const visibleIds = items.map((item) => item.id);
+    const extension = resolveDriveSelectionExtension({
+      anchorId: selectionAnchorId,
+      currentId,
+      itemIds: visibleIds,
+      key,
+      viewMode,
+    });
+    if (!extension) return null;
+
+    const nextSelected = new Set(extension.selectedIds);
+    new Set([...selected, ...visibleIds]).forEach((id) => {
+      const nextChecked = nextSelected.has(id);
+      if (selected.includes(id) !== nextChecked) toggleSelected(id, nextChecked);
+    });
+    setSelectionAnchorId(extension.anchorId);
+    return extension.focusId;
+  };
+  const handleModuleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.key !== "Escape" ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      selected.length === 0 ||
+      document.querySelector('.drive-details-panel, [role="menu"], [role="dialog"][aria-modal="true"]')
+    ) return;
+    event.preventDefault();
+    onBlankSelect();
+    setSelectionAnchorId(null);
+  };
   const retryActiveCollection = hasQuery && onRetrySearch ? onRetrySearch : onBlankRefresh;
   const collectionStateActions: DriveFileCollectionStateAction[] = collectionState === "error"
     ? [{ icon: "refresh", label: t("app.errorBoundary.retry"), onClick: retryActiveCollection, tone: "accent" }]
@@ -253,7 +286,7 @@ export function FilesModule({
 
   return (
     <MotionLayoutGroup>
-      <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu}>
+      <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu} onKeyDown={handleModuleKeyDown}>
         {error && collectionState === "ready" ? (
           <div className="drive-error-banner">
             <StatusPill palette={palette} tone="risk">
@@ -311,6 +344,7 @@ export function FilesModule({
             selectSingleItem={selectSingleItem}
             toggleSelected={toggleSelected}
             toggleStar={toggleStar}
+            extendKeyboardSelection={extendKeyboardSelection}
           />
         ) : (
           <FileGrid
@@ -343,6 +377,7 @@ export function FilesModule({
             selectSingleItem={selectSingleItem}
             toggleSelected={toggleSelected}
             toggleStar={toggleStar}
+            extendKeyboardSelection={extendKeyboardSelection}
           />
         )}
         {canLoadMore && onLoadMore ? (
@@ -468,26 +503,6 @@ function openItemSurface(item: DriveItem, openFolder: (id: string) => void, open
   else openPreview(item.id);
 }
 
-function handleDriveItemKeyDown(
-  event: React.KeyboardEvent,
-  item: DriveItem,
-  checked: boolean,
-  openFolder: (id: string) => void,
-  openPreview: (id: string) => void,
-  onSelect: (item: DriveItem, checked: boolean) => void,
-) {
-  if (event.target !== event.currentTarget || event.repeat) return;
-  if (event.key === "Enter") {
-    event.preventDefault();
-    openItemSurface(item, openFolder, openPreview);
-    return;
-  }
-  if (event.key === " ") {
-    event.preventDefault();
-    onSelect(item, !checked);
-  }
-}
-
 function handleParentDirectoryKeyDown(event: React.KeyboardEvent, goUp: () => void) {
   if (event.target !== event.currentTarget || event.repeat) return;
   if (event.key !== "Enter" && event.key !== " ") return;
@@ -528,6 +543,7 @@ function FileTable({
   selectSingleItem,
   toggleSelected,
   toggleStar,
+  extendKeyboardSelection,
 }: Omit<
   FilesModuleProps,
   | "createMenuItems"
@@ -582,6 +598,11 @@ function FileTable({
     if (!selected.includes(item.id)) selectSingleItem(item.id);
     setContextMenu({ item, position: { x: event.clientX, y: event.clientY } });
   };
+  const openContextMenuFromKeyboard = (item: DriveItem, target: HTMLElement) => {
+    if (!selected.includes(item.id)) selectSingleItem(item.id);
+    const rect = target.getBoundingClientRect();
+    setContextMenu({ item, position: { x: rect.left + 24, y: rect.top + Math.min(rect.height, 32) } });
+  };
 
   const renderItemRow = (item: DriveItem) => {
     const checked = selected.includes(item.id);
@@ -610,7 +631,7 @@ function FileTable({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, extendKeyboardSelection, openContextMenuFromKeyboard)}
         onMouseDown={preventDriveEntryTextSelection}
         tabIndex={0}
       >
@@ -788,6 +809,7 @@ function FileGrid({
   onSelectItemCheckbox,
   selectSingleItem,
   toggleStar,
+  extendKeyboardSelection,
 }: Omit<
   FilesModuleProps,
   | "createMenuItems"
@@ -841,6 +863,11 @@ function FileGrid({
     if (!selected.includes(item.id)) selectSingleItem(item.id);
     setContextMenu({ item, position: { x: event.clientX, y: event.clientY } });
   };
+  const openContextMenuFromKeyboard = (item: DriveItem, target: HTMLElement) => {
+    if (!selected.includes(item.id)) selectSingleItem(item.id);
+    const rect = target.getBoundingClientRect();
+    setContextMenu({ item, position: { x: rect.left + 24, y: rect.top + Math.min(rect.height, 32) } });
+  };
 
   const renderCard = (item: DriveItem) => {
     const checked = selected.includes(item.id);
@@ -864,7 +891,7 @@ function FileGrid({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, extendKeyboardSelection, openContextMenuFromKeyboard)}
         onMouseDown={preventDriveEntryTextSelection}
         role="group"
         tabIndex={0}

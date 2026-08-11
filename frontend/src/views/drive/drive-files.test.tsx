@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { palettes, type DriveItem } from "@/features/file/model";
 import { FilesModule } from "./drive-files";
@@ -14,7 +15,7 @@ afterEach(() => {
 });
 
 const noop = () => undefined;
-const items: DriveItem[] = ["report.txt", "notes.txt"].map((name, index) => ({
+const items: DriveItem[] = ["report.txt", "notes.txt", "brief.txt"].map((name, index) => ({
   colorKey: "primary",
   hasContent: true,
   id: `file-${index + 1}`,
@@ -87,4 +88,105 @@ describe("FilesModule", () => {
     expect(screen.getByText("notes.txt")).toBeInTheDocument();
     expect(container.querySelector(".drive-batch-toolbar")).not.toBeInTheDocument();
   });
+
+  it("extends a contiguous selection with repeated Shift+Arrow presses", () => {
+    const { container } = render(<KeyboardFilesHarness viewMode="list" />);
+    const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-drive-item-id]"));
+
+    fireEvent.click(rows[0]);
+    rows[0]?.focus();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown", shiftKey: true });
+    fireEvent.keyDown(rows[1], { key: "ArrowDown", shiftKey: true });
+
+    expect(rows.map((row) => row.getAttribute("aria-selected"))).toEqual(["true", "true", "true"]);
+    expect(document.activeElement).toBe(rows[2]);
+
+    fireEvent.keyDown(rows[2], { key: "ArrowUp", shiftKey: true });
+
+    expect(rows.map((row) => row.getAttribute("aria-selected"))).toEqual(["true", "true", "false"]);
+    expect(document.activeElement).toBe(rows[1]);
+  });
+
+  it.each([
+    ["ContextMenu", false],
+    ["F10", true],
+  ])("opens the focused row menu with %s and preserves Esc hierarchy", (key, shiftKey) => {
+    const { container } = render(<KeyboardFilesHarness viewMode="list" />);
+    const row = container.querySelector<HTMLElement>('[data-drive-item-id="file-1"]');
+    expect(row).not.toBeNull();
+    row?.focus();
+
+    fireEvent.keyDown(row!, { key, shiftKey });
+
+    expect(screen.getByRole("menu", { name: "actions.more" })).toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByRole("menu", { name: "actions.more" })).not.toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(row!, { key: "Escape" });
+
+    expect(row).toHaveAttribute("aria-selected", "false");
+  });
 });
+
+function KeyboardFilesHarness({ viewMode }: { viewMode: "grid" | "list" }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  return (
+    <FilesModule
+      activeNav="drive"
+      canPaste={false}
+      createMenuItems={[]}
+      currentFolderId={null}
+      error={null}
+      goUp={noop}
+      hasQuery={false}
+      items={items}
+      onArchiveItem={noop}
+      onBatchArchiveItems={noop}
+      onBatchCopyItems={noop}
+      onBatchCutItems={noop}
+      onBatchDeletePermanentlyItems={noop}
+      onBatchDownloadItems={noop}
+      onBatchRestoreItems={noop}
+      onBatchShareItems={noop}
+      onBlankGoRoot={noop}
+      onBlankGoUp={noop}
+      onBlankPaste={noop}
+      onBlankRefresh={noop}
+      onBlankSelect={() => setSelected([])}
+      onCancelRenameItem={noop}
+      onCommitRenameItem={() => true}
+      onCopyItem={noop}
+      onCopyNodeItem={noop}
+      onDeletePermanentlyItem={noop}
+      onDownloadItem={noop}
+      onEditItem={noop}
+      onMoveItem={noop}
+      onRenameItem={noop}
+      onRestoreItem={noop}
+      onSecurityItem={noop}
+      onSetViewMode={noop}
+      onShareItem={noop}
+      onShowDetailsItem={noop}
+      onSortChange={noop}
+      openFolder={noop}
+      openPreview={noop}
+      palette={palettes.light}
+      renamingItemId={null}
+      selected={selected}
+      sortBy="name"
+      sortDirection="asc"
+      sourceItems={items}
+      toggleSelected={(id, checked) => {
+        setSelected((current) => checked
+          ? current.includes(id) ? current : [...current, id]
+          : current.filter((selectedId) => selectedId !== id));
+      }}
+      toggleStar={noop}
+      viewMode={viewMode}
+    />
+  );
+}
