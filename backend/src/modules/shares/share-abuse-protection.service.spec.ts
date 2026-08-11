@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Test } from '@nestjs/testing';
 import { ShareAbuseProtectionService } from './share-abuse-protection.service';
 import {
   ShareRateLimitExceededError,
@@ -22,6 +23,22 @@ describe('ShareAbuseProtectionService', () => {
   const loggerError = jest
     .spyOn(Logger.prototype, 'error')
     .mockImplementation(() => undefined);
+
+  it('resolves its constructor dependencies through the Nest container', async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        ShareAbuseProtectionService,
+        { provide: ShareRateLimitRepository, useValue: {} },
+        { provide: SharesRepository, useValue: {} },
+        { provide: ConfigService, useValue: new ConfigService() },
+      ],
+    }).compile();
+
+    expect(moduleRef.get(ShareAbuseProtectionService)).toBeInstanceOf(
+      ShareAbuseProtectionService,
+    );
+    await moduleRef.close();
+  });
 
   afterAll(() => {
     loggerError.mockRestore();

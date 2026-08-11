@@ -6,7 +6,7 @@ import {
   ShareRateLimitExceededError,
   ShareRateLimitRepository,
 } from './share-rate-limit.repository';
-import type { SharesRepository } from './shares.repository';
+import { SharesRepository } from './shares.repository';
 import type {
   ShareEmailVerifyRateLimitRule,
   ShareRateLimitRule,
