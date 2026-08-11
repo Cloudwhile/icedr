@@ -18,8 +18,10 @@
   --ui-selection: #eef0ff;
   --ui-focus-ring: rgba(94, 106, 210, 0.35);
   --ui-danger: #dc2626;
+  --ui-on-danger: #ffffff;
   --ui-danger-ring: rgba(220, 38, 38, 0.18);
   --ui-warning: #d97706;
+  --ui-on-warning: #211400;
   --ui-success: #168a34;
   --ui-info: #0284c7;
   --ui-secure: #666da4;
@@ -79,8 +81,10 @@
   --ui-selection: #171a2f;
   --ui-focus-ring: rgba(94, 106, 210, 0.5);
   --ui-danger: #f87171;
+  --ui-on-danger: #2b0808;
   --ui-danger-ring: rgba(248, 113, 113, 0.34);
   --ui-warning: #fbbf24;
+  --ui-on-warning: #211400;
   --ui-success: #27a644;
   --ui-info: #38bdf8;
   --ui-secure: #7a7fad;

@@ -320,7 +320,7 @@
 }
 
 .drive-passkey-dialog-heading svg {
-  color: var(--drive-ui-blue-600);
+  color: var(--ui-accent);
 }
 
 .drive-passkey-name-field {
@@ -329,7 +329,7 @@
 }
 
 .drive-passkey-name-field > span {
-  color: var(--drive-ui-muted);
+  color: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 720;
 }

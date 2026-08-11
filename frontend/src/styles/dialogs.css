@@ -20,6 +20,8 @@
 }
 .icedr-confirmation-frame {
   --confirmation-accent: var(--ui-danger);
+  --confirmation-foreground: var(--ui-on-danger);
+
   display: grid;
   gap: 18px;
   padding: 20px;
@@ -27,6 +29,7 @@
 
 .icedr-confirmation-frame[data-tone="warning"] {
   --confirmation-accent: var(--ui-warning);
+  --confirmation-foreground: var(--ui-on-warning);
 }
 
 .icedr-confirmation-header {
@@ -105,7 +108,7 @@
 .icedr-confirmation-actions button[data-tone="warning"] {
   background: var(--confirmation-accent);
   border-color: var(--confirmation-accent);
-  color: var(--ui-text-inverse);
+  color: var(--confirmation-foreground);
 }
 
 .icedr-confirmation-actions button[data-tone="danger"]:hover:not(:disabled),

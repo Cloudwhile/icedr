@@ -89,6 +89,7 @@
 
 .drive-transfers-module .drive-module-stat-card {
   --transfer-stat-accent: var(--drive-ui-blue-600);
+
   background: color-mix(in srgb, var(--drive-ui-surface) 76%, transparent);
   border-color: var(--drive-ui-line);
   border-radius: 8px;

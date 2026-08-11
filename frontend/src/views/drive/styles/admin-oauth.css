@@ -354,14 +354,14 @@
   padding: 16px;
 }
 
-.drive-oauth-provider-mark[data-provider="oidc"],
-.drive-oauth-provider-mark[data-provider="icetowne-blog"] {
+.admin-shell .drive-oauth-provider-mark[data-provider="oidc"],
+.admin-shell .drive-oauth-provider-mark[data-provider="icetowne-blog"] {
   background: #eff6ff;
   border: 1px solid #dce9fb;
   color: #2761b7;
 }
 
-.drive-oauth-provider-mark[data-provider="icetowne-blog"] {
+.admin-shell .drive-oauth-provider-mark[data-provider="icetowne-blog"] {
   background: #eaf8f5;
   border-color: #cceae3;
   color: #087c77;
@@ -993,6 +993,7 @@
   --drive-ui-ink: var(--ui-text-primary);
   --drive-ui-line: var(--ui-border-default);
   --drive-ui-muted: var(--ui-text-secondary);
+
   padding: 0;
 }
 
