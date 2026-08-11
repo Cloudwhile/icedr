@@ -57,7 +57,7 @@
 }
 
 .icedr-confirmation-header p {
-  color: var(--app-subtle, #64748b);
+  color: var(--app-subtle, var(--ui-text-tertiary));
   font-size: 13px;
   font-weight: 620;
   line-height: 19px;
@@ -70,7 +70,7 @@
 }
 
 .icedr-confirmation-field > span {
-  color: var(--app-subtle, #64748b);
+  color: var(--app-subtle, var(--ui-text-tertiary));
   font-size: 12px;
   font-weight: 720;
 }
@@ -98,19 +98,19 @@
 }
 
 .icedr-confirmation-actions button:hover:not(:disabled) {
-  background: rgba(100, 116, 139, 0.08);
+  background: color-mix(in srgb, var(--ui-text-tertiary) 8%, transparent);
 }
 
 .icedr-confirmation-actions button[data-tone="danger"],
 .icedr-confirmation-actions button[data-tone="warning"] {
   background: var(--confirmation-accent);
   border-color: var(--confirmation-accent);
-  color: #fff;
+  color: var(--ui-text-inverse);
 }
 
 .icedr-confirmation-actions button[data-tone="danger"]:hover:not(:disabled),
 .icedr-confirmation-actions button[data-tone="warning"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--confirmation-accent) 82%, #000);
+  background: color-mix(in srgb, var(--confirmation-accent) 82%, var(--ui-canvas));
 }
 
 .icedr-confirmation-actions button:disabled {

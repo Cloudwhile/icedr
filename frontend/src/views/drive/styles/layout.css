@@ -63,10 +63,10 @@
 
 .drive-search {
   align-items: center;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid #dfe6f0;
+  background: color-mix(in srgb, var(--drive-ui-surface) 72%, transparent);
+  border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84), 0 1px 2px rgba(15, 23, 42, 0.035);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--drive-ui-line) 42%, transparent), var(--drive-ui-shadow-tight);
   display: flex;
   gap: 8px;
   height: 44px;
@@ -78,8 +78,8 @@
 
 .drive-search:hover,
 .drive-search:focus-within {
-  border-color: #cfd7e6;
-  box-shadow: 0 0 0 4px rgba(79, 128, 255, 0.08), 0 12px 28px rgba(53, 102, 232, 0.08);
+  border-color: var(--drive-ui-line-strong);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--drive-ui-blue-600) 8%, transparent), var(--drive-ui-shadow-hover);
   transform: translateY(-1px);
 }
 
@@ -193,12 +193,12 @@
 
 .drive-shell .icedr-tool-button:hover,
 .drive-shell .icedr-tool-button[data-hovered="true"] {
-  box-shadow: 0 8px 20px rgba(35, 56, 94, 0.08);
+  box-shadow: var(--drive-ui-shadow-hover);
   transform: translateY(-1px);
 }
 
 .drive-shell .icedr-tool-button:active,
 .drive-shell .icedr-tool-button[data-pressed="true"] {
-  box-shadow: 0 4px 12px rgba(35, 56, 94, 0.08);
+  box-shadow: var(--drive-ui-shadow-tight);
   transform: scale(0.96);
 }

@@ -8,10 +8,10 @@
 
 .drive-search-popover {
   animation: drive-popover-enter 180ms var(--drive-ui-ease) both;
-  background: #ffffff;
-  border: 1px solid rgba(205, 216, 231, 0.96);
+  background: var(--drive-ui-surface);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 8px;
-  box-shadow: 0 22px 60px rgba(35, 56, 94, 0.16), 0 1px 0 rgba(255, 255, 255, 0.92) inset;
+  box-shadow: var(--drive-ui-shadow-2);
   display: grid;
   gap: 8px;
   left: 0;
@@ -35,8 +35,8 @@
 
 .drive-search-popover-icon {
   align-items: center;
-  background: #f2f6ff;
-  border: 1px solid #dde7ff;
+  background: color-mix(in srgb, var(--drive-ui-blue-600) 9%, var(--drive-ui-surface));
+  border: 1px solid color-mix(in srgb, var(--drive-ui-blue-600) 22%, var(--drive-ui-line));
   border-radius: 8px;
   color: var(--drive-ui-blue-600);
   display: inline-flex;
@@ -66,8 +66,8 @@
 }
 
 .drive-search-count {
-  background: rgba(246, 248, 252, 0.86);
-  border: 1px solid #edf2f8;
+  background: color-mix(in srgb, var(--drive-ui-surface-soft) 86%, transparent);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 999px;
   color: var(--drive-ui-muted);
   font-size: 12px;
@@ -85,8 +85,8 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-top: 1px solid #eef3f9;
-  color: #52617a;
+  border-top: 1px solid var(--drive-ui-line);
+  color: var(--drive-ui-muted);
   display: flex;
   font-size: 13px;
   font-weight: 650;
@@ -154,9 +154,9 @@
 }
 
 .drive-search-result-row:hover {
-  background: #f4f7ff;
-  border-color: #dfe7ff;
-  box-shadow: 0 9px 22px rgba(35, 56, 94, 0.065);
+  background: color-mix(in srgb, var(--drive-ui-blue-600) 7%, var(--drive-ui-surface));
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 22%, var(--drive-ui-line));
+  box-shadow: var(--drive-ui-shadow-hover);
   transform: translateY(-1px);
 }
 
@@ -221,10 +221,10 @@
 
 .drive-search-scope-chip {
   align-items: center;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  border: 1px solid #dfe7f2;
+  background: var(--drive-ui-surface);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 999px;
-  color: #435169;
+  color: var(--drive-ui-muted);
   display: inline-flex;
   font-size: 12px;
   font-weight: 730;
@@ -236,9 +236,9 @@
 }
 
 .drive-search-scope-chip[data-active="true"] {
-  background: color-mix(in srgb, var(--drive-ui-blue-600) 8%, #ffffff);
-  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 24%, #dfe7f2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  background: color-mix(in srgb, var(--drive-ui-blue-600) 8%, var(--drive-ui-surface));
+  border-color: color-mix(in srgb, var(--drive-ui-blue-600) 24%, var(--drive-ui-line));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--drive-ui-line) 42%, transparent);
   color: var(--drive-ui-blue-600);
 }
 
@@ -255,10 +255,10 @@
 
 .drive-filter-panel {
   animation: drive-filter-enter 230ms var(--drive-ui-ease) both;
-  background: #ffffff;
-  border: 1px solid #dce6f2;
+  background: var(--drive-ui-surface);
+  border: 1px solid var(--drive-ui-line);
   border-radius: 8px;
-  box-shadow: 0 24px 58px rgba(36, 55, 90, 0.14), 0 1px 0 rgba(255, 255, 255, 0.94) inset;
+  box-shadow: var(--drive-ui-shadow-2);
   display: grid;
   gap: 8px;
   max-width: min(360px, 100%);
@@ -270,7 +270,7 @@
 
 .drive-filter-panel-head {
   align-items: center;
-  border-bottom: 1px solid #edf3f9;
+  border-bottom: 1px solid var(--drive-ui-line);
   display: flex;
   justify-content: space-between;
   min-height: 36px;
@@ -303,7 +303,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #edf3f9;
+  border-bottom: 1px solid var(--drive-ui-line);
   border-radius: 0;
   display: grid;
   gap: 12px;
@@ -318,14 +318,14 @@
 }
 
 .drive-filter-field:focus-within {
-  background: #f8fbff;
-  border-bottom-color: #dbe6f2;
+  background: var(--drive-ui-surface-soft);
+  border-bottom-color: var(--drive-ui-line-strong);
   border-radius: 6px;
   box-shadow: none;
 }
 
 .drive-filter-field > span {
-  color: #64748b;
+  color: var(--drive-ui-muted);
   font-size: 11px;
   font-weight: 780;
   line-height: 14px;
