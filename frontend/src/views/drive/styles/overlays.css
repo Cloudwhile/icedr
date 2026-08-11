@@ -184,6 +184,38 @@
   white-space: pre-line;
 }
 
+.workspace-notification-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.workspace-notification-action {
+  color: var(--workspace-notification-accent);
+}
+
+.workspace-notification-action-label {
+  background: transparent;
+  border: 0;
+  color: var(--workspace-notification-accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 780;
+  padding: 7px 6px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 42%, transparent);
+  text-underline-offset: 3px;
+}
+
+.workspace-notification-action-label:hover {
+  text-decoration-color: currentColor;
+}
+
+.workspace-notification-action-label:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .workspace-notification-close {
   color: #7b89a2;
 }

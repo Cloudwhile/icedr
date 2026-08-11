@@ -1,19 +1,27 @@
 import type { ReactNode } from "react";
+import type { LocalIconName } from "@/features/file/model";
 
 export type WorkspaceNotificationTone = "success" | "error" | "info" | "warning" | "neutral";
 
 export type WorkspaceNotificationOptions = {
+  actionIcon?: LocalIconName;
+  actionLabel?: string;
   debounceMs?: number;
   dedupeKey?: string;
   description?: ReactNode;
+  onAction?: () => void;
   title: ReactNode;
   tone?: WorkspaceNotificationTone;
 };
 
 export type WorkspaceNotification = Required<Pick<WorkspaceNotificationOptions, "tone">> & {
+  actionIcon?: LocalIconName;
+  actionLabel?: string;
   createdAt: number;
+  dedupeKey?: string;
   description?: ReactNode;
   id: string;
+  onAction?: () => void;
   title: ReactNode;
 };
 
@@ -25,9 +33,12 @@ let notificationCounter = 0;
 let notifications: WorkspaceNotification[] = [];
 
 export function showWorkspaceNotification({
+  actionIcon,
+  actionLabel,
   debounceMs = defaultNotificationDebounceMs,
   dedupeKey,
   description,
+  onAction,
   title,
   tone = "success",
 }: WorkspaceNotificationOptions) {
@@ -42,11 +53,15 @@ export function showWorkspaceNotification({
 
   const id = `workspace-notification-${now}-${notificationCounter++}`;
   notifications = [
-    ...notifications,
+    ...notifications.filter((notification) => !dedupeKey || notification.dedupeKey !== dedupeKey),
     {
+      actionIcon,
+      actionLabel,
       createdAt: now,
+      dedupeKey,
       description,
       id,
+      onAction,
       title,
       tone,
     },
@@ -58,6 +73,16 @@ export function showWorkspaceNotification({
 export function closeWorkspaceNotification(id: string) {
   notifications = notifications.filter((notification) => notification.id !== id);
   emitWorkspaceNotifications();
+}
+
+export function triggerWorkspaceNotificationAction(id: string) {
+  const notification = notifications.find((candidate) => candidate.id === id);
+  if (!notification?.onAction) return false;
+
+  notifications = notifications.filter((candidate) => candidate.id !== id);
+  emitWorkspaceNotifications();
+  notification.onAction();
+  return true;
 }
 
 export function subscribeWorkspaceNotifications(listener: () => void) {

@@ -9,6 +9,7 @@ import {
   closeWorkspaceNotification,
   getWorkspaceNotificationsSnapshot,
   subscribeWorkspaceNotifications,
+  triggerWorkspaceNotificationAction,
   type WorkspaceNotificationTone,
 } from "./workspace-notification-store";
 
@@ -48,16 +49,41 @@ export function WorkspaceNotificationStack({
                 <span className="workspace-notification-description">{notification.description}</span>
               ) : null}
             </span>
-            <ToolButton
-              className="workspace-notification-close"
-              label={closeLabel}
-              palette={palette}
-              size="sm"
-              tooltipPlacement="top"
-              onClick={() => closeWorkspaceNotification(notification.id)}
-            >
-              <LocalIcon name="cross" size={14} />
-            </ToolButton>
+            <span className="workspace-notification-actions">
+              {notification.actionLabel && notification.onAction ? (
+                notification.actionIcon ? (
+                  <ToolButton
+                    className="workspace-notification-action"
+                    label={notification.actionLabel}
+                    palette={palette}
+                    size="sm"
+                    tooltipPlacement="top"
+                    onClick={() => triggerWorkspaceNotificationAction(notification.id)}
+                  >
+                    <LocalIcon name={notification.actionIcon} size={14} />
+                  </ToolButton>
+                ) : (
+                  <button
+                    aria-label={notification.actionLabel}
+                    className="workspace-notification-action-label"
+                    onClick={() => triggerWorkspaceNotificationAction(notification.id)}
+                    type="button"
+                  >
+                    {notification.actionLabel}
+                  </button>
+                )
+              ) : null}
+              <ToolButton
+                className="workspace-notification-close"
+                label={closeLabel}
+                palette={palette}
+                size="sm"
+                tooltipPlacement="top"
+                onClick={() => closeWorkspaceNotification(notification.id)}
+              >
+                <LocalIcon name="cross" size={14} />
+              </ToolButton>
+            </span>
           </motion.div>
         ))}
       </AnimatePresence>
