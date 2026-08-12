@@ -6,17 +6,31 @@ import { LineChart, PieChart } from "echarts/charts";
 import {
   GridComponent,
   GraphicComponent,
+  LegendComponent,
   TooltipComponent,
   type GridComponentOption,
   type GraphicComponentOption,
+  type LegendComponentOption,
   type TooltipComponentOption,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { cn } from "./cn";
 
-registerEChartsModules([CanvasRenderer, GridComponent, GraphicComponent, LineChart, PieChart, TooltipComponent]);
+registerEChartsModules([
+  CanvasRenderer,
+  GridComponent,
+  GraphicComponent,
+  LegendComponent,
+  LineChart,
+  PieChart,
+  TooltipComponent,
+]);
 
-export type EChartOption = EChartsCoreOption & GridComponentOption & GraphicComponentOption & TooltipComponentOption;
+export type EChartOption = EChartsCoreOption &
+  GridComponentOption &
+  GraphicComponentOption &
+  LegendComponentOption &
+  TooltipComponentOption;
 
 export type EChartProps = {
   ariaLabel?: string;

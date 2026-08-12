@@ -531,3 +531,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.admin-status-stack {
+  display: grid;
+  gap: 18px;
+}

@@ -21,6 +21,7 @@ import {
   showAppToast,
   type AppToastTone,
 } from "@/components/ui/app-toast-store";
+import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
 import type { Palette } from "@/features/file/model";
 import { isValidEmailAddress } from "@/features/auth/auth-input-validation";
 import { validatePasskeySettingsInput } from "@/features/auth/passkey-settings-validation";
@@ -38,9 +39,8 @@ import {
   getDriveApiErrorMessage,
   testMailSettings,
   testStorageSettings,
-  updateAuthSettings,
+  updateAdminAuthPolicy,
   updateMailSettings,
-  updatePasskeySettings,
   updateSiteSettings,
   updateStorageSettings,
   upsertTranslationBundle,
@@ -292,27 +292,20 @@ export function DriveSystemPlatformSettings({
   };
   const hasUnsavedChanges = Object.values(dirtySections).some(Boolean);
 
-  useEffect(() => {
-    if (!hasUnsavedChanges) return;
-    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [hasUnsavedChanges]);
-
-  const saveSite = () => {
+  const saveSite = useCallback(async () => {
     setSavingKey("site");
-    void updateSiteSettings(site)
-      .then((next) => {
-        setSite(next);
-        setSavedSite(next);
-        showToast(t("admin.saved"));
-      })
-      .catch((error) => showToast(getAdminSaveFailedMessage(error, t), "error"))
-      .finally(() => setSavingKey(null));
-  };
+    try {
+      const next = await updateSiteSettings(site);
+      setSite(next);
+      setSavedSite(next);
+      showToast(t("admin.saved"));
+    } catch (error) {
+      showToast(getAdminSaveFailedMessage(error, t), "error");
+      throw error;
+    } finally {
+      setSavingKey(null);
+    }
+  }, [showToast, site, t]);
 
   const pickLogo = () => logoInputRef.current?.click();
   const updateLogo = (event: ChangeEvent<HTMLInputElement>) => {
@@ -361,14 +354,31 @@ export function DriveSystemPlatformSettings({
       .finally(() => setSavingKey(null));
   };
 
-  const saveAuth = () => {
+  const refreshAuthoritativeAuthPolicy = useCallback(async () => {
+    const [authResult, siteResult] = await Promise.allSettled([
+      fetchAuthSettings(),
+      fetchSiteSettings(),
+    ]);
+    if (authResult.status === "fulfilled") {
+      setAuth(authResult.value);
+      setSavedAuth(authResult.value);
+    }
+    if (siteResult.status === "fulfilled") {
+      setPasskey(siteResult.value.passkey);
+      setSavedPasskey(siteResult.value.passkey);
+    }
+  }, []);
+
+  const saveAuthPolicy = useCallback(async () => {
     if (!auth.localEnabled && !auth.oauthEnabled && !auth.passkeyEnabled) {
-      showToast(t("admin.authMethodRequired"), "error");
-      return;
+      const message = t("admin.authMethodRequired");
+      showToast(message, "error");
+      throw new Error(message);
     }
     if (auth.oauthEnabled && !auth.oauthConfigured) {
-      showToast(t("admin.oauthConfigRequired"), "error");
-      return;
+      const message = t("admin.oauthConfigRequired");
+      showToast(message, "error");
+      throw new Error(message);
     }
     const passkeyDraftReady = Boolean(passkeyValidation?.valid);
     if (
@@ -376,82 +386,81 @@ export function DriveSystemPlatformSettings({
       !auth.passkeyConfigured &&
       !passkeyDraftReady
     ) {
-      showToast(t("admin.passkeyConfigRequired"), "error");
-      return;
+      const message = t("admin.passkeyConfigRequired");
+      showToast(message, "error");
+      throw new Error(message);
     }
     if (passkey && passkeyDirty && !passkeyValidation?.valid) {
-      showToast(t(passkeyValidation?.firstError ?? "admin.passkeyConfigRequired"), "error");
-      return;
+      const message = t(
+        passkeyValidation?.firstError ?? "admin.passkeyConfigRequired",
+      );
+      showToast(message, "error");
+      throw new Error(message);
     }
     setSavingKey("auth");
-    const passkeySave =
-      auth.passkeyEnabled && passkey && (passkeyDirty || !auth.passkeyConfigured)
-        ? updatePasskeySettings(passkeyValidation?.normalized ?? passkey).then((next) => {
-            setPasskey(next);
-            setSavedPasskey(next);
-          })
-        : Promise.resolve();
-    void passkeySave
-      .then(() =>
-        updateAuthSettings({
+    try {
+      const next = await updateAdminAuthPolicy({
+        auth: {
           localEnabled: auth.localEnabled,
           oauthEnabled: auth.oauthEnabled,
           passkeyEnabled: auth.passkeyEnabled,
           minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
-        }),
-      )
-      .then((next) => {
-        setAuth(next);
-        setSavedAuth(next);
-        showToast(t("admin.saved"));
-      })
-      .catch((error) => showToast(getAdminSaveFailedMessage(error, t), "error"))
-      .finally(() => setSavingKey(null));
-  };
-
-  const savePasskey = () => {
-    if (!passkey) return;
-    if (!passkeyValidation?.valid) {
-      showToast(t(passkeyValidation?.firstError ?? "admin.passkeyConfigRequired"), "error");
-      return;
+        },
+        ...(passkey && (passkeyDirty || !auth.passkeyConfigured)
+          ? { passkey: passkeyValidation?.normalized ?? passkey }
+          : {}),
+      });
+      setAuth(next.auth);
+      setSavedAuth(next.auth);
+      setPasskey(next.passkey);
+      setSavedPasskey(next.passkey);
+      showToast(t("admin.saved"));
+    } catch (error) {
+      await refreshAuthoritativeAuthPolicy();
+      showToast(getAdminSaveFailedMessage(error, t), "error");
+      throw error;
+    } finally {
+      setSavingKey(null);
     }
-    setSavingKey("passkey");
-    void updatePasskeySettings(passkeyValidation.normalized)
-      .then((next) => {
-        setPasskey(next);
-        setSavedPasskey(next);
-        return fetchAuthSettings();
-      })
-      .then((nextAuth) => {
-        setAuth(nextAuth);
-        setSavedAuth(nextAuth);
-        showToast(t("admin.saved"));
-      })
-      .catch((error) => showToast(getAdminSaveFailedMessage(error, t), "error"))
-      .finally(() => setSavingKey(null));
-  };
+  }, [
+    auth,
+    passkey,
+    passkeyDirty,
+    passkeyValidation,
+    refreshAuthoritativeAuthPolicy,
+    showToast,
+    t,
+  ]);
 
-  const saveMail = () => {
+  const saveMail = useCallback(async () => {
     if (!mailValidation.valid) {
-      showToast(t(mailValidation.errorKey ?? "admin.saveFailed"), "error");
-      return;
+      const message = t(mailValidation.errorKey ?? "admin.saveFailed");
+      showToast(message, "error");
+      throw new Error(message);
     }
     setSavingKey("mail");
-    void updateMailSettings(
-      mailInputFromSettings(mail, mailPassword.trim() || undefined),
-    )
-      .then((next) => {
-        setMail(next);
-        setSavedMail(next);
-        setMailPassword("");
-        showToast(t("admin.saved"));
-      })
-      .catch((error) => showToast(getAdminSaveFailedMessage(error, t), "error"))
-      .finally(() => setSavingKey(null));
-  };
+    try {
+      const next = await updateMailSettings(
+        mailInputFromSettings(mail, mailPassword.trim() || undefined),
+      );
+      setMail(next);
+      setSavedMail(next);
+      setMailPassword("");
+      showToast(t("admin.saved"));
+    } catch (error) {
+      showToast(getAdminSaveFailedMessage(error, t), "error");
+      throw error;
+    } finally {
+      setSavingKey(null);
+    }
+  }, [mail, mailPassword, mailValidation, showToast, t]);
 
   const runMailTest = () => {
     const recipientEmail = (mailTestEmail || mail.fromEmail).trim();
+    if (mailDirty) {
+      showToast(t("admin.mailTestRequiresSavedSettings"), "error");
+      return;
+    }
     if (!mailValidation.valid) {
       showToast(t(mailValidation.errorKey ?? "admin.saveFailed"), "error");
       return;
@@ -461,18 +470,7 @@ export function DriveSystemPlatformSettings({
       return;
     }
     setSavingKey("mail-test");
-    const savePromise = mailDirty
-      ? updateMailSettings(
-          mailInputFromSettings(mail, mailPassword.trim() || undefined),
-        )
-      : Promise.resolve(mail);
-    void savePromise
-      .then((next) => {
-        setMail(next);
-        setSavedMail(next);
-        setMailPassword("");
-        return testMailSettings(recipientEmail);
-      })
+    void testMailSettings(recipientEmail)
       .then((next) => {
         setMail(next);
         setSavedMail(next);
@@ -482,33 +480,79 @@ export function DriveSystemPlatformSettings({
       .finally(() => setSavingKey(null));
   };
 
-  const saveStorage = () => {
+  const saveStorage = useCallback(async () => {
     const next = { ...storageDraft, distributedStorageEnabled: storageChoice };
     if (!storageValidation.valid) {
-      showToast(t(storageValidation.errorKey ?? "admin.saveFailed"), "error");
-      return;
+      const message = t(storageValidation.errorKey ?? "admin.saveFailed");
+      showToast(message, "error");
+      throw new Error(message);
     }
     setSavingKey("storage-backend");
-    void updateStorageSettings(
-      storageInputFromSettings(next, storageSecret.trim() || undefined),
-    )
-      .then((settings) => {
-        setStorageDraftState(createStorageDraftState(settings));
-        onStorageSettingsUpdated(settings);
-        const modeChanged =
-          storageSettings.distributedStorageEnabled !==
-          settings.distributedStorageEnabled;
-        showToast(
-          modeChanged
-            ? settings.distributedStorageEnabled
-              ? t("admin.storageSwitchedToObject")
-              : t("admin.storageSwitchedToLocal")
-            : t("admin.saved"),
-        );
-      })
-      .catch((error) => showToast(getAdminSaveFailedMessage(error, t), "error"))
-      .finally(() => setSavingKey(null));
-  };
+    try {
+      const settings = await updateStorageSettings(
+        storageInputFromSettings(next, storageSecret.trim() || undefined),
+      );
+      setStorageDraftState(createStorageDraftState(settings));
+      onStorageSettingsUpdated(settings);
+      const modeChanged =
+        storageSettings.distributedStorageEnabled !==
+        settings.distributedStorageEnabled;
+      showToast(
+        modeChanged
+          ? settings.distributedStorageEnabled
+            ? t("admin.storageSwitchedToObject")
+            : t("admin.storageSwitchedToLocal")
+          : t("admin.saved"),
+      );
+    } catch (error) {
+      showToast(getAdminSaveFailedMessage(error, t), "error");
+      throw error;
+    } finally {
+      setSavingKey(null);
+    }
+  }, [
+    onStorageSettingsUpdated,
+    showToast,
+    storageChoice,
+    storageDraft,
+    storageSecret,
+    storageSettings.distributedStorageEnabled,
+    storageValidation,
+    t,
+  ]);
+
+  const savePlatformSettings = useCallback(async () => {
+    if (siteDirty) await saveSite();
+    if (authDirty || passkeyDirty) await saveAuthPolicy();
+    if (mailDirty) await saveMail();
+    if (storageDirty) await saveStorage();
+  }, [
+    authDirty,
+    mailDirty,
+    passkeyDirty,
+    saveAuthPolicy,
+    saveMail,
+    saveSite,
+    saveStorage,
+    siteDirty,
+    storageDirty,
+  ]);
+
+  const discardPlatformSettings = useCallback(() => {
+    setSite(savedSite);
+    setAuth(savedAuth);
+    setPasskey(savedPasskey);
+    setMail(savedMail);
+    setMailPassword("");
+    setStorageDraftState(createStorageDraftState(storageSettings));
+  }, [savedAuth, savedMail, savedPasskey, savedSite, storageSettings]);
+
+  useUnsavedChangesSection({
+    id: "system-platform",
+    isDirty: hasUnsavedChanges,
+    onDiscard: discardPlatformSettings,
+    onSave: savePlatformSettings,
+  });
 
   const runStorageTest = () => {
     const next = { ...storageDraft, distributedStorageEnabled: storageChoice };
@@ -576,7 +620,7 @@ export function DriveSystemPlatformSettings({
                   isPending={savingKey === "site"}
                   label={t("admin.save")}
                   palette={palette}
-                  onClick={saveSite}
+                  onClick={() => void saveSite().catch(() => undefined)}
                   visual="surface"
                 >
                   <LocalIcon name="save" size={17} />
@@ -691,7 +735,9 @@ export function DriveSystemPlatformSettings({
                 isPending={savingKey === "auth"}
                 label={t("admin.save")}
                 palette={palette}
-                onClick={saveAuth}
+                onClick={() =>
+                  void saveAuthPolicy().catch(() => undefined)
+                }
                 visual="surface"
               >
                 <LocalIcon name="save" size={17} />
@@ -800,10 +846,12 @@ export function DriveSystemPlatformSettings({
             actions={
               <ToolButton
                 disabled={!passkeyDirty}
-                isPending={savingKey === "passkey"}
+                isPending={savingKey === "auth"}
                 label={t("admin.save")}
                 palette={palette}
-                onClick={savePasskey}
+                onClick={() =>
+                  void saveAuthPolicy().catch(() => undefined)
+                }
                 visual="surface"
               >
                 <LocalIcon name="save" size={17} />
@@ -883,7 +931,7 @@ export function DriveSystemPlatformSettings({
             setMailPassword(value);
             setMail((current) => ({ ...current, verifiedAt: null }));
           }}
-          onSave={saveMail}
+          onSave={() => void saveMail().catch(() => undefined)}
           onTest={runMailTest}
           onTestEmailChange={setMailTestEmail}
           palette={palette}
@@ -912,7 +960,7 @@ export function DriveSystemPlatformSettings({
               };
             })
           }
-          onSave={saveStorage}
+          onSave={() => void saveStorage().catch(() => undefined)}
           onSecretChange={(secret) =>
             setStorageDraftState((current) => ({
               ...resolveStorageDraftState(current, storageSettings),

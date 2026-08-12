@@ -9,6 +9,8 @@ import configuration from './config/configuration';
 import { DatabaseModule } from './database/database.module';
 import { FileNodesModule } from './modules/files/file-nodes.module';
 import { HealthModule } from './modules/admin/health/health.module';
+import { AdminPoliciesModule } from './modules/admin/policies/admin-policies.module';
+import { OverviewModule } from './modules/admin/overview/overview.module';
 import { IdentityModule } from './modules/auth/identity/identity.module';
 import { MailModule } from './modules/admin/mail/mail.module';
 import { QueueModule } from './modules/downloads/queue/queue.module';
@@ -37,6 +39,8 @@ import { WorkspacesModule } from './modules/admin/workspaces/workspaces.module';
     IdentityModule,
     AuthModule,
     WorkspacesModule,
+    AdminPoliciesModule,
+    OverviewModule,
     FileNodesModule,
     SharesModule,
     AuditModule,

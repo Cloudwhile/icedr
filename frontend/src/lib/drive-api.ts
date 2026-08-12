@@ -1,4 +1,6 @@
 export * from "./drive-api-auth-settings";
+export * from "./drive-api-admin";
+export * from "./drive-api-admin-types";
 export * from "./drive-api-client";
 export * from "./drive-api-errors";
 export * from "./drive-api-files";

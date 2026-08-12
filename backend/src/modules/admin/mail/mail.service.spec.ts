@@ -25,8 +25,10 @@ describe('MailService', () => {
 
   function createService(configured = true) {
     const sendMail = jest.fn(() => Promise.resolve());
+    const verify = jest.fn(() => Promise.resolve(true));
     jest.mocked(nodemailer.createTransport).mockReturnValue({
       sendMail,
+      verify,
     } as never);
     const settingsService = {
       getMailSettings: jest.fn(() => Promise.resolve(settings)),
@@ -61,12 +63,30 @@ describe('MailService', () => {
     return {
       service: new MailService(settingsService as never, config as never),
       sendMail,
+      verify,
       settingsService,
     };
   }
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('verifies the current SMTP transport without sending a message', async () => {
+    const { service, sendMail, verify } = createService();
+
+    await expect(service.verifyCurrentTransport()).resolves.toBeUndefined();
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionTimeout: 2_000,
+        greetingTimeout: 2_000,
+        host: settings.host,
+        socketTimeout: 3_000,
+      }),
+    );
   });
 
   it('sends a test message and returns safe settings without a password', async () => {

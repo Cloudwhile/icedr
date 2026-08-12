@@ -1,0 +1,37 @@
+.admin-scope-selector {
+  align-items: center;
+  display: inline-grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(190px, 260px);
+  min-width: 0;
+}
+
+.admin-scope-selector > span:first-child {
+  color: var(--drive-ui-muted, currentColor);
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.admin-scope-selector .icedr-app-select-shell {
+  min-height: 38px;
+  width: 100%;
+}
+
+.admin-scope-selector .icedr-app-select {
+  font-size: 12px;
+  font-weight: 720;
+}
+
+@media (max-width: 560px) {
+  .admin-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .admin-scope-selector {
+    align-items: stretch;
+    flex: 1 0 100%;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+}

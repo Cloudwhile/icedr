@@ -1,6 +1,14 @@
 import { randomBytes } from 'crypto';
 
 export type AuditActor = 'workspace' | 'account' | 'visitor' | 'system';
+export type AuditResult = 'success' | 'failed';
+export type AuditResourceType = 'file' | 'share' | 'transfer' | 'system';
+export type AuditSortBy = 'createdAt' | 'action' | 'actor';
+export type AuditSortDirection = 'asc' | 'desc';
+export type AuditScope =
+  | { kind: 'all' }
+  | { kind: 'system' }
+  | { kind: 'workspace'; workspaceId: string };
 
 export type AuditEventRecord = {
   id: string;
@@ -12,6 +20,12 @@ export type AuditEventRecord = {
   nodeId: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
+  actorDisplayName: string | null;
+  actorEmail: string | null;
+  actorUserId: string | null;
+  ipAddress: string | null;
+  resourceType: AuditResourceType;
+  result: AuditResult;
 };
 
 export type AuditEventInput = {
@@ -25,10 +39,20 @@ export type AuditEventInput = {
 };
 
 export type AuditEventFilters = {
+  scope?: 'all' | 'system' | 'workspace';
   workspaceId?: string;
   shareToken?: string;
   nodeId?: string;
+  actor?: AuditActor;
   action?: string;
+  result?: AuditResult;
+  resourceType?: AuditResourceType;
+  ipAddress?: string;
+  query?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  sortBy?: AuditSortBy;
+  sortDirection?: AuditSortDirection;
   limit?: number;
   offset?: number;
 };
@@ -38,7 +62,19 @@ export type AuditEventPage = {
   total: number;
   limit: number;
   offset: number;
+  facets: {
+    actors: AuditActor[];
+    actions: string[];
+  };
+  summary: {
+    success: number;
+    failed: number;
+  };
+  scope: AuditScope;
+  generatedAt: string;
 };
+
+export type AuditEventSnapshot = Omit<AuditEventPage, 'limit' | 'offset'>;
 
 export const auditedActivityActions = [
   'auth.login',
@@ -56,6 +92,8 @@ export const auditedActivityActions = [
   'file.upload_intent_created',
   'file.upload_completed',
   'file.upload_overwritten',
+  'file.download_intent_created',
+  'file.batch_download_intents_created',
   'file.download_started',
   'file.preview_requested',
   'file.folder_created',
@@ -88,13 +126,16 @@ export const auditedActivityActions = [
   'share.access_session_created',
   'share.rate_limited',
   'share.preview_requested',
+  'share.download_intent_created',
   'share.download_started',
   'transfer.created',
   'transfer.completed',
   'transfer.failed',
   'transfer.paused',
   'transfer.canceled',
+  'transfer.expired',
   'transfer.deleted',
+  'system.auth_policy_updated',
 ] as const;
 
 export const auditedActivityActionSet = new Set<string>(auditedActivityActions);
@@ -114,7 +155,43 @@ export function createAuditEvent(input: AuditEventInput): AuditEventRecord {
     nodeId: input.nodeId ?? null,
     metadata: input.metadata ?? {},
     createdAt: new Date().toISOString(),
+    actorDisplayName: null,
+    actorEmail: null,
+    actorUserId: null,
+    ipAddress: null,
+    resourceType: resolveAuditResourceType(input.action),
+    result: resolveAuditResult(input.action, input.metadata ?? {}),
   };
+}
+
+export function resolveAuditResourceType(action: string): AuditResourceType {
+  if (action.startsWith('file.')) return 'file';
+  if (action.startsWith('share.')) return 'share';
+  if (action.startsWith('transfer.')) return 'transfer';
+  return 'system';
+}
+
+export function resolveAuditResult(
+  action: string,
+  metadata: Record<string, unknown>,
+): AuditResult {
+  const metadataResult = [metadata.result, metadata.status].find(
+    (value): value is string => typeof value === 'string',
+  );
+  if (
+    metadataResult &&
+    ['failed', 'failure', 'error', 'denied', 'rejected', 'locked'].some(
+      (value) => metadataResult.toLowerCase().includes(value),
+    )
+  ) {
+    return 'failed';
+  }
+  if (metadata.success === false) return 'failed';
+  return /(?:failed|failure|blocked|denied|rejected|locked|rate_limited)$/.test(
+    action,
+  )
+    ? 'failed'
+    : 'success';
 }
 
 export function clampAuditLimit(limit = 100) {

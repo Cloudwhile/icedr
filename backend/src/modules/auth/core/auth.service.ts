@@ -99,6 +99,16 @@ export class AuthService {
     return this.persistAuthSettings(dto);
   }
 
+  async validateSettings(
+    dto: UpdateAuthSettingsDto,
+    candidates: {
+      oauth?: OAuthSettings;
+      passkey?: PasskeySettings;
+    } = {},
+  ) {
+    return this.prepareAuthSettings(dto, candidates);
+  }
+
   async validateSettingsForSetup(
     dto: UpdateAuthSettingsDto,
     candidates: {
