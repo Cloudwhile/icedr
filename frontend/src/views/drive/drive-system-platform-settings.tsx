@@ -406,7 +406,9 @@ export function DriveSystemPlatformSettings({
           passkeyEnabled: auth.passkeyEnabled,
           minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
         },
-        ...(passkey && (passkeyDirty || !auth.passkeyConfigured)
+        ...(passkey &&
+        passkeyDraftReady &&
+        (passkeyDirty || (auth.passkeyEnabled && !auth.passkeyConfigured))
           ? { passkey: passkeyValidation?.normalized ?? passkey }
           : {}),
       });

@@ -28,13 +28,16 @@ const toastMocks = vi.hoisted(() => ({ showAppToast: vi.fn() }));
 const translationMocks = vi.hoisted(() => ({
   t: (key: string) => key,
 }));
+
+type UnsavedRegistration = {
+  id: string;
+  isDirty: boolean;
+  onDiscard: () => void | Promise<void>;
+  onSave: () => void | Promise<void>;
+};
+
 const unsavedMocks = vi.hoisted(() => ({
-  registration: null as null | {
-    id: string;
-    isDirty: boolean;
-    onDiscard: () => void | Promise<void>;
-    onSave: () => void | Promise<void>;
-  },
+  registrations: new Map<string, UnsavedRegistration>(),
 }));
 
 vi.mock("@/lib/drive-api", () => ({
@@ -62,8 +65,8 @@ vi.mock("@/components/ui/app-toast-store", () => ({
 }));
 
 vi.mock("@/components/admin/use-unsaved-changes-section", () => ({
-  useUnsavedChangesSection: (registration: typeof unsavedMocks.registration) => {
-    unsavedMocks.registration = registration;
+  useUnsavedChangesSection: (registration: UnsavedRegistration) => {
+    unsavedMocks.registrations.set(registration.id, registration);
   },
 }));
 
@@ -270,7 +273,7 @@ async function waitForInitialSettings() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  unsavedMocks.registration = null;
+  unsavedMocks.registrations.clear();
   apiMocks.fetchAuthSettings.mockResolvedValue(initialAuth);
   apiMocks.fetchSiteSettings.mockResolvedValue({
     passkey: initialPasskey,
@@ -350,9 +353,50 @@ describe("DriveSystemPlatformSettings", () => {
       .find((button) => !button.hasAttribute("disabled"));
     fireEvent.click(saveButton!);
 
-    await waitFor(() => expect(apiMocks.fetchAuthSettings).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(apiMocks.fetchSiteSettings).toHaveBeenCalledTimes(2));
-    expect(screen.getByLabelText("admin.rpName")).toHaveValue("Server value");
+    await waitFor(() =>
+      expect(screen.getByLabelText("admin.rpName")).toHaveValue("Server value"),
+    );
+    expect(apiMocks.fetchAuthSettings).toHaveBeenCalledTimes(2);
+    expect(apiMocks.fetchSiteSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not submit an unconfigured disabled Passkey draft with unrelated auth changes", async () => {
+    const authWithoutPasskey: AuthSettings = {
+      ...initialAuth,
+      oauthConfigured: true,
+      oauthEnabled: true,
+      passkeyConfigured: false,
+      passkeyEnabled: false,
+    };
+    const emptyPasskey: PasskeySettings = { origin: "", rpId: "", rpName: "" };
+    apiMocks.fetchAuthSettings.mockResolvedValue(authWithoutPasskey);
+    apiMocks.fetchSiteSettings.mockResolvedValue({
+      passkey: emptyPasskey,
+      site: { authLogoDataUrl: null, siteName: "ICEDR" },
+    });
+    apiMocks.updateAdminAuthPolicy.mockResolvedValue({
+      auth: { ...authWithoutPasskey, localEnabled: false },
+      passkey: emptyPasskey,
+    });
+    renderSettings();
+    await waitForInitialSettings();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin.platformAccess" }));
+    fireEvent.click(screen.getByRole("button", { name: "admin.localAuth" }));
+    const saveButton = screen
+      .getAllByRole("button", { name: "admin.save" })
+      .find((button) => !button.hasAttribute("disabled"));
+    fireEvent.click(saveButton!);
+
+    await waitFor(() => expect(apiMocks.updateAdminAuthPolicy).toHaveBeenCalledOnce());
+    expect(apiMocks.updateAdminAuthPolicy).toHaveBeenCalledWith({
+      auth: {
+        localEnabled: false,
+        minimumAuthenticationMethods: 1,
+        oauthEnabled: true,
+        passkeyEnabled: false,
+      },
+    });
   });
 
   it("blocks a mail test while the mail draft is dirty without saving it", async () => {
@@ -377,13 +421,17 @@ describe("DriveSystemPlatformSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "admin.platformDelivery" }));
     fireEvent.click(screen.getByRole("button", { name: "edit-mail" }));
 
-    await waitFor(() => expect(unsavedMocks.registration?.isDirty).toBe(true));
-    await expect(unsavedMocks.registration!.onSave()).rejects.toThrow(
+    await waitFor(() =>
+      expect(unsavedMocks.registrations.get("system-platform")?.isDirty).toBe(true),
+    );
+    const registration = unsavedMocks.registrations.get("system-platform");
+    expect(registration).toBeDefined();
+    await expect(registration!.onSave()).rejects.toThrow(
       "mail unavailable",
     );
     expect(apiMocks.updateMailSettings).toHaveBeenCalledOnce();
 
-    act(() => unsavedMocks.registration!.onDiscard());
+    act(() => registration!.onDiscard());
     expect(screen.getByTestId("mail-host")).toHaveTextContent("smtp.example.com");
   });
 });

@@ -95,6 +95,72 @@ describe('HealthService', () => {
     }
   });
 
+  it.each([
+    [new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), new Date(), 'finishedAt'],
+    [
+      null,
+      new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      'startedAt fallback',
+    ],
+  ])(
+    'warns when the last completed reconciliation is stale using %s (%s)',
+    async (finishedAt, startedAt) => {
+      const service = createService();
+      const prisma = (
+        service as unknown as {
+          prisma: {
+            blobReconcileTask: { findFirst: jest.Mock };
+          };
+        }
+      ).prisma;
+      prisma.blobReconcileTask.findFirst.mockResolvedValue({
+        id: 'reconcile-completed',
+        status: 'completed',
+        failureCode: null,
+        startedAt,
+        finishedAt,
+      });
+
+      const health = await service.getAdminHealth();
+      expect(health.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'reconcile',
+            status: 'warning',
+            reason: 'Last reconciliation is older than seven days',
+          }),
+        ]),
+      );
+    },
+  );
+
+  it('keeps a recently completed reconciliation healthy', async () => {
+    const service = createService();
+    const prisma = (
+      service as unknown as {
+        prisma: { blobReconcileTask: { findFirst: jest.Mock } };
+      }
+    ).prisma;
+    prisma.blobReconcileTask.findFirst.mockResolvedValue({
+      id: 'reconcile-completed',
+      status: 'completed',
+      failureCode: null,
+      startedAt: new Date(Date.now() - 60_000),
+      finishedAt: new Date(),
+    });
+
+    const health = await service.getAdminHealth();
+    expect(health.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'reconcile',
+          status: 'ok',
+          reason: null,
+        }),
+      ]),
+    );
+  });
+
   it('probes the current object storage backend and exposes only a safe failure reason', async () => {
     const config = {
       get: jest.fn(() => undefined),

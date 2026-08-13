@@ -256,10 +256,9 @@ function AdminPanelGate({
     load: loadSystemOverview,
   });
   const needsWorkspaceStorage =
-    activePanel === "status" ||
-    (activePanel === "system" &&
-      (activeSystemSection === "storage" ||
-        activeSystemSection === "lifecycle"));
+    activePanel === "system" &&
+    (activeSystemSection === "storage" ||
+      activeSystemSection === "lifecycle");
   const storageQuery = useRetainedAdminQuery({
     enabled:
       canUseAdminPanel && needsWorkspaceStorage && Boolean(workspaceId),
@@ -267,7 +266,6 @@ function AdminPanelGate({
     load: loadWorkspaceStorage,
   });
   const siteSettings = siteQuery.data ?? defaultPublicSiteSettings;
-  const storageSettings = storageQuery.data?.settings ?? null;
   const storageUsage = storageQuery.data?.usage ?? null;
   const systemOverview = systemQuery.data;
   const overviewScope = overviewQuery.data?.scope ?? scope;
@@ -341,7 +339,6 @@ function AdminPanelGate({
     if (activePanel === "audit") requests.push(auditQuery.refresh());
     if (activePanel === "status") {
       requests.push(healthQuery.refresh(), systemQuery.refresh());
-      if (workspaceId) requests.push(storageQuery.refresh());
     }
     if (activePanel === "system" && needsWorkspaceStorage && workspaceId) {
       requests.push(storageQuery.refresh());
@@ -687,8 +684,6 @@ function AdminPanelGate({
                     ) : null}
                     <AdminSystemStatus
                       locale={locale}
-                      storageSettings={storageSettings}
-                      storageUsage={storageUsage}
                       systemOverview={systemOverview}
                     />
                   </div>

@@ -850,13 +850,17 @@ button.admin-overview-stat-card,
 button.admin-distribution-row,
 button.admin-recent-activity-row {
   appearance: none;
-  background: transparent;
-  border: 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
   text-align: left;
   width: 100%;
+}
+
+button.admin-distribution-row,
+button.admin-recent-activity-row {
+  background: transparent;
+  border: 0;
 }
 
 button.admin-distribution-row {

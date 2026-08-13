@@ -370,7 +370,8 @@ export function ExternalShareAdminSettingsPanel({
   };
   const saveDomainDraft = async () => {
     const previous = savedWorkspaceRef.current;
-    if (!previous || !domainDirty || saving) return;
+    if (saving) throw new Error("Workspace share settings are already saving");
+    if (!previous || !domainDirty) return;
     const next = currentWorkspaceForm({
       allowedDomains: parseDomains(),
       emailRule: "domains",
@@ -384,7 +385,6 @@ export function ExternalShareAdminSettingsPanel({
       );
       showToast(t("admin.saved"));
     } catch (error) {
-      applyWorkspaceForm(previous);
       showToast(t("admin.saveFailed"), "error");
       throw error;
     } finally {
@@ -596,7 +596,9 @@ export function ExternalShareAdminSettingsPanel({
                   ? resetDomainDraft
                   : (undoActions.emailRule ?? undoActions.allowedDomains)
               }
-              onSave={() => void saveDomainDraft()}
+              onSave={() => {
+                void saveDomainDraft().catch(() => undefined);
+              }}
               palette={palette}
               resetLabel={
                 domainDirty ? t("admin.revertChanges") : t("admin.undo")

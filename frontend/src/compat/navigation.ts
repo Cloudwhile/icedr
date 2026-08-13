@@ -2,6 +2,10 @@ import { useMemo, useSyncExternalStore } from "react";
 
 const navigationEventName = "icedr:navigation";
 const historyIndexKey = "__icedrNavigationIndex";
+const historySequenceKey = "__icedrNavigationSequence";
+const historySequencePrefix = `${Date.now().toString(36)}-${Math.random()
+  .toString(36)
+  .slice(2)}`;
 
 export type NavigationAction = "pop" | "push" | "replace";
 
@@ -18,6 +22,8 @@ type NavigateMode = Exclude<NavigationAction, "pop">;
 
 type TrackedHistoryEntry = {
   index: number;
+  sequence: string;
+  state: unknown;
   url: string;
 };
 
@@ -30,6 +36,7 @@ let currentHistoryEntry: TrackedHistoryEntry | null = null;
 let pendingPopNavigation: PendingPopNavigation | null = null;
 let permittedPopEntry: TrackedHistoryEntry | null = null;
 let popstateListenerInstalled = false;
+let historySequenceCounter = 0;
 
 export function useRouter() {
   useLocationSnapshot();
@@ -73,13 +80,11 @@ export function notFound(): never {
 }
 
 export function registerNavigationBlocker(blocker: NavigationBlocker) {
-  const shouldStartTracking = navigationBlockers.size === 0;
   navigationBlockers.add(blocker);
-  if (shouldStartTracking) startTrackingHistory();
+  startTrackingHistory();
 
   return () => {
     navigationBlockers.delete(blocker);
-    if (navigationBlockers.size === 0) stopTrackingHistory();
   };
 }
 
@@ -115,24 +120,25 @@ function navigate(href: string, mode: NavigateMode) {
 }
 
 function commitSameOriginNavigation(next: string, mode: NavigateMode) {
-  if (navigationBlockers.size === 0) {
-    if (mode === "replace") window.history.replaceState(null, "", next);
-    else window.history.pushState(null, "", next);
-    currentHistoryEntry = null;
-    dispatchNavigationEvent();
-    return;
-  }
   startTrackingHistory();
-  const current = currentHistoryEntry ?? {
-    index: readHistoryIndex(window.history.state) ?? 0,
-    url: getSnapshot(),
-  };
+  const current =
+    currentHistoryEntry ??
+    trackCurrentHistoryEntry(window.history.state, getSnapshot());
   const index = mode === "push" ? current.index + 1 : current.index;
-  const state = withHistoryIndex(null, index);
+  const state = withHistoryIndex(
+    mode === "replace" ? window.history.state : null,
+    index,
+    current.sequence,
+  );
 
   if (mode === "replace") window.history.replaceState(state, "", next);
   else window.history.pushState(state, "", next);
-  currentHistoryEntry = { index, url: next };
+  currentHistoryEntry = {
+    index,
+    sequence: current.sequence,
+    state,
+    url: next,
+  };
   dispatchNavigationEvent();
 }
 
@@ -142,27 +148,11 @@ function useLocationSnapshot() {
 }
 
 function subscribe(onStoreChange: () => void) {
-  installPopstateListener();
+  startTrackingHistory();
   window.addEventListener(navigationEventName, onStoreChange);
   return () => {
     window.removeEventListener(navigationEventName, onStoreChange);
   };
-}
-
-function stopTrackingHistory() {
-  currentHistoryEntry = null;
-  pendingPopNavigation = null;
-  permittedPopEntry = null;
-  const state = window.history.state;
-  if (!state || typeof state !== "object" || Array.isArray(state)) return;
-  if (!(historyIndexKey in state)) return;
-  const nextState = { ...(state as Record<string, unknown>) };
-  delete nextState[historyIndexKey];
-  window.history.replaceState(
-    Object.keys(nextState).length > 0 ? nextState : null,
-    "",
-    getSnapshot(),
-  );
 }
 
 function getSnapshot() {
@@ -191,25 +181,18 @@ function runNavigationBlockers(transition: BlockedNavigation) {
 function startTrackingHistory() {
   installPopstateListener();
   const url = getSnapshot();
-  const storedIndex = readHistoryIndex(window.history.state);
+  const storedEntry = readTrackedHistoryEntry(window.history.state, url);
 
   if (
     currentHistoryEntry &&
-    currentHistoryEntry.url === url &&
-    storedIndex === currentHistoryEntry.index
+    storedEntry &&
+    matchesHistoryEntry(storedEntry, currentHistoryEntry)
   ) {
     return;
   }
 
-  const index = storedIndex ?? 0;
-  if (storedIndex === null) {
-    window.history.replaceState(
-      withHistoryIndex(window.history.state, index),
-      "",
-      url,
-    );
-  }
-  currentHistoryEntry = { index, url };
+  currentHistoryEntry =
+    storedEntry ?? trackCurrentHistoryEntry(window.history.state, url);
 }
 
 function installPopstateListener() {
@@ -219,44 +202,57 @@ function installPopstateListener() {
 }
 
 function handlePopstate(event: PopStateEvent) {
-  const nextEntry = {
-    index: readHistoryIndex(event.state),
-    url: getSnapshot(),
-  };
+  const nextUrl = getSnapshot();
+  const nextEntry = readTrackedHistoryEntry(event.state, nextUrl);
 
   if (permittedPopEntry && matchesHistoryEntry(nextEntry, permittedPopEntry)) {
     currentHistoryEntry = permittedPopEntry;
+    pendingPopNavigation = null;
     permittedPopEntry = null;
     dispatchNavigationEvent();
     return;
   }
+  permittedPopEntry = null;
 
   if (pendingPopNavigation) {
     const pending = pendingPopNavigation;
+    pendingPopNavigation = null;
     if (matchesHistoryEntry(nextEntry, pending.previous)) {
-      pendingPopNavigation = null;
       currentHistoryEntry = pending.previous;
       return;
     }
 
+    currentHistoryEntry =
+      nextEntry ?? trackCurrentHistoryEntry(event.state, nextUrl);
+    dispatchNavigationEvent();
     return;
   }
 
-  const nextIndex = nextEntry.index;
-  if (
-    navigationBlockers.size === 0 ||
-    !currentHistoryEntry ||
-    nextIndex === null ||
-    nextIndex === currentHistoryEntry.index
-  ) {
+  if (!currentHistoryEntry || navigationBlockers.size === 0) {
     currentHistoryEntry =
-      nextIndex === null ? null : { index: nextIndex, url: nextEntry.url };
+      nextEntry ?? trackCurrentHistoryEntry(event.state, nextUrl);
     dispatchNavigationEvent();
     return;
   }
 
   const previous = currentHistoryEntry;
-  const target = { index: nextIndex, url: nextEntry.url };
+  if (
+    !nextEntry ||
+    nextEntry.sequence !== previous.sequence ||
+    (nextEntry.index === previous.index &&
+      !matchesHistoryEntry(nextEntry, previous))
+  ) {
+    handleUncomparablePop(event.state, nextUrl, previous);
+    return;
+  }
+
+  if (matchesHistoryEntry(nextEntry, previous)) {
+    currentHistoryEntry = nextEntry;
+    dispatchNavigationEvent();
+    return;
+  }
+
+  const target = nextEntry;
   const delta = target.index - previous.index;
   let retried = false;
   const transition: BlockedNavigation = {
@@ -281,23 +277,109 @@ function handlePopstate(event: PopStateEvent) {
   window.history.go(-delta);
 }
 
+function handleUncomparablePop(
+  targetState: unknown,
+  targetUrl: string,
+  previous: TrackedHistoryEntry,
+) {
+  let normalizedTarget: TrackedHistoryEntry | null = null;
+  let retryRequested = false;
+  let retried = false;
+  const retry = () => {
+    if (!normalizedTarget) {
+      retryRequested = true;
+      return;
+    }
+    permittedPopEntry = normalizedTarget;
+    window.history.back();
+  };
+  const transition: BlockedNavigation = {
+    action: "pop",
+    currentUrl: new URL(previous.url, window.location.origin),
+    nextUrl: new URL(targetUrl, window.location.origin),
+    retry() {
+      if (retried) return;
+      retried = true;
+      retry();
+    },
+  };
+
+  if (!runNavigationBlockers(transition)) {
+    currentHistoryEntry = trackCurrentHistoryEntry(targetState, targetUrl);
+    dispatchNavigationEvent();
+    return;
+  }
+
+  const sequence = createHistorySequence();
+  const normalizedTargetState = withHistoryIndex(targetState, 0, sequence);
+  window.history.replaceState(normalizedTargetState, "", targetUrl);
+  normalizedTarget = {
+    index: 0,
+    sequence,
+    state: normalizedTargetState,
+    url: targetUrl,
+  };
+
+  const restoredState = withHistoryIndex(previous.state, 1, sequence);
+  window.history.pushState(restoredState, "", previous.url);
+  currentHistoryEntry = {
+    index: 1,
+    sequence,
+    state: restoredState,
+    url: previous.url,
+  };
+
+  if (retryRequested) retry();
+}
+
 function readHistoryIndex(state: unknown): number | null {
   if (!state || typeof state !== "object") return null;
   const index = (state as Record<string, unknown>)[historyIndexKey];
   return typeof index === "number" && Number.isInteger(index) ? index : null;
 }
 
-function withHistoryIndex(state: unknown, index: number) {
+function readTrackedHistoryEntry(
+  state: unknown,
+  url: string,
+): TrackedHistoryEntry | null {
+  if (!state || typeof state !== "object") return null;
+  const index = readHistoryIndex(state);
+  const sequence = (state as Record<string, unknown>)[historySequenceKey];
+  if (index === null || typeof sequence !== "string" || !sequence) return null;
+  return { index, sequence, state, url };
+}
+
+function trackCurrentHistoryEntry(state: unknown, url: string) {
+  const sequence = createHistorySequence();
+  const trackedState = withHistoryIndex(state, 0, sequence);
+  window.history.replaceState(trackedState, "", url);
+  return { index: 0, sequence, state: trackedState, url };
+}
+
+function createHistorySequence() {
+  historySequenceCounter += 1;
+  return `${historySequencePrefix}-${historySequenceCounter.toString(36)}`;
+}
+
+function withHistoryIndex(state: unknown, index: number, sequence: string) {
   const baseState =
     state && typeof state === "object" && !Array.isArray(state)
       ? state
       : {};
-  return { ...baseState, [historyIndexKey]: index };
+  return {
+    ...baseState,
+    [historyIndexKey]: index,
+    [historySequenceKey]: sequence,
+  };
 }
 
 function matchesHistoryEntry(
-  actual: { index: number | null; url: string },
+  actual: TrackedHistoryEntry | null,
   expected: TrackedHistoryEntry,
 ) {
-  return actual.index === expected.index && actual.url === expected.url;
+  return (
+    actual?.index === expected.index &&
+    actual.sequence === expected.sequence &&
+    actual.url === expected.url
+  );
 }

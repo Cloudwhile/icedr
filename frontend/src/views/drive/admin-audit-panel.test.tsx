@@ -13,9 +13,11 @@ import type {
 } from "@/lib/drive-api";
 import { AdminAuditPanel } from "./admin-audit-panel";
 
+const i18nMock = vi.hoisted(() => ({ timeZone: "UTC" }));
+
 vi.mock("@/i18n/react", () => ({
   useLocale: () => "en",
-  useTimeZone: () => "UTC",
+  useTimeZone: () => i18nMock.timeZone,
   useTranslations: () => (
     key: string,
     values?: Record<string, string | number>,
@@ -113,6 +115,7 @@ const data: AdminAuditEventsResponse = {
 
 afterEach(() => {
   cleanup();
+  i18nMock.timeZone = "UTC";
   vi.useRealTimers();
 });
 
@@ -186,6 +189,24 @@ describe("AdminAuditPanel server-driven filtering", () => {
 
     expect(screen.getByText("Mina")).toBeInTheDocument();
     expect(screen.getAllByText("Quarterly report.pdf").length).toBeGreaterThan(0);
+  });
+
+  it("uses the configured display time zone for date filter boundaries", () => {
+    i18nMock.timeZone = "Asia/Singapore";
+    const onFiltersChange = renderPanel({
+      ...DEFAULT_ADMIN_AUDIT_FILTERS,
+      createdFrom: "2026-08-12T03:00:00.000Z",
+    });
+    const input = screen.getByLabelText("audit.createdFrom");
+
+    expect(input).toHaveValue("2026-08-12T11:00");
+    fireEvent.change(input, { target: { value: "2026-08-12T11:30" } });
+
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      ...DEFAULT_ADMIN_AUDIT_FILTERS,
+      createdFrom: "2026-08-12T03:30:00.000Z",
+      offset: 0,
+    });
   });
 
   it("does not render share tokens or node identifiers in audit rows", () => {

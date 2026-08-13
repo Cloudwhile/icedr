@@ -11,7 +11,7 @@
   border: 1px solid var(--ui-border-default);
   border-radius: 8px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
 }
 
@@ -29,28 +29,10 @@
   border-left: 1px solid var(--ui-border-subtle);
 }
 
-.admin-system-status-metric[data-tone="success"] {
-  --admin-status-accent: var(--ui-success);
-  --admin-status-soft: color-mix(in srgb, var(--ui-success) 10%, var(--ui-surface));
-  --admin-status-border: color-mix(in srgb, var(--ui-success) 28%, var(--ui-border-default));
-}
-
-.admin-system-status-metric[data-tone="warning"] {
-  --admin-status-accent: var(--ui-warning);
-  --admin-status-soft: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
-  --admin-status-border: color-mix(in srgb, var(--ui-warning) 28%, var(--ui-border-default));
-}
-
 .admin-system-status-metric[data-tone="primary"] {
   --admin-status-accent: var(--ui-accent);
   --admin-status-soft: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface));
   --admin-status-border: color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border-default));
-}
-
-.admin-system-status-metric[data-tone="storage"] {
-  --admin-status-accent: var(--ui-info);
-  --admin-status-soft: color-mix(in srgb, var(--ui-info) 10%, var(--ui-surface));
-  --admin-status-border: color-mix(in srgb, var(--ui-info) 28%, var(--ui-border-default));
 }
 
 .admin-system-status-metric[data-tone="neutral"] {
@@ -96,7 +78,7 @@
 .admin-system-status-sections {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -163,18 +145,8 @@
 }
 
 @container admin-system-status (max-width: 820px) {
-  .admin-system-status-summary,
-  .admin-system-status-sections {
+  .admin-system-status-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .admin-system-status-metric:nth-child(3) {
-    border-left: 0;
-    border-top: 1px solid var(--ui-border-subtle);
-  }
-
-  .admin-system-status-metric:nth-child(4) {
-    border-top: 1px solid var(--ui-border-subtle);
   }
 }
 

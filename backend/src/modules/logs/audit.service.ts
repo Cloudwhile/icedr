@@ -5,7 +5,7 @@ import {
   AuditEventFilters,
   AuditEventPage,
   AuditEventRecord,
-  AuditEventSnapshot,
+  AuditOverviewMetrics,
   AuditScope,
   clampAuditLimit,
   clampAuditOffset,
@@ -15,67 +15,341 @@ import {
 
 const auditActionPattern = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/;
 const maximumAuditActionLength = 128;
+const auditScanBatchSize = 500;
+
+type AuditOverviewAggregateRow = {
+  date: string;
+  result: 'success' | 'failed';
+  resourceType: AuditEventRecord['resourceType'];
+  total: bigint | number;
+};
+
+type RawAuditEventRow = Omit<AuditEvent, 'createdAt'> & {
+  createdAt: Date | string;
+};
 
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listEvents(filters: AuditEventFilters = {}): Promise<AuditEventPage> {
+    this.validateFilters(filters);
     const limit = clampAuditLimit(filters.limit);
     const offset = clampAuditOffset(filters.offset);
-    const snapshot = await this.getEventSnapshot(filters);
-
-    return {
-      ...snapshot,
-      items: snapshot.items.slice(offset, offset + limit),
-      limit,
-      offset,
-    };
-  }
-
-  async getEventSnapshot(
-    filters: AuditEventFilters = {},
-  ): Promise<AuditEventSnapshot> {
-    this.validateFilters(filters);
     const scope = this.resolveScope(filters);
-    const generatedAt = new Date().toISOString();
+    const snapshotAt = new Date();
+    const generatedAt = snapshotAt.toISOString();
     const actionFilter = this.resolveActionFilter(
       filters.action,
       filters.resourceType,
     );
-    if (actionFilter === null) return this.emptySnapshot(scope, generatedAt);
+    if (actionFilter === null) {
+      return this.emptyPage(scope, generatedAt, limit, offset);
+    }
 
-    const where = this.buildWhere(filters, scope, actionFilter);
-    const rows = await this.prisma.auditEvent.findMany({
-      where,
-      orderBy: this.resolveOrderBy(filters),
-      skip: undefined,
-      take: undefined,
-    });
-    const items = rows
-      .map((row) => this.mapRow(row))
-      .filter((event) => this.matchesServiceFilters(event, filters));
+    const where = this.buildWhere(filters, scope, actionFilter, snapshotAt);
+    const orderBy = this.resolveOrderBy(filters);
+    const items: AuditEventRecord[] = [];
+    const actors = new Set<AuditEventRecord['actor']>();
+    const actions = new Set<string>();
+    let success = 0;
+    let failed = 0;
+    let total = 0;
+    let cursor: AuditEvent | undefined;
+
+    while (true) {
+      const rows = await this.prisma.auditEvent.findMany({
+        where: cursor
+          ? { AND: [where, this.resolveKeysetWhere(cursor, filters)] }
+          : where,
+        orderBy,
+        take: auditScanBatchSize,
+      });
+      for (const row of rows) {
+        const event = this.mapRow(row);
+        if (!this.matchesServiceFilters(event, filters)) continue;
+        actors.add(event.actor);
+        actions.add(event.action);
+        if (event.result === 'failed') failed += 1;
+        else success += 1;
+        if (total >= offset && items.length < limit) items.push(event);
+        total += 1;
+      }
+      if (rows.length < auditScanBatchSize) break;
+      cursor = rows.at(-1);
+    }
 
     return {
       items,
-      total: items.length,
+      total,
+      limit,
+      offset,
       facets: {
-        actors: [...new Set(items.map((item) => item.actor))].sort(),
-        actions: [...new Set(items.map((item) => item.action))].sort(),
+        actors: [...actors].sort(),
+        actions: [...actions].sort(),
       },
-      summary: {
-        success: items.filter((item) => item.result === 'success').length,
-        failed: items.filter((item) => item.result === 'failed').length,
-      },
+      summary: { success, failed },
       scope,
       generatedAt,
     };
+  }
+
+  async getOverviewMetrics(
+    filters: AuditEventFilters,
+  ): Promise<AuditOverviewMetrics> {
+    this.validateFilters(filters);
+    const scope = this.resolveScope(filters);
+    const createdFrom = this.parseDate(filters.createdFrom, 'createdFrom');
+    const createdTo = this.parseDate(filters.createdTo, 'createdTo');
+    if (!createdFrom || !createdTo) {
+      throw new BadRequestException(
+        'createdFrom and createdTo are required for overview metrics',
+      );
+    }
+    if (createdFrom > createdTo) {
+      throw new BadRequestException('createdFrom must not be after createdTo');
+    }
+
+    const [aggregateRows, riskRows] = await Promise.all([
+      this.queryOverviewAggregates(scope, createdFrom, createdTo),
+      this.queryRecentRiskEvents(scope, createdFrom, createdTo),
+    ]);
+    const daily = new Map<string, { total: number; failed: number }>();
+    const resources = new Map<AuditEventRecord['resourceType'], number>();
+    let total = 0;
+    let failed = 0;
+    for (const row of aggregateRows) {
+      const count = Number(row.total);
+      total += count;
+      if (row.result === 'failed') failed += count;
+      const day = daily.get(row.date) ?? { total: 0, failed: 0 };
+      day.total += count;
+      if (row.result === 'failed') day.failed += count;
+      daily.set(row.date, day);
+      resources.set(
+        row.resourceType,
+        (resources.get(row.resourceType) ?? 0) + count,
+      );
+    }
+
+    return {
+      total,
+      failed,
+      dailyTrend: [...daily.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([date, counts]) => ({ date, ...counts })),
+      resourceDistribution: [...resources.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([resourceType, resourceTotal]) => ({
+          resourceType,
+          total: resourceTotal,
+        })),
+      recentRiskEvents: riskRows.map((row) => this.mapRawRow(row)),
+    };
+  }
+
+  private queryOverviewAggregates(
+    scope: AuditScope,
+    createdFrom: Date,
+    createdTo: Date,
+  ) {
+    const workspaceId = scope.kind === 'workspace' ? scope.workspaceId : null;
+    if (this.prisma.isSqlite()) {
+      return this.prisma.$queryRaw<AuditOverviewAggregateRow[]>`
+        select
+          date,
+          result,
+          resource_type as resourceType,
+          count(*) as total
+        from (
+          select
+            substr(created_at, 1, 10) as date,
+            case
+              when lower(trim(case
+                when json_type(metadata, '$.result') = 'text'
+                  then json_extract(metadata, '$.result')
+                when json_type(metadata, '$.status') = 'text'
+                  then json_extract(metadata, '$.status')
+                else ''
+              end, char(9) || char(10) || char(11) || char(12) || char(13)
+                || char(32) || char(160) || char(5760) || char(8192)
+                || char(8193) || char(8194) || char(8195) || char(8196)
+                || char(8197) || char(8198) || char(8199) || char(8200)
+                || char(8201) || char(8202) || char(8232) || char(8233)
+                || char(8239) || char(8287) || char(12288) || char(65279)))
+                in ('failed', 'failure', 'error', 'denied', 'rejected', 'locked')
+                or json_type(metadata, '$.success') in ('false')
+                or action glob '*failed'
+                or action glob '*failure'
+                or action glob '*blocked'
+                or action glob '*denied'
+                or action glob '*rejected'
+                or action glob '*locked'
+                or action glob '*rate_limited'
+              then 'failed'
+              else 'success'
+            end as result,
+            case
+              when action glob 'file.*' then 'file'
+              when action glob 'share.*' then 'share'
+              when action glob 'transfer.*' then 'transfer'
+              else 'system'
+            end as resource_type
+          from audit_events
+          where created_at >= ${createdFrom}
+            and created_at <= ${createdTo}
+            and (${scope.kind !== 'workspace'} or workspace_id = ${workspaceId})
+            and (${scope.kind !== 'system'} or workspace_id is null)
+        ) classified
+        group by date, result, resource_type
+      `;
+    }
+
+    return this.prisma.$queryRaw<AuditOverviewAggregateRow[]>`
+      select
+        date,
+        result,
+        resource_type as "resourceType",
+        count(*)::bigint as total
+      from (
+        select
+          to_char(created_at at time zone 'UTC', 'YYYY-MM-DD') as date,
+          case
+            when lower(btrim(case
+              when jsonb_typeof(metadata->'result') = 'string'
+                then metadata->>'result'
+              when jsonb_typeof(metadata->'status') = 'string'
+                then metadata->>'status'
+              else ''
+            end, chr(9) || chr(10) || chr(11) || chr(12) || chr(13)
+              || chr(32) || chr(160) || chr(5760) || chr(8192)
+              || chr(8193) || chr(8194) || chr(8195) || chr(8196)
+              || chr(8197) || chr(8198) || chr(8199) || chr(8200)
+              || chr(8201) || chr(8202) || chr(8232) || chr(8233)
+              || chr(8239) || chr(8287) || chr(12288) || chr(65279)))
+              in ('failed', 'failure', 'error', 'denied', 'rejected', 'locked')
+              or metadata->'success' = 'false'::jsonb
+              or action ~ '(failed|failure|blocked|denied|rejected|locked|rate_limited)$'
+            then 'failed'
+            else 'success'
+          end as result,
+          case
+            when action like 'file.%' then 'file'
+            when action like 'share.%' then 'share'
+            when action like 'transfer.%' then 'transfer'
+            else 'system'
+          end as resource_type
+        from audit_events
+        where created_at >= ${createdFrom}
+          and created_at <= ${createdTo}
+          and (${scope.kind !== 'workspace'} or workspace_id = ${workspaceId})
+          and (${scope.kind !== 'system'} or workspace_id is null)
+      ) classified
+      group by date, result, resource_type
+    `;
+  }
+
+  private queryRecentRiskEvents(
+    scope: AuditScope,
+    createdFrom: Date,
+    createdTo: Date,
+  ) {
+    const workspaceId = scope.kind === 'workspace' ? scope.workspaceId : null;
+    if (this.prisma.isSqlite()) {
+      return this.prisma.$queryRaw<RawAuditEventRow[]>`
+        select
+          id,
+          action,
+          actor,
+          target,
+          workspace_id as workspaceId,
+          share_token as shareToken,
+          node_id as nodeId,
+          metadata,
+          created_at as createdAt
+        from audit_events
+        where created_at >= ${createdFrom}
+          and created_at <= ${createdTo}
+          and (${scope.kind !== 'workspace'} or workspace_id = ${workspaceId})
+          and (${scope.kind !== 'system'} or workspace_id is null)
+          and (
+            lower(trim(case
+              when json_type(metadata, '$.result') = 'text'
+                then json_extract(metadata, '$.result')
+              when json_type(metadata, '$.status') = 'text'
+                then json_extract(metadata, '$.status')
+              else ''
+            end, char(9) || char(10) || char(11) || char(12) || char(13)
+              || char(32) || char(160) || char(5760) || char(8192)
+              || char(8193) || char(8194) || char(8195) || char(8196)
+              || char(8197) || char(8198) || char(8199) || char(8200)
+              || char(8201) || char(8202) || char(8232) || char(8233)
+              || char(8239) || char(8287) || char(12288) || char(65279)))
+              in ('failed', 'failure', 'error', 'denied', 'rejected', 'locked')
+            or json_type(metadata, '$.success') in ('false')
+            or action glob '*failed'
+            or action glob '*failure'
+            or action glob '*blocked'
+            or action glob '*denied'
+            or action glob '*rejected'
+            or action glob '*locked'
+            or action glob '*rate_limited'
+            or action glob '*permanently_deleted'
+            or action glob '*trash_cleaned'
+            or action glob '*quota_updated'
+            or action glob '*policy_updated'
+            or action glob '*share.revoked'
+          )
+        order by created_at desc, id desc
+        limit 10
+      `;
+    }
+
+    return this.prisma.$queryRaw<RawAuditEventRow[]>`
+      select
+        id,
+        action,
+        actor,
+        target,
+        workspace_id as "workspaceId",
+        share_token as "shareToken",
+        node_id as "nodeId",
+        metadata,
+        created_at as "createdAt"
+      from audit_events
+      where created_at >= ${createdFrom}
+        and created_at <= ${createdTo}
+        and (${scope.kind !== 'workspace'} or workspace_id = ${workspaceId})
+        and (${scope.kind !== 'system'} or workspace_id is null)
+        and (
+          lower(btrim(case
+            when jsonb_typeof(metadata->'result') = 'string'
+              then metadata->>'result'
+            when jsonb_typeof(metadata->'status') = 'string'
+              then metadata->>'status'
+            else ''
+          end, chr(9) || chr(10) || chr(11) || chr(12) || chr(13)
+            || chr(32) || chr(160) || chr(5760) || chr(8192)
+            || chr(8193) || chr(8194) || chr(8195) || chr(8196)
+            || chr(8197) || chr(8198) || chr(8199) || chr(8200)
+            || chr(8201) || chr(8202) || chr(8232) || chr(8233)
+            || chr(8239) || chr(8287) || chr(12288) || chr(65279)))
+            in ('failed', 'failure', 'error', 'denied', 'rejected', 'locked')
+          or metadata->'success' = 'false'::jsonb
+          or action ~ '(failed|failure|blocked|denied|rejected|locked|rate_limited)$'
+          or action ~ '(permanently_deleted|trash_cleaned|quota_updated|policy_updated)$'
+          or action like '%share.revoked'
+        )
+      order by created_at desc, id desc
+      limit 10
+    `;
   }
 
   private buildWhere(
     filters: AuditEventFilters,
     scope: AuditScope,
     actionFilter: Prisma.StringFilter | string | undefined,
+    snapshotAt?: Date,
   ): Prisma.AuditEventWhereInput {
     const where: Prisma.AuditEventWhereInput = {};
     if (actionFilter !== undefined) where.action = actionFilter;
@@ -90,10 +364,14 @@ export class AuditService {
     if (createdFrom && createdTo && createdFrom > createdTo) {
       throw new BadRequestException('createdFrom must not be after createdTo');
     }
-    if (createdFrom || createdTo) {
+    const effectiveCreatedTo =
+      snapshotAt && (!createdTo || snapshotAt < createdTo)
+        ? snapshotAt
+        : createdTo;
+    if (createdFrom || effectiveCreatedTo) {
       where.createdAt = {
         ...(createdFrom ? { gte: createdFrom } : {}),
-        ...(createdTo ? { lte: createdTo } : {}),
+        ...(effectiveCreatedTo ? { lte: effectiveCreatedTo } : {}),
       };
     }
     return where;
@@ -139,6 +417,44 @@ export class AuditService {
     } as Prisma.AuditEventOrderByWithRelationInput;
     if (sortBy === 'createdAt') return [primary, { id: direction }];
     return [primary, { createdAt: 'desc' }, { id: 'desc' }];
+  }
+
+  private resolveKeysetWhere(
+    cursor: AuditEvent,
+    filters: AuditEventFilters,
+  ): Prisma.AuditEventWhereInput {
+    const sortBy = filters.sortBy ?? 'createdAt';
+    const direction = filters.sortDirection === 'asc' ? 'asc' : 'desc';
+    if (sortBy === 'createdAt') {
+      const comparison = direction === 'asc' ? 'gt' : 'lt';
+      return {
+        OR: [
+          { createdAt: { [comparison]: cursor.createdAt } },
+          {
+            createdAt: cursor.createdAt,
+            id: { [comparison]: cursor.id },
+          },
+        ],
+      };
+    }
+
+    const value = sortBy === 'action' ? cursor.action : cursor.actor;
+    const comparison = direction === 'asc' ? 'gt' : 'lt';
+    const primaryAfter = {
+      [sortBy]: { [comparison]: value },
+    } as Prisma.AuditEventWhereInput;
+    const primaryEqual = { [sortBy]: value } as Prisma.AuditEventWhereInput;
+    return {
+      OR: [
+        primaryAfter,
+        { ...primaryEqual, createdAt: { lt: cursor.createdAt } },
+        {
+          ...primaryEqual,
+          createdAt: cursor.createdAt,
+          id: { lt: cursor.id },
+        },
+      ],
+    };
   }
 
   private resolveActionFilter(
@@ -318,6 +634,12 @@ export class AuditService {
     };
   }
 
+  private mapRawRow(row: RawAuditEventRow): AuditEventRecord {
+    const createdAt =
+      row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
+    return this.mapRow({ ...row, createdAt });
+  }
+
   private readMetadataString(
     metadata: Record<string, unknown>,
     keys: string[],
@@ -346,13 +668,17 @@ export class AuditService {
     return {};
   }
 
-  private emptySnapshot(
+  private emptyPage(
     scope: AuditScope,
     generatedAt: string,
-  ): AuditEventSnapshot {
+    limit: number,
+    offset: number,
+  ): AuditEventPage {
     return {
       items: [],
       total: 0,
+      limit,
+      offset,
       facets: { actors: [], actions: [] },
       summary: { success: 0, failed: 0 },
       scope,

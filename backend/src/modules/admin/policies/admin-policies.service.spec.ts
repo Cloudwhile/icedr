@@ -94,7 +94,7 @@ describe('AdminPoliciesService', () => {
     });
   });
 
-  it('rejects an invalid combined quota before opening a transaction', async () => {
+  it('rejects an invalid combined quota inside the transaction', async () => {
     await expect(
       service.updateStoragePolicy(
         {

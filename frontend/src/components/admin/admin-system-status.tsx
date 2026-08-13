@@ -2,17 +2,12 @@
 
 import { LocalIcon } from "@/components/ui/app-icon";
 import {
-  formatFileSize,
   getIntlLocale,
   type Locale,
   type LocalIconName,
 } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
-import type {
-  StorageSettings,
-  StorageUsage,
-  SystemOverview,
-} from "@/lib/drive-api";
+import type { SystemOverview } from "@/lib/drive-api";
 import "./admin-system-status.css";
 
 type StatusRow = {
@@ -22,22 +17,14 @@ type StatusRow = {
 
 export function AdminSystemStatus({
   locale,
-  storageSettings,
-  storageUsage,
   systemOverview,
 }: {
   locale: Locale;
-  storageSettings: StorageSettings | null;
-  storageUsage: StorageUsage | null;
   systemOverview: SystemOverview | null;
 }) {
   const t = useTranslations();
-  const serviceRunning = Boolean(systemOverview);
   const memoryUsage = systemOverview
     ? formatPercent(systemOverview.memoryUsagePercent, locale)
-    : "--";
-  const storageUsageLabel = storageUsage
-    ? formatPercent(storageUsage.usagePercent, locale)
     : "--";
   const systemRows: StatusRow[] = [
     {
@@ -81,48 +68,6 @@ export function AdminSystemStatus({
       value: formatDate(systemOverview?.serviceStartedAt, locale),
     },
   ];
-  const storageRows: StatusRow[] = [
-    {
-      label: t("settings.storageProvider"),
-      value:
-        storageSettings?.storageProvider === "object"
-          ? t("admin.objectStorage")
-          : storageSettings
-            ? t("admin.localFileStorage")
-            : "--",
-    },
-    {
-      label: t("settings.usedStorage"),
-      value: storageUsage
-        ? formatFileSize(storageUsage.usedBytes, locale)
-        : "--",
-    },
-    {
-      label: t("settings.storageAvailableSpace"),
-      value:
-        storageSettings?.physicalAvailableBytes !== null &&
-        storageSettings?.physicalAvailableBytes !== undefined
-          ? formatFileSize(storageSettings.physicalAvailableBytes, locale)
-          : "--",
-    },
-    {
-      label: t("settings.fileCount"),
-      value: formatCount(storageUsage?.fileCount, locale),
-    },
-    {
-      label: t("settings.folderCount"),
-      value: formatCount(storageUsage?.folderCount, locale),
-    },
-    {
-      label: t("settings.storageUsagePercent"),
-      value: storageUsageLabel,
-    },
-    {
-      label: t("settings.capacityCheckedAt"),
-      value: formatDate(storageSettings?.physicalCapacityCheckedAt, locale),
-    },
-  ];
-
   return (
     <section
       aria-label={t("settings.systemStatus")}
@@ -130,12 +75,6 @@ export function AdminSystemStatus({
     >
       <h1 className="icedr-sr-only">{t("settings.systemStatus")}</h1>
       <div className="admin-system-status-summary" role="list">
-        <StatusMetric
-          icon="shield"
-          label={t("settings.runningStatus")}
-          tone={serviceRunning ? "success" : "warning"}
-          value={serviceRunning ? t("admin.running") : "--"}
-        />
         <StatusMetric
           icon="info"
           label={t("settings.appVersion")}
@@ -152,12 +91,6 @@ export function AdminSystemStatus({
           tone="neutral"
           value={memoryUsage}
         />
-        <StatusMetric
-          icon="folder"
-          label={t("settings.storageUsagePercent")}
-          tone="storage"
-          value={storageUsageLabel}
-        />
       </div>
 
       <div className="admin-system-status-sections">
@@ -165,11 +98,6 @@ export function AdminSystemStatus({
           icon="info"
           rows={systemRows}
           title={t("settings.systemInformation")}
-        />
-        <StatusSection
-          icon="folder"
-          rows={storageRows}
-          title={t("settings.storageSpace")}
         />
       </div>
     </section>
@@ -184,7 +112,7 @@ function StatusMetric({
 }: {
   icon: LocalIconName;
   label: string;
-  tone: "neutral" | "primary" | "storage" | "success" | "warning";
+  tone: "neutral" | "primary";
   value: string;
 }) {
   return (
@@ -225,12 +153,6 @@ function StatusSection({
       </dl>
     </section>
   );
-}
-
-function formatCount(value: number | undefined, locale: Locale) {
-  return value === undefined
-    ? "--"
-    : new Intl.NumberFormat(getIntlLocale(locale)).format(value);
 }
 
 function formatPercent(value: number | null | undefined, locale: Locale) {

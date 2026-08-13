@@ -328,6 +328,8 @@ async function mockIcedrApi(
     }
 
     if (method === "GET" && path === "/audit/events") {
+      expect(url.searchParams.get("scope")).toBe("all");
+      expect(url.searchParams.has("workspaceId")).toBe(false);
       const items = state.downloaded ? [auditEvent()] : [];
       await fulfillJson(route, {
         facets: {

@@ -13,6 +13,8 @@ import type {
   AdminHealthStatus,
 } from './health.dto';
 
+const maximumCompletedReconcileAgeMs = 7 * 24 * 60 * 60 * 1000;
+
 type CheckOutcome = {
   status: AdminHealthStatus;
   reason: string | null;
@@ -201,6 +203,16 @@ export class HealthService {
       return { status: 'warning', reason: 'Reconciliation is running' };
     }
     if (task.status === 'completed') {
+      const completedAt = task.finishedAt ?? task.startedAt;
+      if (
+        !Number.isFinite(completedAt.getTime()) ||
+        Date.now() - completedAt.getTime() > maximumCompletedReconcileAgeMs
+      ) {
+        return {
+          status: 'warning',
+          reason: 'Last reconciliation is older than seven days',
+        };
+      }
       return { status: 'ok', reason: null };
     }
     return {

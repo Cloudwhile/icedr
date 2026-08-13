@@ -4,7 +4,7 @@ import type {
   ReactNode,
   TextareaHTMLAttributes,
 } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUnsavedChangesProvider } from "@/components/admin/unsaved-changes-provider";
 import { useRouter } from "@/compat/navigation";
@@ -16,6 +16,9 @@ const driveApi = vi.hoisted(() => ({
   fetchAuthSettings: vi.fn(),
   fetchWorkspaceShareSettings: vi.fn(),
   updateWorkspaceShareSettings: vi.fn(),
+}));
+const translationMocks = vi.hoisted(() => ({
+  t: (key: string) => key,
 }));
 
 vi.mock("@/lib/drive-api", () => driveApi);
@@ -68,7 +71,7 @@ vi.mock("@/components/ui/app-toast-store", () => ({
 }));
 
 vi.mock("@/i18n/react", () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => translationMocks.t,
 }));
 
 vi.mock("./drive-shell", () => ({ ThemeActions: () => null }));
@@ -115,6 +118,7 @@ vi.mock("./external-share-admin-primitives", () => ({
     onSave,
     resetLabel,
     saveLabel,
+    saving,
   }: {
     canReset: boolean;
     canSave: boolean;
@@ -122,10 +126,11 @@ vi.mock("./external-share-admin-primitives", () => ({
     onSave: () => void;
     resetLabel: string;
     saveLabel: string;
+    saving: boolean;
   }) => (
     <div>
-      <button disabled={!canReset} onClick={onReset}>{resetLabel}</button>
-      <button disabled={!canSave} onClick={onSave}>{saveLabel}</button>
+      <button disabled={saving || !canReset} onClick={onReset}>{resetLabel}</button>
+      <button disabled={saving || !canSave} onClick={onSave}>{saveLabel}</button>
     </div>
   ),
   SettingItem: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -218,7 +223,9 @@ describe("ExternalShareAdminSettingsPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "admin.externalShareWorkspaceScopeRequired",
     );
-    await Promise.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(driveApi.fetchWorkspaceShareSettings).not.toHaveBeenCalled();
     expect(driveApi.fetchAuthSettings).not.toHaveBeenCalled();
   });
@@ -263,4 +270,46 @@ describe("ExternalShareAdminSettingsPage", () => {
       }),
     );
   });
+
+  it("keeps the domain draft and navigation blocked when saving fails", async () => {
+    driveApi.updateWorkspaceShareSettings.mockRejectedValue(new Error("unavailable"));
+    renderGuardedPage();
+    const domains = await screen.findByRole("textbox", {
+      name: "admin.specifiedDomains",
+    });
+    fireEvent.change(domains, { target: { value: "draft.example" } });
+    fireEvent.click(screen.getByText("navigate"));
+    fireEvent.click(screen.getByRole("button", { name: labels.save }));
+
+    await screen.findByText(labels.saveFailed);
+    expect(window.location.pathname).toBe("/admin/system/external-share");
+    expect(domains).toHaveValue("draft.example");
+    expect(driveApi.updateWorkspaceShareSettings).toHaveBeenCalledOnce();
+  });
+
+  it("does not produce an unhandled rejection when the inline save fails", async () => {
+    driveApi.updateWorkspaceShareSettings.mockRejectedValue(new Error("unavailable"));
+    const unhandled = vi.fn();
+    window.addEventListener("unhandledrejection", unhandled);
+    try {
+      renderGuardedPage();
+      const domains = await screen.findByRole("textbox", {
+        name: "admin.specifiedDomains",
+      });
+      fireEvent.change(domains, { target: { value: "draft.example" } });
+      fireEvent.click(screen.getByRole("button", { name: "admin.save" }));
+
+      await waitFor(() =>
+        expect(driveApi.updateWorkspaceShareSettings).toHaveBeenCalledOnce(),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(domains).toHaveValue("draft.example");
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("unhandledrejection", unhandled);
+    }
+  });
+
 });

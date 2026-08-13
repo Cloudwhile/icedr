@@ -4,77 +4,73 @@ import { PrismaService } from '../../../database/prisma.service';
 import { OverviewService } from './overview.service';
 
 describe('OverviewService', () => {
-  it('aggregates global storage and audit data for the requested window', async () => {
-    const countWorkspaces = jest.fn(() => Promise.resolve(3));
-    const aggregateNodes = jest
-      .fn()
-      .mockResolvedValueOnce({ _sum: { sizeBytes: 100n } })
-      .mockResolvedValueOnce({ _sum: { sizeBytes: 20n } });
-    const countNodes = jest
-      .fn()
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(1);
-    const aggregateVersions = jest.fn(() =>
-      Promise.resolve({ _sum: { sizeBytes: 30n } }),
-    );
-    const countVersions = jest.fn(() => Promise.resolve(5));
-    const prisma = {
-      workspace: { count: countWorkspaces },
-      fileNode: { aggregate: aggregateNodes, count: countNodes },
-      fileVersion: {
-        aggregate: aggregateVersions,
-        count: countVersions,
+  function createPrisma() {
+    return {
+      workspace: {
+        count: jest.fn(() => Promise.resolve(3)),
+        findUnique: jest.fn(() => Promise.resolve({ id: 'workspace-default' })),
       },
-    } as unknown as PrismaService;
-    const getEventSnapshot = jest.fn(() =>
-      Promise.resolve({
-        generatedAt: '2026-08-12T02:00:00.000Z',
-        scope: { kind: 'all' as const },
-        facets: { actions: [], actors: [] },
-        summary: { success: 1, failed: 1 },
-        total: 2,
-        items: [
-          {
-            id: 'failed',
-            action: 'auth.login_failed',
-            actor: 'account' as const,
-            target: 'alice',
-            workspaceId: null,
-            shareToken: null,
-            nodeId: null,
-            metadata: {},
-            createdAt: '2026-08-11T10:00:00.000Z',
-            actorDisplayName: 'Alice',
-            actorEmail: null,
-            actorUserId: 'user-alice',
-            ipAddress: '203.0.113.9',
-            resourceType: 'system' as const,
-            result: 'failed' as const,
-          },
-          {
-            id: 'success',
-            action: 'file.download_started',
-            actor: 'account' as const,
-            target: 'roadmap',
-            workspaceId: 'workspace-default',
-            shareToken: null,
-            nodeId: 'roadmap',
-            metadata: {},
-            createdAt: '2026-08-12T10:00:00.000Z',
-            actorDisplayName: 'Bob',
-            actorEmail: null,
-            actorUserId: 'user-bob',
-            ipAddress: null,
-            resourceType: 'file' as const,
-            result: 'success' as const,
-          },
-        ],
-      }),
+      fileNode: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValueOnce({ _sum: { sizeBytes: 100n } })
+          .mockResolvedValueOnce({ _sum: { sizeBytes: 20n } }),
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(4)
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(1),
+      },
+      fileVersion: {
+        aggregate: jest.fn(() => Promise.resolve({ _sum: { sizeBytes: 30n } })),
+        count: jest.fn(() => Promise.resolve(5)),
+      },
+    };
+  }
+
+  function createAuditMetrics() {
+    return {
+      total: 2,
+      failed: 1,
+      dailyTrend: [
+        { date: '2026-08-11', total: 1, failed: 1 },
+        { date: '2026-08-12', total: 1, failed: 0 },
+      ],
+      resourceDistribution: [
+        { resourceType: 'file' as const, total: 1 },
+        { resourceType: 'system' as const, total: 1 },
+      ],
+      recentRiskEvents: [
+        {
+          id: 'failed',
+          action: 'auth.login_failed',
+          actor: 'account' as const,
+          target: 'alice',
+          workspaceId: null,
+          shareToken: null,
+          nodeId: null,
+          metadata: {},
+          createdAt: '2026-08-11T10:00:00.000Z',
+          actorDisplayName: 'Alice',
+          actorEmail: null,
+          actorUserId: 'user-alice',
+          ipAddress: '203.0.113.9',
+          resourceType: 'system' as const,
+          result: 'failed' as const,
+        },
+      ],
+    };
+  }
+
+  it('aggregates global storage and database audit metrics for the requested window', async () => {
+    const prisma = createPrisma();
+    const getOverviewMetrics = jest.fn(() =>
+      Promise.resolve(createAuditMetrics()),
     );
-    const service = new OverviewService(prisma, {
-      getEventSnapshot,
-    } as unknown as AuditService);
+    const service = new OverviewService(
+      prisma as unknown as PrismaService,
+      { getOverviewMetrics } as unknown as AuditService,
+    );
 
     const result = await service.getOverview({
       scope: 'all',
@@ -83,10 +79,6 @@ describe('OverviewService', () => {
     });
 
     expect(result.scope).toEqual({ kind: 'all' });
-    expect(result.window).toEqual({
-      from: '2026-08-11T00:00:00.000Z',
-      to: '2026-08-12T23:59:59.999Z',
-    });
     expect(result.workspaceCount).toBe(3);
     expect(result.storage).toEqual({
       activeBytes: 100,
@@ -98,49 +90,56 @@ describe('OverviewService', () => {
       folderCount: 1,
       versionCount: 5,
     });
-    expect(result.audit.total).toBe(2);
-    expect(result.audit.failed).toBe(1);
-    expect(result.audit.dailyTrend).toEqual([
-      { date: '2026-08-11', total: 1, failed: 1 },
-      { date: '2026-08-12', total: 1, failed: 0 },
-    ]);
-    expect(result.audit.resourceDistribution).toEqual([
-      { resourceType: 'file', total: 1 },
-      { resourceType: 'system', total: 1 },
-    ]);
-    expect(result.audit.recentRiskEvents).toHaveLength(1);
-    expect(result.audit.recentRiskEvents[0]?.id).toBe('failed');
-    expect(getEventSnapshot).toHaveBeenCalledWith({
+    expect(result.audit).toEqual(createAuditMetrics());
+    expect(getOverviewMetrics).toHaveBeenCalledWith({
       scope: 'all',
       workspaceId: undefined,
       createdFrom: '2026-08-11T00:00:00.000Z',
       createdTo: '2026-08-12T23:59:59.999Z',
-      sortBy: 'createdAt',
-      sortDirection: 'desc',
     });
   });
 
-  it('returns zero storage and workspaces for the strict system scope', async () => {
-    const countWorkspaces = jest.fn();
-    const aggregateNodes = jest.fn();
-    const prisma = {
-      workspace: { count: countWorkspaces },
-      fileNode: { aggregate: aggregateNodes, count: jest.fn() },
-      fileVersion: { aggregate: jest.fn(), count: jest.fn() },
-    } as unknown as PrismaService;
-    const getEventSnapshot = jest.fn(() =>
+  it('fills dates absent from the database aggregation with zeroes', async () => {
+    const prisma = createPrisma();
+    const getOverviewMetrics = jest.fn(() =>
       Promise.resolve({
-        generatedAt: '2026-08-12T02:00:00.000Z',
-        scope: { kind: 'system' as const },
-        facets: { actions: [], actors: [] },
-        summary: { success: 0, failed: 0 },
-        total: 0,
-        items: [],
+        ...createAuditMetrics(),
+        total: 1,
+        failed: 0,
+        dailyTrend: [{ date: '2026-08-12', total: 1, failed: 0 }],
       }),
     );
-    const service = new OverviewService(prisma, {
-      getEventSnapshot,
-    } as unknown as AuditService);
+    const service = new OverviewService(
+      prisma as unknown as PrismaService,
+      { getOverviewMetrics } as unknown as AuditService,
+    );
+
+    const result = await service.getOverview({
+      from: '2026-08-11T00:00:00.000Z',
+      to: '2026-08-12T23:59:59.999Z',
+    });
+
+    expect(result.audit.dailyTrend).toEqual([
+      { date: '2026-08-11', total: 0, failed: 0 },
+      { date: '2026-08-12', total: 1, failed: 0 },
+    ]);
+  });
+
+  it('returns zero storage and workspaces for the strict system scope', async () => {
+    const prisma = createPrisma();
+    const getOverviewMetrics = jest.fn(() =>
+      Promise.resolve({
+        total: 0,
+        failed: 0,
+        dailyTrend: [],
+        resourceDistribution: [],
+        recentRiskEvents: [],
+      }),
+    );
+    const service = new OverviewService(
+      prisma as unknown as PrismaService,
+      { getOverviewMetrics } as unknown as AuditService,
+    );
 
     const result = await service.getOverview({
       scope: 'system',
@@ -148,7 +147,6 @@ describe('OverviewService', () => {
       to: '2026-08-12T23:59:59.999Z',
     });
 
-    expect(result.scope).toEqual({ kind: 'system' });
     expect(result.workspaceCount).toBe(0);
     expect(result.storage).toEqual({
       activeBytes: 0,
@@ -160,9 +158,9 @@ describe('OverviewService', () => {
       folderCount: 0,
       versionCount: 0,
     });
-    expect(countWorkspaces).not.toHaveBeenCalled();
-    expect(aggregateNodes).not.toHaveBeenCalled();
-    expect(getEventSnapshot).toHaveBeenCalledWith(
+    expect(prisma.workspace.count).not.toHaveBeenCalled();
+    expect(prisma.fileNode.aggregate).not.toHaveBeenCalled();
+    expect(getOverviewMetrics).toHaveBeenCalledWith(
       expect.objectContaining({ scope: 'system', workspaceId: undefined }),
     );
   });
@@ -183,55 +181,39 @@ describe('OverviewService', () => {
       'oversized window',
     ],
   ])('rejects %s before querying overview data (%s)', async (query) => {
-    const count = jest.fn();
-    const getEventSnapshot = jest.fn();
+    const prisma = createPrisma();
+    const getOverviewMetrics = jest.fn();
     const service = new OverviewService(
-      {
-        workspace: { count },
-        fileNode: { aggregate: jest.fn(), count: jest.fn() },
-        fileVersion: { aggregate: jest.fn(), count: jest.fn() },
-      } as unknown as PrismaService,
-      { getEventSnapshot } as unknown as AuditService,
+      prisma as unknown as PrismaService,
+      { getOverviewMetrics } as unknown as AuditService,
     );
 
     await expect(service.getOverview(query as never)).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    expect(count).not.toHaveBeenCalled();
-    expect(getEventSnapshot).not.toHaveBeenCalled();
+    expect(prisma.workspace.count).not.toHaveBeenCalled();
+    expect(getOverviewMetrics).not.toHaveBeenCalled();
   });
 
-  it('rejects a workspace scope that no longer exists', async () => {
-    const prisma = {
-      workspace: { count: jest.fn(() => Promise.resolve(0)) },
-      fileNode: {
-        aggregate: jest.fn(() => Promise.resolve({ _sum: { sizeBytes: 0n } })),
-        count: jest.fn(() => Promise.resolve(0)),
-      },
-      fileVersion: {
-        aggregate: jest.fn(() => Promise.resolve({ _sum: { sizeBytes: 0n } })),
-        count: jest.fn(() => Promise.resolve(0)),
-      },
-    } as unknown as PrismaService;
-    const audit = {
-      getEventSnapshot: jest.fn(() =>
-        Promise.resolve({
-          facets: { actions: [], actors: [] },
-          generatedAt: '2026-08-12T00:00:00.000Z',
-          items: [],
-          scope: { kind: 'workspace', workspaceId: 'missing' },
-          summary: { failed: 0, success: 0 },
-          total: 0,
-        }),
-      ),
-    } as unknown as AuditService;
-    const service = new OverviewService(prisma, audit);
+  it('validates workspace existence before starting storage or audit aggregation', async () => {
+    const prisma = createPrisma();
+    prisma.workspace.findUnique.mockResolvedValue(null);
+    const getOverviewMetrics = jest.fn();
+    const service = new OverviewService(
+      prisma as unknown as PrismaService,
+      { getOverviewMetrics } as unknown as AuditService,
+    );
 
     await expect(
-      service.getOverview({
-        scope: 'workspace',
-        workspaceId: 'missing',
-      }),
+      service.getOverview({ scope: 'workspace', workspaceId: 'missing' }),
     ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.workspace.findUnique).toHaveBeenCalledWith({
+      where: { id: 'missing' },
+      select: { id: true },
+    });
+    expect(prisma.fileNode.aggregate).not.toHaveBeenCalled();
+    expect(prisma.fileVersion.aggregate).not.toHaveBeenCalled();
+    expect(getOverviewMetrics).not.toHaveBeenCalled();
   });
 });

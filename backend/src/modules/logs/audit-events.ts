@@ -74,7 +74,16 @@ export type AuditEventPage = {
   generatedAt: string;
 };
 
-export type AuditEventSnapshot = Omit<AuditEventPage, 'limit' | 'offset'>;
+export type AuditOverviewMetrics = {
+  total: number;
+  failed: number;
+  dailyTrend: Array<{ date: string; total: number; failed: number }>;
+  resourceDistribution: Array<{
+    resourceType: AuditResourceType;
+    total: number;
+  }>;
+  recentRiskEvents: AuditEventRecord[];
+};
 
 export const auditedActivityActions = [
   'auth.login',
@@ -180,8 +189,8 @@ export function resolveAuditResult(
   );
   if (
     metadataResult &&
-    ['failed', 'failure', 'error', 'denied', 'rejected', 'locked'].some(
-      (value) => metadataResult.toLowerCase().includes(value),
+    ['failed', 'failure', 'error', 'denied', 'rejected', 'locked'].includes(
+      normalizeAuditResultValue(metadataResult),
     )
   ) {
     return 'failed';
@@ -192,6 +201,10 @@ export function resolveAuditResult(
   )
     ? 'failed'
     : 'success';
+}
+
+export function normalizeAuditResultValue(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export function clampAuditLimit(limit = 100) {

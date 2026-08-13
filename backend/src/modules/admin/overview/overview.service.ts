@@ -1,11 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
-import type {
-  AuditEventRecord,
-  AuditResourceType,
-  AuditScope,
-} from '../../logs/audit-events';
+import type { AuditScope } from '../../logs/audit-events';
 import { AuditService } from '../../logs/audit.service';
 import type { OverviewQuery, OverviewResponse } from './overview.dto';
 
@@ -32,22 +28,20 @@ export class OverviewService {
     this.validateQuery(query);
     const scope = this.resolveScope(query);
     const window = this.resolveWindow(query);
+    if (scope.kind === 'workspace') {
+      await this.assertWorkspaceExists(scope.workspaceId);
+    }
     const auditScope = scope.kind === 'workspace' ? 'workspace' : scope.kind;
-    const [workspaceCount, storage, auditSnapshot] = await Promise.all([
+    const [workspaceCount, storage, auditMetrics] = await Promise.all([
       this.countWorkspaces(scope),
       this.aggregateStorage(scope),
-      this.auditService.getEventSnapshot({
+      this.auditService.getOverviewMetrics({
         scope: auditScope,
         workspaceId: scope.kind === 'workspace' ? scope.workspaceId : undefined,
         createdFrom: window.from,
         createdTo: window.to,
-        sortBy: 'createdAt',
-        sortDirection: 'desc',
       }),
     ]);
-    if (scope.kind === 'workspace' && workspaceCount === 0) {
-      throw new BadRequestException('Workspace was not found');
-    }
 
     return {
       scope,
@@ -56,19 +50,15 @@ export class OverviewService {
       workspaceCount,
       storage,
       audit: {
-        total: auditSnapshot.total,
-        failed: auditSnapshot.summary.failed,
+        total: auditMetrics.total,
+        failed: auditMetrics.failed,
         dailyTrend: this.buildDailyTrend(
-          auditSnapshot.items,
+          auditMetrics.dailyTrend,
           window.from,
           window.to,
         ),
-        resourceDistribution: this.buildResourceDistribution(
-          auditSnapshot.items,
-        ),
-        recentRiskEvents: auditSnapshot.items
-          .filter((event) => this.isRiskEvent(event))
-          .slice(0, 10),
+        resourceDistribution: auditMetrics.resourceDistribution,
+        recentRiskEvents: auditMetrics.recentRiskEvents,
       },
     };
   }
@@ -141,9 +131,16 @@ export class OverviewService {
 
   private countWorkspaces(scope: AuditScope) {
     if (scope.kind === 'system') return Promise.resolve(0);
-    return this.prisma.workspace.count({
-      where: scope.kind === 'workspace' ? { id: scope.workspaceId } : undefined,
+    if (scope.kind === 'workspace') return Promise.resolve(1);
+    return this.prisma.workspace.count();
+  }
+
+  private async assertWorkspaceExists(workspaceId: string) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true },
     });
+    if (!workspace) throw new BadRequestException('Workspace was not found');
   }
 
   private async aggregateStorage(scope: AuditScope) {
@@ -208,18 +205,16 @@ export class OverviewService {
   }
 
   private buildDailyTrend(
-    events: AuditEventRecord[],
+    aggregate: Array<{ date: string; total: number; failed: number }>,
     from: string,
     to: string,
   ) {
-    const byDate = new Map<string, { total: number; failed: number }>();
-    for (const event of events) {
-      const date = event.createdAt.slice(0, 10);
-      const bucket = byDate.get(date) ?? { total: 0, failed: 0 };
-      bucket.total += 1;
-      if (event.result === 'failed') bucket.failed += 1;
-      byDate.set(date, bucket);
-    }
+    const byDate = new Map(
+      aggregate.map((point) => [
+        point.date,
+        { total: point.total, failed: point.failed },
+      ]),
+    );
     const points: Array<{ date: string; total: number; failed: number }> = [];
     let cursor = this.utcDay(new Date(from));
     const lastDay = this.utcDay(new Date(to));
@@ -235,23 +230,6 @@ export class OverviewService {
   private utcDay(date: Date) {
     return new Date(
       Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-    );
-  }
-
-  private buildResourceDistribution(events: AuditEventRecord[]) {
-    const totals = new Map<AuditResourceType, number>();
-    for (const event of events) {
-      totals.set(event.resourceType, (totals.get(event.resourceType) ?? 0) + 1);
-    }
-    return [...totals.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([resourceType, total]) => ({ resourceType, total }));
-  }
-
-  private isRiskEvent(event: AuditEventRecord) {
-    if (event.result === 'failed') return true;
-    return /(?:permanently_deleted|trash_cleaned|quota_updated|policy_updated|share\.revoked)$/.test(
-      event.action,
     );
   }
 }

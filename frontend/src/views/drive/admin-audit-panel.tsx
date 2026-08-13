@@ -19,6 +19,10 @@ import {
   type AdminScope,
 } from "@/features/admin/admin-scope";
 import {
+  formatZonedDateTimeLocal,
+  parseZonedDateTimeLocal,
+} from "@/features/admin/admin-date-time";
+import {
   getIntlLocale,
   type Locale,
   type LocalIconName,
@@ -334,10 +338,13 @@ export function AdminAuditPanel({
               disabled={disabled}
               palette={palette}
               type="datetime-local"
-              value={toLocalDateTime(filters.createdFrom)}
+              value={formatZonedDateTimeLocal(filters.createdFrom, timeZone)}
               onChange={(event) =>
                 updateFilters({
-                  createdFrom: fromLocalDateTime(event.target.value),
+                  createdFrom: parseZonedDateTimeLocal(
+                    event.target.value,
+                    timeZone,
+                  ),
                 })
               }
             />
@@ -348,10 +355,13 @@ export function AdminAuditPanel({
               disabled={disabled}
               palette={palette}
               type="datetime-local"
-              value={toLocalDateTime(filters.createdTo)}
+              value={formatZonedDateTimeLocal(filters.createdTo, timeZone)}
               onChange={(event) =>
                 updateFilters({
-                  createdTo: fromLocalDateTime(event.target.value),
+                  createdTo: parseZonedDateTimeLocal(
+                    event.target.value,
+                    timeZone,
+                  ),
                 })
               }
             />
@@ -932,18 +942,4 @@ function formatAbsoluteDate(value: string, locale: Locale, timeZone?: string) {
     timeStyle: "medium",
     ...(timeZone ? { timeZone } : {}),
   }).format(date);
-}
-
-function toLocalDateTime(value: string | undefined) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localTime.toISOString().slice(0, 16);
-}
-
-function fromLocalDateTime(value: string) {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
