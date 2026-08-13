@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
 import { showAppToast } from "@/components/ui/app-toast-store";
 import { useTranslations } from "@/i18n/react";
 import {
@@ -8,10 +9,9 @@ import {
   fetchStorageSettings,
   fetchStorageUsage,
   fetchStorageUsageBreakdown,
+  updateAdminStoragePolicy,
   updateFilePolicySettings,
-  updateStorageSettings,
   updateUserStorageQuota,
-  updateWorkspaceStorageQuota,
   type FilePolicySettings,
   type StorageSettings,
   type StorageUsageBreakdown,
@@ -88,6 +88,8 @@ export function DriveSystemSettings({
 }: DriveSystemSettingsProps) {
   const t = useTranslations();
   const [policy, setPolicy] = useState<FilePolicySettings>(defaultPolicy);
+  const [savedPolicy, setSavedPolicy] =
+    useState<FilePolicySettings>(defaultPolicy);
   const [storageSettings, setStorageSettings] = useState<StorageSettings>(
     defaultStorageSettings,
   );
@@ -152,6 +154,7 @@ export function DriveSystemSettings({
       ]);
       if (cancelled) return;
       setPolicy(filePolicy);
+      setSavedPolicy(filePolicy);
       setStorageSettings(nextStorageSettings);
     };
     void loadSection().catch(() => {
@@ -276,27 +279,48 @@ export function DriveSystemSettings({
     return { defaultUserQuotaBytes, quotaBytes };
   };
 
-  const saveQuota = () => {
+  const resetQuotaDrafts = (
+    settings: StorageSettings,
+    usage: StorageUsage | null,
+  ) => {
+    setQuotaDraftState(createQuotaDraftState(settings.quotaBytes));
+    setDefaultUserQuotaDraftState(
+      createQuotaDraftState(usage?.defaultUserQuotaBytes ?? null),
+    );
+  };
+
+  const saveQuota = async () => {
     if (!workspaceId) return;
     const validatedQuota = getValidatedQuotaDraft();
-    if (!validatedQuota) return;
+    if (!validatedQuota) throw new Error("Invalid storage quota draft");
     setSavingKey("quota");
-    void updateStorageSettings({ quotaBytes: validatedQuota.quotaBytes })
-      .then((nextStorageSettings) =>
-        updateWorkspaceStorageQuota({
-          defaultUserQuotaBytes: validatedQuota.defaultUserQuotaBytes,
-          workspaceId,
-        }).then((usage) => [nextStorageSettings, usage] as const),
-      )
-      .then(([nextStorageSettings, usage]) => {
-        setStorageSettings(nextStorageSettings);
-        onStorageUsageUpdated(usage);
-        showAppToast({ title: t("admin.saved"), tone: "success" });
-      })
-      .catch(() =>
-        showAppToast({ title: t("admin.saveFailed"), tone: "error" }),
-      )
-      .finally(() => setSavingKey(null));
+    try {
+      const result = await updateAdminStoragePolicy({
+        defaultUserQuotaBytes: validatedQuota.defaultUserQuotaBytes,
+        quotaBytes: validatedQuota.quotaBytes,
+        workspaceId,
+      });
+      setStorageSettings(result.settings);
+      onStorageUsageUpdated(result.usage);
+      resetQuotaDrafts(result.settings, result.usage);
+      showAppToast({ title: t("admin.saved"), tone: "success" });
+    } catch (error) {
+      try {
+        const [authoritativeSettings, authoritativeUsage] = await Promise.all([
+          fetchStorageSettings(),
+          fetchStorageUsage(workspaceId),
+        ]);
+        setStorageSettings(authoritativeSettings);
+        onStorageUsageUpdated(authoritativeUsage);
+        resetQuotaDrafts(authoritativeSettings, authoritativeUsage);
+      } catch {
+        // Keep the current drafts when the authoritative recovery read also fails.
+      }
+      showAppToast({ title: t("admin.saveFailed"), tone: "error" });
+      throw error;
+    } finally {
+      setSavingKey(null);
+    }
   };
 
   const saveUserQuota = () => {
@@ -318,16 +342,46 @@ export function DriveSystemSettings({
       .finally(() => setSavingKey(null));
   };
 
-  const savePolicy = () => {
+  const savePolicy = async () => {
     setSavingKey("policy");
-    void updateFilePolicySettings(policy)
-      .then(setPolicy)
-      .then(() => showAppToast({ title: t("admin.saved"), tone: "success" }))
-      .catch(() =>
-        showAppToast({ title: t("admin.saveFailed"), tone: "error" }),
-      )
-      .finally(() => setSavingKey(null));
+    try {
+      const nextPolicy = await updateFilePolicySettings(policy);
+      setPolicy(nextPolicy);
+      setSavedPolicy(nextPolicy);
+      showAppToast({ title: t("admin.saved"), tone: "success" });
+    } catch (error) {
+      showAppToast({ title: t("admin.saveFailed"), tone: "error" });
+      throw error;
+    } finally {
+      setSavingKey(null);
+    }
   };
+
+  const quotaDirty = Boolean(
+    workspaceId &&
+      (parseQuotaBytes(quotaDraft.value, quotaDraft.unit) !== quotaSource ||
+        parseQuotaBytes(
+          defaultUserQuotaDraft.value,
+          defaultUserQuotaDraft.unit,
+        ) !== defaultUserQuotaSource),
+  );
+  const lifecycleDirty =
+    policy.trashRetentionDays !== savedPolicy.trashRetentionDays ||
+    policy.versionRetentionCount !== savedPolicy.versionRetentionCount ||
+    policy.versionRetentionDays !== savedPolicy.versionRetentionDays;
+
+  useUnsavedChangesSection({
+    id: "admin-storage-quota",
+    isDirty: quotaDirty,
+    onDiscard: () => resetQuotaDrafts(storageSettings, storageUsage),
+    onSave: saveQuota,
+  });
+  useUnsavedChangesSection({
+    id: "admin-lifecycle-policy",
+    isDirty: lifecycleDirty,
+    onDiscard: () => setPolicy(savedPolicy),
+    onSave: savePolicy,
+  });
 
   const refreshUsage = () => {
     if (!workspaceId) return;
@@ -371,7 +425,7 @@ export function DriveSystemSettings({
             onQuotaUnitChange={setQuotaUnit}
             onQuotaValueChange={setQuotaDraft}
             onRefreshUsage={refreshUsage}
-            onSaveQuota={saveQuota}
+            onSaveQuota={() => void saveQuota().catch(() => undefined)}
             onSaveUserQuota={saveUserQuota}
             onUserQuotaDraftChange={setUserQuotaDraft}
             onUserQuotaEmailChange={setUserQuotaEmail}
@@ -391,7 +445,7 @@ export function DriveSystemSettings({
           <LifecyclePolicySection
             locale={locale}
             onPolicyChange={setPolicy}
-            onSavePolicy={savePolicy}
+            onSavePolicy={() => void savePolicy().catch(() => undefined)}
             palette={palette}
             policy={policy}
             savingKey={savingKey}

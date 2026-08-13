@@ -44,6 +44,33 @@ export class MailService {
     }
   }
 
+  async verifyCurrentTransport() {
+    const settings = await this.settingsService.getMailSettings();
+    if (!this.settingsService.mailConfigured(settings)) {
+      throw new ServiceUnavailableException('Mail delivery is not configured');
+    }
+    try {
+      const transporter = nodemailer.createTransport({
+        host: settings.host,
+        port: settings.port,
+        secure: settings.secure,
+        auth: {
+          user: settings.username,
+          pass: settings.password,
+        },
+        connectionTimeout: 2_000,
+        greetingTimeout: 2_000,
+        socketTimeout: 3_000,
+      });
+      await transporter.verify();
+    } catch (error) {
+      this.logger.warn(
+        `Mail transport check failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      throw new ServiceUnavailableException('Mail transport check failed');
+    }
+  }
+
   async sendShareAccessCode(input: {
     email: string;
     code: string;

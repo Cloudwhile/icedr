@@ -5,6 +5,7 @@ import { useRouter } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MotionPresence } from "@/components/ui/motion";
+import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
 import {
   showAppToast,
   type AppToastTone,
@@ -17,7 +18,6 @@ import {
 import {
   fetchAuthSettings,
   fetchWorkspaceShareSettings,
-  fetchWorkspaces,
   updateWorkspaceShareSettings,
   type AuthSettings,
   type WorkspaceShareSettings,
@@ -69,10 +69,12 @@ export function ExternalShareAdminSettingsPage({
   embedded = false,
   setThemeMode,
   themeMode,
+  workspaceId = null,
 }: {
   embedded?: boolean;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
   themeMode: ThemeMode;
+  workspaceId?: string | null;
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -90,7 +92,16 @@ export function ExternalShareAdminSettingsPage({
         }}
       >
         <div className="external-share-admin-embedded-inner">
-          <ExternalShareAdminSettingsPanel compact palette={palette} />
+          {workspaceId ? (
+            <GuardedExternalShareAdminSettingsPanel
+              compact
+              key={workspaceId}
+              palette={palette}
+              workspaceId={workspaceId}
+            />
+          ) : (
+            <WorkspaceScopeRequired />
+          )}
         </div>
       </div>
     );
@@ -177,7 +188,15 @@ export function ExternalShareAdminSettingsPage({
         }
       >
         <div style={{ maxWidth: "1180px" }}>
-          <ExternalShareAdminSettingsPanel palette={palette} />
+          {workspaceId ? (
+            <ExternalShareAdminSettingsPanel
+              key={workspaceId}
+              palette={palette}
+              workspaceId={workspaceId}
+            />
+          ) : (
+            <WorkspaceScopeRequired />
+          )}
         </div>
       </div>
     </div>
@@ -186,10 +205,14 @@ export function ExternalShareAdminSettingsPage({
 
 export function ExternalShareAdminSettingsPanel({
   compact = false,
+  guardUnsavedChanges = false,
   palette,
+  workspaceId,
 }: {
   compact?: boolean;
+  guardUnsavedChanges?: boolean;
   palette: Palette;
+  workspaceId: string;
 }) {
   const t = useTranslations();
   const [anonymousPolicy, setAnonymousPolicy] =
@@ -208,7 +231,6 @@ export function ExternalShareAdminSettingsPanel({
   const [domains, setDomains] = useState("");
   const [authSettings, setAuthSettings] = useState<AuthSettings | null>(null);
   const [saving, setSaving] = useState(false);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [undoActions, setUndoActions] = useState<UndoActions>({});
   const [savedWorkspaceSnapshot, setSavedWorkspaceSnapshot] =
     useState<WorkspaceShareForm | null>(null);
@@ -240,12 +262,7 @@ export function ExternalShareAdminSettingsPanel({
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      fetchWorkspaces().then((workspaces) => {
-        const currentWorkspaceId = workspaces[0]?.id;
-        if (!currentWorkspaceId) throw new Error("Workspace unavailable");
-        if (!cancelled) setWorkspaceId(currentWorkspaceId);
-        return fetchWorkspaceShareSettings(currentWorkspaceId);
-      }),
+      fetchWorkspaceShareSettings(workspaceId),
       fetchAuthSettings(),
     ])
       .then(([shareSettings, auth]) => {
@@ -259,7 +276,7 @@ export function ExternalShareAdminSettingsPanel({
     return () => {
       cancelled = true;
     };
-  }, [applyWorkspaceShareSettings, showToast, t]);
+  }, [applyWorkspaceShareSettings, showToast, t, workspaceId]);
 
   const parseDomainsValue = (value: string) =>
     value
@@ -351,12 +368,43 @@ export function ExternalShareAdminSettingsPanel({
     setEmailRule(savedWorkspaceSnapshot.emailRule);
     setDomains(savedWorkspaceSnapshot.allowedDomains.join("\n"));
   };
+  const saveDomainDraft = async () => {
+    const previous = savedWorkspaceRef.current;
+    if (saving) throw new Error("Workspace share settings are already saving");
+    if (!previous || !domainDirty) return;
+    const next = currentWorkspaceForm({
+      allowedDomains: parseDomains(),
+      emailRule: "domains",
+    });
+    setSaving(true);
+    try {
+      const settings = await updateWorkspaceShareSettings(workspaceId, next);
+      applyWorkspaceShareSettings(settings);
+      setUndoAction("emailRule", () =>
+        saveWorkspaceForm("emailRule", previous, next, false),
+      );
+      showToast(t("admin.saved"));
+    } catch (error) {
+      showToast(t("admin.saveFailed"), "error");
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div
       className="external-share-admin-settings-panel"
       style={{ display: "flex", flexDirection: "column", gap: "16px" }}
     >
+      {guardUnsavedChanges ? (
+        <ExternalShareDomainGuard
+          id={`external-share-domains:${workspaceId}`}
+          isDirty={domainDirty}
+          onDiscard={resetDomainDraft}
+          onSave={saveDomainDraft}
+        />
+      ) : null}
       {!compact ? (
         <>
           <div
@@ -548,12 +596,9 @@ export function ExternalShareAdminSettingsPanel({
                   ? resetDomainDraft
                   : (undoActions.emailRule ?? undoActions.allowedDomains)
               }
-              onSave={() =>
-                commitWorkspaceForm("emailRule", {
-                  allowedDomains: parseDomains(),
-                  emailRule: "domains",
-                })
-              }
+              onSave={() => {
+                void saveDomainDraft().catch(() => undefined);
+              }}
               palette={palette}
               resetLabel={
                 domainDirty ? t("admin.revertChanges") : t("admin.undo")
@@ -721,6 +766,52 @@ export function ExternalShareAdminSettingsPanel({
           />
         </SettingItem>
       </AdminSection>
+    </div>
+  );
+}
+
+function GuardedExternalShareAdminSettingsPanel({
+  compact,
+  palette,
+  workspaceId,
+}: {
+  compact?: boolean;
+  palette: Palette;
+  workspaceId: string;
+}) {
+  return (
+    <ExternalShareAdminSettingsPanel
+      compact={compact}
+      guardUnsavedChanges
+      palette={palette}
+      workspaceId={workspaceId}
+    />
+  );
+}
+
+function ExternalShareDomainGuard({
+  id,
+  isDirty,
+  onDiscard,
+  onSave,
+}: {
+  id: string;
+  isDirty: boolean;
+  onDiscard: () => void;
+  onSave: () => Promise<void>;
+}) {
+  useUnsavedChangesSection({ id, isDirty, onDiscard, onSave });
+  return null;
+}
+
+function WorkspaceScopeRequired() {
+  const t = useTranslations();
+  return (
+    <div className="admin-inline-alert" role="alert">
+      <span>
+        <LocalIcon name="info" size={16} />
+        {t("admin.externalShareWorkspaceScopeRequired")}
+      </span>
     </div>
   );
 }

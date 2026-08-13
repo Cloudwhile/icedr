@@ -35,7 +35,14 @@ describe('AuditController', () => {
   it('checks audit read permission before listing events', async () => {
     const { controller, listEvents, requirePermission } = createController();
 
-    await controller.listEvents('Bearer admin', 'workspace-default');
+    await controller.listEvents('Bearer admin', {
+      scope: 'workspace',
+      workspaceId: 'workspace-default',
+      actor: 'account',
+      result: 'failed',
+      createdFrom: '2026-08-01T00:00:00.000Z',
+      limit: '25',
+    });
 
     expect(requirePermission).toHaveBeenCalledWith(
       'Bearer admin',
@@ -43,11 +50,11 @@ describe('AuditController', () => {
       'read',
     );
     expect(listEvents).toHaveBeenCalledWith({
-      action: undefined,
-      limit: undefined,
-      nodeId: undefined,
-      offset: undefined,
-      shareToken: undefined,
+      actor: 'account',
+      createdFrom: '2026-08-01T00:00:00.000Z',
+      limit: 25,
+      result: 'failed',
+      scope: 'workspace',
       workspaceId: 'workspace-default',
     });
   });

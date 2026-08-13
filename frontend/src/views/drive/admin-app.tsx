@@ -4,15 +4,40 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useState,
   type CSSProperties,
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { LdrsLoadingState } from "@/components/common/ui/loading-state";
+import { AdminHealthCenter } from "@/components/admin/admin-health-center";
+import { AdminOverviewDashboard } from "@/components/admin/admin-overview-dashboard";
+import { AdminScopeSelector } from "@/components/admin/admin-scope-selector";
+import { AdminUnsavedChangesProvider } from "@/components/admin/unsaved-changes-provider";
+import { showAppToast } from "@/components/ui/app-toast-store";
 import { UserAccountMenu } from "@/components/ui/user-account-menu";
-import { usePathname, useRouter } from "@/compat/navigation";
+import { usePathname, useRouter, useSearchParams } from "@/compat/navigation";
 import { isAdminUser } from "@/features/auth/permissions";
+import {
+  DEFAULT_ADMIN_AUDIT_FILTERS,
+  parseAdminAuditFilters,
+  parseAdminScope,
+  reconcileAdminScope,
+  writeAdminScopeSearchParams,
+  writeAdminStateSearchParams,
+  type AdminScope,
+} from "@/features/admin/admin-scope";
+import {
+  adminScopesEqual,
+  buildAdminUrl,
+  getAdminPanelPath,
+  getAdminPanelScope,
+  getAdminSystemSectionPath,
+  resolveAdminPanelFromPath,
+  resolveAdminSystemSectionFromPath,
+  serializeAdminScope,
+  type AdminPanel,
+  type AdminSystemSection,
+} from "@/features/admin/admin-routes";
+import { useRetainedAdminQuery } from "@/features/admin/use-retained-admin-query";
 import {
   formatFileSize,
   type Locale,
@@ -25,32 +50,25 @@ import { useTranslations } from "@/i18n/react";
 import {
   clearStoredAuthToken,
   defaultPublicSiteSettings,
-  fetchAuditEvents,
+  fetchAdminAuditEvents,
+  fetchAdminHealth,
+  fetchAdminOverview,
   fetchPublicSiteSettings,
   fetchStorageSettings,
   fetchStorageUsage,
   fetchSystemOverview,
   fetchWorkspaces,
   logoutLocalUser,
-  type AuditEventResponse,
+  type AdminAuditFilters,
   type AuthUser,
-  type PublicSiteSettings,
-  type StorageSettings,
-  type StorageUsage,
-  type SystemOverview,
-  type WorkspaceResponse,
 } from "@/lib/drive-api";
 import { AuthGate } from "@/components/auth/auth-gate";
 import { LocalizedDriveShell } from "./drive-shell";
-import { AuditModule } from "./drive-modules";
+import { AdminAuditPanel } from "./admin-audit-panel";
 import { OAuthAdminSettingsPage } from "./drive-oauth-admin-settings";
-import {
-  DriveSystemSettings,
-  type DriveSystemSettingsSection,
-} from "./drive-system-settings";
+import { DriveSystemSettings } from "./drive-system-settings";
 import { ExternalShareAdminSettingsPage } from "./external-share-admin-settings";
 import { LocalIcon, ToolButton } from "./drive-primitives";
-import { AdminOverviewPanel } from "./admin-overview-panel";
 import { AdminSystemStatus } from "@/components/admin/admin-system-status";
 import "./styles/modules.css";
 import "./styles/settings.css";
@@ -60,12 +78,6 @@ import "./styles/admin-overview.css";
 import "./styles/admin-audit.css";
 import "./styles/admin-system.css";
 import "./styles/admin-oauth.css";
-
-type AdminPanel = "overview" | "status" | "audit" | "system";
-type SystemSettingsSection =
-  | DriveSystemSettingsSection
-  | "external-share"
-  | "oauth";
 
 const adminPanels: Array<{
   icon: LocalIconName;
@@ -80,7 +92,7 @@ const adminPanels: Array<{
 
 const systemSettingSections: Array<{
   icon: LocalIconName;
-  id: SystemSettingsSection;
+  id: AdminSystemSection;
   labelKey: string;
   subtitleKey: string;
 }> = [
@@ -116,71 +128,6 @@ const systemSettingSections: Array<{
   },
 ];
 
-const auditPageSizeOptions = [25, 50, 100, 200];
-const defaultAuditPageSize = 50;
-
-const adminPanelPathSegments: Record<AdminPanel, string> = {
-  audit: "audit",
-  overview: "overview",
-  status: "status",
-  system: "system",
-};
-
-const adminPanelByPathSegment = new Map(
-  Object.entries(adminPanelPathSegments).map(([panel, segment]) => [
-    segment,
-    panel as AdminPanel,
-  ]),
-);
-
-const systemSectionPathSegments: Record<SystemSettingsSection, string> = {
-  "external-share": "external-share",
-  lifecycle: "lifecycle",
-  oauth: "oauth",
-  platform: "platform",
-  storage: "storage",
-};
-
-const systemSectionByPathSegment = new Map(
-  Object.entries(systemSectionPathSegments).map(([section, segment]) => [
-    segment,
-    section as SystemSettingsSection,
-  ]),
-);
-
-function resolveAdminPanelFromPath(pathname: string): AdminPanel {
-  const normalized = pathname.replace(/\/+$/, "") || "/admin";
-  if (normalized === "/admin") return "overview";
-  if (normalized === "/admin/external-share") return "system";
-  const segment = normalized.match(/^\/admin\/([^/]+)$/)?.[1];
-  if (segment === "system" || normalized.startsWith("/admin/system/"))
-    return "system";
-  return segment
-    ? (adminPanelByPathSegment.get(segment) ?? "overview")
-    : "overview";
-}
-
-function getAdminPanelPath(panel: AdminPanel) {
-  return panel === "overview"
-    ? "/admin"
-    : `/admin/${adminPanelPathSegments[panel]}`;
-}
-
-function resolveSystemSectionFromPath(pathname: string): SystemSettingsSection {
-  const normalized = pathname.replace(/\/+$/, "") || "/admin/system";
-  if (normalized === "/admin/external-share") return "external-share";
-  const segment = normalized.match(/^\/admin\/system\/([^/]+)$/)?.[1];
-  return segment
-    ? (systemSectionByPathSegment.get(segment) ?? "platform")
-    : "platform";
-}
-
-function getSystemSectionPath(section: SystemSettingsSection) {
-  return section === "platform"
-    ? "/admin/system"
-    : `/admin/system/${systemSectionPathSegments[section]}`;
-}
-
 export function AdminApp() {
   return (
     <LocalizedDriveShell>
@@ -210,209 +157,234 @@ function AdminPanelGate({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useTranslations();
   const activePanel = resolveAdminPanelFromPath(pathname);
-  const activeSystemSection = resolveSystemSectionFromPath(pathname);
-  const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(
-    defaultPublicSiteSettings,
-  );
-  const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([]);
-  const [storageSettings, setStorageSettings] =
-    useState<StorageSettings | null>(null);
-  const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(
-    null,
-  );
-  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
-  const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [auditPage, setAuditPage] = useState(1);
-  const [auditPageSize, setAuditPageSize] = useState(defaultAuditPageSize);
-  const [auditError, setAuditError] = useState<string | null>(null);
-  const [auditQuery, setAuditQuery] = useState("");
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const workspaceId = workspaces[0]?.id ?? null;
+  const activeSystemSection = resolveAdminSystemSectionFromPath(pathname);
   const canUseAdminPanel = isAdminUser(currentUser);
+  const requestedScope = useMemo(
+    () => parseAdminScope(searchParams),
+    [searchParams],
+  );
+  const auditFilters = useMemo(
+    () => parseAdminAuditFilters(searchParams),
+    [searchParams],
+  );
+
+  const loadSiteSettings = useCallback(
+    (_signal: AbortSignal) => fetchPublicSiteSettings(),
+    [],
+  );
+  const loadWorkspaces = useCallback(
+    (_signal: AbortSignal) => fetchWorkspaces(),
+    [],
+  );
+  const siteQuery = useRetainedAdminQuery({
+    enabled: canUseAdminPanel,
+    key: "admin-site",
+    load: loadSiteSettings,
+  });
+  const workspaceQuery = useRetainedAdminQuery({
+    enabled: canUseAdminPanel,
+    key: "admin-workspaces",
+    load: loadWorkspaces,
+  });
+  const workspaces = useMemo(
+    () => workspaceQuery.data ?? [],
+    [workspaceQuery.data],
+  );
+  const scope = useMemo(
+    () => {
+      const reconciledScope = workspaceQuery.data
+        ? reconcileAdminScope(requestedScope, workspaces)
+        : requestedScope;
+      return getAdminPanelScope(activePanel, reconciledScope);
+    },
+    [activePanel, requestedScope, workspaceQuery.data, workspaces],
+  );
+  const workspaceId = scope.kind === "workspace" ? scope.workspaceId : null;
+  const scopeKey = serializeAdminScope(scope);
+
+  const loadOverview = useCallback(
+    (signal: AbortSignal) => fetchAdminOverview(scope, { signal }),
+    [scope],
+  );
+  const loadAudit = useCallback(
+    (signal: AbortSignal) =>
+      fetchAdminAuditEvents(scope, auditFilters, { signal }),
+    [auditFilters, scope],
+  );
+  const loadHealth = useCallback(
+    (signal: AbortSignal) => fetchAdminHealth({ signal }),
+    [],
+  );
+  const loadSystemOverview = useCallback(
+    (_signal: AbortSignal) => fetchSystemOverview(),
+    [],
+  );
+  const loadWorkspaceStorage = useCallback(
+    async (_signal: AbortSignal) => {
+      if (!workspaceId) throw new Error("Workspace scope is required");
+      const [settings, usage] = await Promise.all([
+        fetchStorageSettings(),
+        fetchStorageUsage(workspaceId),
+      ]);
+      return { settings, usage };
+    },
+    [workspaceId],
+  );
+  const overviewQuery = useRetainedAdminQuery({
+    enabled: canUseAdminPanel && activePanel === "overview",
+    key: `admin-overview:${scopeKey}`,
+    load: loadOverview,
+  });
+  const auditQuery = useRetainedAdminQuery({
+    enabled: canUseAdminPanel && activePanel === "audit",
+    key: `admin-audit:${scopeKey}:${JSON.stringify(auditFilters)}`,
+    load: loadAudit,
+  });
+  const healthQuery = useRetainedAdminQuery({
+    enabled:
+      canUseAdminPanel &&
+      (activePanel === "overview" || activePanel === "status"),
+    key: "admin-health",
+    load: loadHealth,
+  });
+  const systemQuery = useRetainedAdminQuery({
+    enabled: canUseAdminPanel && activePanel === "status",
+    key: "admin-system-overview",
+    load: loadSystemOverview,
+  });
+  const needsWorkspaceStorage =
+    activePanel === "system" &&
+    (activeSystemSection === "storage" ||
+      activeSystemSection === "lifecycle");
+  const storageQuery = useRetainedAdminQuery({
+    enabled:
+      canUseAdminPanel && needsWorkspaceStorage && Boolean(workspaceId),
+    key: `admin-storage:${workspaceId ?? "none"}`,
+    load: loadWorkspaceStorage,
+  });
+  const siteSettings = siteQuery.data ?? defaultPublicSiteSettings;
+  const storageUsage = storageQuery.data?.usage ?? null;
+  const systemOverview = systemQuery.data;
+  const overviewScope = overviewQuery.data?.scope ?? scope;
 
   const openPanel = useCallback(
     (panel: AdminPanel) => {
       const nextPath = getAdminPanelPath(panel);
-      if (pathname !== nextPath) router.push(nextPath);
+      router.push(buildAdminUrl(nextPath, getAdminPanelScope(panel, scope)));
     },
-    [pathname, router],
+    [router, scope],
   );
 
   const openSystemSection = useCallback(
-    (section: SystemSettingsSection) => {
-      const nextPath = getSystemSectionPath(section);
-      if (pathname !== nextPath) router.push(nextPath);
+    (section: AdminSystemSection) => {
+      const nextPath = getAdminSystemSectionPath(section);
+      router.push(buildAdminUrl(nextPath, scope));
     },
-    [pathname, router],
+    [router, scope],
+  );
+
+  const openAudit = useCallback(
+    (patch: Partial<AdminAuditFilters> = {}) => {
+      const filters = {
+        ...DEFAULT_ADMIN_AUDIT_FILTERS,
+        ...patch,
+        offset: 0,
+      };
+      const next = writeAdminStateSearchParams(
+        new URLSearchParams(),
+        overviewScope,
+        filters,
+      );
+      router.push(`/admin/audit?${next.toString()}`);
+    },
+    [overviewScope, router],
+  );
+
+  const changeAuditFilters = useCallback(
+    (filters: AdminAuditFilters) => {
+      const next = writeAdminStateSearchParams(searchParams, scope, filters);
+      router.replace(`/admin/audit?${next.toString()}`);
+    },
+    [router, scope, searchParams],
+  );
+
+  const changeScope = useCallback(
+    (nextScope: AdminScope) => {
+      const next =
+        activePanel === "audit"
+          ? writeAdminStateSearchParams(searchParams, nextScope, {
+              ...auditFilters,
+              offset: 0,
+            })
+          : writeAdminScopeSearchParams(searchParams, nextScope);
+      const query = next.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ""}`);
+    },
+    [activePanel, auditFilters, pathname, router, searchParams],
   );
 
   useEffect(() => {
     if (!canUseAdminPanel) router.replace("/");
   }, [canUseAdminPanel, router]);
 
-  const refreshSite = useCallback(() => {
-    if (!canUseAdminPanel) return;
-    void fetchPublicSiteSettings()
-      .then(setSiteSettings)
-      .catch(() => undefined);
-  }, [canUseAdminPanel]);
-
-  const refreshWorkspace = useCallback(async () => {
-    if (!canUseAdminPanel) return null;
-    const nextWorkspaces = await fetchWorkspaces();
-    setWorkspaces(nextWorkspaces);
-    return nextWorkspaces[0]?.id ?? null;
-  }, [canUseAdminPanel]);
-
-  const refreshAudit = useCallback(
-    async (
-      targetWorkspaceId: string | null,
-      targetPage = 1,
-      targetPageSize = defaultAuditPageSize,
-    ) => {
-      if (!canUseAdminPanel || !targetWorkspaceId) {
-        setAuditEvents([]);
-        setAuditTotal(0);
-        return;
-      }
-      const normalizedPage = Math.max(1, Math.trunc(targetPage) || 1);
-      const normalizedPageSize = Math.max(
-        1,
-        Math.trunc(targetPageSize) || defaultAuditPageSize,
-      );
-      const loadPage = (pageNumber: number) =>
-        fetchAuditEvents({
-          limit: normalizedPageSize,
-          offset: (pageNumber - 1) * normalizedPageSize,
-          workspaceId: targetWorkspaceId,
-        });
-      try {
-        let nextPage = normalizedPage;
-        let response = await loadPage(nextPage);
-        const totalPages = Math.max(
-          1,
-          Math.ceil(response.total / normalizedPageSize),
-        );
-        if (
-          response.total > 0 &&
-          response.items.length === 0 &&
-          nextPage > totalPages
-        ) {
-          nextPage = totalPages;
-          response = await loadPage(nextPage);
-        }
-        setAuditEvents(response.items);
-        setAuditTotal(response.total);
-        setAuditPage(nextPage);
-        setAuditPageSize(response.limit);
-        setAuditError(null);
-      } catch {
-        setAuditEvents([]);
-        setAuditTotal(0);
-        setAuditError(t("audit.loadFailed"));
-      }
-    },
-    [canUseAdminPanel, t],
-  );
-
-  const refreshStorage = useCallback(
-    async (targetWorkspaceId: string | null) => {
-      if (!canUseAdminPanel || !targetWorkspaceId) return;
-      try {
-        const [nextStorageSettings, nextStorageUsage] = await Promise.all([
-          fetchStorageSettings(),
-          fetchStorageUsage(targetWorkspaceId),
-        ]);
-        setStorageSettings(nextStorageSettings);
-        setStorageUsage(nextStorageUsage);
-      } catch {
-        setStorageSettings(null);
-        setStorageUsage(null);
-        setLoadError(t("admin.loadFailed"));
-      }
-    },
-    [canUseAdminPanel, t],
-  );
-
-  const refreshSystemOverview = useCallback(async () => {
-    if (!canUseAdminPanel) return;
-    try {
-      setSystemOverview(await fetchSystemOverview());
-    } catch {
-      setSystemOverview(null);
-      setLoadError(t("admin.loadFailed"));
-    }
-  }, [canUseAdminPanel, t]);
-
   const refreshAdminData = useCallback(async () => {
-    if (!canUseAdminPanel) {
-      setLoading(false);
-      return;
+    if (!canUseAdminPanel) return;
+    const requests = [siteQuery.refresh(), workspaceQuery.refresh()];
+    if (activePanel === "overview") {
+      requests.push(overviewQuery.refresh(), healthQuery.refresh());
     }
-    setLoading(true);
-    setLoadError(null);
-    refreshSite();
-    try {
-      if (activePanel === "overview") {
-        const targetWorkspaceId = await refreshWorkspace();
-        if (targetWorkspaceId) {
-          await Promise.all([
-            refreshAudit(targetWorkspaceId),
-            refreshStorage(targetWorkspaceId),
-            refreshSystemOverview(),
-          ]);
-        }
-      } else if (activePanel === "audit") {
-        const targetWorkspaceId = await refreshWorkspace();
-        if (targetWorkspaceId) await refreshAudit(targetWorkspaceId);
-      } else if (activePanel === "status") {
-        const targetWorkspaceId = await refreshWorkspace();
-        await Promise.all([
-          targetWorkspaceId
-            ? refreshStorage(targetWorkspaceId)
-            : Promise.resolve(),
-          refreshSystemOverview(),
-        ]);
-      } else if (activeSystemSection === "storage") {
-        const targetWorkspaceId = await refreshWorkspace();
-        await Promise.all([
-          targetWorkspaceId
-            ? refreshStorage(targetWorkspaceId)
-            : Promise.resolve(),
-          refreshSystemOverview(),
-        ]);
-      } else if (
-        activeSystemSection === "platform" ||
-        activeSystemSection === "lifecycle"
-      ) {
-        await refreshSystemOverview();
-      }
-    } catch {
-      setLoadError(t("admin.loadFailed"));
-    } finally {
-      setLoading(false);
+    if (activePanel === "audit") requests.push(auditQuery.refresh());
+    if (activePanel === "status") {
+      requests.push(healthQuery.refresh(), systemQuery.refresh());
     }
+    if (activePanel === "system" && needsWorkspaceStorage && workspaceId) {
+      requests.push(storageQuery.refresh());
+    }
+    const results = await Promise.all(requests);
+    const successful = results.filter(Boolean).length;
+    showAppToast({
+      title:
+        successful === results.length
+          ? t("app.refreshed")
+          : successful > 0
+            ? t("app.refreshPartial")
+            : t("app.refreshFailed"),
+      tone: successful === results.length ? "success" : "error",
+    });
   }, [
     activePanel,
-    activeSystemSection,
+    auditQuery,
     canUseAdminPanel,
-    refreshAudit,
-    refreshSite,
-    refreshStorage,
-    refreshSystemOverview,
-    refreshWorkspace,
+    healthQuery,
+    needsWorkspaceStorage,
+    overviewQuery,
+    siteQuery,
+    storageQuery,
+    systemQuery,
     t,
+    workspaceId,
+    workspaceQuery,
   ]);
 
   useEffect(() => {
-    if (!canUseAdminPanel) return;
-    const timer = window.setTimeout(() => void refreshAdminData(), 0);
-    return () => window.clearTimeout(timer);
-  }, [canUseAdminPanel, refreshAdminData]);
+    if (activePanel !== "status" && !workspaceQuery.data) return;
+    const hasExplicitScope =
+      searchParams.has("scope") || searchParams.has("workspace");
+    if (adminScopesEqual(requestedScope, scope) && hasExplicitScope) return;
+    const next = writeAdminScopeSearchParams(searchParams, scope);
+    router.replace(`${pathname}?${next.toString()}`);
+  }, [
+    activePanel,
+    pathname,
+    requestedScope,
+    router,
+    scope,
+    searchParams,
+    workspaceQuery.data,
+  ]);
 
   const logout = () => {
     void logoutLocalUser()
@@ -448,11 +420,39 @@ function AdminPanelGate({
   const panelOwnsHeading =
     activePanel === "status" ||
     (activePanel === "system" && activeSystemSection === "oauth");
+  const showsScopeSelector =
+    activePanel === "overview" ||
+    activePanel === "audit" ||
+    (activePanel === "system" &&
+      (activeSystemSection === "storage" ||
+        activeSystemSection === "external-share"));
+  const adminRefreshing =
+    siteQuery.refreshing ||
+    workspaceQuery.refreshing ||
+    overviewQuery.refreshing ||
+    auditQuery.refreshing ||
+    healthQuery.refreshing ||
+    systemQuery.refreshing ||
+    storageQuery.refreshing;
+  const displayedStorageBytes =
+    storageUsage?.usedBytes ?? overviewQuery.data?.storage.usedBytes ?? null;
 
   if (!canUseAdminPanel) return null;
 
   return (
-    <main className="admin-shell" data-theme={themeMode} style={createUiThemeVariables(palette) as CSSProperties}>
+    <AdminUnsavedChangesProvider
+      labels={{
+        cancel: t("admin.unsavedCancel"),
+        description: t("admin.unsavedDescription"),
+        discard: t("admin.unsavedDiscard"),
+        discardFailed: t("admin.unsavedDiscardFailed"),
+        save: t("admin.unsavedSave"),
+        saveFailed: t("admin.unsavedSaveFailed"),
+        title: t("admin.unsavedTitle"),
+      }}
+      palette={palette}
+    >
+      <main className="admin-shell" data-theme={themeMode} style={createUiThemeVariables(palette) as CSSProperties}>
       <aside className="admin-sidebar">
         <button
           className="admin-brand"
@@ -526,8 +526,8 @@ function AdminPanelGate({
           <div>
             <span>{t("settings.usedStorage")}</span>
             <span>
-              {storageUsage
-                ? formatFileSize(storageUsage.usedBytes, locale)
+              {displayedStorageBytes !== null
+                ? formatFileSize(displayedStorageBytes, locale)
                 : t("app.storageUsage")}
             </span>
           </div>
@@ -545,6 +545,15 @@ function AdminPanelGate({
             </span>
           </div>
           <div className="admin-header-actions">
+            {showsScopeSelector ? (
+              <AdminScopeSelector
+                disabled={workspaceQuery.initialLoading && !workspaceQuery.data}
+                onChange={changeScope}
+                palette={palette}
+                scope={scope}
+                workspaces={workspaces}
+              />
+            ) : null}
             <ToolButton
               label={t("app.theme")}
               palette={palette}
@@ -565,6 +574,7 @@ function AdminPanelGate({
               <LocalIcon name="folder" size={17} />
             </ToolButton>
             <ToolButton
+              isPending={adminRefreshing}
               label={t("app.refresh")}
               palette={palette}
               onClick={() => void refreshAdminData()}
@@ -594,76 +604,89 @@ function AdminPanelGate({
             </div>
           ) : null}
 
-          {loading ? (
-            <div className="admin-loading-panel">
-              <LdrsLoadingState
-                label={t("app.loading")}
-                palette={palette}
-                size={34}
-              />
-            </div>
-          ) : (
-            <div className="admin-panel-frame">
-              {loadError ? (
-                <div className="admin-inline-alert" role="alert">
-                  <span>
-                    <LocalIcon name="exclamation" size={16} />
-                    {loadError}
-                  </span>
-                  <ToolButton
-                    label={t("notFound.reload")}
-                    palette={palette}
-                    onClick={() => void refreshAdminData()}
-                    visual="surface"
-                  >
-                    <LocalIcon name="refresh" size={16} />
-                  </ToolButton>
-                </div>
-              ) : null}
-              <div className="admin-panel-surface">
+          <div className="admin-panel-frame">
+            <div className="admin-panel-surface">
                 {activePanel === "overview" ? (
-                  <AdminOverviewPanel
-                    auditEvents={auditEvents}
-                    auditTotal={auditTotal}
+                  <AdminOverviewDashboard
+                    data={overviewQuery.data}
+                    error={overviewQuery.error ? t("admin.loadFailed") : null}
+                    health={healthQuery.data}
+                    healthError={healthQuery.error ? t("admin.loadFailed") : null}
+                    healthRefreshing={healthQuery.refreshing}
+                    healthStale={healthQuery.stale}
+                    initialLoading={overviewQuery.initialLoading}
+                    lastSuccessfulAt={overviewQuery.lastSuccessfulAt}
                     locale={locale}
-                    onOpenPanel={openPanel}
+                    onOpenAudit={openAudit}
+                    onOpenStatus={() => openPanel("status")}
+                    onOpenStorage={() =>
+                      router.push(
+                        buildAdminUrl(
+                          getAdminSystemSectionPath("storage"),
+                          overviewScope,
+                        ),
+                      )
+                    }
+                    onRefresh={() =>
+                      void Promise.all([
+                        overviewQuery.refresh(),
+                        healthQuery.refresh(),
+                      ])
+                    }
                     palette={palette}
-                    storageSettings={storageSettings}
-                    storageUsage={storageUsage}
-                    systemOverview={systemOverview}
+                    refreshing={overviewQuery.refreshing}
+                    scope={scope}
+                    stale={overviewQuery.stale}
                     timeZone={timeZone}
                     workspaces={workspaces}
                   />
                 ) : null}
                 {activePanel === "audit" ? (
-                  <AuditModule
-                    error={auditError}
-                    events={auditEvents}
-                    onPageChange={(page) =>
-                      void refreshAudit(workspaceId, page, auditPageSize)
-                    }
-                    onPageSizeChange={(pageSize) =>
-                      void refreshAudit(workspaceId, 1, pageSize)
-                    }
-                    onQueryChange={setAuditQuery}
-                    onRefresh={() =>
-                      void refreshAudit(workspaceId, auditPage, auditPageSize)
-                    }
-                    page={auditPage}
-                    pageSize={auditPageSize}
-                    pageSizeOptions={auditPageSizeOptions}
+                  <AdminAuditPanel
+                    data={auditQuery.data}
+                    error={auditQuery.error ? t("audit.loadFailed") : null}
+                    filters={auditFilters}
+                    initialLoading={auditQuery.initialLoading}
+                    lastSuccessfulAt={auditQuery.lastSuccessfulAt}
+                    onFiltersChange={changeAuditFilters}
+                    onRefresh={() => void auditQuery.refresh()}
                     palette={palette}
-                    query={auditQuery}
-                    totalEvents={auditTotal}
+                    refreshing={auditQuery.refreshing}
+                    scope={scope}
+                    stale={auditQuery.stale}
+                    workspaces={workspaces}
                   />
                 ) : null}
                 {activePanel === "status" ? (
-                  <AdminSystemStatus
-                    locale={locale}
-                    storageSettings={storageSettings}
-                    storageUsage={storageUsage}
-                    systemOverview={systemOverview}
-                  />
+                  <div className="admin-status-stack">
+                    <AdminHealthCenter
+                      data={healthQuery.data}
+                      error={healthQuery.error ? t("admin.loadFailed") : null}
+                      initialLoading={healthQuery.initialLoading}
+                      lastSuccessfulAt={healthQuery.lastSuccessfulAt}
+                      locale={locale}
+                      onOpenSettings={(path) =>
+                        router.push(buildAdminUrl(path, scope))
+                      }
+                      onRetry={() => void healthQuery.refresh()}
+                      palette={palette}
+                      refreshing={healthQuery.refreshing}
+                      stale={healthQuery.stale}
+                      timeZone={timeZone}
+                    />
+                    {systemQuery.error ? (
+                      <div className="admin-inline-alert" role="alert">
+                        <span>
+                          <LocalIcon name="exclamation" size={16} />
+                          {t("admin.systemInfoLoadFailed")}
+                        </span>
+                      </div>
+                    ) : null}
+                    <AdminSystemStatus
+                      locale={locale}
+                      systemOverview={systemOverview}
+                    />
+                  </div>
                 ) : null}
                 {activePanel === "system" ? (
                   activeSystemSection === "external-share" ? (
@@ -671,28 +694,33 @@ function AdminPanelGate({
                       embedded
                       setThemeMode={setThemeMode}
                       themeMode={themeMode}
+                      workspaceId={workspaceId}
                     />
                   ) : activeSystemSection === "oauth" ? (
                     <OAuthAdminSettingsPage palette={palette} />
+                  ) : activeSystemSection === "storage" && !workspaceId ? (
+                    <div className="admin-inline-alert" role="alert">
+                      <span>
+                        <LocalIcon name="info" size={16} />
+                        {t("admin.workspaceScopeRequired")}
+                      </span>
+                    </div>
                   ) : (
                     <DriveSystemSettings
                       section={activeSystemSection}
                       locale={locale}
-                      onStorageUsageUpdated={(usage) => {
-                        setStorageUsage(usage);
-                        void refreshStorage(workspaceId);
-                      }}
+                      onStorageUsageUpdated={() => void storageQuery.refresh()}
                       palette={palette}
                       storageUsage={storageUsage}
                       workspaceId={workspaceId}
                     />
                   )
                 ) : null}
-              </div>
             </div>
-          )}
+          </div>
         </section>
       </section>
-    </main>
+      </main>
+    </AdminUnsavedChangesProvider>
   );
 }

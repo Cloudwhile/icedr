@@ -377,6 +377,24 @@
   padding: 15px 18px 18px;
 }
 
+.admin-overview-module-state {
+  align-items: center;
+  background: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-danger) 28%, var(--ui-border-default));
+  color: var(--ui-danger);
+  display: flex;
+  font-size: 12px;
+  font-weight: 720;
+  gap: 7px;
+  padding: 8px 18px;
+}
+
+.admin-overview-module-state[data-stale="true"] {
+  background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-surface));
+  border-bottom-color: color-mix(in srgb, var(--ui-warning) 28%, var(--ui-border-default));
+  color: var(--ui-warning);
+}
+
 .admin-system-row {
   border-bottom: 1px solid var(--ui-border-subtle);
   gap: 12px;
@@ -783,4 +801,84 @@
     height: 170px;
     min-height: 170px;
   }
+}
+.admin-data-freshness {
+  align-items: center;
+  background: color-mix(in srgb, var(--ui-accent) 6%, var(--ui-surface));
+  border: 1px solid var(--ui-border-default);
+  border-radius: 12px;
+  display: flex;
+  gap: 16px;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.admin-data-freshness[data-stale="true"] {
+  border-color: color-mix(in srgb, var(--ui-warning) 44%, var(--ui-border-default));
+}
+
+.admin-data-freshness > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.admin-data-freshness strong,
+.admin-data-freshness span,
+.admin-overview-context span {
+  color: var(--ui-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.admin-data-freshness strong {
+  color: var(--ui-text-primary);
+}
+
+.admin-overview-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 0 2px;
+}
+
+button.admin-overview-stat-card,
+button.admin-distribution-row,
+button.admin-recent-activity-row {
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+button.admin-distribution-row,
+button.admin-recent-activity-row {
+  background: transparent;
+  border: 0;
+}
+
+button.admin-distribution-row {
+  padding: 0 2px;
+}
+
+button.admin-recent-activity-row {
+  border-bottom: 1px solid var(--ui-border-subtle);
+  padding: 6px 0;
+}
+
+button.admin-overview-stat-card:hover {
+  border-color: var(--ui-border-strong);
+}
+
+button.admin-overview-stat-card:focus-visible,
+button.admin-distribution-row:focus-visible,
+button.admin-recent-activity-row:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
 }

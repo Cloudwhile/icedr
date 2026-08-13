@@ -597,6 +597,9 @@ model AuditEvent {
   metadata    Json     @default("{}")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  @@index([workspaceId, createdAt], map: "audit_events_workspace_created_at_idx")
+  @@index([action, createdAt], map: "audit_events_action_created_at_idx")
+  @@index([actor, createdAt], map: "audit_events_actor_created_at_idx")
   @@map("audit_events")
 }
 
@@ -616,5 +619,6 @@ model BlobReconcileTask {
   startedAt          DateTime @map("started_at") @db.Timestamptz
   finishedAt         DateTime @map("finished_at") @db.Timestamptz
 
+  @@index([startedAt], map: "blob_reconcile_tasks_started_at_idx")
   @@map("blob_reconcile_tasks")
 }
