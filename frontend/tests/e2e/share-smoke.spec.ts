@@ -63,10 +63,11 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.locator(".admin-panel-nav").getByRole("button", { name: "Audit log" }).click();
-  await expect(page).toHaveURL(/\/admin\/audit$/);
+  await expect(page).toHaveURL(/\/admin\/audit\?scope=all$/);
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   const auditRow = page.locator(".drive-audit-table .drive-audit-row").filter({
-    hasText: /Smoke Admin.*Download.*Share link.*admin@example.com downloaded File/,
+    hasText:
+      /Smoke Admin.*Share downloaded.*Share link.*admin@example.com downloaded File/,
   });
   await expect(auditRow).toBeVisible();
   await expect(auditRow.locator(".drive-audit-actor-avatar")).toBeVisible();
@@ -329,9 +330,16 @@ async function mockIcedrApi(
     if (method === "GET" && path === "/audit/events") {
       const items = state.downloaded ? [auditEvent()] : [];
       await fulfillJson(route, {
+        facets: {
+          actions: ["share.download_started"],
+          actors: ["account"],
+        },
+        generatedAt: now,
         items,
         limit: Number(url.searchParams.get("limit") ?? items.length),
         offset: Number(url.searchParams.get("offset") ?? 0),
+        scope: { kind: "all" },
+        summary: { failed: 0, success: items.length },
         total: items.length,
       });
       return;
@@ -501,8 +509,12 @@ function auditEvent() {
   return {
     action: "share.download_started",
     actor: "account",
+    actorDisplayName: "Smoke Admin",
+    actorEmail: "admin@example.com",
+    actorUserId: "admin-user",
     createdAt: now,
     id: "audit-download-smoke",
+    ipAddress: "192.168.1.45",
     metadata: {
       actorDisplayName: "Smoke Admin",
       actorEmail: "admin@example.com",
@@ -514,6 +526,8 @@ function auditEvent() {
       source: "e2e",
     },
     nodeId: fileId,
+    resourceType: "share",
+    result: "success",
     shareToken,
     target: shareToken,
     workspaceId,

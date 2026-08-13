@@ -619,8 +619,8 @@ function AuditRow({
   const timeParts = formatDateParts(row.createdAt, locale, timeZone);
   const actionLabel = formatAuditAction(row.action, t);
   const resourceLabel = getResourceLabel(row.resourceType, t);
-  const resourceName = getAuditResourceName(row);
-  const content = getAuditContent(row, actionLabel);
+  const resourceName = getAuditResourceName(row, t);
+  const content = getAuditContent(row, actionLabel, t);
   const failed = row.result === "failed";
 
   return (
@@ -770,24 +770,46 @@ function getResourceLabel(
   return t(keyByResource[resourceType]);
 }
 
-function getAuditResourceName(row: AdminAuditEventResponse) {
-  return (
-    readMetadataString(row.metadata, [
-      "filename",
-      "fileName",
-      "nodeName",
-      "itemName",
-      "shareTitle",
-      "transferName",
-    ]) ||
-    row.target ||
-    row.nodeId ||
-    row.shareToken ||
-    "--"
-  );
+function getAuditResourceName(
+  row: AdminAuditEventResponse,
+  t: ReturnType<typeof useTranslations>,
+) {
+  if (isShareAuditEvent(row)) return t("audit.objects.share");
+  const metadataName = readMetadataString(row.metadata, [
+    "filename",
+    "fileName",
+    "nodeName",
+    "itemName",
+    "shareTitle",
+    "transferName",
+  ]);
+  if (metadataName) return metadataName;
+  return row.target || row.nodeId || "--";
 }
 
-function getAuditContent(row: AdminAuditEventResponse, fallback: string) {
+function getAuditContent(
+  row: AdminAuditEventResponse,
+  fallback: string,
+  t: ReturnType<typeof useTranslations>,
+) {
+  const identity = getAuditIdentityLabel(row, t);
+  const node = getAuditNodeLabel(row, t);
+  if (row.action === "share.viewed") {
+    return t("audit.content.shareViewed", { identity });
+  }
+  if (row.action === "share.access_code_sent") {
+    return t("audit.content.shareAccessCodeSent", { identity });
+  }
+  if (row.action === "share.access_session_created") {
+    return t("audit.content.shareAccessSessionCreated", { identity });
+  }
+  if (row.action === "share.preview_requested") {
+    return t("audit.content.sharePreviewRequested", { target: node });
+  }
+  if (row.action === "share.download_started") {
+    return t("audit.content.shareDownloadStarted", { identity, target: node });
+  }
+  if (isShareAuditEvent(row)) return fallback;
   return (
     readMetadataString(row.metadata, [
       "message",
@@ -797,6 +819,42 @@ function getAuditContent(row: AdminAuditEventResponse, fallback: string) {
     ]) ||
     row.target ||
     fallback
+  );
+}
+
+function getAuditIdentityLabel(
+  row: AdminAuditEventResponse,
+  t: ReturnType<typeof useTranslations>,
+) {
+  const email =
+    row.actorEmail ||
+    readMetadataString(row.metadata, ["actorEmail", "email", "visitorEmail"]);
+  if (email) return email;
+  const identityType = readMetadataString(row.metadata, ["identityType"]);
+  if (identityType === "ica") return t("audit.identity.account");
+  if (identityType === "email") return t("audit.identity.email");
+  return t(`audit.actors.${row.actor}`);
+}
+
+function getAuditNodeLabel(
+  row: AdminAuditEventResponse,
+  t: ReturnType<typeof useTranslations>,
+) {
+  const filename = readMetadataString(row.metadata, [
+    "filename",
+    "fileName",
+    "nodeName",
+    "itemName",
+  ]);
+  if (filename) return filename;
+  return row.nodeId ? t("audit.objects.file") : t("audit.objects.share");
+}
+
+function isShareAuditEvent(row: AdminAuditEventResponse) {
+  return (
+    row.resourceType === "share" ||
+    row.action.startsWith("share.") ||
+    Boolean(row.shareToken)
   );
 }
 

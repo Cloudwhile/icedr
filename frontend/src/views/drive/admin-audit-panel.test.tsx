@@ -119,10 +119,11 @@ afterEach(() => {
 function renderPanel(
   filters: AdminAuditFilters = DEFAULT_ADMIN_AUDIT_FILTERS,
   onFiltersChange = vi.fn(),
+  panelData: AdminAuditEventsResponse = data,
 ) {
   render(
     <AdminAuditPanel
-      data={data}
+      data={panelData}
       filters={filters}
       onFiltersChange={onFiltersChange}
       onRefresh={vi.fn()}
@@ -185,5 +186,35 @@ describe("AdminAuditPanel server-driven filtering", () => {
 
     expect(screen.getByText("Mina")).toBeInTheDocument();
     expect(screen.getAllByText("Quarterly report.pdf").length).toBeGreaterThan(0);
+  });
+
+  it("does not render share tokens or node identifiers in audit rows", () => {
+    const secret = "share-secret-token";
+    renderPanel(DEFAULT_ADMIN_AUDIT_FILTERS, vi.fn(), {
+      ...data,
+      facets: {
+        actions: ["future.legitimate_historical_event"],
+        actors: ["account"],
+      },
+      items: [
+        {
+          ...data.items[0],
+          action: "future.legitimate_historical_event",
+          actorDisplayName: "Smoke Admin",
+          actorEmail: "admin@example.com",
+          metadata: { filename: secret, identityType: "ica" },
+          nodeId: "node-secret-id",
+          resourceType: "file",
+          shareToken: secret,
+          target: secret,
+        },
+      ],
+    });
+
+    expect(
+      screen.getAllByText("future.legitimate_historical_event").length,
+    ).toBeGreaterThan(0);
+    expect(document.body.innerHTML).not.toContain(secret);
+    expect(document.body.innerHTML).not.toContain("node-secret-id");
   });
 });
