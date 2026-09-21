@@ -678,9 +678,8 @@ export class FileUploadService {
   }
 
   private async deleteStoredObjects(objectKeys: Array<string | null>) {
-    const uniqueObjectKeys = [
-      ...new Set(objectKeys.filter((key): key is string => Boolean(key))),
-    ];
+    const uniqueObjectKeys =
+      await this.fileNodesRepository.filterUnreferencedObjectKeys(objectKeys);
     await Promise.all(
       uniqueObjectKeys.map((objectKey) =>
         this.storageService.deleteObject(objectKey).catch(() => undefined),

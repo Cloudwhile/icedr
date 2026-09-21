@@ -44,6 +44,7 @@ type OAuthProviderDialogProps = {
   secret: string;
   showSecret: boolean;
   testResult: OAuthConnectionTestResult | null;
+  validationErrorKey: string | null;
 };
 
 export function OAuthProviderDialog({
@@ -63,6 +64,7 @@ export function OAuthProviderDialog({
   secret,
   showSecret,
   testResult,
+  validationErrorKey,
 }: OAuthProviderDialogProps) {
   const t = useTranslations();
   const template = getOAuthProviderTemplate(draft.providerKey);
@@ -118,42 +120,44 @@ export function OAuthProviderDialog({
         className="drive-oauth-dialog-body"
       >
         <div className="drive-oauth-dialog-layout">
-          <section
-            aria-labelledby="oauth-provider-template-heading"
-            className="drive-oauth-template-panel"
-          >
-            <h3
-              className="drive-oauth-dialog-section-title"
-              id="oauth-provider-template-heading"
+          {mode !== "edit" ? (
+            <section
+              aria-labelledby="oauth-provider-template-heading"
+              className="drive-oauth-template-panel"
             >
-              {t("admin.oauthSelectSupportedProvider")}
-            </h3>
-            <div className="drive-oauth-template-grid">
-              {oauthProviderTemplates.map((item) => {
-                const active = draft.providerKey === item.key;
-                return (
-                  <button
-                    aria-pressed={active}
-                    className="drive-oauth-template-option"
-                    data-active={active ? "true" : undefined}
-                    disabled={busy}
-                    key={item.key}
-                    onClick={() => onSelectTemplate(item)}
-                    style={
-                      { "--oauth-provider-accent": item.accent } as CSSProperties
-                    }
-                    type="button"
-                  >
-                    <OAuthProviderMark provider={item.key} />
-                    <span>
-                      <strong>{item.displayName}</strong>
-                      <small>{formatOAuthProfile(item, t)}</small>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+              <h3
+                className="drive-oauth-dialog-section-title"
+                id="oauth-provider-template-heading"
+              >
+                {t("admin.oauthSelectSupportedProvider")}
+              </h3>
+              <div className="drive-oauth-template-grid">
+                {oauthProviderTemplates.map((item) => {
+                  const active = draft.providerKey === item.key;
+                  return (
+                    <button
+                      aria-pressed={active}
+                      className="drive-oauth-template-option"
+                      data-active={active ? "true" : undefined}
+                      disabled={busy}
+                      key={item.key}
+                      onClick={() => onSelectTemplate(item)}
+                      style={
+                        { "--oauth-provider-accent": item.accent } as CSSProperties
+                      }
+                      type="button"
+                    >
+                      <OAuthProviderMark provider={item.key} />
+                      <span>
+                        <strong>{item.displayName}</strong>
+                        <small>{formatOAuthProfile(item, t)}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           <section
             aria-labelledby="oauth-provider-config-heading"
@@ -184,6 +188,13 @@ export function OAuthProviderDialog({
                 </a>
               ) : null}
             </div>
+
+            {validationErrorKey ? (
+              <div className="drive-oauth-validation-message" role="alert">
+                <LocalIcon name="exclamation" size={16} />
+                <span>{t(validationErrorKey)}</span>
+              </div>
+            ) : null}
 
             <div className="drive-oauth-form-columns">
               <div className="drive-oauth-form-column">

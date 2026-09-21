@@ -17,6 +17,7 @@ import type {
   MailSettings,
   MailSettingsInput,
   OAuthConnectionTestResult,
+  OAuthFrontendCallbackResponse,
   OAuthProviderListResponse,
   OAuthSettingsInput,
   OAuthSettingsResponse,
@@ -280,7 +281,7 @@ export function exchangeOAuthCode(input: { code: string }) {
 }
 
 export function completeOAuthCallback(input: { callbackUrl: string }) {
-  return requestDriveApi<AuthSession>("/auth/oauth/callback", {
+  return requestDriveApi<OAuthFrontendCallbackResponse>("/auth/oauth/callback", {
     method: "POST",
     body: JSON.stringify(input),
   }, publicRequest);

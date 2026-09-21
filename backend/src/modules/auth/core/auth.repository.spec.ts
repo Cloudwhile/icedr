@@ -23,6 +23,17 @@ type UserIdentityUpsertArgs = {
   };
 };
 
+type OAuthExchangeCodeRow = {
+  codeHash: string;
+  userId: string;
+  flow: 'login' | 'step-up';
+  sessionTokenHash: string | null;
+  purpose: string | null;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+};
+
 function createPrismaMock(queryRows: unknown[] = []) {
   const prismaUser = {
     id: 'user_1',
@@ -53,7 +64,16 @@ function createPrismaMock(queryRows: unknown[] = []) {
     void args;
     return Promise.resolve(null);
   });
+  const oauthExchangeCode = {
+    findUnique: jest.fn<Promise<OAuthExchangeCodeRow | null>, [unknown]>(() =>
+      Promise.resolve(null),
+    ),
+    updateMany: jest.fn<Promise<{ count: number }>, [unknown]>(() =>
+      Promise.resolve({ count: 0 }),
+    ),
+  };
   const tx = {
+    authOAuthExchangeCode: oauthExchangeCode,
     user: {
       findUnique: jest.fn(() => Promise.resolve(prismaUser)),
       create: userCreate,
@@ -67,8 +87,8 @@ function createPrismaMock(queryRows: unknown[] = []) {
     },
   };
   return {
-    $transaction: jest.fn((callback: (tx: typeof tx) => Promise<unknown>) =>
-      callback(tx),
+    $transaction: jest.fn(
+      (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
     ),
     $executeRawUnsafe: jest.fn(() => Promise.resolve(0)),
     $queryRawUnsafe: jest.fn(() => Promise.resolve(queryRows)),
@@ -203,6 +223,63 @@ describe('AuthRepository', () => {
         emailSource: 'derived',
       }),
     );
+  });
+
+  it('atomically consumes a login OAuth exchange code only once', async () => {
+    const prisma = createPrismaMock();
+    const now = new Date();
+    const row: OAuthExchangeCodeRow = {
+      codeHash: 'exchange-code-hash',
+      userId: 'user_1',
+      flow: 'login',
+      sessionTokenHash: null,
+      purpose: null,
+      expiresAt: new Date(now.getTime() + 60_000),
+      usedAt: null as Date | null,
+      createdAt: now,
+    };
+    let available = true;
+    prisma.tx.authOAuthExchangeCode.updateMany.mockImplementation(
+      async (untypedArgs: unknown) => {
+        const args = untypedArgs as { data: { usedAt: Date } };
+        await Promise.resolve();
+        if (!available) return { count: 0 };
+        available = false;
+        row.usedAt = args.data.usedAt;
+        return { count: 1 };
+      },
+    );
+    prisma.tx.authOAuthExchangeCode.findUnique.mockImplementation(() =>
+      Promise.resolve(row),
+    );
+    const repository = new AuthRepository(prisma as never);
+
+    const results = await Promise.all([
+      repository.consumeOAuthLoginExchangeCode('exchange-code-hash'),
+      repository.consumeOAuthLoginExchangeCode('exchange-code-hash'),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const updateArgs = prisma.tx.authOAuthExchangeCode.updateMany.mock
+      .calls[0]?.[0] as
+      | {
+          where: {
+            codeHash: string;
+            flow: string;
+            usedAt: null;
+            expiresAt: { gt: Date };
+          };
+          data: { usedAt: Date };
+        }
+      | undefined;
+    expect(updateArgs?.where).toMatchObject({
+      codeHash: 'exchange-code-hash',
+      flow: 'login',
+      usedAt: null,
+    });
+    expect(updateArgs?.where.expiresAt.gt).toBeInstanceOf(Date);
+    expect(updateArgs?.data.usedAt).toBeInstanceOf(Date);
+    expect(prisma.tx.authOAuthExchangeCode.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it('reports an unused setup administrator email as available', async () => {

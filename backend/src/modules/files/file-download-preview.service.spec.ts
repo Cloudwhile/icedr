@@ -230,6 +230,13 @@ describe('FileDownloadPreviewService', () => {
     const versions = await service.listFileVersions('roadmap');
     expect(versions).toHaveLength(1);
     expect(versions[0]).not.toHaveProperty('objectKey');
+    expect(versions[0]).not.toHaveProperty('checksumValue');
+    expect(versions[0]).not.toHaveProperty('verificationFailureCode');
+    expect(versions[0]).toMatchObject({
+      checksumAlgorithm: 'sha256',
+      integrityStatus: 'verified',
+      lastVerifiedAt: new Date(1).toISOString(),
+    });
 
     const intent = await service.createVersionDownloadIntent(
       'roadmap',

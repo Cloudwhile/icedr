@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { Readable } from 'stream';
@@ -59,7 +60,9 @@ type FileAuditOptions = FileAccessOptions & {
 
 @Injectable()
 export class FileNodesService {
+  private readonly logger = new Logger(FileNodesService.name);
   private lastTrashCleanupAt = 0;
+  private trashCleanupInFlight: Promise<void> | null = null;
 
   constructor(
     private readonly fileNodesRepository: FileNodesRepository,
@@ -80,7 +83,7 @@ export class FileNodesService {
     const state = this.normalizeListState(options.state);
     const spaceScope = this.normalizeSpaceScope(options.spaceScope);
     if (state !== 'active') {
-      await this.cleanupExpiredTrashIfDue();
+      this.cleanupExpiredTrashIfDue();
     }
     return this.fileNodesRepository.list(workspaceId, parentNodeId, state, {
       ownerUserId: spaceScope === 'personal' ? options.ownerUserId : undefined,
@@ -345,6 +348,7 @@ export class FileNodesService {
       name = this.createAvailableSiblingFileName(proposedName, siblings);
     }
     const node = await this.fileNodesRepository.copyTree(source, {
+      actorUserId: options.actorUserId,
       name,
       parentNodeId,
     });
@@ -400,14 +404,24 @@ export class FileNodesService {
       dto.content,
       node.mimeType,
     );
-    const updated = await this.fileNodesRepository.replaceContentObject({
-      id,
-      objectKey,
-      sizeBytes: Buffer.byteLength(dto.content, 'utf8'),
-      mimeType: node.mimeType,
-      uploadedBy: node.owner,
-    });
-    if (!updated) throw new NotFoundException('File node not found');
+    let updated: FileNodeResponse | null;
+    try {
+      updated = await this.fileNodesRepository.replaceContentObject({
+        id,
+        objectKey,
+        sizeBytes: Buffer.byteLength(dto.content, 'utf8'),
+        mimeType: node.mimeType,
+        uploadedBy: node.owner,
+        actorUserId: options.actorUserId,
+      });
+    } catch (error) {
+      await this.deleteStoredObjects([objectKey]);
+      throw error;
+    }
+    if (!updated) {
+      await this.deleteStoredObjects([objectKey]);
+      throw new NotFoundException('File node not found');
+    }
     await this.deleteStoredObjects(
       await this.fileNodesRepository.pruneVersions(updated.id),
     );
@@ -493,10 +507,7 @@ export class FileNodesService {
     if (deletion.nodes.length === 0) {
       throw new NotFoundException('File node not found');
     }
-    await this.deleteStoredObjects([
-      ...deletion.nodes.map((node) => node.objectKey),
-      ...deletion.versions.map((version) => version.objectKey),
-    ]);
+    await this.deleteStoredObjects(deletion.objectKeysToDelete);
     const root = deletion.nodes[0];
     await this.fileNodesRepository.recordAudit('file.permanently_deleted', id, {
       metadata: {
@@ -618,10 +629,14 @@ export class FileNodesService {
   async listFileVersions(nodeId: string, access: FileAccessOptions = {}) {
     await this.requireActiveNode(nodeId, access);
     const versions = await this.fileNodesRepository.listVersions(nodeId);
-    return versions.map(({ objectKey, ...version }) => {
-      void objectKey;
-      return version;
-    });
+    return versions.map(
+      ({ objectKey, checksumValue, verificationFailureCode, ...version }) => {
+        void objectKey;
+        void checksumValue;
+        void verificationFailureCode;
+        return version;
+      },
+    );
   }
 
   createVersionDownloadIntent(
@@ -660,6 +675,7 @@ export class FileNodesService {
       nodeId,
       versionId,
       options.actor,
+      options.actorUserId,
     );
     if (!node) throw new NotFoundException('File version not found');
     await this.deleteStoredObjects(
@@ -699,10 +715,7 @@ export class FileNodesService {
       Date.now() - policy.trashRetentionDays * 24 * 60 * 60 * 1000,
     );
     const deleted = await this.fileNodesRepository.cleanupTrash(cutoff);
-    await this.deleteStoredObjects([
-      ...deleted.nodes.map((node) => node.objectKey),
-      ...deleted.versions.map((version) => version.objectKey),
-    ]);
+    await this.deleteStoredObjects(deleted.objectKeysToDelete);
     if (options.forceAudit || deleted.nodes.length > 0) {
       await this.fileNodesRepository.recordAudit(
         'file.trash_cleaned',
@@ -724,22 +737,32 @@ export class FileNodesService {
     };
   }
 
-  private async cleanupExpiredTrashIfDue() {
+  private cleanupExpiredTrashIfDue() {
     const now = Date.now();
-    if (now - this.lastTrashCleanupAt < trashCleanupThrottleMs) return;
-    this.lastTrashCleanupAt = now;
-    try {
-      await this.cleanupExpiredTrash();
-    } catch (error) {
-      this.lastTrashCleanupAt = 0;
-      throw error;
+    if (
+      this.trashCleanupInFlight ||
+      now - this.lastTrashCleanupAt < trashCleanupThrottleMs
+    ) {
+      return;
     }
+    this.lastTrashCleanupAt = now;
+    const cleanup = this.cleanupExpiredTrash()
+      .then(() => undefined)
+      .catch(() => {
+        this.lastTrashCleanupAt = 0;
+        this.logger.warn('Automatic trash cleanup failed; retry scheduled');
+      })
+      .finally(() => {
+        if (this.trashCleanupInFlight === cleanup) {
+          this.trashCleanupInFlight = null;
+        }
+      });
+    this.trashCleanupInFlight = cleanup;
   }
 
   private async deleteStoredObjects(objectKeys: Array<string | null>) {
-    const uniqueObjectKeys = [
-      ...new Set(objectKeys.filter((key): key is string => Boolean(key))),
-    ];
+    const uniqueObjectKeys =
+      await this.fileNodesRepository.filterUnreferencedObjectKeys(objectKeys);
     await Promise.all(
       uniqueObjectKeys.map((objectKey) =>
         this.storageService.deleteObject(objectKey).catch(() => undefined),
@@ -908,12 +931,19 @@ export class FileNodesService {
     if (parent.kind !== 'folder') {
       throw new BadRequestException('Parent node must be a folder');
     }
+    const visitedParentIds = new Set([parent.id]);
     while (sourceNodeId && parent.parentNodeId) {
       if (parent.parentNodeId === sourceNodeId) {
         throw new BadRequestException(
           'A folder cannot be moved into its child folder',
         );
       }
+      if (visitedParentIds.has(parent.parentNodeId)) {
+        throw new BadRequestException(
+          'Parent folder hierarchy contains a cycle',
+        );
+      }
+      visitedParentIds.add(parent.parentNodeId);
       parent = await this.requireActiveNode(parent.parentNodeId, access);
     }
   }

@@ -17,7 +17,10 @@ import {
 import { resolveFilePreviewCapability } from './file-preview-policy';
 import { createFileNodeStorageKeys } from '../../common/security/file-name-policy';
 import { FileDownloadIntentsRepository } from './file-download-intents.repository';
-import { FileNodeVersionsRepository } from './file-node-versions.repository';
+import {
+  FileNodeVersionsRepository,
+  isSqliteBusyPrismaError,
+} from './file-node-versions.repository';
 import { FilePreviewArtifactsRepository } from './file-preview-artifacts.repository';
 import {
   FileStorageUsageRepository,
@@ -27,6 +30,19 @@ import {
   completeFileNodeUploadWrite,
   isFileNodeNameConstraintError,
 } from './file-upload-completion-write';
+import {
+  needsFileIntegrityVerification,
+  normalizeFileIntegrityFailureCode,
+  normalizeFileIntegrityStatus,
+} from './file-integrity';
+import { StorageIntegrityTaskService } from '../storage/storage-integrity-task.service';
+import { retryPrismaSerializableTransaction } from '../../common/database/serializable-transaction-retry';
+import {
+  collectLockedActiveFileTree,
+  lockAndValidateActiveFileNodeParent,
+  lockAndValidateFileNodeMove,
+  lockFileNodeRows,
+} from './file-node-hierarchy-write';
 
 export type { StoredFileVersionResponse } from './file-node-versions.repository';
 
@@ -67,6 +83,7 @@ export class FileNodesRepository {
     private readonly versionsRepository: FileNodeVersionsRepository,
     private readonly previewArtifactsRepository: FilePreviewArtifactsRepository,
     private readonly storageUsageRepository: FileStorageUsageRepository,
+    private readonly integrityTasks: StorageIntegrityTaskService,
   ) {}
 
   async list(
@@ -148,26 +165,47 @@ export class FileNodesRepository {
       spaceScope,
     });
     const row = await this.executeFileNodeWrite(() =>
-      this.prisma.fileNode.create({
-        data: {
-          id,
-          workspaceId: dto.workspaceId,
-          spaceScope,
-          parentNodeId: dto.parentNodeId ?? null,
-          ...storageKeys,
-          name: dto.name,
-          kind: 'folder',
-          mimeType: 'inode/directory',
-          sizeBytes: null,
-          objectKey: null,
-          ownerName: dto.owner ?? '',
-          ownerUserId: dto.ownerUserId ?? null,
-          starred: false,
-          archivedAt: null,
-          createdAt: now,
-          updatedAt: now,
+      retryPrismaSerializableTransaction(
+        () =>
+          this.prisma.$transaction(
+            async (tx) => {
+              const validParent = await lockAndValidateActiveFileNodeParent(
+                this.prisma,
+                tx,
+                dto.parentNodeId ?? null,
+                { spaceScope, workspaceId: dto.workspaceId },
+              );
+              if (!validParent) {
+                throw new ConflictException('Parent folder changed');
+              }
+              return tx.fileNode.create({
+                data: {
+                  id,
+                  workspaceId: dto.workspaceId,
+                  spaceScope,
+                  parentNodeId: dto.parentNodeId ?? null,
+                  ...storageKeys,
+                  name: dto.name,
+                  kind: 'folder',
+                  mimeType: 'inode/directory',
+                  sizeBytes: null,
+                  objectKey: null,
+                  ownerName: dto.owner ?? '',
+                  ownerUserId: dto.ownerUserId ?? null,
+                  starred: false,
+                  archivedAt: null,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              });
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          ),
+        {
+          isRetryableError: (error) =>
+            this.prisma.isSqlite() && isSqliteBusyPrismaError(error),
         },
-      }),
+      ),
     );
     return this.mapRow(row);
   }
@@ -177,7 +215,41 @@ export class FileNodesRepository {
   }
 
   async move(id: string, parentNodeId: string | null) {
-    return this.updateNodeIdentity(id, { parentNodeId });
+    const row = await this.executeFileNodeWrite(() =>
+      retryPrismaSerializableTransaction(
+        () =>
+          this.prisma.$transaction(async (tx) => {
+            const existing = await lockAndValidateFileNodeMove(
+              this.prisma,
+              tx,
+              id,
+              parentNodeId,
+            );
+            if (!existing) return null;
+            const storageKeys = createFileNodeStorageKeys({
+              archived: false,
+              id: existing.id,
+              name: existing.name,
+              ownerUserId: existing.ownerUserId,
+              parentNodeId,
+              spaceScope: existing.spaceScope,
+            });
+            return tx.fileNode.update({
+              where: { id },
+              data: {
+                parentNodeId,
+                ...storageKeys,
+                updatedAt: new Date(),
+              },
+            });
+          }),
+        {
+          isRetryableError: (error) =>
+            this.prisma.isSqlite() && isSqliteBusyPrismaError(error),
+        },
+      ),
+    );
+    return row ? this.mapRow(row) : null;
   }
 
   async updateSize(id: string, sizeBytes: number) {
@@ -193,90 +265,197 @@ export class FileNodesRepository {
     sizeBytes: number;
     mimeType: string;
     uploadedBy?: string;
+    actorUserId?: string | null;
   }) {
-    const row = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.fileNode.findUnique({
-        where: { id: input.id },
-      });
-      if (!existing?.objectKey) return null;
-      await this.versionsRepository.createVersionForNode(tx, existing, {
-        remark: 'Replaced by content edit',
-        uploadedBy: input.uploadedBy ?? existing.ownerName,
-      });
-      return tx.fileNode.update({
-        where: { id: input.id },
-        data: {
-          objectKey: input.objectKey,
-          sizeBytes: BigInt(input.sizeBytes),
-          mimeType: input.mimeType,
-          kind: this.getKind(existing.name, input.mimeType),
-          updatedAt: new Date(),
-        },
-      });
-    });
+    const row = await retryPrismaSerializableTransaction(
+      () =>
+        this.prisma.$transaction(
+          async (tx) => {
+            const locked = await lockFileNodeRows(this.prisma, tx, [input.id]);
+            if (!locked) return null;
+            const existing = await tx.fileNode.findUnique({
+              where: { id: input.id },
+            });
+            if (!existing?.objectKey || existing.archivedAt) return null;
+            const archivedVersion =
+              await this.versionsRepository.createVersionForNode(tx, existing, {
+                remark: 'Replaced by content edit',
+                uploadedBy: input.uploadedBy ?? existing.ownerName,
+              });
+            if (
+              archivedVersion &&
+              needsFileIntegrityVerification(archivedVersion)
+            ) {
+              await this.integrityTasks.enqueueObjectVerification(
+                {
+                  actorUserId: input.actorUserId ?? null,
+                  nodeId: existing.id,
+                  objectKey: archivedVersion.objectKey,
+                  versionId: archivedVersion.id,
+                  workspaceId: existing.workspaceId,
+                },
+                tx,
+              );
+            }
+            const updated = await tx.fileNode.update({
+              where: { id: input.id },
+              data: {
+                objectKey: input.objectKey,
+                sizeBytes: BigInt(input.sizeBytes),
+                mimeType: input.mimeType,
+                checksumAlgorithm: null,
+                checksumValue: null,
+                integrityStatus: 'pending',
+                integrityAcknowledgedAt: null,
+                integrityAcknowledgedBy: null,
+                lastVerifiedAt: null,
+                verificationFailureCode: null,
+                kind: this.getKind(existing.name, input.mimeType),
+                updatedAt: new Date(),
+              },
+            });
+            await this.integrityTasks.enqueueObjectVerification(
+              {
+                actorUserId: input.actorUserId ?? null,
+                nodeId: updated.id,
+                objectKey: input.objectKey,
+                workspaceId: updated.workspaceId,
+              },
+              tx,
+            );
+            return updated;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        ),
+      {
+        isRetryableError: (error) =>
+          this.prisma.isSqlite() && isSqliteBusyPrismaError(error),
+      },
+    );
+    if (row) this.integrityTasks.kickQueued();
     return row ? this.mapRow(row) : null;
   }
 
   async copyTree(
     source: FileNodeResponse,
-    options: { name?: string; parentNodeId: string | null },
+    options: {
+      actorUserId?: string | null;
+      name?: string;
+      parentNodeId: string | null;
+    },
   ) {
-    const descendants = await this.collectDescendants(source.id);
-    const rows = [source, ...descendants];
-    const idMap = new Map<string, string>();
-    rows.forEach((row) => {
-      idMap.set(row.id, `node_${randomBytes(12).toString('base64url')}`);
-    });
+    const result = await this.executeFileNodeWrite(() =>
+      retryPrismaSerializableTransaction(
+        () =>
+          this.prisma.$transaction(async (tx) => {
+            const rows = await collectLockedActiveFileTree(
+              this.prisma,
+              tx,
+              source.id,
+            );
+            if (!rows) return { copied: null, queuedVerification: false };
+            const root = rows[0];
+            if (!root) return { copied: null, queuedVerification: false };
+            const validParent = await lockAndValidateActiveFileNodeParent(
+              this.prisma,
+              tx,
+              options.parentNodeId,
+              {
+                forbiddenAncestorId: root.id,
+                spaceScope: root.spaceScope,
+                workspaceId: root.workspaceId,
+              },
+            );
+            if (!validParent) {
+              throw new ConflictException('Parent folder changed');
+            }
 
-    const now = new Date();
-    const copiedNodes: FileNodeResponse[] = [];
-    for (const row of rows) {
-      const copiedId = idMap.get(row.id);
-      if (!copiedId) continue;
-      const copiedParent =
-        row.id === source.id
-          ? options.parentNodeId
-          : row.parentNodeId
-            ? (idMap.get(row.parentNodeId) ?? null)
-            : null;
-      const copiedName =
-        row.id === source.id ? options.name?.trim() || row.name : row.name;
-      const storageKeys = createFileNodeStorageKeys({
-        archived: false,
-        id: copiedId,
-        name: copiedName,
-        ownerUserId: row.ownerUserId,
-        parentNodeId: copiedParent,
-        spaceScope: row.spaceScope,
-      });
-      const copied = await this.executeFileNodeWrite(() =>
-        this.prisma.fileNode.create({
-          data: {
-            id: copiedId,
-            workspaceId: row.workspaceId,
-            spaceScope: row.spaceScope,
-            parentNodeId: copiedParent,
-            ...storageKeys,
-            name: copiedName,
-            kind: row.kind,
-            mimeType: row.mimeType,
-            sizeBytes:
-              row.sizeBytes === null || row.sizeBytes === undefined
-                ? null
-                : BigInt(row.sizeBytes),
-            objectKey: row.objectKey,
-            ownerName: row.owner,
-            ownerUserId: row.ownerUserId,
-            starred: false,
-            archivedAt: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        }),
-      );
-      copiedNodes.push(this.mapRow(copied));
-    }
-    return copiedNodes[0] ?? null;
+            const idMap = new Map<string, string>();
+            rows.forEach((row) => {
+              idMap.set(
+                row.id,
+                `node_${randomBytes(12).toString('base64url')}`,
+              );
+            });
+            const now = new Date();
+            let copied: FileNode | null = null;
+            let queuedVerification = false;
+            for (const row of rows) {
+              const copiedId = idMap.get(row.id);
+              if (!copiedId) continue;
+              const copiedParent =
+                row.id === source.id
+                  ? options.parentNodeId
+                  : row.parentNodeId
+                    ? (idMap.get(row.parentNodeId) ?? null)
+                    : null;
+              const copiedName =
+                row.id === source.id
+                  ? options.name?.trim() || row.name
+                  : row.name;
+              const storageKeys = createFileNodeStorageKeys({
+                archived: false,
+                id: copiedId,
+                name: copiedName,
+                ownerUserId: row.ownerUserId,
+                parentNodeId: copiedParent,
+                spaceScope: row.spaceScope,
+              });
+              const created = await tx.fileNode.create({
+                data: {
+                  id: copiedId,
+                  workspaceId: row.workspaceId,
+                  spaceScope: row.spaceScope,
+                  parentNodeId: copiedParent,
+                  ...storageKeys,
+                  name: copiedName,
+                  kind: row.kind,
+                  mimeType: row.mimeType,
+                  sizeBytes: row.sizeBytes,
+                  objectKey: row.objectKey,
+                  checksumAlgorithm: row.checksumAlgorithm,
+                  checksumValue: row.checksumValue,
+                  integrityStatus: row.integrityStatus,
+                  integrityAcknowledgedAt: null,
+                  integrityAcknowledgedBy: null,
+                  lastVerifiedAt: row.lastVerifiedAt,
+                  verificationFailureCode: row.verificationFailureCode,
+                  ownerName: row.ownerName,
+                  ownerUserId: row.ownerUserId,
+                  starred: false,
+                  archivedAt: null,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              });
+              copied ??= created;
+              if (
+                row.kind !== 'folder' &&
+                row.objectKey &&
+                needsFileIntegrityVerification(row)
+              ) {
+                await this.integrityTasks.enqueueObjectVerification(
+                  {
+                    actorUserId: options.actorUserId ?? null,
+                    nodeId: created.id,
+                    objectKey: row.objectKey,
+                    workspaceId: created.workspaceId,
+                  },
+                  tx,
+                );
+                queuedVerification = true;
+              }
+            }
+            return { copied, queuedVerification };
+          }),
+        {
+          isRetryableError: (error) =>
+            this.prisma.isSqlite() && isSqliteBusyPrismaError(error),
+        },
+      ),
+    );
+    if (result.queuedVerification) this.integrityTasks.kickQueued();
+    return result.copied ? this.mapRow(result.copied) : null;
   }
 
   async updateState(
@@ -327,6 +506,7 @@ export class FileNodesRepository {
     const deletion = await this.versionsRepository.deleteTree(id);
     return {
       nodes: deletion.nodes.map((node) => this.mapRow(node)),
+      objectKeysToDelete: deletion.objectKeysToDelete,
       versions: deletion.versions,
     };
   }
@@ -335,6 +515,7 @@ export class FileNodesRepository {
     const deletion = await this.versionsRepository.cleanupTrash(cutoff);
     return {
       nodes: deletion.nodes.map((node) => this.mapRow(node)),
+      objectKeysToDelete: deletion.objectKeysToDelete,
       versions: deletion.versions,
     };
   }
@@ -347,12 +528,20 @@ export class FileNodesRepository {
     return this.versionsRepository.findVersion(nodeId, versionId);
   }
 
-  async restoreVersion(nodeId: string, versionId: string, actor?: string) {
+  async restoreVersion(
+    nodeId: string,
+    versionId: string,
+    actor?: string,
+    actorUserId?: string | null,
+  ) {
     const row = await this.versionsRepository.restoreVersion(
       nodeId,
       versionId,
       actor,
+      this.integrityTasks,
+      actorUserId,
     );
+    if (row) this.integrityTasks.kickQueued();
     return row ? this.mapRow(row) : null;
   }
 
@@ -413,39 +602,24 @@ export class FileNodesRepository {
     const completed = await completeFileNodeUploadWrite(
       this.prisma,
       this.versionsRepository,
+      this.integrityTasks,
       (fileName, mimeType) => this.getKind(fileName, mimeType),
       dto,
       completionClaim,
     );
+    this.integrityTasks.kickQueued();
     return {
       displacedObjectKey: completed.displacedObjectKey,
       node: this.mapRow(completed.fileNode),
     };
   }
 
-  private async collectDescendants(parentId: string) {
-    const collected: FileNodeResponse[] = [];
-    const visit = async (id: string) => {
-      const rows = await this.prisma.fileNode.findMany({
-        where: {
-          archivedAt: null,
-          parentNodeId: id,
-        },
-        orderBy: { name: 'asc' },
-      });
-      for (const row of rows) {
-        const node = this.mapRow(row);
-        collected.push(node);
-        await visit(node.id);
-      }
-    };
-
-    await visit(parentId);
-    return collected;
-  }
-
   pruneVersions(nodeId: string) {
     return this.versionsRepository.pruneVersions(nodeId);
+  }
+
+  filterUnreferencedObjectKeys(objectKeys: Array<string | null>) {
+    return this.versionsRepository.filterUnreferencedObjectKeys(objectKeys);
   }
 
   async recordAudit(
@@ -729,33 +903,61 @@ export class FileNodesRepository {
     id: string,
     input: { name?: string; parentNodeId?: string | null },
   ): Promise<FileNodeResponse | null> {
-    const existing = await this.prisma.fileNode.findUnique({ where: { id } });
-    if (!existing) return null;
-    const name = input.name ?? existing.name;
-    const parentNodeId =
-      input.parentNodeId !== undefined
-        ? input.parentNodeId
-        : existing.parentNodeId;
-    const storageKeys = createFileNodeStorageKeys({
-      archived: Boolean(existing.archivedAt),
-      id: existing.id,
-      name,
-      ownerUserId: existing.ownerUserId,
-      parentNodeId,
-      spaceScope: existing.spaceScope,
-    });
     const row = await this.executeFileNodeWrite(() =>
-      this.prisma.fileNode.update({
-        where: { id },
-        data: {
-          ...(input.name !== undefined ? { name } : {}),
-          ...(input.parentNodeId !== undefined ? { parentNodeId } : {}),
-          ...storageKeys,
-          updatedAt: new Date(),
+      retryPrismaSerializableTransaction(
+        () =>
+          this.prisma.$transaction(
+            async (tx) => {
+              if (!(await lockFileNodeRows(this.prisma, tx, [id]))) return null;
+              const existing = await tx.fileNode.findUnique({ where: { id } });
+              if (!existing || existing.archivedAt) return null;
+              const name = input.name ?? existing.name;
+              const parentNodeId =
+                input.parentNodeId !== undefined
+                  ? input.parentNodeId
+                  : existing.parentNodeId;
+              if (input.parentNodeId !== undefined) {
+                const validParent = await lockAndValidateActiveFileNodeParent(
+                  this.prisma,
+                  tx,
+                  parentNodeId,
+                  {
+                    forbiddenAncestorId: existing.id,
+                    spaceScope: existing.spaceScope,
+                    workspaceId: existing.workspaceId,
+                  },
+                );
+                if (!validParent) {
+                  throw new ConflictException('Parent folder changed');
+                }
+              }
+              const storageKeys = createFileNodeStorageKeys({
+                archived: false,
+                id: existing.id,
+                name,
+                ownerUserId: existing.ownerUserId,
+                parentNodeId,
+                spaceScope: existing.spaceScope,
+              });
+              return tx.fileNode.update({
+                where: { id },
+                data: {
+                  ...(input.name !== undefined ? { name } : {}),
+                  ...(input.parentNodeId !== undefined ? { parentNodeId } : {}),
+                  ...storageKeys,
+                  updatedAt: new Date(),
+                },
+              });
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          ),
+        {
+          isRetryableError: (error) =>
+            this.prisma.isSqlite() && isSqliteBusyPrismaError(error),
         },
-      }),
+      ),
     );
-    return this.mapRow(row);
+    return row ? this.mapRow(row) : null;
   }
 
   private async executeFileNodeWrite<T>(write: () => Promise<T>) {
@@ -785,6 +987,15 @@ export class FileNodesRepository {
           ? null
           : Number(row.sizeBytes),
       objectKey: row.objectKey,
+      checksumAlgorithm: row.checksumAlgorithm,
+      checksumValue: row.checksumValue,
+      integrityStatus: normalizeFileIntegrityStatus(row.integrityStatus),
+      lastVerifiedAt: row.lastVerifiedAt
+        ? row.lastVerifiedAt.toISOString()
+        : null,
+      verificationFailureCode: normalizeFileIntegrityFailureCode(
+        row.verificationFailureCode,
+      ),
       owner: row.ownerName,
       ownerUserId: row.ownerUserId,
       starred: row.starred,

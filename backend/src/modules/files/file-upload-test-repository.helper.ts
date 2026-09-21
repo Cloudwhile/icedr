@@ -39,6 +39,7 @@ export type FileNodesRepositoryMocks = {
   commitDownloadIntent: jest.Mock;
   completeUpload: jest.Mock;
   failDownloadIntent: jest.Mock;
+  filterUnreferencedObjectKeys: jest.Mock;
   pruneVersions: jest.Mock;
   recordAudit: jest.Mock;
 };
@@ -159,6 +160,11 @@ export function createFileNodesRepositoryMock(input: {
               objectKey: 'uploads/workspace-default/root/seed-roadmap-v1.docx',
               sizeBytes: 1024,
               mimeType: docxMimeType,
+              checksumAlgorithm: 'sha256',
+              checksumValue: 'a'.repeat(64),
+              integrityStatus: 'verified',
+              lastVerifiedAt: new Date(1).toISOString(),
+              verificationFailureCode: null,
               uploadedBy: 'Workspace User',
               remark: 'Initial version',
               createdAt: new Date(0).toISOString(),
@@ -175,6 +181,11 @@ export function createFileNodesRepositoryMock(input: {
           objectKey: 'uploads/workspace-default/root/seed-roadmap-v1.docx',
           sizeBytes: 1024,
           mimeType: docxMimeType,
+          checksumAlgorithm: 'sha256',
+          checksumValue: 'a'.repeat(64),
+          integrityStatus: 'verified',
+          lastVerifiedAt: new Date(1).toISOString(),
+          verificationFailureCode: null,
           uploadedBy: 'Workspace User',
           remark: 'Initial version',
           createdAt: new Date(0).toISOString(),
@@ -530,6 +541,15 @@ export function createFileNodesRepositoryMock(input: {
       audits.set(action, (audits.get(action) ?? 0) + 1);
       return Promise.resolve();
     }),
+    filterUnreferencedObjectKeys: jest.fn((objectKeys: Array<string | null>) =>
+      Promise.resolve(
+        [
+          ...new Set(objectKeys.filter((key): key is string => Boolean(key))),
+        ].filter(
+          (objectKey) => !nodes.some((node) => node.objectKey === objectKey),
+        ),
+      ),
+    ),
     pruneVersions: jest.fn(() => Promise.resolve([])),
     countAuditEvents: jest.fn((action: string) =>
       Promise.resolve(audits.get(action) ?? 0),

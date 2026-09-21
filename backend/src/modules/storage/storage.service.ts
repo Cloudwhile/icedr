@@ -124,6 +124,7 @@ export class StorageService {
   openObjectStream(input: {
     objectKey: string;
     range?: string;
+    signal?: AbortSignal;
   }): Promise<ObjectStreamResult> {
     return this.objectStorage.openObjectStream(input);
   }

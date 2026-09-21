@@ -29,6 +29,7 @@ import {
   LoginDto,
   OAuthExchangeDto,
   OAuthExchangeResponse,
+  OAuthFrontendCallbackResponse,
   OAuthStartResponse,
   PasswordResetConfirmDto,
   PasswordResetConfirmResponse,
@@ -542,8 +543,11 @@ export class AuthService {
   async completeFrontendOAuthCallback(
     callbackUrl: string,
     request?: Request,
-  ): Promise<AuthSessionResponse> {
+  ): Promise<OAuthFrontendCallbackResponse> {
     const result = await this.handleOAuthCallback(callbackUrl);
+    if (result.flow === 'step-up') {
+      return { flow: result.flow, code: result.code };
+    }
     return this.exchangeOAuthCode({ code: result.code }, request);
   }
 
@@ -553,18 +557,13 @@ export class AuthService {
   ): Promise<OAuthExchangeResponse> {
     await this.bootstrapState.requireCompleted();
     const codeHash = this.hashToken(dto.code);
-    const code = await this.authRepository.findOAuthExchangeCode(codeHash);
-    if (
-      !code ||
-      code.flow !== 'login' ||
-      code.usedAt ||
-      new Date(code.expiresAt).getTime() < Date.now()
-    ) {
+    const code =
+      await this.authRepository.consumeOAuthLoginExchangeCode(codeHash);
+    if (!code) {
       throw new UnauthorizedException('OAuth exchange code is invalid');
     }
     const user = await this.authRepository.findUserById(code.userId);
     if (!user) throw new UnauthorizedException('OAuth user is unavailable');
-    await this.authRepository.markOAuthExchangeCodeUsed(codeHash);
     const session = await this.createSession(user);
     await this.recordAuthAudit('auth.login', session.user, {
       method: 'oauth',

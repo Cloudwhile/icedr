@@ -33,7 +33,16 @@ function OAuthCallbackPage({
     const callbackUrl = window.location.href;
     void completeOAuthCallback({
       callbackUrl
-    }).then(session => {
+    }).then(result => {
+      if ("flow" in result) {
+        const search = new URLSearchParams({
+          oauthStepUpCode: result.code,
+          tab: "security"
+        });
+        router.replace(`/settings?${search.toString()}`);
+        return;
+      }
+      const session = result;
       setStoredAuthToken(session.token);
       setStatus({
         tone: "success",

@@ -11,6 +11,20 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: icedr_ci
+          POSTGRES_PASSWORD: icedr_ci_password
+          POSTGRES_USER: icedr_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U icedr_ci -d icedr_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -30,6 +44,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify PostgreSQL migrations
+        run: pnpm --filter backend exec prisma migrate deploy --schema ../database/schema.prisma --config ../prisma.config.ts
+        env:
+          DATABASE_URL: postgresql://icedr_ci:icedr_ci_password@127.0.0.1:5432/icedr_ci
+
       - name: Install Playwright browser
         run: pnpm --filter frontend exec playwright install --with-deps chromium
 
@@ -39,8 +58,38 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Start MinIO service
+        run: |
+          docker run --detach --rm --name icedr-ci-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER=icedr-ci-minio \
+            --env MINIO_ROOT_PASSWORD=icedr-ci-minio-secret \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            if ! docker inspect icedr-ci-minio >/dev/null 2>&1; then
+              docker logs icedr-ci-minio || true
+              exit 1
+            fi
+            sleep 1
+          done
+          docker logs icedr-ci-minio || true
+          exit 1
+
       - name: Test
         run: pnpm test
+        env:
+          STORAGE_INTEGRITY_MINIO_ACCESS_KEY: icedr-ci-minio
+          STORAGE_INTEGRITY_MINIO_ENDPOINT: http://127.0.0.1:9000
+          STORAGE_INTEGRITY_MINIO_REGION: us-east-1
+          STORAGE_INTEGRITY_MINIO_SECRET_KEY: icedr-ci-minio-secret
+          STORAGE_INTEGRITY_MINIO_TEST: "1"
+
+      - name: Stop MinIO service
+        if: always()
+        run: docker rm --force icedr-ci-minio || true
 
       - name: E2E smoke
         run: pnpm test:e2e

@@ -67,6 +67,18 @@ export const uploadConflictStrategies: UploadConflictStrategy[] = [
 ];
 export const uploadResumeKeyMaxLength = 128;
 
+export type FileIntegrityStatus =
+  | 'unknown'
+  | 'pending'
+  | 'verified'
+  | 'mismatch'
+  | 'failed';
+export type FileIntegrityFailureCode =
+  | 'missing-object'
+  | 'size-mismatch'
+  | 'checksum-mismatch'
+  | 'verification-failed';
+
 export class CreateUploadIntentDto {
   @IsString()
   @IsNotEmpty()
@@ -402,6 +414,11 @@ export type FileNodeResponse = {
   mimeType: string;
   sizeBytes: number | null;
   objectKey: string | null;
+  checksumAlgorithm: string | null;
+  checksumValue: string | null;
+  integrityStatus: FileIntegrityStatus;
+  lastVerifiedAt: string | null;
+  verificationFailureCode: FileIntegrityFailureCode | null;
   owner: string;
   ownerUserId: string | null;
   starred: boolean;
@@ -465,6 +482,11 @@ export type FileVersionResponse = {
   versionNumber: number;
   sizeBytes: number;
   mimeType: string;
+  checksumAlgorithm: string | null;
+  checksumValue: string | null;
+  integrityStatus: FileIntegrityStatus;
+  lastVerifiedAt: string | null;
+  verificationFailureCode: FileIntegrityFailureCode | null;
   uploadedBy: string;
   remark: string;
   createdAt: string;

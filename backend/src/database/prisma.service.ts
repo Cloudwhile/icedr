@@ -81,6 +81,8 @@ const copyModels = [
   'shareDownloadIntent',
   'auditEvent',
   'blobReconcileTask',
+  'blobIntegrityTask',
+  'blobIntegrityResult',
   'setupOperation',
 ] as const;
 
@@ -294,6 +296,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       .blobReconcileTask as PrismaClient['blobReconcileTask'];
   }
 
+  get blobIntegrityTask(): PrismaClient['blobIntegrityTask'] {
+    return this.activeClient
+      .blobIntegrityTask as PrismaClient['blobIntegrityTask'];
+  }
+
+  get blobIntegrityResult(): PrismaClient['blobIntegrityResult'] {
+    return this.activeClient
+      .blobIntegrityResult as PrismaClient['blobIntegrityResult'];
+  }
+
   get $transaction(): PrismaClient['$transaction'] {
     return this.activeClient.$transaction.bind(
       this.activeClient,
@@ -431,6 +443,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       'name_key',
       "TEXT NOT NULL DEFAULT ''",
     );
+    await this.ensureSqliteFileIntegritySchema();
+    await this.ensureSqliteFileNodeParentIntegrity();
     await this.ensureSqliteColumn(
       'upload_sessions',
       'space_scope',
@@ -583,6 +597,140 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     ];
     for (const statement of statements) {
       await this.activeClient.$executeRawUnsafe(statement);
+    }
+  }
+
+  private async ensureSqliteFileIntegritySchema() {
+    const integrityColumns = [
+      ['checksum_algorithm', 'TEXT'],
+      ['checksum_value', 'TEXT'],
+      ['integrity_status', "TEXT NOT NULL DEFAULT 'unknown'"],
+      ['last_verified_at', 'TEXT'],
+      ['verification_failure_code', 'TEXT'],
+      ['integrity_acknowledged_at', 'TEXT'],
+      ['integrity_acknowledged_by', 'TEXT'],
+    ] as const;
+    for (const tableName of ['file_nodes', 'file_versions'] as const) {
+      for (const [columnName, definition] of integrityColumns) {
+        await this.ensureSqliteColumn(tableName, columnName, definition);
+      }
+    }
+
+    const statements = [
+      'CREATE TABLE IF NOT EXISTS "blob_integrity_tasks" ("id" TEXT NOT NULL PRIMARY KEY, "actor_user_id" TEXT, "status" TEXT NOT NULL, "scope" TEXT NOT NULL, "workspace_id" TEXT, "mode" TEXT NOT NULL, "target" JSONB NOT NULL DEFAULT \'{}\', "batch_size" INTEGER NOT NULL, "concurrency" INTEGER NOT NULL, "bandwidth_limit_bytes_per_second" INTEGER, "max_attempts" INTEGER NOT NULL, "progress" JSONB NOT NULL DEFAULT \'{}\', "cursor" JSONB NOT NULL DEFAULT \'{}\', "retry_of_task_id" TEXT, "retry_result_ids" JSONB NOT NULL DEFAULT \'[]\', "lease_key" TEXT, "lease_owner" TEXT, "lease_expires_at" TEXT, "failure_code" TEXT, "failure_message" TEXT, "snapshot_at" TEXT NOT NULL, "target_count" INTEGER, "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "started_at" TEXT, "finished_at" TEXT)',
+      'CREATE TABLE IF NOT EXISTS "blob_integrity_results" ("id" TEXT NOT NULL PRIMARY KEY, "task_id" TEXT NOT NULL, "source_result_id" TEXT, "workspace_id" TEXT NOT NULL, "node_id" TEXT, "version_id" TEXT, "target_key" TEXT NOT NULL, "object_key" TEXT NOT NULL, "status" TEXT NOT NULL, "expected_hash" TEXT, "actual_hash" TEXT, "expected_size_bytes" INTEGER, "size_bytes" INTEGER, "bytes_read" INTEGER NOT NULL DEFAULT 0, "attempts" INTEGER NOT NULL DEFAULT 1, "error_code" TEXT, "error_message" TEXT, "checked_at" TEXT NOT NULL, "acknowledged_at" TEXT, "acknowledged_by" TEXT, CONSTRAINT "blob_integrity_results_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "blob_integrity_tasks" ("id") ON DELETE CASCADE ON UPDATE CASCADE)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS "blob_integrity_tasks_lease_key_key" ON "blob_integrity_tasks"("lease_key")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_created_at_idx" ON "blob_integrity_tasks"("created_at")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_status_created_at_idx" ON "blob_integrity_tasks"("status", "created_at")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_status_lease_expires_at_idx" ON "blob_integrity_tasks"("status", "lease_expires_at")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_workspace_created_at_idx" ON "blob_integrity_tasks"("workspace_id", "created_at")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_retry_of_task_id_idx" ON "blob_integrity_tasks"("retry_of_task_id")',
+      'CREATE UNIQUE INDEX IF NOT EXISTS "blob_integrity_results_task_target_key" ON "blob_integrity_results"("task_id", "target_key")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_results_task_status_checked_at_idx" ON "blob_integrity_results"("task_id", "status", "checked_at")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_results_workspace_node_idx" ON "blob_integrity_results"("workspace_id", "node_id")',
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_results_source_result_id_idx" ON "blob_integrity_results"("source_result_id")',
+    ];
+    for (const statement of statements) {
+      await this.activeClient.$executeRawUnsafe(statement);
+    }
+    await this.ensureSqliteColumn(
+      'blob_integrity_tasks',
+      'target_count',
+      'INTEGER',
+    );
+    await this.ensureSqliteColumn('blob_integrity_tasks', 'active_key', 'TEXT');
+    await this.activeClient.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "blob_integrity_tasks_active_key_key" ON "blob_integrity_tasks"("active_key")',
+    );
+    await this.ensureSqliteColumn(
+      'blob_integrity_results',
+      'acknowledged_at',
+      'TEXT',
+    );
+    await this.ensureSqliteColumn(
+      'blob_integrity_results',
+      'acknowledged_by',
+      'TEXT',
+    );
+  }
+
+  private async ensureSqliteFileNodeParentIntegrity() {
+    const statements = [
+      `CREATE TRIGGER IF NOT EXISTS "file_nodes_parent_insert_guard"
+       BEFORE INSERT ON "file_nodes"
+       FOR EACH ROW
+       WHEN NEW."parent_node_id" IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM "file_nodes" AS "parent"
+           WHERE "parent"."id" = NEW."parent_node_id"
+         )
+       BEGIN
+         SELECT RAISE(ABORT, 'file_nodes.parent_node_id references a missing node');
+       END`,
+      `CREATE TRIGGER IF NOT EXISTS "file_nodes_parent_update_guard"
+       BEFORE UPDATE OF "parent_node_id" ON "file_nodes"
+       FOR EACH ROW
+       WHEN NEW."parent_node_id" IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM "file_nodes" AS "parent"
+           WHERE "parent"."id" = NEW."parent_node_id"
+         )
+       BEGIN
+         SELECT RAISE(ABORT, 'file_nodes.parent_node_id references a missing node');
+       END`,
+      `CREATE TRIGGER IF NOT EXISTS "file_nodes_parent_delete_cascade"
+       BEFORE DELETE ON "file_nodes"
+       FOR EACH ROW
+       BEGIN
+         DELETE FROM "file_nodes"
+         WHERE "id" IN (
+           WITH RECURSIVE "descendants"("id") AS (
+             SELECT "id" FROM "file_nodes"
+             WHERE "parent_node_id" = OLD."id"
+             UNION
+             SELECT "child"."id"
+             FROM "file_nodes" AS "child"
+             INNER JOIN "descendants"
+               ON "child"."parent_node_id" = "descendants"."id"
+           )
+           SELECT "id" FROM "descendants"
+           WHERE "id" <> OLD."id"
+         );
+       END`,
+    ];
+    for (const statement of statements) {
+      await this.activeClient.$executeRawUnsafe(statement);
+    }
+
+    const rows = await this.activeClient.$queryRawUnsafe<unknown>(
+      `SELECT "child"."id", "child"."parent_node_id"
+       FROM "file_nodes" AS "child"
+       LEFT JOIN "file_nodes" AS "parent"
+         ON "parent"."id" = "child"."parent_node_id"
+       WHERE "child"."parent_node_id" IS NOT NULL
+         AND "parent"."id" IS NULL
+       ORDER BY "child"."id"
+       LIMIT 10`,
+    );
+    const orphans = Array.isArray(rows)
+      ? rows.filter(
+          (row): row is { id: string; parent_node_id: string } =>
+            typeof row === 'object' &&
+            row !== null &&
+            typeof (row as { id?: unknown }).id === 'string' &&
+            typeof (row as { parent_node_id?: unknown }).parent_node_id ===
+              'string',
+        )
+      : [];
+    if (orphans.length > 0) {
+      throw new Error(
+        `SQLite contains file nodes with missing parents: ${orphans
+          .map(
+            ({ id, parent_node_id: parentNodeId }) =>
+              `${id} -> ${parentNodeId}`,
+          )
+          .join(', ')}`,
+      );
     }
   }
 

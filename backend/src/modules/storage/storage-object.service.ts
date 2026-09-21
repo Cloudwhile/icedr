@@ -29,15 +29,7 @@ import {
   promises as fileSystem,
   type Stats,
 } from 'fs';
-import {
-  mkdir,
-  open,
-  readFile,
-  readdir,
-  rm,
-  stat,
-  writeFile,
-} from 'fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
 import { dirname, relative, resolve, sep } from 'path';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -254,7 +246,9 @@ export class StorageObjectService {
   async openObjectStream(input: {
     objectKey: string;
     range?: string;
+    signal?: AbortSignal;
   }): Promise<ObjectStreamResult> {
+    input.signal?.throwIfAborted();
     if (
       input.objectKey.startsWith('local/') &&
       !this.isLocalObjectKey(input.objectKey)
@@ -269,12 +263,16 @@ export class StorageObjectService {
     let fileHandle;
     let fileStat;
     try {
-      fileHandle = await open(filePath, 'r');
+      fileHandle = await fileSystem.open(filePath, 'r');
       fileStat = await fileHandle.stat();
       if (!fileStat.isFile()) throw new Error('Not a file');
-    } catch {
+    } catch (error) {
       await fileHandle?.close().catch(() => undefined);
-      throw new NotFoundException('Stored object not found');
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        throw new NotFoundException('Stored object not found');
+      }
+      throw error;
     }
     let range;
     try {
@@ -619,6 +617,7 @@ export class StorageObjectService {
   private async openDistributedObjectStream(input: {
     objectKey: string;
     range?: string;
+    signal?: AbortSignal;
   }): Promise<ObjectStreamResult> {
     if (!input.objectKey.trim() || hasControlCharacter(input.objectKey)) {
       throw new BadRequestException('Object key is invalid');
@@ -633,6 +632,7 @@ export class StorageObjectService {
       if (input.range?.trim()) {
         const head = await client.send(
           new HeadObjectCommand({ Bucket: bucket, Key: input.objectKey }),
+          { abortSignal: input.signal },
         );
         totalSize = this.normalizeObjectSize(head.ContentLength);
         range = resolveObjectByteRange(input.range, totalSize);
@@ -643,6 +643,7 @@ export class StorageObjectService {
           Key: input.objectKey,
           Range: range ? `bytes=${range.start}-${range.end}` : undefined,
         }),
+        { abortSignal: input.signal },
       );
       const stream = this.toNodeReadable(response.Body);
       const contentLength = range
@@ -663,6 +664,12 @@ export class StorageObjectService {
         stream,
       };
     } catch (error) {
+      if (
+        input.signal?.aborted ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
+        throw error;
+      }
       if (this.isNotFoundError(error)) {
         throw new NotFoundException('Stored object not found');
       }
@@ -862,6 +869,7 @@ export class StorageObjectService {
     return (
       maybeError.code === 'ENOENT' ||
       maybeError.code === 'ENOTDIR' ||
+      maybeError.code === 'NoSuchKey' ||
       maybeError.name === 'NotFound' ||
       maybeError.name === 'NoSuchKey' ||
       maybeError.name === 'NoSuchUpload' ||

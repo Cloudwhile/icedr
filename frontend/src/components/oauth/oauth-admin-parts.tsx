@@ -50,6 +50,7 @@ export function OAuthSummary({
 
 export function OAuthProviderGroup({
   collapsed,
+  locale,
   onActivate,
   onCopy,
   onDeactivate,
@@ -62,8 +63,10 @@ export function OAuthProviderGroup({
   protectedActiveProviderId,
   savingKey,
   template,
+  timeZone,
 }: {
   collapsed: boolean;
+  locale?: string;
   onActivate: (provider: OAuthSettings) => void;
   onCopy: (value: string) => void;
   onDeactivate: (provider: OAuthSettings) => void;
@@ -76,6 +79,7 @@ export function OAuthProviderGroup({
   protectedActiveProviderId?: string;
   savingKey: string | null;
   template: OAuthProviderTemplate;
+  timeZone?: string;
 }) {
   const t = useTranslations();
 
@@ -106,18 +110,22 @@ export function OAuthProviderGroup({
       </button>
 
       {!collapsed ? (
-        <div className="drive-oauth-table-shell">
-          <div className="drive-oauth-table drive-oauth-table-head">
-            <span>{t("admin.oauthConfigName")}</span>
-            <span>{t("admin.oauthClientId")}</span>
-            <span>{t("admin.oauthRedirectUri")}</span>
-            <span>{t("admin.oauthCreatedAt")}</span>
-            <span>{t("admin.oauthStatus")}</span>
-            <span>{t("admin.oauthActions")}</span>
+        <div
+          aria-label={template.displayName}
+          className="drive-oauth-table-shell"
+          role="table"
+        >
+          <div className="drive-oauth-table drive-oauth-table-head" role="row">
+            <span role="columnheader">{t("admin.oauthConfigName")}</span>
+            <span role="columnheader">{t("admin.oauthClientId")}</span>
+            <span role="columnheader">{t("admin.oauthRedirectUri")}</span>
+            <span role="columnheader">{t("admin.oauthCreatedAt")}</span>
+            <span role="columnheader">{t("admin.oauthStatus")}</span>
+            <span role="columnheader">{t("admin.oauthActions")}</span>
           </div>
           {providers.length === 0 ? (
-            <div className="drive-oauth-table-empty">
-              {t("admin.oauthProviderEmpty")}
+            <div className="drive-oauth-table-empty" role="row">
+              <span role="cell">{t("admin.oauthProviderEmpty")}</span>
             </div>
           ) : (
             providers.map((provider) => (
@@ -129,10 +137,12 @@ export function OAuthProviderGroup({
                 onDelete={() => onDelete(provider)}
                 onDuplicate={() => onDuplicate(provider)}
                 onEdit={() => onEdit(provider)}
+                locale={locale}
                 palette={palette}
                 protectedActive={protectedActiveProviderId === provider.id}
                 provider={provider}
                 savingKey={savingKey}
+                timeZone={timeZone}
               />
             ))
           )}
@@ -143,6 +153,7 @@ export function OAuthProviderGroup({
 }
 
 function OAuthProviderRow({
+  locale,
   onActivate,
   onCopy,
   onDeactivate,
@@ -153,7 +164,9 @@ function OAuthProviderRow({
   protectedActive,
   provider,
   savingKey,
+  timeZone,
 }: {
+  locale?: string;
   onActivate: () => void;
   onCopy: (value: string) => void;
   onDeactivate: () => void;
@@ -164,6 +177,7 @@ function OAuthProviderRow({
   protectedActive: boolean;
   provider: OAuthSettings;
   savingKey: string | null;
+  timeZone?: string;
 }) {
   const t = useTranslations();
   const profileLabel =
@@ -172,22 +186,26 @@ function OAuthProviderRow({
       : provider.providerProfile === "oauth2"
         ? "OAuth2"
         : t("admin.oauthCompatibilityMode");
+  const busy = savingKey !== null;
 
   return (
-    <div className="drive-oauth-table drive-oauth-table-row">
+    <div className="drive-oauth-table drive-oauth-table-row" role="row">
       <div
         className="drive-oauth-cell drive-oauth-config-name"
         data-label={t("admin.oauthConfigName")}
+        role="cell"
       >
         <strong className="icedr-truncate">{provider.displayName}</strong>
         <small>{profileLabel}</small>
       </div>
       <CopyCell
+        copyLabel={`${provider.displayName}: ${t("admin.oauthClientId")}`}
         label={t("admin.oauthClientId")}
         onCopy={() => onCopy(provider.clientId)}
         value={maskClientId(provider.clientId)}
       />
       <CopyCell
+        copyLabel={`${provider.displayName}: ${t("admin.oauthRedirectUri")}`}
         label={t("admin.oauthRedirectUri")}
         onCopy={() => onCopy(provider.redirectUri)}
         value={provider.redirectUri || "--"}
@@ -195,12 +213,14 @@ function OAuthProviderRow({
       <span
         className="drive-oauth-cell drive-oauth-muted"
         data-label={t("admin.oauthCreatedAt")}
+        role="cell"
       >
-        {formatOAuthDate(provider.createdAt)}
+        {formatOAuthDate(provider.createdAt, locale, timeZone)}
       </span>
       <span
         className="drive-oauth-cell drive-oauth-status-cell"
         data-label={t("admin.oauthStatus")}
+        role="cell"
       >
         <StatusPill
           palette={palette}
@@ -222,8 +242,10 @@ function OAuthProviderRow({
       <span
         className="drive-oauth-cell drive-oauth-row-actions"
         data-label={t("admin.oauthActions")}
+        role="cell"
       >
         <ToolButton
+          disabled={busy}
           label={t("actions.edit")}
           onClick={onEdit}
           palette={palette}
@@ -233,6 +255,7 @@ function OAuthProviderRow({
           <LocalIcon name="settings" size={16} />
         </ToolButton>
         <ToolButton
+          disabled={busy}
           label={t("actions.copy")}
           onClick={onDuplicate}
           palette={palette}
@@ -243,7 +266,7 @@ function OAuthProviderRow({
         </ToolButton>
         {provider.enabled ? (
           <ToolButton
-            disabled={protectedActive}
+            disabled={protectedActive || busy}
             isPending={savingKey === `deactivate:${provider.id}`}
             label={
               protectedActive
@@ -260,7 +283,7 @@ function OAuthProviderRow({
           </ToolButton>
         ) : (
           <ToolButton
-            disabled={!provider.configured}
+            disabled={!provider.configured || busy}
             isPending={savingKey === `activate:${provider.id}`}
             label={t("admin.oauthActivate")}
             onClick={onActivate}
@@ -273,7 +296,7 @@ function OAuthProviderRow({
           </ToolButton>
         )}
         <ToolButton
-          disabled={protectedActive}
+          disabled={protectedActive || busy}
           isPending={savingKey === `delete:${provider.id}`}
           label={
             protectedActive
@@ -294,10 +317,12 @@ function OAuthProviderRow({
 }
 
 function CopyCell({
+  copyLabel,
   label,
   onCopy,
   value,
 }: {
+  copyLabel: string;
   label: string;
   onCopy: () => void;
   value: string;
@@ -307,9 +332,14 @@ function CopyCell({
     <span
       className="drive-oauth-cell drive-oauth-copy-cell"
       data-label={label}
+      role="cell"
     >
       <span className="icedr-truncate">{value}</span>
-      <button aria-label={t("actions.copy")} onClick={onCopy} type="button">
+      <button
+        aria-label={`${t("actions.copy")}: ${copyLabel}`}
+        onClick={onCopy}
+        type="button"
+      >
         <LocalIcon name="copy" size={14} />
       </button>
     </span>
@@ -323,11 +353,12 @@ function maskClientId(clientId: string) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-function formatOAuthDate(value: string) {
+function formatOAuthDate(value: string, locale?: string, timeZone?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime()) || date.getTime() === 0) return "--";
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
+    ...(timeZone ? { timeZone } : {}),
   }).format(date);
 }

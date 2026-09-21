@@ -902,10 +902,12 @@ export function DriveWorkbench({
                   onDownloadSelection={() => downloadItems(toolbarActionTargets)}
                   onNavigateFolder={navigateFolderPath}
                   onNavigateRoot={openRoot}
+                  onRefresh={refreshWorkspace}
                   onShareSelection={() => shareItems(toolbarActionTargets)}
                   onToggleFilters={toggleFilters}
                   onTriggerUpload={triggerUpload}
                   palette={palette}
+                  refreshing={workspaceRefreshing}
                   rootLabel={currentSpaceRootLabel}
                   selectionCount={selectedItems.length}
                   selectionMenuItems={toolbarSelectionMenuItems}

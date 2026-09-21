@@ -5,6 +5,7 @@ import { FileNodeVersionsRepository } from './file-node-versions.repository';
 import { FileNodesRepository } from './file-nodes.repository';
 import { FilePreviewArtifactsRepository } from './file-preview-artifacts.repository';
 import { FileStorageUsageRepository } from './file-storage-usage.repository';
+import { StorageIntegrityTaskService } from '../storage/storage-integrity-task.service';
 
 export const downloadIntentTestSecret = 'download-intent-test-secret';
 
@@ -72,22 +73,92 @@ export function createPreviewArtifactsRepository(prisma: unknown) {
 }
 
 export function createFileNodeVersionsRepository(prisma: unknown) {
-  return new FileNodeVersionsRepository(prisma as PrismaService);
+  return new FileNodeVersionsRepository(addPrismaTestDefaults(prisma));
 }
 
 export function createFileStorageUsageRepository(prisma: unknown) {
   return new FileStorageUsageRepository(prisma as PrismaService);
 }
 
-export function createFileNodesRepository(prisma: unknown) {
-  const prismaService = prisma as PrismaService;
+export function createFileNodesRepository(
+  prisma: unknown,
+  integrityTasks: Pick<
+    StorageIntegrityTaskService,
+    'enqueueObjectVerification' | 'kickQueued'
+  > = {
+    enqueueObjectVerification: jest.fn(() => Promise.resolve('task-test')),
+    kickQueued: jest.fn(),
+  },
+) {
+  const prismaService = addPrismaTestDefaults(prisma);
   return new FileNodesRepository(
     prismaService,
     new FileDownloadIntentsRepository(prismaService, createConfig()),
     new FileNodeVersionsRepository(prismaService),
     new FilePreviewArtifactsRepository(prismaService),
     new FileStorageUsageRepository(prismaService),
+    integrityTasks as StorageIntegrityTaskService,
   );
+}
+
+function addPrismaTestDefaults(prisma: unknown) {
+  const client = prisma as Record<string, unknown> & {
+    $queryRaw?: jest.Mock;
+    $transaction?: (...args: unknown[]) => unknown;
+    isSqlite?: () => boolean;
+  };
+  client.isSqlite ??= () => false;
+  addTransactionClientDefaults(client);
+  const transaction = client.$transaction;
+  client.$transaction = transaction
+    ? (operation: unknown, ...options: unknown[]) =>
+        transaction(
+          typeof operation === 'function'
+            ? (tx: unknown) =>
+                (operation as (client: unknown) => unknown)(
+                  addTransactionClientDefaults(tx),
+                )
+            : operation,
+          ...options,
+        )
+    : jest.fn((operation: unknown) =>
+        typeof operation === 'function'
+          ? (operation as (tx: unknown) => unknown)(client)
+          : Promise.all(operation as Promise<unknown>[]),
+      );
+  return client as unknown as PrismaService;
+}
+
+function addTransactionClientDefaults(client: unknown) {
+  const transactionClient = client as Record<string, unknown> & {
+    $executeRaw?: jest.Mock;
+    $queryRaw?: jest.Mock;
+    fileNode?: Record<string, unknown> & { count?: jest.Mock };
+  };
+  transactionClient.$queryRaw ??= jest.fn((query: unknown) =>
+    Promise.resolve(
+      queryValues(query)
+        .filter((value): value is string => typeof value === 'string')
+        .map((id) => ({ id })),
+    ),
+  );
+  transactionClient.$executeRaw ??= jest.fn((query: unknown) =>
+    Promise.resolve(
+      queryValues(query).filter((value) => typeof value === 'string').length,
+    ),
+  );
+  if (transactionClient.fileNode) {
+    transactionClient.fileNode.count ??= jest.fn(() => Promise.resolve(0));
+  }
+  return transactionClient;
+}
+
+function queryValues(query: unknown) {
+  if (typeof query !== 'object' || query === null || !('values' in query)) {
+    return [] as unknown[];
+  }
+  const values = (query as { values?: unknown }).values;
+  return Array.isArray(values) ? (values as unknown[]) : [];
 }
 
 export function storedIntent(

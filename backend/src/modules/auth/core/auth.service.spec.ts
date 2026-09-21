@@ -127,6 +127,8 @@ function createService(
     findUserByProviderIdentity: jest.fn(),
     createOAuthUser: jest.fn(),
     createOAuthExchangeCode: jest.fn(() => Promise.resolve()),
+    consumeOAuthLoginExchangeCode: jest.fn(),
+    findUserById: jest.fn(),
     deletePasskey: jest.fn(() => Promise.resolve()),
     findSessionByTokenHash: jest.fn(() =>
       Promise.resolve({
@@ -601,6 +603,64 @@ describe('AuthService', () => {
       redirectUri: 'https://app.example/callback',
     });
     expect(createdState.providerSnapshot).not.toHaveProperty('clientSecret');
+  });
+
+  it('returns the step-up exchange code from frontend callbacks without creating a login session', async () => {
+    const { repository, service } = createService();
+    jest.spyOn(service, 'handleOAuthCallback').mockResolvedValue({
+      flow: 'step-up',
+      code: 'oauth_stepup_code',
+      user: createUserResponse(),
+    });
+
+    await expect(
+      service.completeFrontendOAuthCallback(
+        'https://app.example/callback?state=stored-state&code=oauth-code',
+      ),
+    ).resolves.toEqual({
+      flow: 'step-up',
+      code: 'oauth_stepup_code',
+    });
+
+    expect(repository.consumeOAuthLoginExchangeCode).not.toHaveBeenCalled();
+    expect(repository.createSession).not.toHaveBeenCalled();
+  });
+
+  it('creates only one session when a login exchange code is submitted concurrently', async () => {
+    const { repository, service } = createService();
+    let available = true;
+    repository.consumeOAuthLoginExchangeCode.mockImplementation(
+      async (codeHash: string) => {
+        await Promise.resolve();
+        if (!available) return null;
+        available = false;
+        return {
+          codeHash,
+          userId: 'user_1',
+          flow: 'login',
+          sessionTokenHash: null,
+          purpose: null,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          usedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+      },
+    );
+    repository.findUserById.mockResolvedValue(createUserResponse());
+
+    const results = await Promise.allSettled([
+      service.exchangeOAuthCode({ code: 'one-time-code' }),
+      service.exchangeOAuthCode({ code: 'one-time-code' }),
+    ]);
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(
+      1,
+    );
+    expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(
+      1,
+    );
+    expect(repository.findUserById).toHaveBeenCalledTimes(1);
+    expect(repository.createSession).toHaveBeenCalledTimes(1);
   });
 
   it('uses the OAuth provider snapshot stored with the state during callbacks', async () => {

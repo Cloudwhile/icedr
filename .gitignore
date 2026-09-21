@@ -32,5 +32,11 @@ skills*
 data/
 designpics/
 test*/
+!frontend/tests/
+frontend/tests/*
+!frontend/tests/e2e/
+frontend/tests/e2e/*
+!frontend/tests/e2e/admin-oauth-visual.spec.ts
+!frontend/tests/e2e/storage-integrity.spec.ts
 frontend/visual-artifacts/
 private-docs/

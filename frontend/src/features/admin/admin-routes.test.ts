@@ -5,8 +5,10 @@ import {
   getAdminPanelPath,
   getAdminPanelScope,
   getAdminSystemSectionPath,
+  getAdminSystemSectionScope,
   resolveAdminPanelFromPath,
   resolveAdminSystemSectionFromPath,
+  shouldShowAdminGlobalRefresh,
 } from "./admin-routes";
 
 describe("admin routes", () => {
@@ -16,6 +18,9 @@ describe("admin routes", () => {
     expect(resolveAdminPanelFromPath("/admin/system/storage")).toBe("system");
     expect(resolveAdminSystemSectionFromPath("/admin/system/storage/")).toBe(
       "storage",
+    );
+    expect(resolveAdminSystemSectionFromPath("/admin/system/integrity")).toBe(
+      "integrity",
     );
     expect(resolveAdminSystemSectionFromPath("/admin/external-share")).toBe(
       "external-share",
@@ -35,6 +40,9 @@ describe("admin routes", () => {
     expect(getAdminSystemSectionPath("platform")).toBe("/admin/system");
     expect(getAdminSystemSectionPath("lifecycle")).toBe(
       "/admin/system/lifecycle",
+    );
+    expect(getAdminSystemSectionPath("integrity")).toBe(
+      "/admin/system/integrity",
     );
     expect(buildAdminUrl("/admin/audit", { kind: "all" })).toBe(
       "/admin/audit?scope=all",
@@ -80,5 +88,24 @@ describe("admin routes", () => {
         getAdminPanelScope("status", workspaceScope),
       ),
     ).toBe("/admin/status?scope=system");
+  });
+
+  it("canonicalizes storage integrity system scope to all", () => {
+    expect(getAdminSystemSectionScope("integrity", { kind: "system" })).toEqual(
+      { kind: "all" },
+    );
+    expect(
+      getAdminSystemSectionScope("integrity", {
+        kind: "workspace",
+        workspaceId: "workspace-1",
+      }),
+    ).toEqual({ kind: "workspace", workspaceId: "workspace-1" });
+  });
+
+  it("lets each system settings section own its refresh state", () => {
+    expect(shouldShowAdminGlobalRefresh("system", "integrity")).toBe(false);
+    expect(shouldShowAdminGlobalRefresh("system", "storage")).toBe(false);
+    expect(shouldShowAdminGlobalRefresh("system", "oauth")).toBe(false);
+    expect(shouldShowAdminGlobalRefresh("overview", "integrity")).toBe(true);
   });
 });
