@@ -32,30 +32,41 @@ vi.mock("@/components/common/ui/loading-state", () => ({
 
 vi.mock("@/components/oauth/oauth-admin-parts", () => ({
   OAuthProviderGroup: ({
+    onActivate,
     onEdit,
     providers,
   }: {
+    onActivate: (provider: OAuthSettings) => void;
     onEdit: (provider: OAuthSettings) => void;
     providers: OAuthSettings[];
-  }) => providers[0] ? (
-    <button onClick={() => onEdit(providers[0])}>edit-provider</button>
-  ) : null,
+  }) =>
+    providers[0] ? (
+      <>
+        <button onClick={() => onEdit(providers[0])}>edit-provider</button>
+        <button onClick={() => onActivate(providers[0])}>
+          activate-provider
+        </button>
+      </>
+    ) : null,
   OAuthSummary: () => null,
 }));
 
 vi.mock("@/components/oauth/oauth-provider-dialog", () => ({
   OAuthProviderDialog: ({
     draft,
+    onClose,
     onDraftChange,
     onSecretChange,
     secret,
   }: {
     draft: OAuthSettings;
+    onClose: () => void;
     onDraftChange: (draft: OAuthSettings) => void;
     onSecretChange: (secret: string) => void;
     secret: string;
   }) => (
     <div aria-label="oauth-editor" role="dialog">
+      <button onClick={onClose}>close-editor</button>
       <input
         aria-label="oauth-draft"
         onChange={(event) =>
@@ -244,6 +255,15 @@ afterEach(() => {
 });
 
 describe("OAuthAdminSettingsPage unsaved editor", () => {
+  it("keeps provider data visible when the auth-settings request fails", async () => {
+    driveApi.fetchAuthSettings.mockRejectedValue(new Error("auth unavailable"));
+
+    renderPage();
+
+    expect(await screen.findByText("edit-provider")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("api-error");
+  });
+
   it("registers secret-only changes and keeps them when navigation is cancelled", async () => {
     renderPage();
     const { secret } = await openEditor();
@@ -286,5 +306,37 @@ describe("OAuthAdminSettingsPage unsaved editor", () => {
         displayName: "Saved Provider",
       }),
     );
+  });
+
+  it("asks before closing a dirty provider editor", async () => {
+    renderPage();
+    const { draft } = await openEditor();
+    fireEvent.change(draft, { target: { value: "Draft Provider" } });
+    fireEvent.click(screen.getByText("close-editor"));
+
+    expect(screen.getByText("admin.unsavedTitle")).toBeInTheDocument();
+    expect(screen.getByLabelText("oauth-editor")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "admin.unsavedDiscard" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText("oauth-editor")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not open the editor after activating a provider", async () => {
+    driveApi.activateOAuthProvider.mockResolvedValue({
+      ...provider,
+      enabled: true,
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByText("activate-provider"));
+
+    await waitFor(() =>
+      expect(driveApi.activateOAuthProvider).toHaveBeenCalledWith("oauth-1"),
+    );
+    expect(screen.queryByLabelText("oauth-editor")).not.toBeInTheDocument();
   });
 });

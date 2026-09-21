@@ -1,8 +1,8 @@
 .admin-shell {
-  background: var(--ui-canvas);
+  background: color-mix(in srgb, var(--ui-canvas) 94%, var(--ui-surface));
   color: var(--drive-ui-ink);
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: 244px minmax(0, 1fr);
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
@@ -16,7 +16,7 @@
 }
 
 .admin-sidebar {
-  background: color-mix(in srgb, var(--ui-surface) 86%, transparent);
+  background: var(--ui-surface);
   border-right: 1px solid var(--drive-ui-line);
   display: flex;
   flex-direction: column;
@@ -24,7 +24,7 @@
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
-  padding: 30px 18px 22px;
+  padding: 24px 14px 18px;
   position: sticky;
   top: 0;
 }
@@ -37,7 +37,9 @@
   display: flex;
   gap: 12px;
   min-width: 0;
-  padding: 0 4px 28px;
+  border-bottom: 1px solid var(--ui-border-subtle);
+  margin: 0 4px 22px;
+  padding: 0 2px 20px;
   text-align: left;
 }
 
@@ -48,7 +50,7 @@
 }
 
 .admin-brand span {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 850;
 }
 
@@ -57,14 +59,14 @@
   font-size: 12px;
   font-weight: 760;
   line-height: 16px;
-  margin: 0 8px 10px;
+  margin: 0 10px 9px;
 }
 
 .admin-panel-nav {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -78,22 +80,21 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--drive-ui-radius);
+  border-radius: 10px;
   color: var(--drive-ui-muted);
   display: inline-flex;
   font-size: 14px;
   font-weight: 760;
   gap: 10px;
   justify-content: flex-start;
-  min-height: 42px;
+  min-height: 40px;
   padding: 0 12px;
   text-align: left;
   transition:
     background-color 160ms var(--drive-ui-ease),
     border-color 160ms var(--drive-ui-ease),
     box-shadow 160ms var(--drive-ui-ease),
-    color 160ms var(--drive-ui-ease),
-    transform 160ms var(--drive-ui-ease);
+    color 160ms var(--drive-ui-ease);
   width: 100%;
 }
 
@@ -101,11 +102,10 @@
   background: var(--ui-surface-subtle);
   border-color: var(--drive-ui-line);
   color: var(--drive-ui-ink);
-  transform: translateX(2px);
 }
 
 .admin-panel-nav button:active {
-  transform: translateX(2px) scale(0.985);
+  background: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface));
 }
 
 .admin-panel-nav button[data-active="true"] {
@@ -144,7 +144,6 @@
 .admin-panel-subnav button:hover {
   background: var(--ui-surface-subtle);
   border-color: var(--drive-ui-line);
-  transform: translateX(1px);
 }
 
 .admin-panel-subnav button[data-active="true"] {
@@ -157,20 +156,25 @@
 .admin-sidebar-status {
   align-items: center;
   border: 1px solid var(--drive-ui-line);
-  border-radius: var(--drive-ui-radius);
+  background: var(--ui-surface-subtle);
+  border-radius: 10px;
   display: flex;
   gap: 10px;
   margin-top: 18px;
-  padding: 14px 12px;
+  padding: 12px;
 }
 
-.admin-sidebar-status-dot {
-  background: var(--drive-ui-success);
-  border-radius: 999px;
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--ui-success) 12%, transparent);
+.admin-sidebar-status-icon {
+  align-items: center;
+  background: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface));
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 22%, var(--ui-border-default));
+  border-radius: 8px;
+  color: var(--drive-ui-blue-600);
+  display: inline-flex;
   flex: 0 0 auto;
-  height: 8px;
-  width: 8px;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
 }
 
 .admin-sidebar-status div {
@@ -179,7 +183,7 @@
   min-width: 0;
 }
 
-.admin-sidebar-status span:not(.admin-sidebar-status-dot):first-child {
+.admin-sidebar-status div > span:first-child {
   color: var(--drive-ui-ink);
   font-size: 13px;
   font-weight: 780;
@@ -205,13 +209,13 @@
 
 .admin-header {
   align-items: center;
-  background: color-mix(in srgb, var(--ui-surface) 90%, transparent);
+  background: var(--ui-surface);
   border-bottom: 1px solid var(--drive-ui-line);
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 72px;
-  padding: 0 30px;
+  min-height: 68px;
+  padding: 0 26px;
   position: sticky;
   top: 0;
   z-index: 50;
@@ -258,8 +262,14 @@
   overscroll-behavior: contain;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 24px 28px 36px;
+  padding: 26px 26px 40px;
   scrollbar-gutter: stable;
+}
+
+.admin-workspace > * {
+  margin-inline: auto;
+  max-width: 1600px;
+  width: 100%;
 }
 
 .admin-workspace-heading {
@@ -289,7 +299,7 @@
 
 .admin-workspace-heading h1 {
   color: var(--drive-ui-ink);
-  font-size: 25px;
+  font-size: 26px;
   font-weight: 840;
   line-height: 31px;
   margin: 0;
@@ -944,7 +954,7 @@
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 780px) {
   .admin-shell {
     align-content: start;
     grid-template-columns: 100%;
@@ -981,7 +991,9 @@
   }
 
   .admin-brand {
+    border-bottom: 0;
     gap: 8px;
+    margin: 0;
     padding: 0;
   }
 
@@ -1038,7 +1050,7 @@
   }
 
   .admin-panel-nav button:hover {
-    transform: translateY(-1px);
+    background: var(--ui-surface-subtle);
   }
 
   .admin-panel-nav button[data-active="true"] {
@@ -1086,7 +1098,12 @@
   .admin-panel-nav-group[data-panel="system"][data-expanded="true"] {
     flex-basis: auto;
     overflow: visible;
+    order: -1;
     padding-top: 0;
+  }
+
+  .admin-panel-subnav button[data-active="true"] {
+    order: -1;
   }
 
   .admin-panel-nav::-webkit-scrollbar {
@@ -1109,6 +1126,10 @@
 }
 
 @media (max-width: 560px) {
+  .admin-header-actions {
+    flex-wrap: wrap;
+  }
+
   .admin-workspace-heading h1 {
     font-size: 22px;
     line-height: 28px;

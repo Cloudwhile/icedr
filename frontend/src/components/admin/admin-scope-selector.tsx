@@ -10,6 +10,7 @@ import "./admin-scope-selector.css";
 
 export type AdminScopeSelectorProps = {
   disabled?: boolean;
+  includeSystem?: boolean;
   onChange: (scope: AdminScope) => void;
   palette: Palette;
   scope: AdminScope;
@@ -22,6 +23,7 @@ const workspaceScopePrefix = "workspace:";
 
 export function AdminScopeSelector({
   disabled,
+  includeSystem = true,
   onChange,
   palette,
   scope,
@@ -31,13 +33,15 @@ export function AdminScopeSelector({
   const options = useMemo(
     () => [
       { label: t("admin.scopeAll"), value: allScopeValue },
-      { label: t("admin.scopeSystem"), value: systemScopeValue },
+      ...(includeSystem
+        ? [{ label: t("admin.scopeSystem"), value: systemScopeValue }]
+        : []),
       ...workspaces.map((workspace) => ({
         label: t("admin.scopeWorkspaceOption", { name: workspace.name }),
         value: `${workspaceScopePrefix}${workspace.id}`,
       })),
     ],
-    [t, workspaces],
+    [includeSystem, t, workspaces],
   );
   const requestedValue = scopeToValue(scope);
   const value = options.some((option) => option.value === requestedValue)

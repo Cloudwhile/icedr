@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
+import {
+  UnsavedChangesDialog,
+  type UnsavedChangesDialogAction,
+} from "@/components/admin/unsaved-changes-dialog";
 import { LdrsLoadingState } from "@/components/common/ui/loading-state";
 import {
   OAuthProviderGroup,
@@ -62,7 +66,15 @@ type OAuthEditorSnapshot = {
   secretCleared: boolean;
 };
 
-export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
+export function OAuthAdminSettingsPage({
+  locale,
+  palette,
+  timeZone,
+}: {
+  locale?: string;
+  palette: Palette;
+  timeZone?: string;
+}) {
   const t = useTranslations();
   const systemBaseUrl = useMemo(
     () => (typeof window === "undefined" ? "" : window.location.origin),
@@ -79,7 +91,12 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
   const [enablePromptOpen, setEnablePromptOpen] = useState(false);
   const [editorBaseline, setEditorBaseline] =
     useState<OAuthEditorSnapshot | null>(null);
+  const [editorCloseError, setEditorCloseError] = useState<string | null>(null);
+  const [editorClosePending, setEditorClosePending] =
+    useState<UnsavedChangesDialogAction | null>(null);
+  const [editorClosePromptOpen, setEditorClosePromptOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [modalMode, setModalMode] = useState<OAuthEditorMode>("create");
   const [providerFilter, setProviderFilter] = useState<
     OAuthProviderKey | "all"
@@ -94,27 +111,57 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
   const [testResult, setTestResult] = useState<OAuthConnectionTestResult | null>(
     null,
   );
+  const [validationErrorKey, setValidationErrorKey] = useState<string | null>(
+    null,
+  );
 
   const showToast = useCallback(
     (message: string, tone: AppToastTone = "success") =>
       showAppToast({ title: message, tone }),
     [],
   );
-  const refresh = useCallback(async (preferredId?: string) => {
-    const [providerResponse, authResponse] = await Promise.all([
+  const copyOAuthValue = useCallback(
+    (value: string) => {
+      void copyTextToClipboard(value)
+        .then(() => showToast(t("actions.copy")))
+        .catch(() => showToast(t("errors.unknown"), "error"));
+    },
+    [showToast, t],
+  );
+  const refresh = useCallback(async () => {
+    const [providerResult, authResult] = await Promise.allSettled([
       fetchOAuthProviders(),
       fetchAuthSettings(),
     ]);
-    setProviders(providerResponse.providers);
-    setAuthSettings(authResponse);
-    if (preferredId) {
-      const next = providerResponse.providers.find(
-        (provider) => provider.id === preferredId,
-      );
-      if (next) setDraft(next);
+    if (providerResult.status === "fulfilled") {
+      setProviders(providerResult.value.providers);
     }
-    return providerResponse;
+    if (authResult.status === "fulfilled") {
+      setAuthSettings(authResult.value);
+    }
+    if (providerResult.status === "rejected") throw providerResult.reason;
+    if (authResult.status === "rejected") throw authResult.reason;
+    setLoadError(null);
+    return providerResult.value;
   }, []);
+  const reportLoadFailure = useCallback(
+    (error: unknown) => {
+      const message = getDriveApiErrorMessage(error, t, {
+        fallbackKey: "admin.loadFailed",
+        scope: "form",
+      });
+      setLoadError(message);
+      return message;
+    },
+    [t],
+  );
+  const syncAfterMutation = useCallback(async () => {
+    try {
+      await refresh();
+    } catch (error) {
+      reportLoadFailure(error);
+    }
+  }, [refresh, reportLoadFailure]);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,14 +169,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
       if (cancelled) return;
       void refresh()
         .catch((error) => {
-          if (!cancelled)
-            showToast(
-              getDriveApiErrorMessage(error, t, {
-                fallbackKey: "admin.loadFailed",
-                scope: "form",
-              }),
-              "error",
-            );
+          if (!cancelled) showToast(reportLoadFailure(error), "error");
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -138,7 +178,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     return () => {
       cancelled = true;
     };
-  }, [refresh, showToast, t]);
+  }, [refresh, reportLoadFailure, showToast]);
 
   const filteredGroups = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -178,8 +218,11 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     setSecret("");
     setSecretCleared(false);
     setShowSecret(false);
-    setSavingKey(null);
     setTestResult(null);
+    setValidationErrorKey(null);
+    setEditorCloseError(null);
+    setEditorClosePending(null);
+    setEditorClosePromptOpen(false);
   };
   const openCreate = (providerKey: OAuthProviderKey = "google") => {
     const nextDraft = createOAuthDraft(
@@ -190,6 +233,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     setSecret("");
     setSecretCleared(false);
     setTestResult(null);
+    setValidationErrorKey(null);
     setEditorBaseline(createEditorSnapshot(nextDraft));
     setDraft(nextDraft);
   };
@@ -198,6 +242,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     setSecret("");
     setSecretCleared(false);
     setTestResult(null);
+    setValidationErrorKey(null);
     setEditorBaseline(createEditorSnapshot(provider));
     setDraft(cloneOAuthDraft(provider));
   };
@@ -217,6 +262,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     setSecret("");
     setSecretCleared(false);
     setTestResult(null);
+    setValidationErrorKey(null);
     setEditorBaseline(createEditorSnapshot(nextDraft));
     setDraft(nextDraft);
   };
@@ -224,6 +270,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     setSecret("");
     setSecretCleared(false);
     setTestResult(null);
+    setValidationErrorKey(null);
     setDraft((current) => {
       const next = createOAuthDraft(template, systemBaseUrl);
       return current?.id
@@ -245,13 +292,16 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
   };
 
   const testDraft = () => {
+    if (savingKey) return;
     const input = providerInput(false);
     if (!draft || !input) return;
     const validation = validateOAuthDraft(draft, secret);
     if (!validation.valid) {
+      setValidationErrorKey(validation.errorKey);
       showToast(t(validation.errorKey), "error");
       return;
     }
+    setValidationErrorKey(null);
     setSavingKey("test");
     setTestResult(null);
     void testOAuthProvider(input)
@@ -281,9 +331,11 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     if (!draft || !input) throw new Error("OAuth editor is not open");
     const validation = validateOAuthDraft(draft, secret);
     if (nextEnabled && !validation.valid) {
+      setValidationErrorKey(validation.errorKey);
       showToast(t(validation.errorKey), "error");
       throw new Error(validation.errorKey);
     }
+    setValidationErrorKey(null);
     setSavingKey(enabled ? "activate" : "save");
     const request =
       modalMode === "edit"
@@ -291,20 +343,21 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
         : createOAuthProvider(input);
     try {
       const provider = await request;
-      await refresh(provider.id);
+      setProviders((current) => upsertOAuthProvider(current, provider));
       showToast(enabled ? t("admin.oauthActivated") : t("admin.saved"));
       resetEditor();
       if (enabled && authSettings && !authSettings.oauthEnabled) {
         setEnablePromptOpen(true);
       }
+      await syncAfterMutation();
     } catch (error) {
       showToast(
-          getDriveApiErrorMessage(error, t, {
-            fallbackKey: "admin.saveFailed",
-            scope: "form",
-          }),
-          "error",
-        );
+        getDriveApiErrorMessage(error, t, {
+          fallbackKey: "admin.saveFailed",
+          scope: "form",
+        }),
+        "error",
+      );
       throw error;
     } finally {
       setSavingKey(null);
@@ -321,6 +374,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     setSecretCleared(baseline.secretCleared);
     setShowSecret(false);
     setTestResult(null);
+    setValidationErrorKey(null);
   };
   const editorDirty = isOAuthEditorDirty(
     draft,
@@ -336,20 +390,38 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     onSave: () => persistDraft(false),
   });
 
+  const requestEditorClose = () => {
+    if (!editorDirty) {
+      resetEditor();
+      return;
+    }
+    setEditorCloseError(null);
+    setEditorClosePromptOpen(true);
+  };
+  const saveBeforeEditorClose = () => {
+    setEditorCloseError(null);
+    setEditorClosePending("save");
+    void persistDraft(false)
+      .catch(() => setEditorCloseError(t("admin.unsavedSaveFailed")))
+      .finally(() => setEditorClosePending(null));
+  };
+
   const setProviderActive = (provider: OAuthSettings, enabled: boolean) => {
+    if (savingKey) return;
     const key = `${enabled ? "activate" : "deactivate"}:${provider.id}`;
     setSavingKey(key);
     const request = enabled
       ? activateOAuthProvider(provider.id)
       : updateOAuthProvider(provider.id, { enabled: false });
     void request
-      .then((next) => refresh(next.id))
-      .then(() => {
+      .then(async (next) => {
+        setProviders((current) => upsertOAuthProvider(current, next));
         showToast(
           enabled ? t("admin.oauthActivated") : t("admin.oauthDeactivated"),
         );
         if (enabled && authSettings && !authSettings.oauthEnabled)
           setEnablePromptOpen(true);
+        await syncAfterMutation();
       })
       .catch((error) =>
         showToast(
@@ -364,7 +436,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
   };
 
   const enableGlobalOAuth = () => {
-    if (!authSettings) return;
+    if (!authSettings || savingKey) return;
     setSavingKey("global-auth");
     void updateAuthSettings({
       localEnabled: authSettings.localEnabled,
@@ -408,6 +480,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
       setSecret("");
       setSecretCleared(true);
       setTestResult(null);
+      setValidationErrorKey(null);
       setDraft((current) =>
         current ? { ...current, clientSecretConfigured: false } : current,
       );
@@ -415,10 +488,17 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
       return;
     }
     const { provider } = confirmation;
+    if (savingKey) return;
     setSavingKey(`delete:${provider.id}`);
     void deleteOAuthProvider(provider.id)
-      .then(() => refresh())
-      .then(() => showToast(t("admin.oauthDeleted")))
+      .then(async () => {
+        setProviders((current) =>
+          current.filter((item) => item.id !== provider.id),
+        );
+        setConfirmation(null);
+        showToast(t("admin.oauthDeleted"));
+        await syncAfterMutation();
+      })
       .catch((error) =>
         showToast(
           getDriveApiErrorMessage(error, t, {
@@ -430,8 +510,15 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
       )
       .finally(() => {
         setSavingKey(null);
-        setConfirmation(null);
       });
+  };
+
+  const refreshOAuthData = () => {
+    if (savingKey) return;
+    setSavingKey("refresh");
+    void refresh()
+      .catch((error) => showToast(reportLoadFailure(error), "error"))
+      .finally(() => setSavingKey(null));
   };
 
   if (loading)
@@ -452,10 +539,28 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
     >
       <div className="drive-system-settings-main drive-oauth-admin-main">
         <h1 className="icedr-sr-only">{t("admin.oauthSettings")}</h1>
+        {loadError ? (
+          <div className="admin-inline-alert drive-oauth-load-error" role="alert">
+            <span>
+              <LocalIcon name="exclamation" size={16} />
+              {loadError}
+            </span>
+            <ToolButton
+              isPending={savingKey === "refresh"}
+              label={t("app.errorBoundary.retry")}
+              onClick={refreshOAuthData}
+              palette={palette}
+              visual="surface"
+            >
+              <LocalIcon name="refresh" size={16} />
+            </ToolButton>
+          </div>
+        ) : null}
         <div className="drive-oauth-toolbar">
           <div className="drive-oauth-admin-overview">
             <div className="drive-oauth-overview-actions">
               <ToolButton
+                disabled={savingKey !== null}
                 label={t("admin.addOAuth")}
                 palette={palette}
                 onClick={() => openCreate()}
@@ -486,6 +591,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
               !authSettings.oauthEnabled &&
               summary.active > 0 ? (
                 <ToolButton
+                  disabled={savingKey !== null}
                   label={t("admin.oauthEnableGlobalTitle")}
                   onClick={() => setEnablePromptOpen(true)}
                   palette={palette}
@@ -502,6 +608,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
           <div className="drive-oauth-filterbar">
             <AppSelect
               aria-label={t("admin.oauthProvider")}
+              disabled={savingKey !== null}
               onChange={(event) =>
                 setProviderFilter(
                   event.target.value as OAuthProviderKey | "all",
@@ -519,6 +626,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
             />
             <AppSelect
               aria-label={t("admin.oauthStatus")}
+              disabled={savingKey !== null}
               onChange={(event) =>
                 setStatusFilter(event.target.value as OAuthStatusFilter)
               }
@@ -535,6 +643,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
               <LocalIcon name="search" size={15} />
               <AppInput
                 aria-label={t("admin.oauthSearch")}
+                disabled={savingKey !== null}
                 onChange={(event) => setQuery(event.target.value)}
                 palette={palette}
                 placeholder={t("admin.oauthSearchPlaceholder")}
@@ -546,8 +655,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
               label={t("actions.refresh")}
               palette={palette}
               onClick={() => {
-                setSavingKey("refresh");
-                void refresh().finally(() => setSavingKey(null));
+                refreshOAuthData();
               }}
               size="sm"
               visual="surface"
@@ -557,7 +665,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
           </div>
         </div>
         <div className="drive-oauth-provider-groups">
-          {filteredGroups.length === 0 ? (
+          {loadError && providers.length === 0 ? null : filteredGroups.length === 0 ? (
             <div className="drive-oauth-empty">
               <LocalIcon name="key" size={18} />
               <span>{t("admin.oauthProviderEmpty")}</span>
@@ -567,12 +675,9 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
               <OAuthProviderGroup
                 collapsed={collapsedGroups.has(template.key)}
                 key={template.key}
+                locale={locale}
                 onActivate={(provider) => setProviderActive(provider, true)}
-                onCopy={(value) =>
-                  void copyTextToClipboard(value).then(() =>
-                    showToast(t("actions.copy")),
-                  )
-                }
+                onCopy={copyOAuthValue}
                 onDeactivate={(provider) => setProviderActive(provider, false)}
                 onDelete={removeProvider}
                 onDuplicate={openDuplicate}
@@ -590,6 +695,7 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
                 protectedActiveProviderId={protectedActiveProviderId}
                 savingKey={savingKey}
                 template={template}
+                timeZone={timeZone}
               />
             ))
           )}
@@ -601,21 +707,19 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
           draft={draft}
           mode={modalMode}
           onClearSecret={() => setConfirmation({ kind: "clear-secret" })}
-          onClose={resetEditor}
-          onCopy={(value) =>
-            void copyTextToClipboard(value).then(() =>
-              showToast(t("actions.copy")),
-            )
-          }
+          onClose={requestEditorClose}
+          onCopy={copyOAuthValue}
           onDraftChange={(nextDraft) => {
             setDraft(nextDraft);
             setTestResult(null);
+            setValidationErrorKey(null);
           }}
           onSave={saveDraft}
           onSecretChange={(value) => {
             setSecret(value);
             setSecretCleared(false);
             setTestResult(null);
+            setValidationErrorKey(null);
           }}
           onSelectTemplate={selectTemplate}
           onShowSecretChange={setShowSecret}
@@ -625,8 +729,26 @@ export function OAuthAdminSettingsPage({ palette }: { palette: Palette }) {
           secret={secret}
           showSecret={showSecret}
           testResult={testResult}
+          validationErrorKey={validationErrorKey}
         />
       ) : null}
+      <UnsavedChangesDialog
+        error={editorCloseError}
+        labels={{
+          cancel: t("admin.unsavedCancel"),
+          description: t("admin.unsavedDescription"),
+          discard: t("admin.unsavedDiscard"),
+          save: t("admin.unsavedSave"),
+          saveFailed: t("admin.unsavedSaveFailed"),
+          title: t("admin.unsavedTitle"),
+        }}
+        onCancel={() => setEditorClosePromptOpen(false)}
+        onDiscard={resetEditor}
+        onSave={saveBeforeEditorClose}
+        open={editorClosePromptOpen}
+        palette={palette}
+        pendingAction={editorClosePending}
+      />
       <GlobalOAuthPrompt
         loading={savingKey === "global-auth"}
         onClose={() => setEnablePromptOpen(false)}
@@ -775,4 +897,26 @@ function isOAuthEditorDirty(
     secret !== baseline.secret ||
     secretCleared !== baseline.secretCleared
   );
+}
+
+function upsertOAuthProvider(
+  current: OAuthSettings[],
+  nextProvider: OAuthSettings,
+) {
+  let found = false;
+  const next = current.map((provider) => {
+    if (provider.id === nextProvider.id) {
+      found = true;
+      return nextProvider;
+    }
+    if (
+      nextProvider.enabled &&
+      provider.providerKey === nextProvider.providerKey &&
+      provider.enabled
+    ) {
+      return { ...provider, enabled: false };
+    }
+    return provider;
+  });
+  return found ? next : [...next, nextProvider];
 }

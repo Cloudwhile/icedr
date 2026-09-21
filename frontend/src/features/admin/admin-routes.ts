@@ -8,6 +8,7 @@ export type AdminSystemSection =
   | "platform"
   | "oauth"
   | "storage"
+  | "integrity"
   | "lifecycle"
   | "external-share";
 
@@ -27,6 +28,7 @@ const panelsBySegment = new Map(
 
 const systemSectionSegments: Record<AdminSystemSection, string> = {
   "external-share": "external-share",
+  integrity: "integrity",
   lifecycle: "lifecycle",
   oauth: "oauth",
   platform: "platform",
@@ -72,6 +74,15 @@ export function getAdminSystemSectionPath(section: AdminSystemSection) {
     : `/admin/system/${systemSectionSegments[section]}`;
 }
 
+export function getAdminSystemSectionScope(
+  section: AdminSystemSection,
+  current: AdminScope,
+) {
+  return section === "integrity" && current.kind === "system"
+    ? ({ kind: "all" } as const)
+    : current;
+}
+
 export function buildAdminUrl(path: string, scope: AdminScope) {
   const search = writeAdminScopeSearchParams(new URLSearchParams(), scope);
   return `${path}?${search.toString()}`;
@@ -79,6 +90,13 @@ export function buildAdminUrl(path: string, scope: AdminScope) {
 
 export function getAdminPanelScope(panel: AdminPanel, current: AdminScope) {
   return panel === "status" ? ({ kind: "system" } as const) : current;
+}
+
+export function shouldShowAdminGlobalRefresh(
+  panel: AdminPanel,
+  _systemSection: AdminSystemSection,
+) {
+  return panel !== "system";
 }
 
 export function serializeAdminScope(scope: AdminScope) {

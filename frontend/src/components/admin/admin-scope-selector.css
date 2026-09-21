@@ -24,10 +24,6 @@
 }
 
 @media (max-width: 560px) {
-  .admin-header-actions {
-    flex-wrap: wrap;
-  }
-
   .admin-scope-selector {
     align-items: stretch;
     flex: 1 0 100%;

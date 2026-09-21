@@ -11,6 +11,7 @@ import {
 import { AdminHealthCenter } from "@/components/admin/admin-health-center";
 import { AdminOverviewDashboard } from "@/components/admin/admin-overview-dashboard";
 import { AdminScopeSelector } from "@/components/admin/admin-scope-selector";
+import { AdminStorageIntegrityPanel } from "@/components/admin/admin-storage-integrity-panel";
 import { AdminUnsavedChangesProvider } from "@/components/admin/unsaved-changes-provider";
 import { showAppToast } from "@/components/ui/app-toast-store";
 import { UserAccountMenu } from "@/components/ui/user-account-menu";
@@ -31,9 +32,11 @@ import {
   getAdminPanelPath,
   getAdminPanelScope,
   getAdminSystemSectionPath,
+  getAdminSystemSectionScope,
   resolveAdminPanelFromPath,
   resolveAdminSystemSectionFromPath,
   serializeAdminScope,
+  shouldShowAdminGlobalRefresh,
   type AdminPanel,
   type AdminSystemSection,
 } from "@/features/admin/admin-routes";
@@ -113,6 +116,12 @@ const systemSettingSections: Array<{
     id: "storage",
     labelKey: "settings.storagePolicy",
     subtitleKey: "settings.storagePolicySubtitle",
+  },
+  {
+    icon: "shield",
+    id: "integrity",
+    labelKey: "storageIntegrity.title",
+    subtitleKey: "storageIntegrity.subtitle",
   },
   {
     icon: "trash",
@@ -198,9 +207,18 @@ function AdminPanelGate({
       const reconciledScope = workspaceQuery.data
         ? reconcileAdminScope(requestedScope, workspaces)
         : requestedScope;
-      return getAdminPanelScope(activePanel, reconciledScope);
+      const panelScope = getAdminPanelScope(activePanel, reconciledScope);
+      return activePanel === "system"
+        ? getAdminSystemSectionScope(activeSystemSection, panelScope)
+        : panelScope;
     },
-    [activePanel, requestedScope, workspaceQuery.data, workspaces],
+    [
+      activePanel,
+      activeSystemSection,
+      requestedScope,
+      workspaceQuery.data,
+      workspaces,
+    ],
   );
   const workspaceId = scope.kind === "workspace" ? scope.workspaceId : null;
   const scopeKey = serializeAdminScope(scope);
@@ -281,7 +299,9 @@ function AdminPanelGate({
   const openSystemSection = useCallback(
     (section: AdminSystemSection) => {
       const nextPath = getAdminSystemSectionPath(section);
-      router.push(buildAdminUrl(nextPath, scope));
+      router.push(
+        buildAdminUrl(nextPath, getAdminSystemSectionScope(section, scope)),
+      );
     },
     [router, scope],
   );
@@ -320,10 +340,30 @@ function AdminPanelGate({
               offset: 0,
             })
           : writeAdminScopeSearchParams(searchParams, nextScope);
+      if (activePanel === "system" && activeSystemSection === "integrity") {
+        next.delete("task");
+      }
       const query = next.toString();
       router.replace(`${pathname}${query ? `?${query}` : ""}`);
     },
-    [activePanel, auditFilters, pathname, router, searchParams],
+    [
+      activePanel,
+      activeSystemSection,
+      auditFilters,
+      pathname,
+      router,
+      searchParams,
+    ],
+  );
+
+  const changeIntegrityTask = useCallback(
+    (taskId: string | null) => {
+      const next = writeAdminScopeSearchParams(searchParams, scope);
+      if (taskId?.trim()) next.set("task", taskId.trim());
+      else next.delete("task");
+      router.replace(`${pathname}?${next.toString()}`);
+    },
+    [pathname, router, scope, searchParams],
   );
 
   useEffect(() => {
@@ -419,13 +459,15 @@ function AdminPanelGate({
           : t(activeSystemSectionMeta.subtitleKey);
   const panelOwnsHeading =
     activePanel === "status" ||
-    (activePanel === "system" && activeSystemSection === "oauth");
+    (activePanel === "system" &&
+      (activeSystemSection === "oauth" || activeSystemSection === "integrity"));
   const showsScopeSelector =
     activePanel === "overview" ||
     activePanel === "audit" ||
     (activePanel === "system" &&
       (activeSystemSection === "storage" ||
-        activeSystemSection === "external-share"));
+        activeSystemSection === "external-share" ||
+        activeSystemSection === "integrity"));
   const adminRefreshing =
     siteQuery.refreshing ||
     workspaceQuery.refreshing ||
@@ -522,7 +564,9 @@ function AdminPanelGate({
           })}
         </nav>
         <div className="admin-sidebar-status">
-          <span className="admin-sidebar-status-dot" />
+          <span className="admin-sidebar-status-icon" aria-hidden="true">
+            <LocalIcon name="folder" size={16} />
+          </span>
           <div>
             <span>{t("settings.usedStorage")}</span>
             <span>
@@ -548,6 +592,12 @@ function AdminPanelGate({
             {showsScopeSelector ? (
               <AdminScopeSelector
                 disabled={workspaceQuery.initialLoading && !workspaceQuery.data}
+                includeSystem={
+                  !(
+                    activePanel === "system" &&
+                    activeSystemSection === "integrity"
+                  )
+                }
                 onChange={changeScope}
                 palette={palette}
                 scope={scope}
@@ -573,14 +623,19 @@ function AdminPanelGate({
             >
               <LocalIcon name="folder" size={17} />
             </ToolButton>
-            <ToolButton
-              isPending={adminRefreshing}
-              label={t("app.refresh")}
-              palette={palette}
-              onClick={() => void refreshAdminData()}
-            >
-              <LocalIcon name="refresh" size={17} />
-            </ToolButton>
+            {shouldShowAdminGlobalRefresh(
+              activePanel,
+              activeSystemSection,
+            ) ? (
+              <ToolButton
+                isPending={adminRefreshing}
+                label={t("app.refresh")}
+                palette={palette}
+                onClick={() => void refreshAdminData()}
+              >
+                <LocalIcon name="refresh" size={17} />
+              </ToolButton>
+            ) : null}
             <UserAccountMenu
               currentUser={currentUser}
               onLogout={logout}
@@ -697,7 +752,21 @@ function AdminPanelGate({
                       workspaceId={workspaceId}
                     />
                   ) : activeSystemSection === "oauth" ? (
-                    <OAuthAdminSettingsPage palette={palette} />
+                    <OAuthAdminSettingsPage
+                      locale={locale}
+                      palette={palette}
+                      timeZone={timeZone}
+                    />
+                  ) : activeSystemSection === "integrity" ? (
+                    <AdminStorageIntegrityPanel
+                      key={scopeKey}
+                      locale={locale}
+                      onTaskIdChange={changeIntegrityTask}
+                      palette={palette}
+                      requestedTaskId={searchParams.get("task")?.trim() || null}
+                      scope={scope}
+                      timeZone={timeZone}
+                    />
                   ) : activeSystemSection === "storage" && !workspaceId ? (
                     <div className="admin-inline-alert" role="alert">
                       <span>
