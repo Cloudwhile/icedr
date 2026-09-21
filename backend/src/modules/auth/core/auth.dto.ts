@@ -60,6 +60,13 @@ export type OAuthStartResponse = {
 
 export type OAuthExchangeResponse = AuthSessionResponse;
 
+export type OAuthFrontendCallbackResponse =
+  | AuthSessionResponse
+  | {
+      flow: 'step-up';
+      code: string;
+    };
+
 export class UpdateAuthSettingsDto {
   @IsBoolean()
   @IsOptional()

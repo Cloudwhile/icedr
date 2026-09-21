@@ -867,21 +867,22 @@ export class AuthRepository implements OnModuleInit {
     return this.mapPrismaOAuthExchangeCode(row);
   }
 
-  async findOAuthExchangeCode(codeHash: string) {
-    const row = await this.prisma.authOAuthExchangeCode.findUnique({
-      where: { codeHash },
-    });
-    return row ? this.mapPrismaOAuthExchangeCode(row) : null;
-  }
-
-  async markOAuthExchangeCodeUsed(codeHash: string) {
-    const existing = await this.prisma.authOAuthExchangeCode.findUnique({
-      where: { codeHash },
-    });
-    if (!existing || existing.usedAt) return;
-    await this.prisma.authOAuthExchangeCode.update({
-      where: { codeHash },
-      data: { usedAt: new Date() },
+  async consumeOAuthLoginExchangeCode(codeHash: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.authOAuthExchangeCode.updateMany({
+        where: {
+          codeHash,
+          flow: 'login',
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { usedAt: new Date() },
+      });
+      if (consumed.count !== 1) return null;
+      const row = await tx.authOAuthExchangeCode.findUnique({
+        where: { codeHash },
+      });
+      return row ? this.mapPrismaOAuthExchangeCode(row) : null;
     });
   }
 

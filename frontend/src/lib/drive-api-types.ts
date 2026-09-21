@@ -506,6 +506,13 @@ export type AuthSession = {
   user: AuthUser;
 };
 
+export type OAuthFrontendCallbackResponse =
+  | AuthSession
+  | {
+      flow: "step-up";
+      code: string;
+    };
+
 export type PasswordResetRequestResponse = {
   configured: boolean;
   delivery: "email";
