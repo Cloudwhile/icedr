@@ -209,9 +209,6 @@ importers:
       ldrs:
         specifier: ^1.1.9
         version: 1.1.9
-      lucide-react:
-        specifier: ^1.17.0
-        version: 1.17.0(react@19.2.4)
       mammoth:
         specifier: ^1.12.0
         version: 1.12.0
@@ -224,6 +221,9 @@ importers:
       react-dom:
         specifier: 19.2.4
         version: 19.2.4(react@19.2.4)
+      reicon-react:
+        specifier: 1.2.5
+        version: 1.2.5(react@19.2.4)
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.1
@@ -4655,11 +4655,6 @@ packages:
     resolution: {integrity: sha512-DqC6n3QQ77zdFpCMASA1a3Jlb64Hv2N2DciFGkO/4L9+q/IpIAuRlKOvCXabtRW6cQf8usbmM6BE/TOPysCdIA==}
     engines: {bun: '>=1.0.0', deno: '>=1.30.0', node: '>=8.0.0'}
 
-  lucide-react@1.17.0:
-    resolution: {integrity: sha512-9FA9evdox/JQL5PT57fdA1x/yg8T7knJ98+zjTL3UfKza6pflQUUh3XtaQIHKvnsJw1lmsEyHVlt5jchYxOQ5w==}
-    peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
     engines: {node: '>=12'}
@@ -5324,6 +5319,11 @@ packages:
 
   regex@6.1.0:
     resolution: {integrity: sha512-6VwtthbV4o/7+OaAF9I5L5V3llLEsoPyq9P1JVXkedTP33c7MfCG0/5NOPcSJn0TzXcG9YUrR0gQSWioew3LDg==}
+
+  reicon-react@1.2.5:
+    resolution: {integrity: sha512-+gAKb9k0y/c0t6/l8qiTspxf4RU3omXirr/4/io7Cwp+RCr4FnrxIWKhSSu367BpGyLP745nJ2CmusxWnpOu8g==}
+    peerDependencies:
+      react: '>=16.8.0'
 
   remeda@2.33.4:
     resolution: {integrity: sha512-ygHswjlc/opg2VrtiYvUOPLjxjtdKvjGz1/plDhkG66hjNjFr1xmfrs2ClNFo/E6TyUFiwYNh53bKV26oBoMGQ==}
@@ -11137,10 +11137,6 @@ snapshots:
 
   lru.min@1.1.4: {}
 
-  lucide-react@1.17.0(react@19.2.4):
-    dependencies:
-      react: 19.2.4
-
   luxon@3.7.2: {}
 
   lz-string@1.5.0: {}
@@ -11806,6 +11802,10 @@ snapshots:
   regex@6.1.0:
     dependencies:
       regex-utilities: 2.3.0
+
+  reicon-react@1.2.5(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   remeda@2.33.4: {}
 
