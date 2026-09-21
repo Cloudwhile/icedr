@@ -189,6 +189,76 @@ describe('PrismaService', () => {
       'ALTER TABLE "file_nodes" ADD COLUMN "name_key" TEXT NOT NULL DEFAULT \'\'',
     );
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "checksum_algorithm" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "checksum_value" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "integrity_status" TEXT NOT NULL DEFAULT \'unknown\'',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "last_verified_at" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "verification_failure_code" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "integrity_acknowledged_at" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_nodes" ADD COLUMN "integrity_acknowledged_by" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "checksum_algorithm" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "checksum_value" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "integrity_status" TEXT NOT NULL DEFAULT \'unknown\'',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "last_verified_at" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "verification_failure_code" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "integrity_acknowledged_at" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "file_versions" ADD COLUMN "integrity_acknowledged_by" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS "blob_integrity_tasks"',
+      ),
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS "blob_integrity_results"',
+      ),
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "blob_integrity_results" ADD COLUMN "acknowledged_at" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "blob_integrity_results" ADD COLUMN "acknowledged_by" TEXT',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "blob_integrity_tasks_lease_key_key" ON "blob_integrity_tasks"("lease_key")',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_status_created_at_idx" ON "blob_integrity_tasks"("status", "created_at")',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'CREATE INDEX IF NOT EXISTS "blob_integrity_tasks_status_lease_expires_at_idx" ON "blob_integrity_tasks"("status", "lease_expires_at")',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "blob_integrity_results_task_target_key" ON "blob_integrity_results"("task_id", "target_key")',
+    );
+    expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
       'CREATE INDEX IF NOT EXISTS "file_nodes_workspace_id_space_scope_idx" ON "file_nodes"("workspace_id", "space_scope")',
     );
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(
@@ -227,7 +297,24 @@ describe('PrismaService', () => {
             'directory_key',
             'owner_scope_key',
             'name_key',
+            'checksum_algorithm',
+            'checksum_value',
+            'integrity_status',
+            'last_verified_at',
+            'verification_failure_code',
+            'integrity_acknowledged_at',
+            'integrity_acknowledged_by',
           ],
+          file_versions: [
+            'checksum_algorithm',
+            'checksum_value',
+            'integrity_status',
+            'last_verified_at',
+            'verification_failure_code',
+            'integrity_acknowledged_at',
+            'integrity_acknowledged_by',
+          ],
+          blob_integrity_results: ['acknowledged_at', 'acknowledged_by'],
           upload_sessions: [
             'space_scope',
             'requested_file_name',
@@ -264,6 +351,11 @@ describe('PrismaService', () => {
     expect(
       statements.some((statement) =>
         statement.startsWith('ALTER TABLE "upload_sessions"'),
+      ),
+    ).toBe(false);
+    expect(
+      statements.some((statement) =>
+        statement.startsWith('ALTER TABLE "file_versions"'),
       ),
     ).toBe(false);
     expect(client.$executeRawUnsafe).toHaveBeenCalledWith(

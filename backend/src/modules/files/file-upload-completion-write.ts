@@ -16,6 +16,12 @@ import type {
   UploadConflictStrategy,
 } from './file-nodes.dto';
 import { FileNodeVersionsRepository } from './file-node-versions.repository';
+import type { StorageIntegrityTaskService } from '../storage/storage-integrity-task.service';
+import { needsFileIntegrityVerification } from './file-integrity';
+import {
+  lockAndValidateActiveFileNodeParent,
+  lockFileNodeRows,
+} from './file-node-hierarchy-write';
 
 type CompleteUploadWriteDto = CompleteUploadDto & {
   conflictStrategy?: UploadConflictStrategy;
@@ -33,6 +39,7 @@ type CompletionClaim = {
 export async function completeFileNodeUploadWrite(
   prisma: PrismaService,
   versionsRepository: FileNodeVersionsRepository,
+  integrityTasks: StorageIntegrityTaskService,
   getKind: (fileName: string, mimeType?: string) => FileNodeKind,
   dto: CompleteUploadWriteDto,
   completionClaim?: CompletionClaim,
@@ -58,6 +65,23 @@ export async function completeFileNodeUploadWrite(
         prisma.$transaction(
           async (tx) => {
             const now = new Date();
+            if (
+              dto.conflictTargetNodeId &&
+              !(await lockFileNodeRows(prisma, tx, [dto.conflictTargetNodeId]))
+            ) {
+              throw createUploadConflictTargetChangedException();
+            }
+            const validParent = await lockAndValidateActiveFileNodeParent(
+              prisma,
+              tx,
+              parentNodeId,
+              {
+                forbiddenAncestorId: dto.conflictTargetNodeId,
+                spaceScope,
+                workspaceId: dto.workspaceId,
+              },
+            );
+            if (!validParent) throw createUploadParentChangedException();
             const existing = dto.conflictTargetNodeId
               ? await tx.fileNode.findUnique({
                   where: { id: dto.conflictTargetNodeId },
@@ -95,10 +119,26 @@ export async function completeFileNodeUploadWrite(
                 throw createUploadConflictTargetChangedException();
               }
               if (conflictStrategy === 'version') {
-                await versionsRepository.createVersionForNode(tx, existing, {
-                  remark: 'Replaced by upload',
-                  uploadedBy: dto.owner ?? existing.ownerName,
-                });
+                const archivedVersion =
+                  await versionsRepository.createVersionForNode(tx, existing, {
+                    remark: 'Replaced by upload',
+                    uploadedBy: dto.owner ?? existing.ownerName,
+                  });
+                if (
+                  archivedVersion &&
+                  needsFileIntegrityVerification(archivedVersion)
+                ) {
+                  await integrityTasks.enqueueObjectVerification(
+                    {
+                      actorUserId: dto.ownerUserId ?? existing.ownerUserId,
+                      nodeId: existing.id,
+                      objectKey: archivedVersion.objectKey,
+                      versionId: archivedVersion.id,
+                      workspaceId: existing.workspaceId,
+                    },
+                    tx,
+                  );
+                }
               } else {
                 displacedObjectKey = existing.objectKey;
               }
@@ -119,6 +159,13 @@ export async function completeFileNodeUploadWrite(
                   mimeType: dto.mimeType ?? 'application/octet-stream',
                   name: requestedFileName,
                   objectKey: dto.objectKey,
+                  checksumAlgorithm: null,
+                  checksumValue: null,
+                  integrityStatus: 'pending',
+                  integrityAcknowledgedAt: null,
+                  integrityAcknowledgedBy: null,
+                  lastVerifiedAt: null,
+                  verificationFailureCode: null,
                   ownerUserId,
                   ownerName: dto.owner ?? existing.ownerName,
                   sizeBytes: BigInt(dto.sizeBytes),
@@ -159,6 +206,13 @@ export async function completeFileNodeUploadWrite(
                   mimeType: dto.mimeType ?? 'application/octet-stream',
                   sizeBytes: BigInt(dto.sizeBytes),
                   objectKey: dto.objectKey,
+                  checksumAlgorithm: null,
+                  checksumValue: null,
+                  integrityStatus: 'pending',
+                  integrityAcknowledgedAt: null,
+                  integrityAcknowledgedBy: null,
+                  lastVerifiedAt: null,
+                  verificationFailureCode: null,
                   ownerUserId,
                   ownerName: dto.owner ?? '',
                   starred: false,
@@ -190,6 +244,15 @@ export async function completeFileNodeUploadWrite(
                 );
               }
             }
+            await integrityTasks.enqueueObjectVerification(
+              {
+                actorUserId: dto.ownerUserId ?? fileNode.ownerUserId,
+                nodeId: fileNode.id,
+                objectKey: dto.objectKey,
+                workspaceId: fileNode.workspaceId,
+              },
+              tx,
+            );
             return { displacedObjectKey, fileNode };
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -338,6 +401,13 @@ function createUploadConflictTargetChangedException() {
   return new ConflictException({
     code: 'UPLOAD_CONFLICT_TARGET_CHANGED',
     message: 'Upload conflict target changed while the upload was running',
+  });
+}
+
+function createUploadParentChangedException() {
+  return new ConflictException({
+    code: 'UPLOAD_PARENT_CHANGED',
+    message: 'Upload parent folder changed while the upload was running',
   });
 }
 

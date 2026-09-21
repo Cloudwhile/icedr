@@ -1,5 +1,4 @@
-import { ConflictException } from '@nestjs/common';
-import { serializableTransactionMaxAttempts } from '../../common/database/serializable-transaction-retry';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { createFileNodesRepository as createRepository } from './file-nodes.repository.spec-helpers';
 
 function storedNode(id: string) {
@@ -16,6 +15,11 @@ function storedNode(id: string) {
     mimeType: 'text/plain',
     sizeBytes: 1n,
     objectKey: `objects/${id}`,
+    checksumAlgorithm: 'sha256',
+    checksumValue: 'a'.repeat(64),
+    integrityStatus: 'verified',
+    lastVerifiedAt: new Date(1),
+    verificationFailureCode: null,
     ownerName: 'Workspace User',
     ownerUserId: null,
     starred: false,
@@ -26,6 +30,18 @@ function storedNode(id: string) {
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };
+}
+
+function rootOnlyQueryRaw(rootId: string) {
+  return jest.fn((statement: unknown) => {
+    const sql =
+      typeof statement === 'object' && statement !== null && 'sql' in statement
+        ? String(statement.sql)
+        : '';
+    return Promise.resolve(
+      sql.includes('SELECT id FROM file_nodes') ? [{ id: rootId }] : [],
+    );
+  });
 }
 
 describe('FileNodesRepository', () => {
@@ -119,16 +135,22 @@ describe('FileNodesRepository', () => {
       stored = { ...stored, ...data };
       return Promise.resolve(stored);
     });
-    const repository = createRepository({
+    const tx = {
+      $queryRaw: rootOnlyQueryRaw(stored.id),
       fileNode: {
+        count: jest.fn(() => Promise.resolve(0)),
         findUnique: jest.fn(() => Promise.resolve(stored)),
-        findMany: jest.fn(() => Promise.resolve([{ name }])),
+        findMany: jest.fn((input: { select?: { name: boolean } }) =>
+          Promise.resolve(input.select ? [{ name }] : [stored]),
+        ),
         update,
       },
-      $queryRaw: jest.fn(() => Promise.resolve([])),
-      $transaction: jest.fn((operations: Promise<unknown>[]) =>
-        Promise.all(operations),
+    };
+    const repository = createRepository({
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
       ),
+      isSqlite: () => false,
     });
 
     const restored = await repository.restoreTree(stored.id);
@@ -169,38 +191,38 @@ describe('FileNodesRepository', () => {
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
-    const findMany = jest.fn(
-      (input: {
-        select: { name: boolean };
-        where: Record<string, unknown>;
-      }) => {
-        void input;
-        return Promise.resolve([]);
-      },
+    const findMany = jest.fn((input: { select?: { name: boolean } }) =>
+      Promise.resolve(input.select ? [] : [stored]),
     );
-    const repository = createRepository({
+    const tx = {
+      $queryRaw: rootOnlyQueryRaw(stored.id),
       fileNode: {
+        count: jest.fn(() => Promise.resolve(0)),
         findMany,
         findUnique: jest.fn(() => Promise.resolve(stored)),
         update: jest.fn(({ data }: { data: Record<string, unknown> }) =>
           Promise.resolve({ ...stored, ...data }),
         ),
       },
-      $queryRaw: jest.fn(() => Promise.resolve([])),
-      $transaction: jest.fn((operations: Promise<unknown>[]) =>
-        Promise.all(operations),
+    };
+    const repository = createRepository({
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
       ),
+      isSqlite: () => false,
     });
 
     await repository.restoreTree(stored.id);
 
-    expect(findMany.mock.calls[0]?.[0]).toMatchObject({
-      where: {
-        ownerScopeKey: 'user-1',
-        spaceScope: 'personal',
-      },
-      select: { name: true },
-    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ownerScopeKey: 'user-1',
+          spaceScope: 'personal',
+        }) as unknown,
+        select: { name: true },
+      }),
+    );
   });
 
   it('persists canonical active name keys when creating a folder', async () => {
@@ -212,7 +234,20 @@ describe('FileNodesRepository', () => {
         originalPath: null,
       }),
     );
-    const repository = createRepository({ fileNode: { create } });
+    const repository = createRepository({
+      fileNode: {
+        create,
+        findUnique: jest.fn(() =>
+          Promise.resolve({
+            ...storedNode('folder-1'),
+            kind: 'folder',
+            objectKey: null,
+            sizeBytes: null,
+            spaceScope: 'personal',
+          }),
+        ),
+      },
+    });
 
     await repository.createFolder({
       workspaceId: 'workspace-default',
@@ -316,6 +351,66 @@ describe('FileNodesRepository', () => {
     });
   });
 
+  it('revalidates locked ancestors so concurrent moves cannot create a cycle', async () => {
+    const folders = new Map(
+      ['folder-a', 'folder-b'].map((id) => [
+        id,
+        {
+          ...storedNode(id),
+          kind: 'folder',
+          mimeType: 'inode/directory',
+          name: id,
+          objectKey: null,
+          sizeBytes: null,
+        },
+      ]),
+    );
+    const tx = {
+      $queryRaw: jest.fn(() =>
+        Promise.resolve([{ id: 'folder-a' }, { id: 'folder-b' }]),
+      ),
+      fileNode: {
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(folders.get(where.id) ?? null),
+        ),
+        update: jest.fn(
+          ({
+            data,
+            where,
+          }: {
+            data: Record<string, unknown>;
+            where: { id: string };
+          }) => {
+            const current = folders.get(where.id);
+            if (!current) throw new Error('missing test node');
+            const updated = { ...current, ...data };
+            folders.set(where.id, updated);
+            return Promise.resolve(updated);
+          },
+        ),
+      },
+    };
+    const repository = createRepository({
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+      ),
+      isSqlite: () => false,
+    });
+
+    await expect(
+      repository.move('folder-a', 'folder-b'),
+    ).resolves.toMatchObject({
+      id: 'folder-a',
+      parentNodeId: 'folder-b',
+    });
+    await expect(
+      repository.move('folder-b', 'folder-a'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(folders.get('folder-b')?.parentNodeId).toBeNull();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
   it('persists canonical name keys when copying a node', async () => {
     const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
       Promise.resolve({
@@ -325,12 +420,6 @@ describe('FileNodesRepository', () => {
         originalPath: null,
       }),
     );
-    const repository = createRepository({
-      fileNode: {
-        create,
-        findMany: jest.fn(() => Promise.resolve([])),
-      },
-    });
     const source = {
       id: 'source-node',
       workspaceId: 'workspace-default',
@@ -341,6 +430,11 @@ describe('FileNodesRepository', () => {
       mimeType: 'text/plain',
       sizeBytes: 32,
       objectKey: 'object-1',
+      checksumAlgorithm: 'sha256',
+      checksumValue: 'b'.repeat(64),
+      integrityStatus: 'verified',
+      lastVerifiedAt: new Date(1).toISOString(),
+      verificationFailureCode: null,
       owner: 'User 1',
       ownerUserId: 'user-1',
       starred: false,
@@ -358,6 +452,40 @@ describe('FileNodesRepository', () => {
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     } as const;
+    const sourceRow = {
+      ...storedNode(source.id),
+      checksumValue: source.checksumValue,
+      lastVerifiedAt: new Date(source.lastVerifiedAt),
+      name: source.name,
+      objectKey: source.objectKey,
+      ownerName: source.owner,
+      ownerUserId: source.ownerUserId,
+      sizeBytes: BigInt(source.sizeBytes),
+      spaceScope: source.spaceScope,
+    };
+    const tx = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ id: source.id }])),
+      fileNode: {
+        create,
+        findFirst: jest.fn(() => Promise.resolve(sourceRow)),
+        findUnique: jest.fn(() =>
+          Promise.resolve({
+            ...storedNode('folder-2'),
+            kind: 'folder',
+            objectKey: null,
+            sizeBytes: null,
+            spaceScope: 'personal',
+          }),
+        ),
+        findMany: jest.fn(() => Promise.resolve([])),
+      },
+    };
+    const repository = createRepository({
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+      ),
+      isSqlite: () => false,
+    });
 
     await repository.copyTree(source, {
       name: 'Report copy.txt',
@@ -366,11 +494,374 @@ describe('FileNodesRepository', () => {
 
     expect(create.mock.calls[0]?.[0]).toMatchObject({
       data: {
+        checksumAlgorithm: 'sha256',
+        checksumValue: 'b'.repeat(64),
         directoryKey: 'folder-2',
+        integrityStatus: 'verified',
+        lastVerifiedAt: new Date(1),
         nameKey: 'active:report copy.txt',
         ownerScopeKey: 'user-1',
+        verificationFailureCode: null,
       },
     });
+  });
+
+  it('atomically queues verification for a copy whose source is still pending', async () => {
+    const source = {
+      ...storedNode('source-node'),
+      ownerUserId: 'owner-1',
+      ownerScopeKey: 'owner-1',
+      spaceScope: 'personal',
+      sizeBytes: 32,
+      checksumAlgorithm: null,
+      checksumValue: null,
+      integrityStatus: 'pending',
+      lastVerifiedAt: null,
+      verificationFailureCode: null,
+    };
+    const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
+      Promise.resolve({ ...source, ...data }),
+    );
+    const tx = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ id: source.id }])),
+      fileNode: {
+        create,
+        findFirst: jest.fn(() => Promise.resolve(source)),
+        findMany: jest.fn(() => Promise.resolve([])),
+      },
+    };
+    const enqueueObjectVerification = jest.fn(() =>
+      Promise.resolve('task-test'),
+    );
+    const kickQueued = jest.fn();
+    const repository = createRepository(
+      {
+        $transaction: jest.fn(
+          (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+        ),
+        isSqlite: () => false,
+      },
+      { enqueueObjectVerification, kickQueued },
+    );
+
+    const copied = await repository.copyTree(
+      {
+        ...source,
+        sizeBytes: Number(source.sizeBytes),
+        owner: source.ownerName,
+        previewCapability: {
+          downloadOnly: false,
+          previewType: 'text',
+          reason: null,
+          renderMode: 'text',
+          supported: true,
+        },
+        createdAt: source.createdAt.toISOString(),
+        updatedAt: source.updatedAt.toISOString(),
+      },
+      { actorUserId: 'admin-1', parentNodeId: null },
+    );
+
+    expect(enqueueObjectVerification).toHaveBeenCalledWith(
+      {
+        actorUserId: 'admin-1',
+        nodeId: copied?.id,
+        objectKey: source.objectKey,
+        workspaceId: source.workspaceId,
+      },
+      tx,
+    );
+    expect(kickQueued).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reuse an object key when the copy source disappeared before its row lock', async () => {
+    const source = storedNode('source-deleted');
+    const create = jest.fn();
+    const tx = {
+      $queryRaw: jest.fn(() => Promise.resolve([])),
+      fileNode: {
+        create,
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+      },
+    };
+    const repository = createRepository({
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+      ),
+      isSqlite: () => false,
+    });
+
+    await expect(
+      repository.copyTree(
+        {
+          ...source,
+          owner: source.ownerName,
+          previewCapability: {
+            downloadOnly: false,
+            previewType: 'text',
+            reason: null,
+            renderMode: 'text',
+            supported: true,
+          },
+          sizeBytes: Number(source.sizeBytes),
+          createdAt: source.createdAt.toISOString(),
+          updatedAt: source.updatedAt.toISOString(),
+        },
+        { parentNodeId: null },
+      ),
+    ).resolves.toBeNull();
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.fileNode.findFirst).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('archives the complete integrity metadata and marks replacement content pending', async () => {
+    const existing = storedNode('node-1');
+    const createVersion = jest.fn(
+      ({ data }: { data: Record<string, unknown> }) => Promise.resolve(data),
+    );
+    const update = jest.fn(({ data }: { data: Record<string, unknown> }) =>
+      Promise.resolve({ ...existing, ...data }),
+    );
+    const tx = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ id: existing.id }])),
+      fileNode: {
+        findUnique: jest.fn(() => Promise.resolve(existing)),
+        update,
+      },
+      fileVersion: {
+        aggregate: jest.fn(() =>
+          Promise.resolve({ _max: { versionNumber: null } }),
+        ),
+        create: createVersion,
+      },
+    };
+    const enqueueObjectVerification = jest.fn(() =>
+      Promise.resolve('task-test'),
+    );
+    const kickQueued = jest.fn();
+    const repository = createRepository(
+      {
+        $transaction: jest.fn(
+          (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+        ),
+        isSqlite: () => false,
+      },
+      { enqueueObjectVerification, kickQueued },
+    );
+
+    await repository.replaceContentObject({
+      id: existing.id,
+      mimeType: 'text/plain',
+      objectKey: 'objects/replacement',
+      sizeBytes: 18,
+    });
+
+    expect(createVersion).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        checksumAlgorithm: 'sha256',
+        checksumValue: 'a'.repeat(64),
+        integrityStatus: 'verified',
+        lastVerifiedAt: new Date(1),
+        verificationFailureCode: null,
+      }) as unknown,
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: existing.id },
+      data: expect.objectContaining({
+        checksumAlgorithm: null,
+        checksumValue: null,
+        integrityStatus: 'pending',
+        lastVerifiedAt: null,
+        objectKey: 'objects/replacement',
+        verificationFailureCode: null,
+      }) as unknown,
+    });
+    expect(enqueueObjectVerification).toHaveBeenCalledWith(
+      {
+        actorUserId: null,
+        nodeId: existing.id,
+        objectKey: 'objects/replacement',
+        workspaceId: 'workspace-default',
+      },
+      tx,
+    );
+    expect(kickQueued).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks and retries content replacement before archiving a concurrent upload object', async () => {
+    const original = storedNode('node-racing');
+    const uploaded = {
+      ...original,
+      objectKey: 'objects/concurrent-upload',
+      sizeBytes: 12n,
+      updatedAt: new Date(2),
+    };
+    const createVersion = jest.fn(
+      ({ data }: { data: Record<string, unknown> }) => Promise.resolve(data),
+    );
+    const firstUpdate = jest.fn(() =>
+      Promise.reject(
+        Object.assign(new Error('write conflict'), { code: 'P2034' }),
+      ),
+    );
+    const secondUpdate = jest.fn(
+      ({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({ ...uploaded, ...data }),
+    );
+    const firstTx = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ id: original.id }])),
+      fileNode: {
+        findUnique: jest.fn(() => Promise.resolve(original)),
+        update: firstUpdate,
+      },
+      fileVersion: {
+        aggregate: jest.fn(() =>
+          Promise.resolve({ _max: { versionNumber: null } }),
+        ),
+        create: createVersion,
+      },
+    };
+    const secondTx = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ id: uploaded.id }])),
+      fileNode: {
+        findUnique: jest.fn(() => Promise.resolve(uploaded)),
+        update: secondUpdate,
+      },
+      fileVersion: {
+        aggregate: jest.fn(() =>
+          Promise.resolve({ _max: { versionNumber: null } }),
+        ),
+        create: createVersion,
+      },
+    };
+    const transactions = [firstTx, secondTx];
+    const transaction = jest.fn(
+      (operation: (client: typeof firstTx) => Promise<unknown>) =>
+        operation(transactions.shift() ?? secondTx),
+    );
+    const repository = createRepository({
+      $transaction: transaction,
+      isSqlite: () => false,
+    });
+
+    await expect(
+      repository.replaceContentObject({
+        id: original.id,
+        mimeType: 'text/plain',
+        objectKey: 'objects/text-edit',
+        sizeBytes: 18,
+      }),
+    ).resolves.toMatchObject({ objectKey: 'objects/text-edit' });
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenNthCalledWith(1, expect.any(Function), {
+      isolationLevel: 'Serializable',
+    });
+    expect(transaction).toHaveBeenNthCalledWith(2, expect.any(Function), {
+      isolationLevel: 'Serializable',
+    });
+    expect(firstTx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      firstTx.fileNode.findUnique.mock.invocationCallOrder[0],
+    );
+    expect(secondTx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      secondTx.fileNode.findUnique.mock.invocationCallOrder[0],
+    );
+    expect(createVersion).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          objectKey: uploaded.objectKey,
+          sizeBytes: uploaded.sizeBytes,
+        }) as unknown,
+      }),
+    );
+    expect(secondUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          objectKey: 'objects/text-edit',
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('pins verification for a pending object when content replacement archives it', async () => {
+    const existing = {
+      ...storedNode('node-pending'),
+      checksumAlgorithm: null,
+      checksumValue: null,
+      integrityStatus: 'pending',
+      lastVerifiedAt: null,
+    };
+    const createVersion = jest.fn(
+      ({ data }: { data: Record<string, unknown> }) => Promise.resolve(data),
+    );
+    const tx = {
+      $queryRaw: jest.fn(() => Promise.resolve([{ id: existing.id }])),
+      fileNode: {
+        findUnique: jest.fn(() => Promise.resolve(existing)),
+        update: jest.fn(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ ...existing, ...data }),
+        ),
+      },
+      fileVersion: {
+        aggregate: jest.fn(() =>
+          Promise.resolve({ _max: { versionNumber: null } }),
+        ),
+        create: createVersion,
+      },
+    };
+    const enqueueObjectVerification = jest.fn(() =>
+      Promise.resolve('task-test'),
+    );
+    const kickQueued = jest.fn();
+    const repository = createRepository(
+      {
+        $transaction: jest.fn(
+          (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+        ),
+        isSqlite: () => false,
+      },
+      { enqueueObjectVerification, kickQueued },
+    );
+
+    await repository.replaceContentObject({
+      id: existing.id,
+      mimeType: 'text/plain',
+      objectKey: 'objects/replacement',
+      sizeBytes: 18,
+    });
+
+    expect(createVersion).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        integrityStatus: 'pending',
+        objectKey: existing.objectKey,
+      }) as unknown,
+    });
+    expect(enqueueObjectVerification).toHaveBeenNthCalledWith(
+      1,
+      {
+        actorUserId: null,
+        nodeId: existing.id,
+        objectKey: existing.objectKey,
+        versionId: expect.any(String) as unknown,
+        workspaceId: existing.workspaceId,
+      },
+      tx,
+    );
+    expect(enqueueObjectVerification).toHaveBeenNthCalledWith(
+      2,
+      {
+        actorUserId: null,
+        nodeId: existing.id,
+        objectKey: 'objects/replacement',
+        workspaceId: existing.workspaceId,
+      },
+      tx,
+    );
+    expect(kickQueued).toHaveBeenCalledTimes(1);
   });
 
   it('releases the active name key when archiving a node', async () => {
@@ -401,16 +892,22 @@ describe('FileNodesRepository', () => {
       Object.assign(stored, data);
       return Promise.resolve(stored);
     });
-    const repository = createRepository({
+    const tx = {
+      $queryRaw: rootOnlyQueryRaw(stored.id),
       fileNode: {
-        findMany: jest.fn(() => Promise.resolve([])),
+        count: jest.fn(() => Promise.resolve(0)),
+        findMany: jest.fn((input: { select?: Record<string, boolean> }) =>
+          Promise.resolve(input.select ? [] : [stored]),
+        ),
         findUnique: jest.fn(() => Promise.resolve(stored)),
         update,
       },
-      $queryRaw: jest.fn(() => Promise.resolve([])),
-      $transaction: jest.fn((operations: Promise<unknown>[]) =>
-        Promise.all(operations),
+    };
+    const repository = createRepository({
+      $transaction: jest.fn(
+        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
       ),
+      isSqlite: () => false,
     });
 
     await repository.archiveTree(stored.id, 'user-1');
@@ -421,618 +918,6 @@ describe('FileNodesRepository', () => {
         directoryKey: 'folder-1',
         nameKey: `archived:${stored.id}`,
         ownerScopeKey: 'user-1',
-      },
-    });
-  });
-
-  it('persists canonical name keys when completing a new upload', async () => {
-    const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
-      Promise.resolve({
-        ...data,
-        archivedBy: null,
-        originalParentNodeId: null,
-        originalPath: null,
-      }),
-    );
-    const tx = {
-      fileNode: {
-        create,
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await repository.completeUpload({
-      fileName: 'Resume.pdf',
-      mimeType: 'application/pdf',
-      objectKey: 'objects/original/v2/2026/07/test.blob',
-      ownerUserId: 'user-1',
-      parentNodeId: 'folder-1',
-      sizeBytes: 32,
-      spaceScope: 'personal',
-      workspaceId: 'workspace-default',
-    });
-
-    expect(create.mock.calls[0]?.[0]).toMatchObject({
-      data: {
-        directoryKey: 'folder-1',
-        nameKey: 'active:resume.pdf',
-        ownerScopeKey: 'user-1',
-      },
-    });
-  });
-
-  it('persists the file node and completion claim in one transaction', async () => {
-    const updateMany = jest.fn(() => Promise.resolve({ count: 1 }));
-    const create = jest.fn(({ data }: { data: Record<string, unknown> }) =>
-      Promise.resolve({
-        ...data,
-        archivedBy: null,
-        originalParentNodeId: null,
-        originalPath: null,
-      }),
-    );
-    const tx = {
-      fileNode: { create },
-      uploadSession: { updateMany },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    const completed = await repository.completeUpload(
-      {
-        fileName: 'Atomic.pdf',
-        mimeType: 'application/pdf',
-        objectKey: 'objects/original/v2/2026/07/atomic.blob',
-        sizeBytes: 32,
-        workspaceId: 'workspace-default',
-      },
-      {
-        sessionId: 'upload-session-1',
-        completionToken: 'completion-token',
-      },
-    );
-
-    expect(updateMany).toHaveBeenCalledWith({
-      where: {
-        id: 'upload-session-1',
-        status: 'running',
-        completionToken: 'completion-token',
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: expect.any(Date) as unknown } },
-        ],
-      },
-      data: {
-        nodeId: completed.node.id,
-        fileName: 'Atomic.pdf',
-        completionStartedAt: expect.any(Date) as unknown,
-        updatedAt: expect.any(Date) as unknown,
-      },
-    });
-  });
-
-  it('rejects a file-node write when its completion claim was superseded', async () => {
-    const tx = {
-      fileNode: {
-        create: jest.fn(({ data }: { data: Record<string, unknown> }) =>
-          Promise.resolve({
-            ...data,
-            archivedBy: null,
-            originalParentNodeId: null,
-            originalPath: null,
-          }),
-        ),
-      },
-      uploadSession: {
-        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await expect(
-      repository.completeUpload(
-        {
-          fileName: 'Atomic.pdf',
-          objectKey: 'objects/original/v2/2026/07/atomic.blob',
-          sizeBytes: 32,
-          workspaceId: 'workspace-default',
-        },
-        {
-          sessionId: 'upload-session-1',
-          completionToken: 'stale-token',
-        },
-      ),
-    ).rejects.toBeInstanceOf(ConflictException);
-  });
-
-  it('rejects an upload target that changed after the upload session started', async () => {
-    const create = jest.fn();
-    const update = jest.fn();
-    const findUnique = jest.fn((input: { where: Record<string, unknown> }) => {
-      void input;
-      return Promise.resolve(null);
-    });
-    const tx = {
-      fileNode: {
-        create,
-        findUnique,
-        update,
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await expect(
-      repository.completeUpload({
-        conflictStrategy: 'overwrite',
-        conflictTargetNodeId: 'node-1',
-        fileName: 'Report.pdf',
-        mimeType: 'application/pdf',
-        objectKey: 'objects/original/v2/2026/07/test.blob',
-        parentNodeId: 'folder-1',
-        sizeBytes: 32,
-        spaceScope: 'workspace',
-        workspaceId: 'workspace-default',
-      }),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(findUnique.mock.calls[0]?.[0]).toEqual({
-      where: { id: 'node-1' },
-    });
-    expect(create).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
-  });
-
-  it('does not overwrite a concurrent same-name insert without a target', async () => {
-    const databaseError = Object.assign(new Error('Unique constraint failed'), {
-      code: 'P2002',
-      meta: { target: 'file_nodes_scope_directory_name_key' },
-    });
-    const existing = {
-      archivedAt: null,
-      id: 'concurrent-node',
-      name: 'Report.pdf',
-      objectKey: 'existing-object',
-      ownerName: 'Workspace User',
-      ownerUserId: null,
-      parentNodeId: null,
-      spaceScope: 'workspace',
-      workspaceId: 'workspace-default',
-    };
-    const create = jest.fn(() => Promise.reject(databaseError));
-    const update = jest.fn(() => Promise.resolve(existing));
-    const tx = {
-      fileNode: {
-        create,
-        update,
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await expect(
-      repository.completeUpload({
-        conflictStrategy: 'overwrite',
-        fileName: 'Report.pdf',
-        objectKey: 'new-object',
-        sizeBytes: 32,
-        workspaceId: 'workspace-default',
-      }),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(update).not.toHaveBeenCalled();
-  });
-
-  it.each(['overwrite', 'version'] as const)(
-    'does not rebind a deleted %s target to a concurrent same-name node',
-    async (conflictStrategy) => {
-      const concurrentNode = {
-        ...storedNode('node-b'),
-        name: 'Report.pdf',
-        nameKey: 'active:report.pdf',
-        objectKey: 'object-b',
-      };
-      const update = jest.fn();
-      const tx = {
-        fileNode: {
-          create: jest.fn(),
-          findUnique: jest.fn(() => Promise.resolve(null)),
-          update,
-        },
-        fileVersion: {
-          aggregate: jest.fn(),
-          create: jest.fn(),
-        },
-      };
-      const repository = createRepository({
-        fileNode: {
-          findMany: jest.fn(() => Promise.resolve([concurrentNode])),
-        },
-        $transaction: jest.fn(
-          (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-        ),
-      });
-
-      await expect(
-        repository.completeUpload({
-          conflictStrategy,
-          conflictTargetNodeId: 'node-a',
-          conflictTargetObjectKey: 'object-a',
-          fileName: 'Report.pdf',
-          objectKey: 'new-object',
-          requestedFileName: 'Report.pdf',
-          sizeBytes: 32,
-          workspaceId: 'workspace-default',
-        }),
-      ).rejects.toMatchObject({
-        response: { code: 'UPLOAD_CONFLICT_TARGET_CHANGED' },
-      });
-      expect(update).not.toHaveBeenCalled();
-      expect(tx.fileVersion.create).not.toHaveBeenCalled();
-    },
-  );
-
-  it('rejects overwrite when the pinned target object changed', async () => {
-    const target = {
-      ...storedNode('node-a'),
-      name: 'Report.pdf',
-      nameKey: 'active:report.pdf',
-      objectKey: 'newer-object',
-    };
-    const update = jest.fn();
-    const tx = {
-      fileNode: {
-        findUnique: jest.fn(() => Promise.resolve(target)),
-        update,
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await expect(
-      repository.completeUpload({
-        conflictStrategy: 'overwrite',
-        conflictTargetNodeId: target.id,
-        conflictTargetObjectKey: 'intent-object',
-        fileName: target.name,
-        objectKey: 'uploaded-object',
-        sizeBytes: 32,
-        workspaceId: target.workspaceId,
-      }),
-    ).rejects.toMatchObject({
-      response: { code: 'UPLOAD_CONFLICT_TARGET_CHANGED' },
-    });
-    expect(update).not.toHaveBeenCalled();
-  });
-
-  it('returns the exact object displaced by overwrite', async () => {
-    const target = {
-      ...storedNode('node-a'),
-      name: 'Report.pdf',
-      nameKey: 'active:report.pdf',
-      objectKey: 'intent-object',
-    };
-    const tx = {
-      fileNode: {
-        findUnique: jest.fn(() => Promise.resolve(target)),
-        update: jest.fn(({ data }: { data: Record<string, unknown> }) =>
-          Promise.resolve({ ...target, ...data }),
-        ),
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    const completed = await repository.completeUpload({
-      conflictStrategy: 'overwrite',
-      conflictTargetNodeId: target.id,
-      conflictTargetObjectKey: target.objectKey ?? undefined,
-      fileName: target.name,
-      objectKey: 'uploaded-object',
-      sizeBytes: 32,
-      workspaceId: target.workspaceId,
-    });
-
-    expect(completed.displacedObjectKey).toBe('intent-object');
-    expect(completed.node.objectKey).toBe('uploaded-object');
-  });
-
-  it('recomputes a rename from the requested name after a name collision', async () => {
-    const nameConflict = Object.assign(new Error('Unique constraint failed'), {
-      code: 'P2002',
-      meta: { target: 'file_nodes_scope_directory_name_key' },
-    });
-    const findMany = jest
-      .fn()
-      .mockResolvedValueOnce([{ name: 'Report.pdf' }])
-      .mockResolvedValueOnce([
-        { name: 'Report.pdf' },
-        { name: 'Report (2).pdf' },
-      ]);
-    const create = jest
-      .fn<
-        Promise<Record<string, unknown>>,
-        [
-          {
-            data: Record<string, unknown> & { name: string };
-          },
-        ]
-      >()
-      .mockRejectedValueOnce(nameConflict)
-      .mockImplementationOnce(({ data }: { data: Record<string, unknown> }) =>
-        Promise.resolve({
-          ...data,
-          archivedBy: null,
-          originalParentNodeId: null,
-          originalPath: null,
-        }),
-      );
-    const updateMany = jest.fn(() => Promise.resolve({ count: 1 }));
-    const tx = {
-      fileNode: { create, findMany },
-      uploadSession: { updateMany },
-    };
-    const transaction = jest.fn(
-      (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-    );
-    const repository = createRepository({ $transaction: transaction });
-
-    const completed = await repository.completeUpload(
-      {
-        conflictStrategy: 'rename',
-        fileName: 'Report (2).pdf',
-        objectKey: 'uploaded-object',
-        parentNodeId: 'folder-1',
-        requestedFileName: 'Report.pdf',
-        sizeBytes: 32,
-        workspaceId: 'workspace-default',
-      },
-      {
-        completionToken: 'completion-token',
-        sessionId: 'upload-session-1',
-      },
-    );
-
-    expect(transaction).toHaveBeenCalledTimes(2);
-    expect(transaction.mock.calls[0]?.[1]).toEqual({
-      isolationLevel: 'Serializable',
-    });
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          directoryKey: 'folder-1',
-          parentNodeId: 'folder-1',
-        }) as unknown,
-      }),
-    );
-    expect(create.mock.calls.map(([input]) => input.data.name)).toEqual([
-      'Report (2).pdf',
-      'Report (3).pdf',
-    ]);
-    expect(completed.node.name).toBe('Report (3).pdf');
-    expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          fileName: 'Report (3).pdf',
-          nodeId: completed.node.id,
-        }) as unknown,
-      }),
-    );
-  });
-
-  it('retries a serializable rename transaction conflict', async () => {
-    const transactionConflict = Object.assign(
-      new Error('write conflict or deadlock'),
-      { code: 'P2034' },
-    );
-    const tx = {
-      fileNode: {
-        findMany: jest.fn(() => Promise.resolve([])),
-        create: jest.fn(({ data }: { data: Record<string, unknown> }) =>
-          Promise.resolve({
-            ...data,
-            archivedBy: null,
-            originalParentNodeId: null,
-            originalPath: null,
-          }),
-        ),
-      },
-    };
-    const transaction = jest
-      .fn()
-      .mockRejectedValueOnce(transactionConflict)
-      .mockImplementationOnce(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      );
-    const repository = createRepository({ $transaction: transaction });
-
-    await expect(
-      repository.completeUpload({
-        conflictStrategy: 'rename',
-        fileName: 'Report.pdf',
-        objectKey: 'uploaded-object',
-        requestedFileName: 'Report.pdf',
-        sizeBytes: 32,
-        workspaceId: 'workspace-default',
-      }),
-    ).resolves.toMatchObject({ node: { name: 'Report.pdf' } });
-    expect(transaction).toHaveBeenCalledTimes(2);
-  });
-
-  it('retries a version-number collision using the latest target object', async () => {
-    const versionConflict = Object.assign(
-      new Error('Unique constraint failed'),
-      {
-        code: 'P2002',
-        meta: { target: ['nodeId', 'versionNumber'] },
-      },
-    );
-    const firstTarget = {
-      ...storedNode('node-a'),
-      name: 'Report.pdf',
-      nameKey: 'active:report.pdf',
-      objectKey: 'first-object',
-    };
-    const secondTarget = {
-      ...firstTarget,
-      objectKey: 'concurrently-uploaded-object',
-    };
-    const findUnique = jest
-      .fn()
-      .mockResolvedValueOnce(firstTarget)
-      .mockResolvedValueOnce(secondTarget);
-    const createVersion = jest
-      .fn<
-        Promise<unknown>,
-        [
-          {
-            data: Record<string, unknown> & { objectKey: string };
-          },
-        ]
-      >()
-      .mockRejectedValueOnce(versionConflict)
-      .mockResolvedValueOnce({ id: 'version-2' });
-    const update = jest.fn(({ data }: { data: Record<string, unknown> }) =>
-      Promise.resolve({ ...secondTarget, ...data }),
-    );
-    const tx = {
-      fileNode: { findUnique, update },
-      fileVersion: {
-        aggregate: jest.fn(() =>
-          Promise.resolve({ _max: { versionNumber: 1 } }),
-        ),
-        create: createVersion,
-      },
-    };
-    const transaction = jest.fn(
-      (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-    );
-    const repository = createRepository({ $transaction: transaction });
-
-    const completed = await repository.completeUpload({
-      conflictStrategy: 'version',
-      conflictTargetNodeId: firstTarget.id,
-      conflictTargetObjectKey: firstTarget.objectKey ?? undefined,
-      fileName: firstTarget.name,
-      objectKey: 'final-upload-object',
-      requestedFileName: firstTarget.name,
-      sizeBytes: 32,
-      workspaceId: firstTarget.workspaceId,
-    });
-
-    expect(transaction).toHaveBeenCalledTimes(2);
-    expect(
-      createVersion.mock.calls.map(([input]) => input.data.objectKey),
-    ).toEqual(['first-object', 'concurrently-uploaded-object']);
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(completed.node.objectKey).toBe('final-upload-object');
-    expect(completed.displacedObjectKey).toBeNull();
-  });
-
-  it('maps an exhausted version-number collision to a stable conflict', async () => {
-    const versionConflict = Object.assign(
-      new Error('Unique constraint failed'),
-      {
-        code: 'P2002',
-        meta: { target: ['nodeId', 'versionNumber'] },
-      },
-    );
-    const target = {
-      ...storedNode('node-a'),
-      name: 'Report.pdf',
-      nameKey: 'active:report.pdf',
-      objectKey: 'current-object',
-    };
-    const createVersion = jest.fn(() => Promise.reject(versionConflict));
-    const tx = {
-      fileNode: {
-        findUnique: jest.fn(() => Promise.resolve(target)),
-        update: jest.fn(),
-      },
-      fileVersion: {
-        aggregate: jest.fn(() =>
-          Promise.resolve({ _max: { versionNumber: 1 } }),
-        ),
-        create: createVersion,
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await expect(
-      repository.completeUpload({
-        conflictStrategy: 'version',
-        conflictTargetNodeId: target.id,
-        fileName: target.name,
-        objectKey: 'final-upload-object',
-        requestedFileName: target.name,
-        sizeBytes: 32,
-        workspaceId: target.workspaceId,
-      }),
-    ).rejects.toMatchObject({
-      response: {
-        code: 'UPLOAD_VERSION_CONFLICT',
-        message: 'File version changed while the upload was being completed',
-      },
-    });
-    expect(createVersion).toHaveBeenCalledTimes(
-      serializableTransactionMaxAttempts,
-    );
-    expect(tx.fileNode.update).not.toHaveBeenCalled();
-  });
-
-  it('maps only skip name races to the structured skipped result', async () => {
-    const nameConflict = Object.assign(new Error('Unique constraint failed'), {
-      code: 'P2002',
-      meta: { target: 'file_nodes_scope_directory_name_key' },
-    });
-    const tx = {
-      fileNode: {
-        create: jest.fn(() => Promise.reject(nameConflict)),
-      },
-    };
-    const repository = createRepository({
-      $transaction: jest.fn(
-        (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
-      ),
-    });
-
-    await expect(
-      repository.completeUpload({
-        conflictStrategy: 'skip',
-        fileName: 'Report.pdf',
-        objectKey: 'uploaded-object',
-        sizeBytes: 32,
-        workspaceId: 'workspace-default',
-      }),
-    ).rejects.toMatchObject({
-      response: {
-        code: 'UPLOAD_CONFLICT_SKIPPED',
-        message: 'File upload skipped because a same-name item exists',
       },
     });
   });

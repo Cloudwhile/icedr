@@ -296,6 +296,13 @@ model FileNode {
   mimeType     String    @map("mime_type")
   sizeBytes    BigInt?   @map("size_bytes")
   objectKey    String?   @map("object_key")
+  checksumAlgorithm String? @map("checksum_algorithm")
+  checksumValue String? @map("checksum_value")
+  integrityStatus String @default("unknown") @map("integrity_status")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
+  verificationFailureCode String? @map("verification_failure_code")
+  integrityAcknowledgedAt DateTime? @map("integrity_acknowledged_at") @db.Timestamptz
+  integrityAcknowledgedBy String? @map("integrity_acknowledged_by")
   ownerName    String    @map("owner_name")
   ownerUserId  String?   @map("owner_user_id")
   starred      Boolean   @default(false)
@@ -307,6 +314,8 @@ model FileNode {
   updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
 
   owner    User?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  parent   FileNode?     @relation("FileNodeHierarchy", fields: [parentNodeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  children FileNode[]    @relation("FileNodeHierarchy")
   versions FileVersion[]
 
   @@index([workspaceId, spaceScope])
@@ -324,6 +333,13 @@ model FileVersion {
   objectKey     String  @map("object_key")
   sizeBytes     BigInt  @map("size_bytes")
   mimeType      String  @map("mime_type")
+  checksumAlgorithm String? @map("checksum_algorithm")
+  checksumValue String? @map("checksum_value")
+  integrityStatus String @default("unknown") @map("integrity_status")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
+  verificationFailureCode String? @map("verification_failure_code")
+  integrityAcknowledgedAt DateTime? @map("integrity_acknowledged_at") @db.Timestamptz
+  integrityAcknowledgedBy String? @map("integrity_acknowledged_by")
   uploadedBy    String  @default("") @map("uploaded_by")
   remark        String  @default("")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -621,4 +637,73 @@ model BlobReconcileTask {
 
   @@index([startedAt], map: "blob_reconcile_tasks_started_at_idx")
   @@map("blob_reconcile_tasks")
+}
+
+model BlobIntegrityTask {
+  activeKey                    String?   @unique(map: "blob_integrity_tasks_active_key_key") @map("active_key")
+  id                           String    @id @map("id")
+  actorUserId                  String?   @map("actor_user_id")
+  status                       String    @map("status")
+  scope                        String    @map("scope")
+  workspaceId                  String?   @map("workspace_id")
+  mode                         String    @map("mode")
+  target                       Json      @default("{}") @map("target")
+  batchSize                    Int       @map("batch_size")
+  concurrency                  Int       @map("concurrency")
+  bandwidthLimitBytesPerSecond BigInt?   @map("bandwidth_limit_bytes_per_second")
+  maxAttempts                  Int       @map("max_attempts")
+  progress                     Json      @default("{}") @map("progress")
+  cursor                       Json      @default("{}") @map("cursor")
+  retryOfTaskId                String?   @map("retry_of_task_id")
+  retryResultIds               Json      @default("[]") @map("retry_result_ids")
+  leaseKey                     String?   @unique(map: "blob_integrity_tasks_lease_key_key") @map("lease_key")
+  leaseOwner                   String?   @map("lease_owner")
+  leaseExpiresAt               DateTime? @map("lease_expires_at") @db.Timestamptz
+  failureCode                  String?   @map("failure_code")
+  failureMessage               String?   @map("failure_message")
+  snapshotAt                   DateTime  @map("snapshot_at") @db.Timestamptz
+  targetCount                  Int?      @map("target_count")
+  createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  startedAt                    DateTime? @map("started_at") @db.Timestamptz
+  finishedAt                   DateTime? @map("finished_at") @db.Timestamptz
+
+  results BlobIntegrityResult[]
+
+  @@index([createdAt], map: "blob_integrity_tasks_created_at_idx")
+  @@index([status, createdAt], map: "blob_integrity_tasks_status_created_at_idx")
+  @@index([status, leaseExpiresAt], map: "blob_integrity_tasks_status_lease_expires_at_idx")
+  @@index([workspaceId, createdAt], map: "blob_integrity_tasks_workspace_created_at_idx")
+  @@index([retryOfTaskId], map: "blob_integrity_tasks_retry_of_task_id_idx")
+  @@map("blob_integrity_tasks")
+}
+
+model BlobIntegrityResult {
+  id             String   @id @map("id")
+  taskId         String   @map("task_id")
+  sourceResultId String?  @map("source_result_id")
+  workspaceId    String   @map("workspace_id")
+  nodeId         String?  @map("node_id")
+  versionId      String?  @map("version_id")
+  targetKey      String   @map("target_key")
+  objectKey      String   @map("object_key")
+  status         String   @map("status")
+  expectedHash   String?  @map("expected_hash")
+  actualHash     String?  @map("actual_hash")
+  expectedSizeBytes BigInt? @map("expected_size_bytes")
+  sizeBytes      BigInt?  @map("size_bytes")
+  bytesRead      BigInt   @default(0) @map("bytes_read")
+  attempts       Int      @default(1) @map("attempts")
+  errorCode      String?  @map("error_code")
+  errorMessage   String?  @map("error_message")
+  checkedAt      DateTime @map("checked_at") @db.Timestamptz
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz
+  acknowledgedBy String? @map("acknowledged_by")
+
+  task BlobIntegrityTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, targetKey], map: "blob_integrity_results_task_target_key")
+  @@index([taskId, status, checkedAt], map: "blob_integrity_results_task_status_checked_at_idx")
+  @@index([workspaceId, nodeId], map: "blob_integrity_results_workspace_node_idx")
+  @@index([sourceResultId], map: "blob_integrity_results_source_result_id_idx")
+  @@map("blob_integrity_results")
 }

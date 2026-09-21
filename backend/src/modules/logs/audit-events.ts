@@ -145,6 +145,13 @@ export const auditedActivityActions = [
   'transfer.expired',
   'transfer.deleted',
   'system.auth_policy_updated',
+  'system.storage_integrity_task_started',
+  'system.storage_integrity_task_completed',
+  'system.storage_integrity_task_failed',
+  'system.storage_integrity_mismatch_detected',
+  'system.storage_integrity_failure_detected',
+  'system.storage_integrity_result_acknowledged',
+  'system.storage_integrity_retry_started',
 ] as const;
 
 export const auditedActivityActionSet = new Set<string>(auditedActivityActions);

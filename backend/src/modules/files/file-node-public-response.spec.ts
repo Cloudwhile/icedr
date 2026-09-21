@@ -12,6 +12,11 @@ function createNode(objectKey: string | null): FileNodeResponse {
     mimeType: 'text/plain',
     sizeBytes: 16,
     objectKey,
+    checksumAlgorithm: 'sha256',
+    checksumValue: 'a'.repeat(64),
+    integrityStatus: 'mismatch',
+    lastVerifiedAt: new Date(1).toISOString(),
+    verificationFailureCode: 'checksum-mismatch',
     owner: 'Mina',
     ownerUserId: 'user-1',
     starred: false,
@@ -39,6 +44,13 @@ describe('toPublicFileNode', () => {
     );
 
     expect(publicNode).not.toHaveProperty('objectKey');
+    expect(publicNode).not.toHaveProperty('checksumValue');
+    expect(publicNode).not.toHaveProperty('verificationFailureCode');
+    expect(publicNode).toMatchObject({
+      checksumAlgorithm: 'sha256',
+      integrityStatus: 'mismatch',
+      lastVerifiedAt: new Date(1).toISOString(),
+    });
     expect(publicNode.hasContent).toBe(true);
   });
 

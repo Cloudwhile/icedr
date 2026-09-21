@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-s3';
 import {
   BadRequestException,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { promises as fileSystem } from 'fs';
@@ -375,6 +376,41 @@ describe('StorageObjectService', () => {
     }
   });
 
+  it.each(['ENOENT', 'ENOTDIR'])(
+    'normalizes the local %s error as a missing object',
+    async (code) => {
+      const { service } = createStorageTestContext();
+      jest
+        .spyOn(fileSystem, 'open')
+        .mockRejectedValue(
+          Object.assign(new Error(`local open failed: ${code}`), { code }),
+        );
+
+      await expect(
+        service.openObjectStream({
+          objectKey: 'local/workspace-default/root/missing.bin',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    },
+  );
+
+  it.each(['EACCES', 'EMFILE', 'EIO'])(
+    'preserves the retryable local %s error',
+    async (code) => {
+      const { service } = createStorageTestContext();
+      const error = Object.assign(new Error(`local open failed: ${code}`), {
+        code,
+      });
+      jest.spyOn(fileSystem, 'open').mockRejectedValue(error);
+
+      await expect(
+        service.openObjectStream({
+          objectKey: 'local/workspace-default/root/unavailable.bin',
+        }),
+      ).rejects.toBe(error);
+    },
+  );
+
   it('streams object storage ranges without creating a signed url', async () => {
     const { objectStorage, service, signer } = createStorageTestContext();
     const lastModified = new Date('2026-07-11T00:00:00.000Z');
@@ -427,6 +463,73 @@ describe('StorageObjectService', () => {
     expect(signer).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[1][0].input.Range).toBe('bytes=2-5');
+  });
+
+  it('cancels an S3 GetObject request before a stream is returned', async () => {
+    const { objectStorage, service } = createStorageTestContext();
+    const controller = new AbortController();
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const send = jest.fn(
+      (command: GetObjectCommand, options?: { abortSignal?: AbortSignal }) =>
+        new Promise<never>((_resolve, reject) => {
+          expect(command).toBeInstanceOf(GetObjectCommand);
+          markStarted?.();
+          const signal = options?.abortSignal;
+          const abortError = new Error('S3 object request aborted');
+          abortError.name = 'AbortError';
+          if (signal?.aborted) {
+            reject(abortError);
+            return;
+          }
+          signal?.addEventListener('abort', () => reject(abortError), {
+            once: true,
+          });
+        }),
+    );
+    jest
+      .spyOn(
+        objectStorage as unknown as {
+          createClient: () => { send: typeof send };
+        },
+        'createClient',
+      )
+      .mockReturnValue({ send });
+
+    const opening = service.openObjectStream({
+      objectKey: 'workspace-default/root/cancelled.bin',
+      signal: controller.signal,
+    });
+    await started;
+    controller.abort();
+
+    await expect(opening).rejects.toMatchObject({ name: 'AbortError' });
+    expect(send).toHaveBeenCalledWith(expect.any(GetObjectCommand), {
+      abortSignal: controller.signal,
+    });
+  });
+
+  it.each([
+    [{ name: 'NoSuchKey' }, 'NoSuchKey'],
+    [{ code: 'NoSuchKey' }, 'NoSuchKey code'],
+    [{ $metadata: { httpStatusCode: 404 } }, 'HTTP 404'],
+  ])('normalizes an S3 missing-object %s response', async (error) => {
+    const { objectStorage, service } = createStorageTestContext();
+    const send = jest.fn().mockRejectedValue(error);
+    jest
+      .spyOn(
+        objectStorage as unknown as {
+          createClient: () => { send: typeof send };
+        },
+        'createClient',
+      )
+      .mockReturnValue({ send });
+
+    await expect(
+      service.openObjectStream({ objectKey: 'workspace/missing.bin' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rejects object storage ranges before requesting the object body', async () => {

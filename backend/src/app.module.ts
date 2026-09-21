@@ -22,6 +22,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { TransfersModule } from './modules/downloads/transfers/transfers.module';
 import { WorkerModule } from './modules/downloads/worker/worker.module';
 import { WorkspacesModule } from './modules/admin/workspaces/workspaces.module';
+import { StorageIntegrityModule } from './modules/admin/storage-integrity/storage-integrity.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { WorkspacesModule } from './modules/admin/workspaces/workspaces.module';
     SharesModule,
     AuditModule,
     StorageModule,
+    StorageIntegrityModule,
     TransfersModule,
     QueueModule,
     WorkerModule,

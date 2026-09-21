@@ -10,15 +10,53 @@ describe('FileNodesService facade', () => {
   let nodes: FileNodesServiceTestHarness['nodes'];
   let repository: FileNodesServiceTestHarness['repository'];
   let service: FileNodesServiceTestHarness['service'];
+  let storage: FileNodesServiceTestHarness['storage'];
 
   beforeEach(() => {
-    ({ nodes, repository, service } = createFileNodesServiceTestHarness());
+    ({ nodes, repository, service, storage } =
+      createFileNodesServiceTestHarness());
   });
 
   it('lists file nodes from the repository', async () => {
     const nodes = await service.listFileNodes('workspace-default');
 
     expect(nodes.some((node) => node.id === 'roadmap')).toBe(true);
+  });
+
+  it('does not make an archived listing wait for automatic trash cleanup', async () => {
+    let finishCleanup!: (value: {
+      nodes: never[];
+      objectKeysToDelete: never[];
+      versions: never[];
+    }) => void;
+    const cleanupPending = new Promise<{
+      nodes: never[];
+      objectKeysToDelete: never[];
+      versions: never[];
+    }>((resolve) => {
+      finishCleanup = resolve;
+    });
+    const cleanupTrash = jest.fn(() => cleanupPending);
+    Object.assign(repository, {
+      cleanupTrash,
+      getPolicy: jest.fn(() =>
+        Promise.resolve({
+          trashRetentionDays: 30,
+          versionRetentionCount: 20,
+          versionRetentionDays: 180,
+          updatedAt: new Date(0).toISOString(),
+        }),
+      ),
+    });
+
+    await expect(
+      service.listFileNodes('workspace-default', null, { state: 'archived' }),
+    ).resolves.toBeDefined();
+    await Promise.resolve();
+
+    expect(cleanupTrash).toHaveBeenCalledTimes(1);
+    finishCleanup({ nodes: [], objectKeysToDelete: [], versions: [] });
+    await new Promise<void>((resolve) => setImmediate(resolve));
   });
 
   it('treats a null personal owner as an explicit list and usage filter', async () => {
@@ -131,5 +169,26 @@ describe('FileNodesService facade', () => {
     await expect(service.getFileNodeContent('large-log')).rejects.toThrow(
       'File is too large to edit as text',
     );
+  });
+
+  it('removes a newly written text object when its metadata transaction fails', async () => {
+    const writeObjectText = jest.fn(() => Promise.resolve());
+    Object.assign(storage, { writeObjectText });
+    const transactionError = new Error('concurrent file update');
+    Object.assign(repository, {
+      replaceContentObject: jest.fn(() => Promise.reject(transactionError)),
+    });
+
+    await expect(
+      service.updateFileNodeContent(
+        'personal-a',
+        { content: 'updated content' },
+        { actorRole: 'member', actorUserId: 'user-a' },
+      ),
+    ).rejects.toBe(transactionError);
+
+    const objectKey = writeObjectText.mock.calls[0]?.[0];
+    expect(objectKey).toEqual(expect.any(String));
+    expect(storage.deleteObject).toHaveBeenCalledWith(objectKey);
   });
 });

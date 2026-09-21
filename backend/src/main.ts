@@ -103,6 +103,7 @@ const unprefixedApiRouteRoots = [
   '/shares',
   '/site',
   '/storage',
+  '/admin/storage-integrity',
   '/system',
   '/transfers',
   '/workspaces',

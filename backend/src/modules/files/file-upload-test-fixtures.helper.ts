@@ -14,29 +14,44 @@ export function createNode(
   input: Omit<
     FileNodeResponse,
     | 'archivedBy'
+    | 'checksumAlgorithm'
+    | 'checksumValue'
+    | 'integrityStatus'
+    | 'lastVerifiedAt'
     | 'originalParentNodeId'
     | 'originalPath'
     | 'ownerUserId'
     | 'previewCapability'
     | 'spaceScope'
+    | 'verificationFailureCode'
   > &
     Partial<
       Pick<
         FileNodeResponse,
         | 'archivedBy'
+        | 'checksumAlgorithm'
+        | 'checksumValue'
+        | 'integrityStatus'
+        | 'lastVerifiedAt'
         | 'originalParentNodeId'
         | 'originalPath'
         | 'ownerUserId'
         | 'spaceScope'
+        | 'verificationFailureCode'
       >
     >,
 ): FileNodeResponse {
   const node = {
     archivedBy: null,
+    checksumAlgorithm: null,
+    checksumValue: null,
+    integrityStatus: 'unknown' as const,
+    lastVerifiedAt: null,
     originalParentNodeId: null,
     originalPath: null,
     ownerUserId: null,
     spaceScope: 'workspace' as FileNodeSpaceScope,
+    verificationFailureCode: null,
     ...input,
   };
   return {
