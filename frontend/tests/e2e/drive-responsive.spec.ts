@@ -231,7 +231,7 @@ test.describe("responsive Drive workspace", () => {
     await expect(emptyState).toBeVisible();
     await expect(hud).toBeVisible();
     await expect(toolbar).toBeVisible();
-    await page.locator(".drive-header").getByRole("button", { name: "Refresh" }).click();
+    await toolbar.getByRole("button", { name: "Refresh" }).click();
 
     const notification = page.locator(".workspace-notification:visible");
     await expect(notification).toContainText("Workspace refreshed");

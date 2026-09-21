@@ -24,10 +24,12 @@ function renderWorkspaceBar(overrides: Partial<WorkspaceBarProps> = {}) {
       onDownloadSelection={noop}
       onNavigateFolder={noop}
       onNavigateRoot={noop}
+      onRefresh={noop}
       onShareSelection={noop}
       onToggleFilters={noop}
       onTriggerUpload={noop}
       palette={palettes.light}
+      refreshing={false}
       rootLabel="Drive"
       selectionCount={0}
       selectionMenuItems={[]}
@@ -46,6 +48,20 @@ describe("WorkspaceBar", () => {
     expect(
       container.querySelector(".drive-toolbar-action-group"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the mobile refresh action available and disables it while refreshing", () => {
+    const { container } = renderWorkspaceBar({ refreshing: true });
+    const mobileToolbar = container.querySelector(
+      ".drive-mobile-workspace-tools",
+    );
+
+    expect(mobileToolbar).not.toBeNull();
+    expect(
+      within(mobileToolbar as HTMLElement).getByRole("button", {
+        name: "app.refresh",
+      }),
+    ).toBeDisabled();
   });
 
   it("uses restore actions for a selected trash item", () => {

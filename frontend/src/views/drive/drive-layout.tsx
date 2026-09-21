@@ -656,10 +656,12 @@ export type WorkspaceBarProps = {
   onClearSelection: () => void;
   onNavigateFolder: (id: string) => void;
   onNavigateRoot: () => void;
+  onRefresh: () => void;
   onShareSelection: () => void;
   onToggleFilters: () => void;
   onTriggerUpload: () => void;
   palette: Palette;
+  refreshing: boolean;
   rootLabel: string;
   selectionCount: number;
   selectionMenuItems: AppMenuItem[];
@@ -678,10 +680,12 @@ export function WorkspaceBar({
   onDownloadSelection,
   onNavigateFolder,
   onNavigateRoot,
+  onRefresh,
   onShareSelection,
   onToggleFilters,
   onTriggerUpload,
   palette,
+  refreshing,
   rootLabel,
   selectionCount,
   selectionMenuItems,
@@ -895,6 +899,9 @@ export function WorkspaceBar({
               </>
             ) : (
               <div className="drive-mobile-toolbar-actions">
+                <ToolButton disabled={refreshing} isPending={refreshing} label={t("app.refresh")} palette={palette} visual="surface" onClick={onRefresh}>
+                  <LocalIcon name="refresh" size={18} />
+                </ToolButton>
                 {isPathView ? (
                   <>
                     <ToolButton className="drive-mobile-upload-trigger" label={t("app.upload")} palette={palette} visual="surface" onClick={onTriggerUpload}>
