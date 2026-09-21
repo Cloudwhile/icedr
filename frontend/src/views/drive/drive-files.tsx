@@ -164,8 +164,6 @@ export function FilesModule({
     itemCount: items.length,
     searchLoading,
   });
-  const createFolderItem = createMenuItems.find((item) => item.value === "new-folder" && !item.disabled && item.onClick);
-  const uploadItem = createMenuItems.find((item) => item.value === "upload" && !item.disabled && item.onClick);
   const blankNavigationItems = [
     currentFolderId ? { icon: <LocalIcon name="arrow_up" size={15} />, label: t("files.parentDirectory"), onClick: onBlankGoUp, value: "go-up" } : null,
     currentFolderId ? { icon: <LocalIcon name="house" size={15} />, label: t("actions.goRoot"), onClick: onBlankGoRoot, value: "go-root" } : null,
@@ -271,22 +269,11 @@ export function FilesModule({
           ...(onClearSearch ? [{ icon: "cross" as const, label: t("app.searchClear"), onClick: onClearSearch }] : []),
           { icon: "refresh", label: t("app.refresh"), onClick: onRetrySearch ?? onBlankRefresh },
         ]
-      : collectionState === "folder-empty"
-        ? [
-            { icon: "arrow_up", label: t("files.parentDirectory"), onClick: onBlankGoUp },
-            { icon: "house", label: t("actions.goRoot"), onClick: onBlankGoRoot },
-            ...(createFolderItem?.onClick ? [{ icon: "folder" as const, label: t("actions.newFolder"), onClick: createFolderItem.onClick }] : []),
-            ...(uploadItem?.onClick ? [{ icon: "upload" as const, label: t("app.upload"), onClick: uploadItem.onClick }] : []),
-          ]
-        : collectionState === "root-empty"
-          ? [
-              ...(createFolderItem?.onClick ? [{ icon: "folder" as const, label: t("actions.newFolder"), onClick: createFolderItem.onClick }] : []),
-              ...(uploadItem?.onClick ? [{ icon: "upload" as const, label: t("app.upload"), onClick: uploadItem.onClick }] : []),
-              { icon: "refresh", label: t("app.refresh"), onClick: onBlankRefresh },
-            ]
-          : collectionState === "trash-empty" || collectionState === "collection-empty"
-            ? [{ icon: "refresh", label: t("app.refresh"), onClick: onBlankRefresh }]
-            : [];
+      : collectionState === "folder-empty" || collectionState === "root-empty"
+        ? []
+        : collectionState === "trash-empty" || collectionState === "collection-empty"
+          ? [{ icon: "refresh", label: t("app.refresh"), onClick: onBlankRefresh }]
+          : [];
 
   return (
     <MotionLayoutGroup>

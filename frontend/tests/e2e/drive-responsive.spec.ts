@@ -98,7 +98,7 @@ test.describe("responsive Drive workspace", () => {
     await expect(reportRow).toBeFocused();
   });
 
-  test("provides contextual root, folder, search, and trash empty-state actions", async ({ page }) => {
+  test("keeps root and folder empty states quiet while retaining recovery actions", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     const api = await mockDriveApi(page, { activeNodes: [] });
     await seedAuthenticatedDrive(page);
@@ -106,14 +106,22 @@ test.describe("responsive Drive workspace", () => {
     await page.goto("/");
     let emptyState = page.locator('.drive-empty-state[data-state="root-empty"]');
     await expect(emptyState).toContainText("This space is empty");
-    await expectEmptyStateActions(emptyState, ["New folder", "Upload", "Refresh"]);
+    await expect(emptyState.locator(".drive-empty-state-icon")).toHaveCount(0);
+    await expect(emptyState.locator(".drive-empty-state-actions")).toHaveCount(0);
+
+    const spaceIcon = page.locator(".drive-space-trigger-icon");
+    await expect(spaceIcon).toHaveCSS("height", "34px");
+    await expect(spaceIcon).toHaveCSS("width", "34px");
+    await expect(spaceIcon.locator("svg")).toHaveAttribute("height", "17");
+    await expect(spaceIcon.locator("svg")).toHaveAttribute("width", "17");
 
     api.activeNodes = [folderNode("folder-empty", "Empty Folder", null)];
     await page.reload();
     await page.getByRole("button", { name: "Empty Folder", exact: true }).click();
     emptyState = page.locator('.drive-empty-state[data-state="folder-empty"]');
     await expect(emptyState).toContainText("This folder is empty");
-    await expectEmptyStateActions(emptyState, ["Up one level", "Go home", "New folder", "Upload"]);
+    await expect(emptyState.locator(".drive-empty-state-icon")).toHaveCount(0);
+    await expect(emptyState.locator(".drive-empty-state-actions")).toHaveCount(0);
 
     api.activeNodes = [reportFile()];
     api.searchItems = [];
@@ -220,9 +228,10 @@ test.describe("responsive Drive workspace", () => {
     const emptyState = page.locator('.drive-empty-state[data-state="root-empty"]');
     const hud = page.getByRole("button", { name: "Transfers" });
     const toolbar = page.locator(".drive-mobile-workspace-tools:visible");
+    await expect(emptyState).toBeVisible();
     await expect(hud).toBeVisible();
     await expect(toolbar).toBeVisible();
-    await emptyState.getByRole("button", { name: "Refresh" }).click();
+    await page.locator(".drive-header").getByRole("button", { name: "Refresh" }).click();
 
     const notification = page.locator(".workspace-notification:visible");
     await expect(notification).toContainText("Workspace refreshed");

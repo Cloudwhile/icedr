@@ -84,4 +84,21 @@ describe("DriveFileCollectionStateView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetry).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ["root-empty", "files.emptyRootTitle"],
+    ["folder-empty", "files.emptyFolderTitle"],
+  ] as const)("keeps a %s state free of decorative icons and actions", (kind, title) => {
+    render(
+      <DriveFileCollectionStateView
+        actions={[]}
+        kind={kind}
+        palette={palettes.light}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(title);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-icon]")).not.toBeInTheDocument();
+  });
 });

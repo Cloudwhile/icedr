@@ -1,6 +1,5 @@
 "use client";
 
-import { MotionSurface } from "@/components/ui/motion";
 import type { LocalIconName, Palette } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
 import { LocalIcon, ToolButton } from "@/views/drive/drive-primitives";
@@ -27,6 +26,7 @@ export function DriveFileCollectionStateView({
   const t = useTranslations();
   const loading = kind === "search-loading";
   const icon = getStateIcon(kind);
+  const showIcon = kind !== "root-empty" && kind !== "folder-empty";
   const title = kind === "error"
     ? error || t("files.loadFailed")
     : kind === "search-loading"
@@ -42,14 +42,15 @@ export function DriveFileCollectionStateView({
               : t("files.emptyTitle");
 
   return (
-    <MotionSurface
+    <div
       className="drive-empty-state"
       data-state={kind}
-      preset="surface"
     >
-      <span className={loading ? "drive-empty-state-icon is-loading" : "drive-empty-state-icon"}>
-        <LocalIcon name={icon} size={28} color={kind === "error" ? palette.danger : palette.subtle} />
-      </span>
+      {showIcon ? (
+        <span className={loading ? "drive-empty-state-icon is-loading" : "drive-empty-state-icon"}>
+          <LocalIcon name={icon} size={28} color={kind === "error" ? palette.danger : palette.subtle} />
+        </span>
+      ) : null}
       <span
         aria-atomic="true"
         aria-busy={loading || undefined}
@@ -79,7 +80,7 @@ export function DriveFileCollectionStateView({
           ))}
         </div>
       ) : null}
-    </MotionSurface>
+    </div>
   );
 }
 

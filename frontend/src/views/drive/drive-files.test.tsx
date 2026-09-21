@@ -32,6 +32,19 @@ const items: DriveItem[] = ["report.txt", "notes.txt", "brief.txt"].map((name, i
 const gridItems = [...items, ...items.map((item, index) => ({ ...item, id: `file-${index + 4}`, name: `copy-${item.name}` }))];
 
 describe("FilesModule", () => {
+  it.each([
+    [null, "files.emptyRootTitle"],
+    ["folder-empty", "files.emptyFolderTitle"],
+  ] as const)("renders a quiet empty state at %s without action buttons or an icon", (currentFolderId, title) => {
+    const { container } = render(
+      <KeyboardFilesHarness currentFolderId={currentFolderId} fileItems={[]} viewMode="grid" />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(title);
+    expect(container.querySelector(".drive-empty-state-actions")).not.toBeInTheDocument();
+    expect(container.querySelector(".drive-empty-state-icon")).not.toBeInTheDocument();
+  });
+
   it("leaves multi-selection actions to the workspace toolbar", () => {
     const { container } = render(
       <FilesModule
@@ -146,14 +159,22 @@ describe("FilesModule", () => {
   });
 });
 
-function KeyboardFilesHarness({ fileItems = items, viewMode }: { fileItems?: DriveItem[]; viewMode: "grid" | "list" }) {
+function KeyboardFilesHarness({
+  currentFolderId = null,
+  fileItems = items,
+  viewMode,
+}: {
+  currentFolderId?: string | null;
+  fileItems?: DriveItem[];
+  viewMode: "grid" | "list";
+}) {
   const [selected, setSelected] = useState<string[]>([]);
   return (
     <FilesModule
       activeNav="drive"
       canPaste={false}
       createMenuItems={[]}
-      currentFolderId={null}
+      currentFolderId={currentFolderId}
       error={null}
       goUp={noop}
       hasQuery={false}

@@ -558,7 +558,9 @@ function SpaceScopeSelector({
         onClick={() => setOpen((value) => !value)}
       >
         <span className="drive-space-trigger-main">
-          <LocalIcon name={activeIcon} size={17} />
+          <span className="drive-space-trigger-icon">
+            <LocalIcon name={activeIcon} size={17} />
+          </span>
           <span className="drive-space-trigger-text">
             <span className="drive-space-trigger-label icedr-truncate">{activeLabel}</span>
             <span className="drive-space-trigger-meta icedr-truncate">{activeMeta}</span>
@@ -763,32 +765,47 @@ export function WorkspaceBar({
             ) : null}
             {isFileListView ? (
               <>
-                <div className="drive-toolbar-group drive-toolbar-action-group">
-                  <ToolButton disabled={!hasActionTarget} label={t("actions.share")} palette={palette} visual="surface" onClick={onShareSelection}>
-                    <LocalIcon name="share2" size={17} />
-                  </ToolButton>
-                  <ToolButton disabled={!hasActionTarget} label={t("actions.download")} palette={palette} visual="surface" onClick={onDownloadSelection}>
-                    <LocalIcon name="download" size={17} />
-                  </ToolButton>
-                  <AppMenu ariaLabel={t("actions.more")} items={selectionMenuItems} palette={palette}>
-                    <button
-                      {...buttonTypeAttr}
-                      aria-label={t("actions.more")}
-                      className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-more-trigger"
-                      style={{
-                        "--tool-bg": palette.surface1,
-                        "--tool-border": palette.hairline,
-                        "--tool-color": palette.subtle,
-                        "--tool-focus": palette.focusRing,
-                        "--tool-hover-bg": palette.surface2,
-                        "--tool-hover-border": palette.hairlineStrong,
-                        "--tool-hover-color": palette.ink,
-                      } as React.CSSProperties}
-                    >
-                      <LocalIcon name="menu7" size={17} />
-                    </button>
-                  </AppMenu>
-                </div>
+                {hasActionTarget ? (
+                  <div className="drive-toolbar-group drive-toolbar-action-group">
+                    {activeNav === "trash" ? (
+                      <>
+                        <ToolButton disabled={trashRestoreAction?.disabled} label={t("actions.restore")} palette={palette} visual="surface" onClick={trashRestoreAction?.onClick}>
+                          <LocalIcon name="refresh" size={17} />
+                        </ToolButton>
+                        <ToolButton disabled={trashDeleteAction?.disabled} label={t("actions.deletePermanently")} palette={palette} tone="danger" visual="surface" onClick={trashDeleteAction?.onClick}>
+                          <LocalIcon name="trash" size={17} />
+                        </ToolButton>
+                      </>
+                    ) : (
+                      <>
+                        <ToolButton label={t("actions.share")} palette={palette} visual="surface" onClick={onShareSelection}>
+                          <LocalIcon name="share2" size={17} />
+                        </ToolButton>
+                        <ToolButton label={t("actions.download")} palette={palette} visual="surface" onClick={onDownloadSelection}>
+                          <LocalIcon name="download" size={17} />
+                        </ToolButton>
+                      </>
+                    )}
+                    <AppMenu ariaLabel={t("actions.more")} items={selectionMenuItems} palette={palette}>
+                      <button
+                        {...buttonTypeAttr}
+                        aria-label={t("actions.more")}
+                        className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface drive-more-trigger"
+                        style={{
+                          "--tool-bg": palette.surface1,
+                          "--tool-border": palette.hairline,
+                          "--tool-color": palette.subtle,
+                          "--tool-focus": palette.focusRing,
+                          "--tool-hover-bg": palette.surface2,
+                          "--tool-hover-border": palette.hairlineStrong,
+                          "--tool-hover-color": palette.ink,
+                        } as React.CSSProperties}
+                      >
+                        <LocalIcon name="menu7" size={17} />
+                      </button>
+                    </AppMenu>
+                  </div>
+                ) : null}
                 <div className="drive-toolbar-spacer" />
                 <div className="drive-toolbar-control-cluster">
                   <div className="drive-toolbar-group drive-toolbar-filter-group">

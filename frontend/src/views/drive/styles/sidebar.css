@@ -69,7 +69,7 @@
   min-width: 0;
 }
 
-.drive-space-trigger-main > span:first-child {
+.drive-space-trigger-icon {
   align-items: center;
   background: linear-gradient(
     180deg,
@@ -78,8 +78,10 @@
   );
   border: 1px solid color-mix(in srgb, var(--drive-ui-blue-600) 18%, var(--drive-ui-line));
   border-radius: var(--drive-ui-radius);
+  box-sizing: border-box;
   color: var(--drive-ui-blue-600);
   display: inline-flex;
+  flex: 0 0 34px;
   height: 34px;
   justify-content: center;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--drive-ui-surface) 78%, transparent), 0 8px 14px color-mix(in srgb, var(--drive-ui-blue-600) 12%, transparent);
