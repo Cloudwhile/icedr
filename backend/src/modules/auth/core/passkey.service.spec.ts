@@ -145,6 +145,7 @@ function createService(bootstrapCompleted = true) {
   } as unknown as BootstrapStateService;
 
   return {
+    authRepository,
     auditService,
     mailService,
     passkeyRepository,
@@ -257,6 +258,7 @@ describe('PasskeyService ceremony options', () => {
       expect.objectContaining({
         flow: 'passkey-registration',
         stepUpTokenHash: 'step-up-hash',
+        sessionTokenHash: 'session-hash',
         userId: 'user_1',
       }),
     );
@@ -311,6 +313,7 @@ describe('PasskeyService ceremony verification', () => {
         authenticatorData: 'authenticator-data',
         clientDataJSON: 'client-data',
         signature: 'signature',
+        userHandle: Buffer.from(user.id).toString('base64url'),
       },
       type: 'public-key',
       clientExtensionResults: {},
@@ -334,6 +337,7 @@ describe('PasskeyService ceremony verification', () => {
         ceremonyId: 'ceremony_1',
         claimToken: 'claim-token',
         counter: 7,
+        expectedCounter: 0n,
         credentialId: 'credential-1',
       }),
     );
@@ -354,7 +358,9 @@ describe('PasskeyService ceremony verification', () => {
           response: {
             id: 'credential-1',
             rawId: 'credential-1',
-            response: {},
+            response: {
+              userHandle: Buffer.from(user.id).toString('base64url'),
+            },
             type: 'public-key',
             clientExtensionResults: {},
           },
@@ -371,6 +377,78 @@ describe('PasskeyService ceremony verification', () => {
       'claim-token',
     );
     expect(passkeyRepository.completeAuthentication).not.toHaveBeenCalled();
+    expect(verifyAuthenticationResponse).toHaveBeenCalled();
+  });
+
+  it.each([null, '', Buffer.from('another-account').toString('base64url')])(
+    'rejects a missing or mismatched discoverable user handle %s',
+    async (userHandle) => {
+      const { passkeyRepository, service } = createService();
+      await expect(
+        service.verifyAuthentication(
+          {
+            ceremonyId: 'ceremony_1',
+            response: {
+              id: 'credential-1',
+              rawId: 'credential-1',
+              type: 'public-key',
+              response: { userHandle },
+              clientExtensionResults: {},
+            },
+          },
+          request(),
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'PASSKEY_VERIFICATION_FAILED' },
+      });
+      expect(verifyAuthenticationResponse).not.toHaveBeenCalled();
+      expect(passkeyRepository.completeAuthentication).not.toHaveBeenCalled();
+      expect(passkeyRepository.recordChallengeFailure).toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    null,
+    {},
+    { id: 'credential-1', type: 'password', response: {} },
+    { id: 'credential-1', type: 'public-key', response: [] },
+  ])(
+    'rejects malformed assertions before looking up a credential',
+    async (response) => {
+      const { passkeyRepository, service } = createService();
+      await expect(
+        service.verifyAuthentication(
+          { ceremonyId: 'ceremony_1', response: response },
+          request(),
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'PASSKEY_VERIFICATION_FAILED' },
+      });
+      expect(
+        passkeyRepository.findPasskeyByCredentialId,
+      ).not.toHaveBeenCalled();
+      expect(verifyAuthenticationResponse).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects Passkey enrollment when Passkey authentication is disabled', async () => {
+    const { authRepository, passkeyRepository, service } = createService();
+    authRepository.getSettings.mockResolvedValue({
+      localEnabled: true,
+      oauthEnabled: false,
+      passkeyEnabled: false,
+      minimumAuthenticationMethods: 1,
+      updatedAt: new Date(0).toISOString(),
+    });
+    await expect(
+      service.createRegistrationOptions(
+        { stepUpToken: 'stepup' },
+        'Bearer session',
+        request(),
+      ),
+    ).rejects.toThrow('disabled');
+    expect(passkeyRepository.createChallenge).not.toHaveBeenCalled();
+    expect(generateRegistrationOptions).not.toHaveBeenCalled();
   });
 
   it('requires user verification and commits registration with its step-up token', async () => {

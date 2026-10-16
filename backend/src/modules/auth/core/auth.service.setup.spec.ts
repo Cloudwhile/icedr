@@ -64,7 +64,7 @@ function createPasswordHash(password: string) {
 }
 
 describe('AuthService setup preflight', () => {
-  it('accepts an OAuth-only setup using the prospective provider', async () => {
+  it('rejects OAuth-only setup until the administrator has enrolled another login method', async () => {
     const context = createContext();
 
     await expect(
@@ -76,7 +76,7 @@ describe('AuthService setup preflight', () => {
         },
         { oauth: configuredOAuth },
       ),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ response: { code: 'AUTH_LAST_LOGIN_METHOD' } });
 
     expect(context.settingsService.oauthConfigured).toHaveBeenCalledWith(
       configuredOAuth,
@@ -84,7 +84,7 @@ describe('AuthService setup preflight', () => {
     expect(context.settingsService.getOAuthSettings).not.toHaveBeenCalled();
   });
 
-  it('accepts a Passkey-only setup using the prospective RP settings', async () => {
+  it('rejects Passkey-only setup before an administrator credential exists', async () => {
     const context = createContext();
 
     await expect(
@@ -96,7 +96,7 @@ describe('AuthService setup preflight', () => {
         },
         { passkey: configuredPasskey },
       ),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ response: { code: 'AUTH_LAST_LOGIN_METHOD' } });
 
     expect(context.settingsService.passkeyConfigured).toHaveBeenCalledWith(
       configuredPasskey,

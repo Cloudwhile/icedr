@@ -5,6 +5,12 @@ import { Prisma } from '../../../generated/prisma/client';
 import { AuthService } from '../../auth/core/auth.service';
 import { StorageService } from '../../storage/storage.service';
 import { SettingsService } from '../settings/settings.service';
+import { assertAccountHasLogin } from '../../auth/core/authentication-method-reader';
+import {
+  assertPasskeyRpIdChangeSafe,
+  readPasskeyRpId,
+} from '../../auth/core/passkey-settings-policy';
+import { retryPrismaSerializableTransaction } from '../../../common/database/serializable-transaction-retry';
 import {
   UpdateAdminAuthPolicyDto,
   UpdateAdminStoragePolicyDto,
@@ -119,64 +125,78 @@ export class AdminPoliciesService {
   }
 
   async updateAuthPolicy(dto: UpdateAdminAuthPolicyDto, actorUserId: string) {
+    const currentPasskey = await this.settingsService.getPasskeySettings();
     const passkey = dto.passkey
       ? await this.settingsService.validatePasskeySettings(dto.passkey)
-      : await this.settingsService.getPasskeySettings();
+      : currentPasskey;
     const auth = await this.authService.validateSettings(dto.auth, { passkey });
 
-    await this.prisma.$transaction(
-      async (transaction) => {
-        if (dto.passkey) {
-          await transaction.setting.upsert({
-            where: {
-              parentMeta_meta: { parentMeta: 'system', meta: 'passkey' },
-            },
+    await retryPrismaSerializableTransaction(() =>
+      this.prisma.$transaction(
+        async (transaction) => {
+          if (dto.passkey) {
+            const previous = await transaction.setting.findUnique({
+              where: {
+                parentMeta_meta: { parentMeta: 'system', meta: 'passkey' },
+              },
+            });
+            await assertPasskeyRpIdChangeSafe(
+              transaction,
+              readPasskeyRpId(previous?.value, currentPasskey.rpId),
+              passkey.rpId,
+            );
+            await transaction.setting.upsert({
+              where: {
+                parentMeta_meta: { parentMeta: 'system', meta: 'passkey' },
+              },
+              create: {
+                parentMeta: 'system',
+                meta: 'passkey',
+                value: passkey,
+              },
+              update: {
+                value: passkey,
+                updatedAt: new Date(),
+              },
+            });
+          }
+          await transaction.authSetting.upsert({
+            where: { settingKey: 'global' },
             create: {
-              parentMeta: 'system',
-              meta: 'passkey',
-              value: passkey,
-            },
-            update: {
-              value: passkey,
-              updatedAt: new Date(),
-            },
-          });
-        }
-        await transaction.authSetting.upsert({
-          where: { settingKey: 'global' },
-          create: {
-            settingKey: 'global',
-            localEnabled: auth.localEnabled,
-            oauthEnabled: auth.oauthEnabled,
-            passkeyEnabled: auth.passkeyEnabled,
-            minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
-          },
-          update: {
-            localEnabled: auth.localEnabled,
-            oauthEnabled: auth.oauthEnabled,
-            passkeyEnabled: auth.passkeyEnabled,
-            minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
-            updatedAt: new Date(),
-          },
-        });
-        await transaction.auditEvent.create({
-          data: {
-            id: this.createAuditId(),
-            action: 'system.auth_policy_updated',
-            actor: 'account',
-            target: 'auth-policy',
-            metadata: {
-              actorUserId,
+              settingKey: 'global',
               localEnabled: auth.localEnabled,
               oauthEnabled: auth.oauthEnabled,
               passkeyEnabled: auth.passkeyEnabled,
               minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
-              result: 'success',
             },
-          },
-        });
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+            update: {
+              localEnabled: auth.localEnabled,
+              oauthEnabled: auth.oauthEnabled,
+              passkeyEnabled: auth.passkeyEnabled,
+              minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
+              updatedAt: new Date(),
+            },
+          });
+          await assertAccountHasLogin(transaction, actorUserId);
+          await transaction.auditEvent.create({
+            data: {
+              id: this.createAuditId(),
+              action: 'system.auth_policy_updated',
+              actor: 'account',
+              target: 'auth-policy',
+              metadata: {
+                actorUserId,
+                localEnabled: auth.localEnabled,
+                oauthEnabled: auth.oauthEnabled,
+                passkeyEnabled: auth.passkeyEnabled,
+                minimumAuthenticationMethods: auth.minimumAuthenticationMethods,
+                result: 'success',
+              },
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
     );
 
     const [savedAuth, savedPasskey] = await Promise.all([

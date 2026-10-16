@@ -2,6 +2,7 @@ import type {
   AuthenticationMethodStatus,
   PasskeyRecord,
 } from "@/lib/drive-api";
+import { getStoredAuthToken } from "@/lib/drive-api-client";
 
 const pendingSecurityActionStorageKey = "icedr.security.pending-action";
 
@@ -31,14 +32,14 @@ export function passkeyRemovalViolatesPolicy(
 
 export function storePendingSecurityAction(action: PasskeySensitiveAction) {
   if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(
-      pendingSecurityActionStorageKey,
-      JSON.stringify(action),
-    );
-  } catch {
-    return;
-  }
+  window.sessionStorage.setItem(
+    pendingSecurityActionStorageKey,
+    JSON.stringify({
+      action,
+      createdAt: Date.now(),
+      sessionToken: getStoredAuthToken(),
+    }),
+  );
 }
 
 export function readPendingSecurityAction(): PasskeySensitiveAction | null {
@@ -46,7 +47,21 @@ export function readPendingSecurityAction(): PasskeySensitiveAction | null {
   try {
     const raw = window.sessionStorage.getItem(pendingSecurityActionStorageKey);
     if (!raw) return null;
-    return parsePendingSecurityAction(JSON.parse(raw) as unknown);
+    const stored = JSON.parse(raw) as {
+      action?: unknown;
+      createdAt?: number;
+      sessionToken?: string;
+    };
+    if (
+      typeof stored.createdAt !== "number" ||
+      !Number.isFinite(stored.createdAt) ||
+      Date.now() - stored.createdAt < 0 ||
+      Date.now() - stored.createdAt >= 10 * 60 * 1000 ||
+      !stored.sessionToken ||
+      stored.sessionToken !== getStoredAuthToken()
+    )
+      return null;
+    return parsePendingSecurityAction(stored.action);
   } catch {
     return null;
   }

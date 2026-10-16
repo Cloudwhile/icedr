@@ -13,7 +13,6 @@ import {
   type AuthenticationStepUp,
 } from "@/lib/drive-api";
 import { getDriveApiErrorMessage } from "@/lib/drive-api-errors";
-import { ActionButton } from "@/components/ui/action-button";
 import {
   AppDialogBody,
   AppDialogFooter,
@@ -59,9 +58,11 @@ export function SecurityReauthDialog({
     () => getAvailableMethods(methods),
     [methods],
   );
-  const [selectedMethod, setSelectedMethod] = useState<ReauthenticationMethod | null>(
+  const [preferredMethod, setSelectedMethod] = useState<ReauthenticationMethod | null>(
     () => availableMethods[0] ?? null,
   );
+  const selectedMethod = preferredMethod && availableMethods.includes(preferredMethod)
+    ? preferredMethod : availableMethods[0] ?? null;
   const [password, setPassword] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -185,24 +186,22 @@ export function SecurityReauthDialog({
             <div
               aria-label={t("settings.reauthSelectMethod")}
               className="icedr-reauth-methods"
-              role="tablist"
+              role="group"
             >
               {availableMethods.map((method) => (
-                <button
-                  aria-selected={selectedMethod === method}
-                  data-active={selectedMethod === method ? "true" : undefined}
+                <ToolButton
+                  active={selectedMethod === method}
                   disabled={busy}
                   key={method}
                   onClick={() => {
                     setSelectedMethod(method);
                     setError(null);
                   }}
-                  role="tab"
-                  type="button"
+                  label={t(getMethodLabelKey(method))}
+                  palette={palette}
                 >
                   <LocalIcon name={getMethodIcon(method)} size={16} />
-                  <span>{t(getMethodLabelKey(method))}</span>
-                </button>
+                </ToolButton>
               ))}
             </div>
 
@@ -274,20 +273,16 @@ export function SecurityReauthDialog({
         ) : null}
       </AppDialogBody>
       <AppDialogFooter>
-        <ActionButton
+        <ToolButton
           disabled={submitDisabled}
-          icon={<LocalIcon name="arrow_right" size={16} />}
           isPending={busy}
           onClick={submit}
           palette={palette}
-          tone="primary"
+          tone="accent"
+          label={selectedMethod === "passkey" ? t("settings.reauthUsePasskey") : selectedMethod === "oauth" ? t("settings.reauthUseOAuth") : t("settings.reauthContinue")}
         >
-          {selectedMethod === "passkey"
-            ? t("settings.reauthUsePasskey")
-            : selectedMethod === "oauth"
-              ? t("settings.reauthUseOAuth")
-              : t("settings.reauthContinue")}
-        </ActionButton>
+          <LocalIcon name="arrow_right" size={16} />
+        </ToolButton>
       </AppDialogFooter>
     </AppDialogShell>
   );

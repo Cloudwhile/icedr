@@ -106,14 +106,13 @@ describe('SetupService', () => {
 
     await context.service.complete({
       ...completeDto,
-      localEnabled: false,
       oauthEnabled: true,
       oauth: oauthInput,
     });
 
     expect(context.authService.validateSettingsForSetup).toHaveBeenCalledWith(
       {
-        localEnabled: false,
+        localEnabled: true,
         oauthEnabled: true,
         passkeyEnabled: false,
       },
@@ -134,14 +133,13 @@ describe('SetupService', () => {
 
     await context.service.complete({
       ...completeDto,
-      localEnabled: false,
       passkeyEnabled: true,
       passkey: passkeyCandidate,
     });
 
     expect(context.authService.validateSettingsForSetup).toHaveBeenCalledWith(
       {
-        localEnabled: false,
+        localEnabled: true,
         oauthEnabled: false,
         passkeyEnabled: true,
       },

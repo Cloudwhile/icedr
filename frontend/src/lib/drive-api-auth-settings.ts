@@ -3,6 +3,12 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
 import {
+  completeOAuthRequestOnce,
+  createOAuthFlowToken,
+  requireOAuthBrowserFlow,
+  storeOAuthBrowserFlow,
+} from '@/features/auth/oauth-browser-flow';
+import {
   requestDriveApi,
   type DriveApiAuthMode,
 } from "./drive-api-client";
@@ -262,29 +268,34 @@ export function testMailSettings(recipientEmail: string) {
   });
 }
 
-export function startOAuthLogin(providerId?: string) {
+export async function startOAuthLogin(providerId?: string, returnTo = '/') {
+  const flowToken = createOAuthFlowToken();
   const query = providerId
     ? `?providerId=${encodeURIComponent(providerId)}`
     : "";
-  return requestDriveApi<OAuthStartResponse>(
+  const response = await requestDriveApi<OAuthStartResponse>(
     `/auth/oauth/start${query}`,
-    undefined,
+    { headers: { 'X-OAuth-Flow': flowToken } },
     publicRequest,
   );
+  storeOAuthBrowserFlow('login', response.authorizationUrl, flowToken, returnTo);
+  return response;
 }
 
-export function exchangeOAuthCode(input: { code: string }) {
-  return requestDriveApi<AuthSession>("/auth/oauth/exchange", {
+export async function exchangeOAuthCode(input: { code: string }) {
+  const flow = requireOAuthBrowserFlow('login');
+  return completeOAuthRequestOnce(`login:${input.code}`, () => requestDriveApi<AuthSession>("/auth/oauth/exchange", {
     method: "POST",
-    body: JSON.stringify(input),
-  }, publicRequest);
+    body: JSON.stringify({ ...input, flowToken: flow.flowToken }),
+  }, publicRequest));
 }
 
-export function completeOAuthCallback(input: { callbackUrl: string }) {
-  return requestDriveApi<OAuthFrontendCallbackResponse>("/auth/oauth/callback", {
+export async function completeOAuthCallback(input: { callbackUrl: string }) {
+  const flow = requireOAuthBrowserFlow(undefined, input.callbackUrl);
+  return completeOAuthRequestOnce(`callback:${input.callbackUrl}`, () => requestDriveApi<OAuthFrontendCallbackResponse>("/auth/oauth/callback", {
     method: "POST",
-    body: JSON.stringify(input),
-  }, publicRequest);
+    body: JSON.stringify({ ...input, flowToken: flow.flowToken }),
+  }, publicRequest));
 }
 
 export function createPasskeyRegistrationOptions(stepUpToken: string) {
@@ -416,18 +427,21 @@ export function reauthenticateWithRecoveryCode(code: string) {
   );
 }
 
-export function startOAuthStepUp(providerId?: string) {
+export async function startOAuthStepUp(providerId?: string) {
   const query = providerId
     ? `?providerId=${encodeURIComponent(providerId)}`
     : "";
-  return requestDriveApi<OAuthStartResponse>(
+  const response = await requestDriveApi<OAuthStartResponse>(
     `/auth/security/reauth/oauth-start${query}`,
     { method: "POST" },
     reauthenticationRequest,
   );
+  storeOAuthBrowserFlow('step-up', response.authorizationUrl, createOAuthFlowToken());
+  return response;
 }
 
-export function exchangeOAuthStepUpCode(code: string) {
+export async function exchangeOAuthStepUpCode(code: string) {
+  requireOAuthBrowserFlow('step-up');
   return requestDriveApi<AuthenticationStepUp>(
     "/auth/security/reauth/oauth-exchange",
     {

@@ -2,12 +2,13 @@
 
 import { useRouter } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
-import { Suspense, useEffect, useState } from "react";
-import { completeOAuthCallback, setStoredAuthToken } from "@/lib/drive-api";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { completeOAuthCallback, setStoredAuthToken, type OAuthFrontendCallbackResponse } from "@/lib/drive-api";
 import type { Palette } from "@/features/file/model";
 import { AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell } from "./drive-shell";
 import { LocalIcon, Surface } from "./drive-primitives";
+import { clearOAuthBrowserFlow, getOAuthLoginReturnTo } from '@/features/auth/oauth-browser-flow';
 export function OAuthCallbackRoute() {
   return <Suspense fallback={null}>
       <LocalizedDriveShell>
@@ -24,16 +25,24 @@ function OAuthCallbackPage({
 }) {
   const router = useRouter();
   const t = useTranslations();
+  const [callbackUrl] = useState(() => window.location.href);
+  const completion = useRef<Promise<OAuthFrontendCallbackResponse> | null>(null);
+  const completed = useRef(false);
   const [status, setStatus] = useState<AuthNoticeStatus>({
     tone: "info",
     message: t("auth.oauthCompleting")
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const callbackUrl = window.location.href;
-    void completeOAuthCallback({
+    let cancelled = false;
+    const returnTo = getOAuthLoginReturnTo();
+    window.history.replaceState(window.history.state, '', window.location.pathname);
+    completion.current ??= completeOAuthCallback({
       callbackUrl
-    }).then(result => {
+    });
+    void completion.current.then(result => {
+      if (cancelled || completed.current) return;
+      completed.current = true;
       if ("flow" in result) {
         const search = new URLSearchParams({
           oauthStepUpCode: result.code,
@@ -44,18 +53,23 @@ function OAuthCallbackPage({
       }
       const session = result;
       setStoredAuthToken(session.token);
+      clearOAuthBrowserFlow();
       setStatus({
         tone: "success",
         message: t("auth.oauthCompleted")
       });
-      router.replace("/");
+      router.replace(returnTo);
     }).catch(() => {
+      if (cancelled || completed.current) return;
+      completed.current = true;
+      clearOAuthBrowserFlow();
       setStatus({
         tone: "error",
         message: t("auth.oauthExchangeFailed")
       });
     });
-  }, [router, t]);
+    return () => { cancelled = true; };
+  }, [callbackUrl, router, t]);
   return <div style={{
     display: "flex",
     minHeight: "100dvh",

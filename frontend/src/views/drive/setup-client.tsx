@@ -126,7 +126,7 @@ function SetupPage({
     email: "",
     password: ""
   });
-  const [localEnabled, setLocalEnabled] = useState(true);
+  const localEnabled = true;
   const [oauthEnabled, setOAuthEnabled] = useState(false);
   const [passkeyEnabled, setPasskeyEnabled] = useState(false);
   const [distributedStorageEnabled, setDistributedStorageEnabled] = useState(false);
@@ -641,7 +641,7 @@ function SetupPage({
               </SetupSection> : null}
 
             {currentStep.id === "auth" ? <SetupSection icon="key" palette={palette} title={t("setup.auth")}>
-                <ToggleRow checked={localEnabled} label={t("admin.localAuth")} onToggle={() => setLocalEnabled(value => !value)} palette={palette} />
+                <ToggleRow checked={localEnabled} disabled label={t("admin.localAuth")} palette={palette} />
                 <ToggleRow checked={oauthEnabled} label={t("admin.oauthAuth")} onToggle={() => setOAuthEnabled(value => !value)} palette={palette} />
                 {oauthEnabled ? <>
                   <AuthPrimaryButton icon="import" palette={palette} onClick={applyIcetowneBlogOAuthPreset}>

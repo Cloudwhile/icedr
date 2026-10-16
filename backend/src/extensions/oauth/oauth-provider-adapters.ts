@@ -12,6 +12,7 @@ import {
 import { createRestrictedLookup } from '../../common/security/outbound-http-policy';
 import type { OAuthSettings } from '../../modules/admin/settings/settings.dto';
 import { validateOAuthHttpUrl } from './oauth-url-policy';
+import { createOAuthProviderScope } from './oauth-provider-identity';
 
 type OAuthTokenResponse = Record<string, unknown> & {
   access_token?: string;
@@ -64,6 +65,7 @@ type OAuthAuthorizationInput = {
   redirectUri: string;
   state: string;
   codeChallenge: string;
+  reauthenticate?: boolean;
 };
 
 type OAuthCodeExchangeInput = {
@@ -72,6 +74,7 @@ type OAuthCodeExchangeInput = {
   url: URL;
   state: string;
   codeVerifier: string;
+  reauthenticate?: boolean;
 };
 
 type OAuthAdapterOptions = {
@@ -341,6 +344,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
         code_challenge: input.codeChallenge,
         code_challenge_method: 'S256',
         state: input.state,
+        ...(input.reauthenticate ? { prompt: 'login', max_age: '0' } : {}),
         ...(input.oauth.audience ? { audience: input.oauth.audience } : {}),
       });
       return validateOAuthHttpUrl(authorizationUrl, {
@@ -363,6 +367,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       const tokens = await oidc.authorizationCodeGrant(client, input.url, {
         expectedState: input.state,
         pkceCodeVerifier: input.codeVerifier,
+        ...(input.reauthenticate ? { maxAge: 0 } : {}),
       });
       const claims = (tokens.claims() ?? {}) as Record<string, unknown>;
       const subject = readStringField(claims, 'sub');
@@ -782,31 +787,6 @@ function ensureOpenIdScope(scopes?: string) {
     tokens.unshift('openid');
   }
   return Array.from(new Set(tokens)).join(' ');
-}
-
-function createOAuthProviderScope(providerProfile: string, issuerUrl: unknown) {
-  const issuerScope = normalizeOAuthIssuerScope(issuerUrl);
-  const prefix = (() => {
-    if (providerProfile === 'icetowne-blog') return 'icetowne-blog';
-    if (providerProfile === 'oidc') return 'oauth';
-    return `oauth:${providerProfile}`;
-  })();
-  return `${prefix}:${issuerScope}`;
-}
-
-function normalizeOAuthIssuerScope(issuerUrl: unknown) {
-  const rawIssuer = readStringValue(issuerUrl);
-  if (!rawIssuer) return 'unknown';
-  try {
-    const issuer = new URL(rawIssuer);
-    issuer.hash = '';
-    issuer.search = '';
-    issuer.protocol = issuer.protocol.toLowerCase();
-    issuer.hostname = issuer.hostname.toLowerCase();
-    return issuer.toString().replace(/\/$/, '');
-  } catch {
-    return rawIssuer.replace(/\/$/, '');
-  }
 }
 
 function parseOAuthIssuer(issuerUrl: string, label: string) {

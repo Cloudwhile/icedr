@@ -199,6 +199,9 @@ function getFormErrorMessageKey(error: DriveApiError): string | null {
   if (error.code === "PASSKEY_NOT_FOUND") {
     return "errors.passkeyNotFound";
   }
+  if (error.code === "PASSKEY_SETTINGS_IN_USE") {
+    return "errors.passkeySettingsInUse";
+  }
   if (error.code === "AUTH_LAST_LOGIN_METHOD") {
     return "errors.lastLoginMethod";
   }

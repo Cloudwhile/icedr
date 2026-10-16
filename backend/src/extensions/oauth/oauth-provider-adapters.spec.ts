@@ -156,6 +156,56 @@ describe('OAuth provider adapters', () => {
     );
   });
 
+  it('requests and verifies fresh OIDC authentication for sensitive operations', async () => {
+    const client = { client: 'fresh-oidc-client' };
+    jest.mocked(oidc.discovery).mockResolvedValue(client as never);
+    jest
+      .mocked(oidc.buildAuthorizationUrl)
+      .mockReturnValue(new URL('https://fresh-issuer.example/authorize'));
+    jest.mocked(oidc.authorizationCodeGrant).mockResolvedValue({
+      claims: () => ({
+        sub: 'subject',
+        email: 'user@example.com',
+        name: 'User',
+        email_verified: true,
+      }),
+    } as never);
+    const adapter = createOAuthProviderAdapter('oidc', { production: false });
+    const oauth = {
+      ...baseOAuth,
+      providerProfile: 'oidc' as const,
+      issuerUrl: 'https://fresh-issuer.example',
+    };
+    await adapter.buildAuthorizationUrl({
+      oauth,
+      redirectUri: oauth.redirectUri,
+      state: 'state',
+      codeChallenge: 'challenge',
+      reauthenticate: true,
+    });
+    expect(oidc.buildAuthorizationUrl).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ prompt: 'login', max_age: '0' }),
+    );
+    await adapter.exchangeCode({
+      oauth,
+      redirectUri: oauth.redirectUri,
+      url: new URL(`${oauth.redirectUri}?state=state&code=code`),
+      state: 'state',
+      codeVerifier: 'verifier',
+      reauthenticate: true,
+    });
+    expect(oidc.authorizationCodeGrant).toHaveBeenCalledWith(
+      client,
+      expect.any(URL),
+      expect.objectContaining({
+        maxAge: 0,
+        expectedState: 'state',
+        pkceCodeVerifier: 'verifier',
+      }),
+    );
+  });
+
   it('maps ICETOWNE BLOG compatibility user fields from nested payloads', () => {
     const user = mapIcetowneBlogUserProfile(
       {

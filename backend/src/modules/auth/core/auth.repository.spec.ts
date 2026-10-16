@@ -73,6 +73,7 @@ function createPrismaMock(queryRows: unknown[] = []) {
     ),
   };
   const tx = {
+    authSession: { create: jest.fn(() => Promise.resolve({})) },
     authOAuthExchangeCode: oauthExchangeCode,
     user: {
       findUnique: jest.fn(() => Promise.resolve(prismaUser)),
@@ -81,6 +82,9 @@ function createPrismaMock(queryRows: unknown[] = []) {
     },
     userIdentity: {
       upsert: userIdentityUpsert,
+      create: jest.fn((args: { data: UserIdentityUpsertArgs['create'] }) =>
+        Promise.resolve(args.data),
+      ),
     },
     userMeta: {
       upsert: jest.fn(() => Promise.resolve({})),
@@ -180,19 +184,19 @@ describe('AuthRepository', () => {
     });
 
     const userCreateArg = prisma.tx.user.create.mock.calls[0]?.[0];
-    const identityUpsertArg = prisma.tx.userIdentity.upsert.mock.calls[0]?.[0];
+    const identityCreateArg = prisma.tx.userIdentity.create.mock.calls[0]?.[0];
 
     expect(userCreateArg?.data.email).toBe(
       'icetowne-blog-abcd1234+fallback123@identity.local',
     );
-    expect(identityUpsertArg?.create).toEqual(
+    expect(identityCreateArg?.data).toEqual(
       expect.objectContaining({
         emailSource: 'derived',
         provider: 'icetowne-blog:https://issuer.example',
         providerSubject: 'subject-1',
       }),
     );
-    expect(identityUpsertArg?.update.emailSource).toBe('derived');
+    expect(prisma.tx.userIdentity.upsert).not.toHaveBeenCalled();
     expect(user.emailSource).toBe('derived');
   });
 
@@ -255,8 +259,16 @@ describe('AuthRepository', () => {
     const repository = new AuthRepository(prisma as never);
 
     const results = await Promise.all([
-      repository.consumeOAuthLoginExchangeCode('exchange-code-hash'),
-      repository.consumeOAuthLoginExchangeCode('exchange-code-hash'),
+      repository.consumeOAuthLoginExchangeCode(
+        'exchange-code-hash',
+        'browser-binding',
+        { tokenHash: 'session-1', expiresAt: row.expiresAt.toISOString() },
+      ),
+      repository.consumeOAuthLoginExchangeCode(
+        'exchange-code-hash',
+        'browser-binding',
+        { tokenHash: 'session-2', expiresAt: row.expiresAt.toISOString() },
+      ),
     ]);
 
     expect(results.filter(Boolean)).toHaveLength(1);
@@ -276,10 +288,12 @@ describe('AuthRepository', () => {
       codeHash: 'exchange-code-hash',
       flow: 'login',
       usedAt: null,
+      sessionTokenHash: 'browser-binding',
     });
     expect(updateArgs?.where.expiresAt.gt).toBeInstanceOf(Date);
     expect(updateArgs?.data.usedAt).toBeInstanceOf(Date);
     expect(prisma.tx.authOAuthExchangeCode.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.tx.authSession.create).toHaveBeenCalledTimes(1);
   });
 
   it('reports an unused setup administrator email as available', async () => {

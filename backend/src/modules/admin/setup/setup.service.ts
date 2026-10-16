@@ -165,6 +165,11 @@ export class SetupService {
         'At least one authentication method must be enabled',
       );
     }
+    if (!dto.localEnabled)
+      throw new BadRequestException({
+        code: 'AUTH_LAST_LOGIN_METHOD',
+        message: 'Password login must remain enabled during initial setup',
+      });
   }
 
   private authSettings(dto: CompleteSetupDto) {

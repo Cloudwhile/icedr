@@ -136,8 +136,8 @@ export class OAuthSettingsController {
     @Body() dto: UpdateOAuthSettingsDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
-    return this.settingsService.createOAuthProvider(dto);
+    const actor = await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.createOAuthProvider(dto, actor.user.id);
   }
 
   @Patch('providers/:id')
@@ -146,8 +146,8 @@ export class OAuthSettingsController {
     @Body() dto: UpdateOAuthSettingsDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
-    return this.settingsService.updateOAuthProvider(id, dto);
+    const actor = await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.updateOAuthProvider(id, dto, actor.user.id);
   }
 
   @Post('providers/:id/activate')
@@ -155,8 +155,12 @@ export class OAuthSettingsController {
     @Param('id') id: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
-    return this.settingsService.updateOAuthProvider(id, { enabled: true });
+    const actor = await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.updateOAuthProvider(
+      id,
+      { enabled: true },
+      actor.user.id,
+    );
   }
 
   @Delete('providers/:id')
@@ -164,8 +168,8 @@ export class OAuthSettingsController {
     @Param('id') id: string,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
-    return this.settingsService.deleteOAuthProvider(id);
+    const actor = await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.deleteOAuthProvider(id, actor.user.id);
   }
 
   @Patch()
@@ -173,8 +177,8 @@ export class OAuthSettingsController {
     @Body() dto: UpdateOAuthSettingsDto,
     @Headers('authorization') authorization?: string,
   ) {
-    await this.adminGuard.requireAdminSession(authorization);
-    return this.settingsService.updateOAuthSettings(dto);
+    const actor = await this.adminGuard.requireAdminSession(authorization);
+    return this.settingsService.updateOAuthSettings(dto, actor.user.id);
   }
 }
 

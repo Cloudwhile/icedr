@@ -50,6 +50,15 @@ import {
 import { AuthAuditService, type AuthAuditMethod } from './auth-audit.service';
 import { hashPassword, verifyPasswordHash } from './password-security';
 import { PasskeyOAuthStepUpExchangeDto } from './passkey.dto';
+import { getOAuthIdentityProvider } from '../../../extensions/oauth/oauth-provider-identity';
+import { validateAuthMethodConfiguration } from './auth-settings-policy';
+import {
+  assertOAuthCallbackTarget,
+  assertOAuthUserPolicy,
+  createOAuthProviderSnapshot,
+  oauthProviderSnapshotMatchesSettings,
+  requireOAuthFlowToken,
+} from './oauth-flow-policy';
 
 const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
 const resetTtlMs = 15 * 60 * 1000;
@@ -87,8 +96,8 @@ export class AuthService {
     dto: UpdateAuthSettingsDto,
     authorization?: string,
   ): Promise<AuthSettingsResponse> {
-    await this.requireAdminSession(authorization);
-    return this.persistAuthSettings(dto);
+    const admin = await this.requireAdminSession(authorization);
+    return this.persistAuthSettings(dto, admin.user.id);
   }
 
   async updateSettingsForSetup(
@@ -97,6 +106,7 @@ export class AuthService {
     if (await this.settingsService.bootstrapCompleted()) {
       throw new ForbiddenException('Setup has already been completed');
     }
+    await this.validateSettingsForSetup(dto);
     return this.persistAuthSettings(dto);
   }
 
@@ -120,14 +130,23 @@ export class AuthService {
     if (await this.settingsService.bootstrapCompleted()) {
       throw new ForbiddenException('Setup has already been completed');
     }
-    await this.prepareAuthSettings(dto, candidates);
+    const settings = await this.prepareAuthSettings(dto, candidates);
+    if (!settings.localEnabled)
+      throw new BadRequestException({
+        code: 'AUTH_LAST_LOGIN_METHOD',
+        message:
+          'Keep password login enabled until the administrator has enrolled another login method',
+      });
   }
 
   private async persistAuthSettings(
     dto: UpdateAuthSettingsDto,
+    actorUserId?: string,
   ): Promise<AuthSettingsResponse> {
     const next = await this.prepareAuthSettings(dto);
-    return this.withConfigState(await this.authRepository.updateSettings(next));
+    return this.withConfigState(
+      await this.authRepository.updateSettings(next, actorUserId),
+    );
   }
 
   private async prepareAuthSettings(
@@ -143,8 +162,11 @@ export class AuthService {
       ...dto,
       updatedAt: new Date().toISOString(),
     };
-    await this.assertMethodConfiguration(next, candidates);
-    this.assertAtLeastOneMethod(next);
+    await validateAuthMethodConfiguration(
+      next,
+      this.settingsService,
+      candidates,
+    );
     return next;
   }
 
@@ -366,13 +388,21 @@ export class AuthService {
     };
   }
 
-  async startOAuthLogin(providerId?: string): Promise<OAuthStartResponse> {
+  async startOAuthLogin(
+    providerId?: string,
+    flowToken?: string,
+  ): Promise<OAuthStartResponse> {
     await this.bootstrapState.requireCompleted();
     const settings = await this.authRepository.getSettings();
     if (!settings.oauthEnabled) {
       throw new ForbiddenException('OAuth login is disabled');
     }
-    return this.createOAuthStart(providerId);
+    return this.createOAuthStart(providerId, {
+      flow: 'login',
+      userId: null,
+      sessionTokenHash: this.hashToken(requireOAuthFlowToken(flowToken)),
+      purpose: null,
+    });
   }
 
   async startOAuthStepUp(
@@ -384,7 +414,22 @@ export class AuthService {
     if (!settings.oauthEnabled) {
       throw new ForbiddenException('OAuth login is disabled');
     }
-    return this.createOAuthStart(providerId, {
+    const linked = await this.authRepository.listOAuthIdentityProviders(
+      session.user.id,
+    );
+    const providers = await this.settingsService.getOAuthProviderSettings();
+    const provider = providers.find(
+      (item) =>
+        (!providerId || item.id === providerId) &&
+        this.settingsService.oauthConfigured(item) &&
+        linked.includes(getOAuthIdentityProvider(item)),
+    );
+    if (!provider)
+      throw new ForbiddenException({
+        code: 'AUTH_REAUTH_METHOD_UNAVAILABLE',
+        message: 'No linked OAuth provider is available for reauthentication',
+      });
+    return this.createOAuthStart(provider.id, {
       flow: 'step-up',
       userId: session.user.id,
       sessionTokenHash: session.tokenHash,
@@ -392,8 +437,14 @@ export class AuthService {
     });
   }
 
-  async handleOAuthCallback(currentUrl: string) {
+  async handleOAuthCallback(
+    currentUrl: string,
+    browserFlow?: { flowToken?: string },
+  ) {
     await this.bootstrapState.requireCompleted();
+    if (!(await this.authRepository.getSettings()).oauthEnabled) {
+      throw new ForbiddenException('OAuth login is disabled');
+    }
     const url = new URL(currentUrl);
     const state = url.searchParams.get('state');
     if (!state) throw new UnauthorizedException('OAuth state is required');
@@ -408,12 +459,20 @@ export class AuthService {
     if (storedState.flow !== 'login' && storedState.flow !== 'step-up') {
       throw new UnauthorizedException('OAuth state flow is invalid');
     }
+    if (
+      browserFlow &&
+      storedState.flow === 'login' &&
+      this.hashToken(requireOAuthFlowToken(browserFlow.flowToken)) !==
+        storedState.sessionTokenHash
+    ) {
+      throw new UnauthorizedException('OAuth browser flow does not match');
+    }
 
     const oauth = await this.resolveOAuthStateProvider(
       storedState.providerSnapshot,
       storedState.redirectUri,
     );
-    this.assertOAuthCallbackTarget(url, storedState.redirectUri);
+    assertOAuthCallbackTarget(url, storedState.redirectUri);
     const claimed = await this.authRepository.markOAuthStateUsed(state);
     if (!claimed) {
       throw new UnauthorizedException('OAuth state is invalid');
@@ -425,9 +484,10 @@ export class AuthService {
       url,
       state,
       codeVerifier: storedState.codeVerifier,
+      reauthenticate: storedState.flow === 'step-up',
     });
 
-    this.assertOAuthUserPolicy(oauth, oauthUser);
+    assertOAuthUserPolicy(oauth, oauthUser);
     let user = await this.authRepository.findUserByProviderIdentity(
       oauthUser.provider,
       oauthUser.subject,
@@ -492,6 +552,7 @@ export class AuthService {
     await this.authRepository.createOAuthExchangeCode({
       codeHash: this.hashToken(exchangeCode),
       userId: user.id,
+      sessionTokenHash: storedState.sessionTokenHash,
       expiresAt: new Date(Date.now() + oauthExchangeTtlMs).toISOString(),
     });
     return {
@@ -507,6 +568,9 @@ export class AuthService {
     request?: Request,
   ) {
     const session = await this.requireSession(authorization);
+    if (!(await this.authRepository.getSettings()).oauthEnabled) {
+      throw new ForbiddenException('OAuth login is disabled');
+    }
     const token = this.createToken('stepup');
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const consumed = await this.authRepository.consumeOAuthStepUpExchangeCode({
@@ -543,12 +607,16 @@ export class AuthService {
   async completeFrontendOAuthCallback(
     callbackUrl: string,
     request?: Request,
+    flowToken?: string,
   ): Promise<OAuthFrontendCallbackResponse> {
-    const result = await this.handleOAuthCallback(callbackUrl);
+    const result = await this.handleOAuthCallback(callbackUrl, { flowToken });
     if (result.flow === 'step-up') {
       return { flow: result.flow, code: result.code };
     }
-    return this.exchangeOAuthCode({ code: result.code }, request);
+    return this.exchangeOAuthCode(
+      { code: result.code, flowToken: requireOAuthFlowToken(flowToken) },
+      request,
+    );
   }
 
   async exchangeOAuthCode(
@@ -556,15 +624,23 @@ export class AuthService {
     request?: Request,
   ): Promise<OAuthExchangeResponse> {
     await this.bootstrapState.requireCompleted();
+    if (!(await this.authRepository.getSettings()).oauthEnabled) {
+      throw new ForbiddenException('OAuth login is disabled');
+    }
     const codeHash = this.hashToken(dto.code);
-    const code =
-      await this.authRepository.consumeOAuthLoginExchangeCode(codeHash);
+    const token = this.createToken('sess');
+    const expiresAt = new Date(Date.now() + sessionTtlMs).toISOString();
+    const code = await this.authRepository.consumeOAuthLoginExchangeCode(
+      codeHash,
+      this.hashToken(requireOAuthFlowToken(dto.flowToken)),
+      { tokenHash: this.hashToken(token), expiresAt },
+    );
     if (!code) {
       throw new UnauthorizedException('OAuth exchange code is invalid');
     }
     const user = await this.authRepository.findUserById(code.userId);
     if (!user) throw new UnauthorizedException('OAuth user is unavailable');
-    const session = await this.createSession(user);
+    const session = { token, expiresAt, user: this.toUserResponse(user) };
     await this.recordAuthAudit('auth.login', session.user, {
       method: 'oauth',
       request,
@@ -594,10 +670,10 @@ export class AuthService {
   private async createOAuthStart(
     providerId?: string,
     binding?: {
-      flow: 'step-up';
-      userId: string;
+      flow: 'login' | 'step-up';
+      userId: string | null;
       sessionTokenHash: string;
-      purpose: string;
+      purpose: string | null;
     },
   ): Promise<OAuthStartResponse> {
     const settings = await this.authRepository.getSettings();
@@ -618,6 +694,7 @@ export class AuthService {
       redirectUri,
       state,
       codeChallenge,
+      reauthenticate: binding?.flow === 'step-up',
     });
     await this.authRepository.createOAuthState({
       state,
@@ -628,7 +705,7 @@ export class AuthService {
       purpose: binding?.purpose ?? null,
       codeVerifier,
       redirectUri,
-      providerSnapshot: this.createOAuthProviderSnapshot(oauth, redirectUri),
+      providerSnapshot: createOAuthProviderSnapshot(oauth, redirectUri),
       expiresAt: new Date(Date.now() + oauthStateTtlMs).toISOString(),
     });
     return { authorizationUrl: authorizationUrl.toString() };
@@ -658,54 +735,6 @@ export class AuthService {
     });
   }
 
-  private assertOAuthCallbackTarget(url: URL, redirectUri: string) {
-    let expected: URL;
-    try {
-      expected = new URL(redirectUri);
-    } catch {
-      throw new UnauthorizedException('OAuth callback target is invalid');
-    }
-    if (
-      url.origin !== expected.origin ||
-      url.pathname !== expected.pathname ||
-      expected.username ||
-      expected.password ||
-      expected.hash ||
-      url.username ||
-      url.password ||
-      url.hash
-    ) {
-      throw new UnauthorizedException('OAuth callback target is invalid');
-    }
-    for (const [key, value] of expected.searchParams) {
-      if (!url.searchParams.getAll(key).includes(value)) {
-        throw new UnauthorizedException('OAuth callback target is invalid');
-      }
-    }
-  }
-
-  private createOAuthProviderSnapshot(
-    oauth: OAuthSettings,
-    redirectUri: string,
-  ): OAuthProviderSnapshot {
-    const snapshot: OAuthProviderSnapshot = {
-      enabled: oauth.enabled,
-      providerKey: oauth.providerKey,
-      displayName: oauth.displayName,
-      providerProfile: oauth.providerProfile,
-      issuerUrl: oauth.issuerUrl,
-      authorizationUrl: oauth.authorizationUrl,
-      tokenUrl: oauth.tokenUrl,
-      userinfoUrl: oauth.userinfoUrl,
-      clientId: oauth.clientId,
-      audience: oauth.audience,
-      scopes: oauth.scopes,
-      redirectUri,
-    };
-    if (oauth.id) snapshot.id = oauth.id;
-    return snapshot;
-  }
-
   private async resolveOAuthStateProvider(
     providerSnapshot: OAuthProviderSnapshot | null,
     redirectUri: string,
@@ -721,10 +750,10 @@ export class AuthService {
     }
     if (
       !providerSnapshot.enabled ||
-      !this.oauthProviderSnapshotMatchesSettings(
-        providerSnapshot,
-        currentSettings,
-      )
+      !oauthProviderSnapshotMatchesSettings(providerSnapshot, {
+        ...currentSettings,
+        redirectUri: this.resolveOAuthRedirectUri(currentSettings),
+      })
     ) {
       throw new UnauthorizedException('OAuth state provider is invalid');
     }
@@ -736,45 +765,6 @@ export class AuthService {
     };
   }
 
-  private oauthProviderSnapshotMatchesSettings(
-    providerSnapshot: OAuthProviderSnapshot,
-    currentSettings: OAuthSettings,
-  ) {
-    return (
-      (!providerSnapshot.id || providerSnapshot.id === currentSettings.id) &&
-      providerSnapshot.providerKey === currentSettings.providerKey &&
-      providerSnapshot.providerProfile === currentSettings.providerProfile &&
-      providerSnapshot.issuerUrl === currentSettings.issuerUrl &&
-      providerSnapshot.authorizationUrl === currentSettings.authorizationUrl &&
-      providerSnapshot.tokenUrl === currentSettings.tokenUrl &&
-      providerSnapshot.userinfoUrl === currentSettings.userinfoUrl &&
-      providerSnapshot.clientId === currentSettings.clientId
-    );
-  }
-
-  private assertOAuthUserPolicy(
-    oauth: OAuthSettings,
-    oauthUser: {
-      email: string;
-      emailSource: 'provider' | 'derived';
-      emailVerified: boolean;
-    },
-  ) {
-    if (
-      oauth.requireVerifiedEmail === true &&
-      (oauthUser.emailSource !== 'provider' || !oauthUser.emailVerified)
-    ) {
-      throw new ForbiddenException(
-        'OAuth provider did not return a verified email',
-      );
-    }
-    const allowedDomains = oauth.allowedEmailDomains ?? [];
-    if (allowedDomains.length === 0) return;
-    const domain = oauthUser.email.split('@').pop()?.trim().toLowerCase() ?? '';
-    if (!allowedDomains.includes(domain)) {
-      throw new ForbiddenException('OAuth email domain is not allowed');
-    }
-  }
   private resolveOAuthRedirectUri(oauth: { redirectUri: string }) {
     if (oauth.redirectUri) return oauth.redirectUri;
     const base = (
@@ -836,50 +826,6 @@ export class AuthService {
     }
 
     return reset;
-  }
-
-  private async assertMethodConfiguration(
-    settings: AuthSettings,
-    candidates: {
-      oauth?: OAuthSettings;
-      passkey?: PasskeySettings;
-    } = {},
-  ) {
-    const oauth = settings.oauthEnabled
-      ? (candidates.oauth ?? (await this.settingsService.getOAuthSettings()))
-      : undefined;
-    const passkey = settings.passkeyEnabled
-      ? (candidates.passkey ??
-        (await this.settingsService.getPasskeySettings()))
-      : undefined;
-    if (
-      settings.oauthEnabled &&
-      (!oauth || !this.settingsService.oauthConfigured(oauth))
-    ) {
-      throw new BadRequestException(
-        'OAuth must be configured before enabling it',
-      );
-    }
-    if (
-      settings.passkeyEnabled &&
-      (!passkey || !this.settingsService.passkeyConfigured(passkey))
-    ) {
-      throw new BadRequestException(
-        'Passkey must be configured before enabling it',
-      );
-    }
-  }
-
-  private assertAtLeastOneMethod(settings: AuthSettings) {
-    if (
-      !settings.localEnabled &&
-      !settings.oauthEnabled &&
-      !settings.passkeyEnabled
-    ) {
-      throw new BadRequestException(
-        'At least one authentication method must be enabled',
-      );
-    }
   }
 
   private async resolveSetupAdmin(email: string) {

@@ -75,7 +75,7 @@ function createService(
     getSettings: jest.fn(() =>
       Promise.resolve({
         localEnabled: true,
-        oauthEnabled: false,
+        oauthEnabled: true,
         passkeyEnabled: false,
         updatedAt: new Date(0).toISOString(),
       }),
@@ -587,7 +587,7 @@ describe('AuthService', () => {
       exchangeCode: jest.fn(),
     });
 
-    await service.startOAuthLogin();
+    await service.startOAuthLogin(undefined, 'a'.repeat(64));
 
     const createdState = repository.createOAuthState.mock.calls[0]?.[0] as {
       providerSnapshot: Record<string, unknown>;
@@ -649,8 +649,14 @@ describe('AuthService', () => {
     repository.findUserById.mockResolvedValue(createUserResponse());
 
     const results = await Promise.allSettled([
-      service.exchangeOAuthCode({ code: 'one-time-code' }),
-      service.exchangeOAuthCode({ code: 'one-time-code' }),
+      service.exchangeOAuthCode({
+        code: 'one-time-code',
+        flowToken: 'a'.repeat(64),
+      }),
+      service.exchangeOAuthCode({
+        code: 'one-time-code',
+        flowToken: 'a'.repeat(64),
+      }),
     ]);
 
     expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(
@@ -660,7 +666,15 @@ describe('AuthService', () => {
       1,
     );
     expect(repository.findUserById).toHaveBeenCalledTimes(1);
-    expect(repository.createSession).toHaveBeenCalledTimes(1);
+    expect(repository.createSession).not.toHaveBeenCalled();
+    const expectedTokenHash = expect.any(String) as unknown as string;
+    expect(repository.consumeOAuthLoginExchangeCode).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({
+        tokenHash: expectedTokenHash,
+      }),
+    );
   });
 
   it('uses the OAuth provider snapshot stored with the state during callbacks', async () => {

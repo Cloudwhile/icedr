@@ -8,6 +8,11 @@ import { PrismaService } from '../../../database/prisma.service';
 import { validateOAuthHttpUrl } from '../../../extensions/oauth/oauth-url-policy';
 import { StorageService } from '../../storage/storage.service';
 import { AuthRepository } from '../../auth/core/auth.repository';
+import { assertAccountHasLogin } from '../../auth/core/authentication-method-reader';
+import {
+  assertPasskeyRpIdChangeSafe,
+  readPasskeyRpId,
+} from '../../auth/core/passkey-settings-policy';
 import {
   AdminSettingsResponse,
   DatabaseProfile,
@@ -314,7 +319,7 @@ export class SettingsService {
       production: Boolean(this.config.get<boolean>('app.production')),
     });
   }
-  async createOAuthProvider(dto: UpdateOAuthSettingsDto) {
+  async createOAuthProvider(dto: UpdateOAuthSettingsDto, actorUserId?: string) {
     const providerKey = normalizeOAuthProviderKey(
       dto.providerKey ?? defaultOAuthProviderKeyForProfile(dto.providerProfile),
     );
@@ -347,11 +352,15 @@ export class SettingsService {
       [...providers, provider],
       provider.enabled ? provider.id : undefined,
     );
-    await this.saveOAuthProviders(nextProviders);
+    await this.saveOAuthProviders(nextProviders, actorUserId);
     return this.toOAuthResponse(provider);
   }
 
-  async updateOAuthProvider(id: string, dto: UpdateOAuthSettingsDto) {
+  async updateOAuthProvider(
+    id: string,
+    dto: UpdateOAuthSettingsDto,
+    actorUserId?: string,
+  ) {
     const providerId = id.trim();
     if (!providerId)
       throw new BadRequestException('OAuth provider ID is required');
@@ -367,11 +376,11 @@ export class SettingsService {
       next.enabled ? next.id : undefined,
     );
     await this.assertOAuthProviderRemovalSafe(providers, nextProviders);
-    await this.saveOAuthProviders(nextProviders);
+    await this.saveOAuthProviders(nextProviders, actorUserId);
     return this.toOAuthResponse(next);
   }
 
-  async deleteOAuthProvider(id: string) {
+  async deleteOAuthProvider(id: string, actorUserId?: string) {
     const providerId = id.trim();
     if (!providerId)
       throw new BadRequestException('OAuth provider ID is required');
@@ -383,13 +392,13 @@ export class SettingsService {
       throw new BadRequestException('OAuth provider was not found');
     }
     await this.assertOAuthProviderRemovalSafe(providers, nextProviders);
-    await this.saveOAuthProviders(nextProviders);
+    await this.saveOAuthProviders(nextProviders, actorUserId);
     return { ok: true };
   }
 
-  async updateOAuthSettings(dto: UpdateOAuthSettingsDto) {
+  async updateOAuthSettings(dto: UpdateOAuthSettingsDto, actorUserId?: string) {
     const { next, nextProviders } = await this.prepareOAuthSettingsUpdate(dto);
-    await this.saveOAuthProviders(nextProviders);
+    await this.saveOAuthProviders(nextProviders, actorUserId);
     return this.toOAuthResponse(next);
   }
 
@@ -435,8 +444,19 @@ export class SettingsService {
   }
 
   async updatePasskeySettings(dto: UpdatePasskeySettingsDto) {
+    const current = await this.getPasskeySettings();
     const next = await this.previewPasskeySettings(dto);
-    return this.repository.set(settingsParentMeta, passkeyMeta, next);
+    return this.repository.set(
+      settingsParentMeta,
+      passkeyMeta,
+      next,
+      (tx, previous) =>
+        assertPasskeyRpIdChangeSafe(
+          tx,
+          readPasskeyRpId(previous, current.rpId),
+          next.rpId,
+        ),
+    );
   }
 
   async validatePasskeySettings(dto: UpdatePasskeySettingsDto) {
@@ -734,10 +754,18 @@ export class SettingsService {
     };
   }
 
-  private async saveOAuthProviders(providers: OAuthSettings[]) {
-    await this.repository.set<JsonRecord>(settingsParentMeta, oauthMeta, {
-      providers,
-    });
+  private async saveOAuthProviders(
+    providers: OAuthSettings[],
+    actorUserId?: string,
+  ) {
+    await this.repository.set<JsonRecord>(
+      settingsParentMeta,
+      oauthMeta,
+      {
+        providers,
+      },
+      actorUserId ? (tx) => assertAccountHasLogin(tx, actorUserId) : undefined,
+    );
   }
 
   private async assertOAuthProviderRemovalSafe(

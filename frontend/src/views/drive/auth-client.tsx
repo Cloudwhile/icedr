@@ -25,6 +25,7 @@ import {
   validateAuthSubmission,
 } from "@/features/auth/auth-input-validation";
 import { resolveAuthNextTarget } from "@/features/auth/auth-navigation";
+import { clearOAuthBrowserFlow, getOAuthLoginReturnTo } from '@/features/auth/oauth-browser-flow';
 import {
   assertPasskeyRequestContext,
   getPasskeyErrorNotice,
@@ -70,7 +71,9 @@ function AuthPage({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const next = resolveAuthNextTarget(searchParams.get("next") || "/");
-  const oauthCode = searchParams.get("oauthCode") || "";
+  const [initialOAuthCode] = useState(() => searchParams.get("oauthCode") || "");
+  const oauthCode = searchParams.get("oauthCode") || initialOAuthCode;
+  const oauthCompleted = useRef(false);
   const queryEmail = searchParams.get("email") || "";
   const queryResetCode = normalizeAuthCodeValue(searchParams.get("code") || searchParams.get("token") || "", passwordResetCodeLength);
   const authRedirectKey = `${mode}:${next}`;
@@ -96,7 +99,6 @@ function AuthPage({
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [pendingRegistrationValues, setPendingRegistrationValues] = useState<AuthFormValues | null>(null);
-  const conditionalPasskeyStartedRef = useRef(false);
   const passkeyContextRef = useRef<{
     expectedOrigin?: string;
     rpId?: string;
@@ -134,6 +136,7 @@ function AuthPage({
     };
   }, []);
   useEffect(() => {
+    if (oauthCode && mode === "login") return;
     let cancelled = false;
     void fetchCurrentUser({ auth: "optional" }).then(user => {
       if (cancelled) return;
@@ -152,28 +155,26 @@ function AuthPage({
     return () => {
       cancelled = true;
     };
-  }, [authRedirectKey, next, router]);
+  }, [authRedirectKey, mode, next, oauthCode, router]);
   const authCopy = useMemo(() => getAuthCopy(mode, t), [mode, t]);
   const visibleStatus = statusMode === mode ? status : null;
   const brandLogo = siteSettings.authLogoDataUrl || "/logo.png";
   const siteName = resolvePublicSiteName(siteSettings.siteName);
   const finishSession = useCallback((session: {
     token: string;
-  }) => {
+  }, returnTo = next) => {
     setStoredAuthToken(session.token);
-    router.replace(next);
+    router.replace(returnTo);
   }, [next, router]);
   useEffect(() => {
     if (
       mode !== "login" ||
       currentUser ||
       !authSettings?.passkeyEnabled ||
-      !authSettings.passkeyConfigured ||
-      conditionalPasskeyStartedRef.current
+      !authSettings.passkeyConfigured || oauthCode
     ) {
       return;
     }
-    conditionalPasskeyStartedRef.current = true;
     let cancelled = false;
     void browserSupportsWebAuthnAutofill()
       .then((supported) => {
@@ -204,7 +205,7 @@ function AuthPage({
     return () => {
       cancelled = true;
     };
-  }, [authSettings, currentUser, finishSession, mode]);
+  }, [authSettings, currentUser, finishSession, mode, oauthCode]);
   useEffect(() => {
     let cancelled = false;
     window.queueMicrotask(() => {
@@ -235,7 +236,11 @@ function AuthPage({
     router.replace(next);
   };
   useEffect(() => {
-    if (!oauthCode) return;
+    if (!oauthCode || mode !== "login" || oauthCompleted.current) return;
+    const returnTo = getOAuthLoginReturnTo();
+    const callbackUrl = new URL(window.location.href);
+    callbackUrl.searchParams.delete("oauthCode");
+    window.history.replaceState(window.history.state, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
     let cancelled = false;
     window.queueMicrotask(() => {
       if (cancelled) return;
@@ -244,12 +249,20 @@ function AuthPage({
       void exchangeOAuthCode({
         code: oauthCode
       }).then(session => {
-        if (!cancelled) finishSession(session);
+        if (!cancelled && !oauthCompleted.current) {
+          oauthCompleted.current = true;
+          clearOAuthBrowserFlow();
+          finishSession(session, returnTo);
+        }
       }).catch(() => {
-        if (!cancelled) setStatus({
-          message: t("auth.oauthExchangeFailed"),
-          tone: "error"
-        });
+        if (!cancelled && !oauthCompleted.current) {
+          oauthCompleted.current = true;
+          clearOAuthBrowserFlow();
+          setStatus({
+            message: t("auth.oauthExchangeFailed"),
+            tone: "error"
+          });
+        }
       }).finally(() => {
         if (!cancelled) setBusy(false);
       });
@@ -270,7 +283,7 @@ function AuthPage({
     setFieldErrors({});
     setBusy(true);
     setStatusMode(mode);
-    void startOAuthLogin(providerId).then(response => {
+    void startOAuthLogin(providerId, next).then(response => {
       window.location.href = response.authorizationUrl;
     }).catch(() => {
       setStatus({
@@ -501,7 +514,7 @@ function AuthPage({
       });
     });
   };
-  if (authRedirectReadyKey !== authRedirectKey) return null;
+  if (authRedirectReadyKey !== authRedirectKey && !oauthCode) return null;
   return <div ref={pageRef} className="icedr-auth-page" data-auth-mode={mode} style={{
     "--auth-canvas": palette.canvas,
     "--auth-surface": palette.surface1,

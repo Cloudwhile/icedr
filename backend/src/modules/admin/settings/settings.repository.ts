@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
 import type { JsonRecord } from './settings.dto';
+import { retryPrismaSerializableTransaction } from '../../../common/database/serializable-transaction-retry';
 
 export const settingsParentMeta = 'system';
 export const bootstrapMeta = 'bootstrap';
@@ -51,20 +52,39 @@ export class SettingsRepository implements OnModuleInit {
     parentMeta: string,
     meta: string,
     value: T,
+    validate?: (
+      tx: Prisma.TransactionClient,
+      previousValue: Prisma.JsonValue | null,
+    ) => Promise<void>,
   ): Promise<T> {
-    const row = await this.prisma.setting.upsert({
-      where: { parentMeta_meta: { parentMeta, meta } },
-      create: {
-        parentMeta,
-        meta,
-        value: this.toPrismaJson(value),
-      },
-      update: {
-        value: this.toPrismaJson(value),
-        updatedAt: new Date(),
-      },
-    });
-    return this.parseValue(row.value, value);
+    const save = async (db: Pick<Prisma.TransactionClient, 'setting'>) =>
+      db.setting.upsert({
+        where: { parentMeta_meta: { parentMeta, meta } },
+        create: {
+          parentMeta,
+          meta,
+          value: this.toPrismaJson(value),
+        },
+        update: {
+          value: this.toPrismaJson(value),
+          updatedAt: new Date(),
+        },
+      });
+    if (!validate)
+      return this.parseValue((await save(this.prisma)).value, value);
+    return retryPrismaSerializableTransaction(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const previous = await tx.setting.findUnique({
+            where: { parentMeta_meta: { parentMeta, meta } },
+          });
+          const row = await save(tx);
+          await validate(tx, previous?.value ?? null);
+          return this.parseValue(row.value, value);
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
+    );
   }
 
   private parseValue<T extends JsonRecord>(value: unknown, fallback: T) {

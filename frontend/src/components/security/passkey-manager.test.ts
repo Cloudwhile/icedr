@@ -1,9 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getPasskeyBindingState,
   parsePendingSecurityAction,
   passkeyRemovalViolatesPolicy,
+  readPendingSecurityAction,
+  storePendingSecurityAction,
 } from "./passkey-manager-state";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
+});
 
 describe("getPasskeyBindingState", () => {
   it("does not infer a binding from an authenticated user or service config", () => {
@@ -75,5 +83,37 @@ describe("getPasskeyBindingState", () => {
       parsePendingSecurityAction({ kind: "delete-passkey", passkeyId: "" }),
     ).toBeNull();
     expect(parsePendingSecurityAction({ kind: "unknown" })).toBeNull();
+  });
+
+  it("resumes only an unexpired action from the same authenticated session", () => {
+    vi.spyOn(Date, "now").mockReturnValue(1000000);
+    localStorage.setItem("icedr.auth.token", "session-a");
+    storePendingSecurityAction({ kind: "generate-recovery-codes" });
+    expect(readPendingSecurityAction()).toEqual({
+      kind: "generate-recovery-codes",
+    });
+    localStorage.setItem("icedr.auth.token", "session-b");
+    expect(readPendingSecurityAction()).toBeNull();
+    localStorage.setItem("icedr.auth.token", "session-a");
+    vi.spyOn(Date, "now").mockReturnValue(1600000);
+    expect(readPendingSecurityAction()).toBeNull();
+  });
+
+  it("rejects legacy or malformed continuation records", () => {
+    localStorage.setItem("icedr.auth.token", "session-a");
+    sessionStorage.setItem(
+      "icedr.security.pending-action",
+      JSON.stringify({ kind: "generate-recovery-codes" }),
+    );
+    expect(readPendingSecurityAction()).toBeNull();
+    sessionStorage.setItem(
+      "icedr.security.pending-action",
+      JSON.stringify({
+        action: { kind: "generate-recovery-codes" },
+        createdAt: "invalid",
+        sessionToken: "session-a",
+      }),
+    );
+    expect(readPendingSecurityAction()).toBeNull();
   });
 });

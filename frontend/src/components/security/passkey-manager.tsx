@@ -52,6 +52,7 @@ import {
   type PasskeySensitiveAction,
 } from "./passkey-manager-state";
 import "./passkey-manager.css";
+import { clearOAuthBrowserFlow } from '@/features/auth/oauth-browser-flow';
 
 export function PasskeyManager({
   initialMethodStatus = null,
@@ -202,8 +203,10 @@ export function PasskeyManager({
     }
     oauthExchangeStartedRef.current = oauthStepUpCode;
     const action = readPendingSecurityAction();
+    clearOAuthStepUpQuery(router, searchParams);
     if (!action) {
-      clearOAuthStepUpQuery(router, searchParams);
+      clearPendingSecurityAction();
+      clearOAuthBrowserFlow();
       showAppToast({
         title: t("settings.reauthActionExpired"),
         tone: "error",
@@ -224,7 +227,7 @@ export function PasskeyManager({
         });
       })
       .finally(() => {
-        clearOAuthStepUpQuery(router, searchParams);
+        clearOAuthBrowserFlow();
       });
   }, [completeSensitiveAction, oauthStepUpCode, router, searchParams, t]);
 
@@ -365,7 +368,7 @@ export function PasskeyManager({
           trailing={
             <div className="drive-passkey-manager-actions">
               <ToolButton
-                disabled={!authSettings?.passkeyConfigured || loading}
+                disabled={!authSettings?.passkeyConfigured || !authSettings.passkeyEnabled || loading || Boolean(savingKey)}
                 label={
                   authSettings?.passkeyConfigured
                     ? t("settings.passkeyAdd")
@@ -513,7 +516,7 @@ export function PasskeyManager({
           title={t("settings.recoveryCodesTitle")}
           trailing={
             <ToolButton
-              disabled={loading || !methodStatus}
+              disabled={loading || !methodStatus || Boolean(savingKey)}
               label={
                 (methodStatus?.methods.recoveryCodes ?? 0) > 0
                   ? t("settings.recoveryCodesRegenerate")

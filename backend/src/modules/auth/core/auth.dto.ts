@@ -170,10 +170,21 @@ export class OAuthExchangeDto {
   @IsString()
   @Length(16, 256)
   code!: string;
+
+  @IsString()
+  @Length(32, 128)
+  @Matches(/^[A-Za-z0-9_-]+$/)
+  flowToken!: string;
 }
 
 export class OAuthCallbackDto {
   @IsString()
   @Length(1, 2048)
   callbackUrl!: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(32, 128)
+  @Matches(/^[A-Za-z0-9_-]+$/)
+  flowToken?: string;
 }

@@ -13,12 +13,26 @@ describe('AdminPoliciesService', () => {
   const transaction = {
     auditEvent: { create: jest.fn() },
     authSetting: {
+      findUnique: jest.fn(() =>
+        Promise.resolve({
+          localEnabled: true,
+          oauthEnabled: false,
+          passkeyEnabled: true,
+          minimumAuthenticationMethods: 1,
+        }),
+      ),
       upsert: jest.fn((input: AuthUpdateInput) => {
         capturedAuthUpdate = input;
         return Promise.resolve();
       }),
     },
-    setting: { upsert: jest.fn() },
+    setting: {
+      upsert: jest.fn(),
+      findUnique: jest.fn(() => Promise.resolve(null)),
+    },
+    userIdentity: { count: jest.fn(() => Promise.resolve(1)) },
+    authPasskey: { count: jest.fn(() => Promise.resolve(0)) },
+    authRecoveryCode: { count: jest.fn(() => Promise.resolve(0)) },
     storageSetting: {
       findUnique: jest.fn(() => Promise.resolve({ quotaBytes: 1000n })),
       update: jest.fn((input: StorageUpdateInput) => {
@@ -73,6 +87,25 @@ describe('AdminPoliciesService', () => {
     capturedStorageUpdate = undefined;
     capturedWorkspaceUpdate = undefined;
     capturedAuthUpdate = undefined;
+  });
+
+  it('rejects RP ID changes through the combined policy endpoint while Passkeys exist', async () => {
+    transaction.authPasskey.count.mockResolvedValueOnce(1);
+    await expect(
+      service.updateAuthPolicy(
+        {
+          auth: { localEnabled: true },
+          passkey: {
+            origin: 'https://new.test',
+            rpId: 'new.test',
+            rpName: 'Drive',
+          },
+        },
+        'admin-1',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PASSKEY_SETTINGS_IN_USE' } });
+    expect(transaction.setting.upsert).not.toHaveBeenCalled();
+    expect(transaction.authSetting.upsert).not.toHaveBeenCalled();
   });
 
   it('commits storage and workspace quota changes in one transaction', async () => {
@@ -181,5 +214,16 @@ describe('AdminPoliciesService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a saved policy that would leave the administrator with no login method', async () => {
+    transaction.userIdentity.count.mockResolvedValueOnce(0);
+    await expect(
+      service.updateAuthPolicy(
+        { auth: { localEnabled: false, passkeyEnabled: true } },
+        'admin-1',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_LAST_LOGIN_METHOD' } });
+    expect(transaction.auditEvent.create).not.toHaveBeenCalled();
   });
 });

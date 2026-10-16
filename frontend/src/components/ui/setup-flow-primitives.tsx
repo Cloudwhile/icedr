@@ -142,13 +142,15 @@ export function SetupInfoTile({
 
 export function SetupToggleRow({
   checked,
+  disabled = false,
   label,
   onToggle,
   palette,
 }: {
   checked: boolean;
+  disabled?: boolean;
   label: string;
-  onToggle: () => void;
+  onToggle?: () => void;
   palette: Palette;
 }) {
   const t = useTranslations();
@@ -157,6 +159,7 @@ export function SetupToggleRow({
     <button
       {...buttonTypeAttr}
       className="icedr-setup-toggle-row"
+      disabled={disabled}
       data-checked={checked ? "true" : undefined}
       onClick={onToggle}
       style={

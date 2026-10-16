@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { palettes } from "@/features/file/model";
@@ -49,6 +49,7 @@ describe("OAuthCallbackRoute", () => {
     mocks.replace.mockReset();
     mocks.setStoredAuthToken.mockReset();
     window.history.replaceState(null, "", "/callback?code=provider-code");
+    window.sessionStorage.clear();
   });
 
   afterEach(() => cleanup());
@@ -67,8 +68,9 @@ describe("OAuthCallbackRoute", () => {
       expect(mocks.replace).toHaveBeenCalledWith("/");
     });
     expect(mocks.completeOAuthCallback).toHaveBeenCalledWith({
-      callbackUrl: window.location.href,
+      callbackUrl: 'http://localhost:3000/callback?code=provider-code',
     });
+    expect(window.location.search).toBe('');
   });
 
   it("routes step-up codes to security settings without replacing the session", async () => {
@@ -85,5 +87,13 @@ describe("OAuthCallbackRoute", () => {
       );
     });
     expect(mocks.setStoredAuthToken).not.toHaveBeenCalled();
+  });
+
+  it('exchanges a callback only once under React strict mode', async () => {
+    mocks.completeOAuthCallback.mockResolvedValue({ token: 'session-token', user: { id: 'user-1' } });
+    render(<StrictMode><OAuthCallbackRoute /></StrictMode>);
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/'));
+    expect(mocks.completeOAuthCallback).toHaveBeenCalledTimes(1);
+    expect(mocks.setStoredAuthToken).toHaveBeenCalledTimes(1);
   });
 });

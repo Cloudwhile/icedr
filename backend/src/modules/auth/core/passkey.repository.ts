@@ -2,7 +2,8 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../../database/prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
-import { buildAuthenticationMethodStatus } from './authentication-method-status';
+import { readAuthenticationMethodStatus } from './authentication-method-reader';
+import { retryPrismaSerializableTransaction } from '../../../common/database/serializable-transaction-retry';
 
 export type PasskeyChallengeFlow =
   | 'passkey-registration'
@@ -32,6 +33,7 @@ export class PasskeyRepository {
     userId: string | null;
     expiresAt: string;
     stepUpTokenHash?: string | null;
+    sessionTokenHash?: string;
   }) {
     const id = `ceremony_${randomBytes(18).toString('base64url')}`;
     await this.prisma.authChallenge.create({
@@ -41,9 +43,14 @@ export class PasskeyRepository {
         challenge: input.challenge,
         userId: input.userId,
         expiresAt: new Date(input.expiresAt),
-        metadata: input.stepUpTokenHash
-          ? { stepUpTokenHash: input.stepUpTokenHash }
-          : {},
+        metadata: {
+          ...(input.stepUpTokenHash
+            ? { stepUpTokenHash: input.stepUpTokenHash }
+            : {}),
+          ...(input.sessionTokenHash
+            ? { sessionTokenHash: input.sessionTokenHash }
+            : {}),
+        },
       },
     });
     return { id };
@@ -53,7 +60,18 @@ export class PasskeyRepository {
     ceremonyId: string;
     flow: PasskeyChallengeFlow;
     userId?: string;
+    sessionTokenHash?: string;
   }) {
+    if (input.sessionTokenHash) {
+      const existing = await this.prisma.authChallenge.findUnique({
+        where: { id: input.ceremonyId },
+      });
+      if (
+        this.toJsonRecord(existing?.metadata ?? {}).sessionTokenHash !==
+        input.sessionTokenHash
+      )
+        return null;
+    }
     const now = new Date();
     const claimToken = `claim_${randomBytes(24).toString('base64url')}`;
     const claimTokenHash = this.hashOpaqueToken(claimToken);
@@ -265,6 +283,7 @@ export class PasskeyRepository {
     claimToken: string;
     credentialId: string;
     counter: number;
+    expectedCounter: bigint;
     sessionTokenHash: string;
     sessionExpiresAt: string;
     lastUsedIpHash: string;
@@ -279,8 +298,8 @@ export class PasskeyRepository {
       if (!credential) {
         throw new PasskeyStateConflictError('Credential is unavailable');
       }
-      await tx.authPasskey.update({
-        where: { id: credential.id },
+      const updated = await tx.authPasskey.updateMany({
+        where: { id: credential.id, counter: input.expectedCounter },
         data: {
           counter: BigInt(input.counter),
           lastUsedAt: new Date(),
@@ -288,6 +307,9 @@ export class PasskeyRepository {
           lastUsedUserAgent: input.lastUsedUserAgent,
         },
       });
+      if (updated.count !== 1) {
+        throw new PasskeyStateConflictError('Credential counter changed');
+      }
       await tx.authSession.create({
         data: {
           tokenHash: input.sessionTokenHash,
@@ -304,6 +326,7 @@ export class PasskeyRepository {
     claimToken: string;
     credentialId: string;
     counter: number;
+    expectedCounter: bigint;
     userId: string;
     tokenHash: string;
     sessionTokenHash: string;
@@ -316,7 +339,11 @@ export class PasskeyRepository {
     return this.prisma.$transaction(async (tx) => {
       await this.consumeClaimedChallenge(tx, input.ceremonyId, claimTokenHash);
       const updated = await tx.authPasskey.updateMany({
-        where: { credentialId: input.credentialId, userId: input.userId },
+        where: {
+          credentialId: input.credentialId,
+          userId: input.userId,
+          counter: input.expectedCounter,
+        },
         data: {
           counter: BigInt(input.counter),
           lastUsedAt: new Date(),
@@ -347,6 +374,7 @@ export class PasskeyRepository {
     sessionTokenHash: string;
     stepUpTokenHash: string;
     credentialId: string;
+    expectedRpId: string;
     publicKey: string;
     counter: number;
     transports: string[];
@@ -358,7 +386,14 @@ export class PasskeyRepository {
     createdUserAgent: string | null;
   }) {
     const claimTokenHash = this.hashOpaqueToken(input.claimToken);
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
+      const settings = await tx.setting.findUnique({
+        where: { parentMeta_meta: { parentMeta: 'system', meta: 'passkey' } },
+      });
+      const rpId = this.toJsonRecord(settings?.value ?? {}).rpId;
+      if (typeof rpId === 'string' && rpId !== input.expectedRpId) {
+        throw new PasskeyStateConflictError('Passkey configuration changed');
+      }
       await this.consumeClaimedChallenge(tx, input.ceremonyId, claimTokenHash);
       await this.consumeStepUpToken(tx, {
         tokenHash: input.stepUpTokenHash,
@@ -399,7 +434,12 @@ export class PasskeyRepository {
     sessionTokenHash: string;
     stepUpTokenHash: string;
   }) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
+      // Serialize removals for this account before checking its remaining methods.
+      await tx.user.update({
+        where: { id: input.userId },
+        data: { updatedAt: new Date() },
+      });
       await this.consumeStepUpToken(tx, {
         tokenHash: input.stepUpTokenHash,
         userId: input.userId,
@@ -410,21 +450,13 @@ export class PasskeyRepository {
         where: { id: input.passkeyId, userId: input.userId },
       });
       if (!target) return false;
-      const settings = await tx.authSetting.findUnique({
-        where: { settingKey: 'global' },
-      });
-      const methodCount = await this.countAuthenticationMethods(
+      const before = await readAuthenticationMethodStatus(tx, input.userId);
+      const after = await readAuthenticationMethodStatus(
         tx,
         input.userId,
-        {
-          localEnabled: settings?.localEnabled ?? true,
-          oauthEnabled: settings?.oauthEnabled ?? false,
-          passkeyEnabled: settings?.passkeyEnabled ?? false,
-        },
         input.passkeyId,
       );
-      const minimum = Math.max(1, settings?.minimumAuthenticationMethods ?? 1);
-      if (methodCount < minimum) {
+      if (!after.compliant && after.methodCount < before.methodCount) {
         throw new PasskeyStateConflictError('Authentication method policy');
       }
       await tx.authPasskey.delete({ where: { id: input.passkeyId } });
@@ -433,31 +465,7 @@ export class PasskeyRepository {
   }
 
   async getAuthenticationMethodStatus(userId: string) {
-    const settings = await this.prisma.authSetting.findUnique({
-      where: { settingKey: 'global' },
-    });
-    const [passwordCount, oauthCount, passkeyCount, recoveryCodeCount] =
-      await Promise.all([
-        this.prisma.userIdentity.count({
-          where: { userId, provider: 'local', passwordHash: { not: null } },
-        }),
-        this.prisma.userIdentity.count({
-          where: { userId, provider: { not: 'local' } },
-        }),
-        this.prisma.authPasskey.count({ where: { userId } }),
-        this.prisma.authRecoveryCode.count({
-          where: { userId, usedAt: null },
-        }),
-      ]);
-    return buildAuthenticationMethodStatus(
-      {
-        password: Boolean(settings?.localEnabled) && passwordCount > 0,
-        oauth: Boolean(settings?.oauthEnabled) && oauthCount > 0,
-        passkey: Boolean(settings?.passkeyEnabled) && passkeyCount > 0,
-        recoveryCodes: recoveryCodeCount,
-      },
-      settings?.minimumAuthenticationMethods,
-    );
+    return readAuthenticationMethodStatus(this.prisma, userId);
   }
 
   async replaceRecoveryCodes(input: {
@@ -557,41 +565,27 @@ export class PasskeyRepository {
     }
   }
 
-  private async countAuthenticationMethods(
-    tx: Prisma.TransactionClient,
-    userId: string,
-    settings: {
-      localEnabled: boolean;
-      oauthEnabled: boolean;
-      passkeyEnabled: boolean;
-    },
-    excludedPasskeyId?: string,
-  ) {
-    const [passwordCount, oauthCount, passkeyCount] = await Promise.all([
-      tx.userIdentity.count({
-        where: { userId, provider: 'local', passwordHash: { not: null } },
-      }),
-      tx.userIdentity.count({
-        where: { userId, provider: { not: 'local' } },
-      }),
-      tx.authPasskey.count({
-        where: {
-          userId,
-          ...(excludedPasskeyId ? { id: { not: excludedPasskeyId } } : {}),
-        },
-      }),
-    ]);
-    return (
-      Number(settings.localEnabled && passwordCount > 0) +
-      Number(settings.oauthEnabled && oauthCount > 0) +
-      Number(settings.passkeyEnabled && passkeyCount > 0)
-    );
+  private toJsonRecord(value: Prisma.JsonValue): Record<string, unknown> {
+    if (typeof value === 'string') {
+      try {
+        return this.toJsonRecord(JSON.parse(value) as Prisma.JsonValue);
+      } catch {
+        return {};
+      }
+    }
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value
+      : {};
   }
 
-  private toJsonRecord(value: Prisma.JsonValue) {
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
+  private runSerializableTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ) {
+    return retryPrismaSerializableTransaction(() =>
+      this.prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
   }
 
   private isUniqueConflict(error: unknown) {

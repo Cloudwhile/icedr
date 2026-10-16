@@ -184,7 +184,18 @@ export function oauthProviderMode(
     : ('standard' as const);
 }
 
-export function oauthProviderReady(settings: OAuthSettings) {
+export function oauthProviderReady(
+  settings: Pick<
+    OAuthSettings,
+    | 'clientId'
+    | 'clientSecret'
+    | 'providerProfile'
+    | 'issuerUrl'
+    | 'authorizationUrl'
+    | 'tokenUrl'
+    | 'userinfoUrl'
+  >,
+) {
   return Boolean(
     settings.clientId &&
     (settings.providerProfile === 'oauth2' || settings.issuerUrl) &&

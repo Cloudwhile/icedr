@@ -14,7 +14,6 @@ import {
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-  type AuthenticationResponseJSON,
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
   type RegistrationResponseJSON,
@@ -47,6 +46,10 @@ import {
   PasskeyStateConflictError,
 } from './passkey.repository';
 import { verifyPasswordHash } from './password-security';
+import {
+  passkeyUserHandleMatches,
+  readPasskeyAssertion,
+} from './passkey-assertion';
 
 const challengeTtlMs = 5 * 60 * 1000;
 const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -99,6 +102,7 @@ export class PasskeyService {
     request?: Request,
   ): Promise<PasskeyCeremonyResponse<PublicKeyCredentialCreationOptionsJSON>> {
     const session = await this.adminGuard.requireSession(authorization);
+    await this.requirePasskeyLoginEnabled();
     const passkey = await this.requirePasskeyConfigured();
     await this.passkeyRepository.assertRateLimit({
       action: 'passkey-registration-options',
@@ -142,6 +146,7 @@ export class PasskeyService {
       userId: session.user.id,
       expiresAt: new Date(Date.now() + challengeTtlMs).toISOString(),
       stepUpTokenHash: stepUp.tokenHash,
+      sessionTokenHash: session.tokenHash,
     });
     return { ceremonyId: ceremony.id, expectedOrigin: passkey.origin, options };
   }
@@ -250,6 +255,12 @@ export class PasskeyService {
     request?: Request,
   ) {
     const session = await this.adminGuard.requireSession(authorization);
+    if (!(await this.authRepository.getSettings()).localEnabled) {
+      throw new ForbiddenException({
+        code: 'AUTH_REAUTH_METHOD_UNAVAILABLE',
+        message: 'Password reauthentication is disabled',
+      });
+    }
     await this.passkeyRepository.assertRateLimit({
       action: 'password-step-up-verification',
       scopeHash: this.requestScopeHash(request, session.user.id),
@@ -283,6 +294,7 @@ export class PasskeyService {
     request?: Request,
   ): Promise<PasskeyCeremonyResponse<PublicKeyCredentialRequestOptionsJSON>> {
     const session = await this.adminGuard.requireSession(authorization);
+    await this.requirePasskeyLoginEnabled();
     const passkey = await this.requirePasskeyConfigured();
     await this.passkeyRepository.assertRateLimit({
       action: 'passkey-step-up-options',
@@ -312,6 +324,7 @@ export class PasskeyService {
       challenge: options.challenge,
       userId: session.user.id,
       expiresAt: new Date(Date.now() + challengeTtlMs).toISOString(),
+      sessionTokenHash: session.tokenHash,
     });
     return { ceremonyId: ceremony.id, expectedOrigin: passkey.origin, options };
   }
@@ -322,6 +335,7 @@ export class PasskeyService {
     request?: Request,
   ) {
     const session = await this.adminGuard.requireSession(authorization);
+    await this.requirePasskeyLoginEnabled();
     const passkey = await this.requirePasskeyConfigured();
     await this.passkeyRepository.assertRateLimit({
       action: 'passkey-step-up-verification',
@@ -333,9 +347,21 @@ export class PasskeyService {
       ceremonyId: dto.ceremonyId,
       flow: 'passkey-step-up',
       userId: session.user.id,
+      sessionTokenHash: session.tokenHash,
     });
     if (!ceremony) throw this.ceremonyUnavailable();
-    const response = dto.response as AuthenticationResponseJSON;
+    const response = readPasskeyAssertion(dto.response);
+    if (
+      !response ||
+      !passkeyUserHandleMatches(response, session.user.id, false)
+    ) {
+      return this.failStepUpCeremony(
+        ceremony,
+        session.user,
+        request,
+        'user-handle',
+      );
+    }
     const credential = await this.passkeyRepository.findPasskeyByCredentialId(
       response.id,
     );
@@ -392,6 +418,7 @@ export class PasskeyService {
         claimToken: ceremony.claimToken,
         credentialId: credential!.credentialId,
         counter: verification!.authenticationInfo.newCounter,
+        expectedCounter: credential!.counter,
         userId: session.user.id,
         tokenHash: this.passkeyRepository.hashOpaqueToken(responseToken.token),
         sessionTokenHash: session.tokenHash,
@@ -521,11 +548,16 @@ export class PasskeyService {
     });
     if (!ceremony) throw this.ceremonyUnavailable();
 
-    const response = dto.response as AuthenticationResponseJSON;
+    const response = readPasskeyAssertion(dto.response);
+    if (!response)
+      return this.failClaimedCeremony(ceremony, null, request, 'response');
     const credential = await this.passkeyRepository.findPasskeyByCredentialId(
       response.id,
     );
-    if (!credential) {
+    if (
+      !credential ||
+      !passkeyUserHandleMatches(response, credential.userId, true)
+    ) {
       await this.failClaimedCeremony(ceremony, null, request, 'credential');
     }
 
@@ -575,6 +607,7 @@ export class PasskeyService {
         claimToken: ceremony.claimToken,
         credentialId: credential!.credentialId,
         counter: verification!.authenticationInfo.newCounter,
+        expectedCounter: credential!.counter,
         sessionTokenHash: this.passkeyRepository.hashOpaqueToken(token),
         sessionExpiresAt: expiresAt,
         lastUsedIpHash: this.requestIpHash(request),
@@ -605,6 +638,7 @@ export class PasskeyService {
     request?: Request,
   ) {
     const session = await this.adminGuard.requireSession(authorization);
+    await this.requirePasskeyLoginEnabled();
     const passkey = await this.requirePasskeyConfigured();
     await this.passkeyRepository.assertRateLimit({
       action: 'passkey-registration-verification',
@@ -616,6 +650,7 @@ export class PasskeyService {
       ceremonyId: dto.ceremonyId,
       flow: 'passkey-registration',
       userId: session.user.id,
+      sessionTokenHash: session.tokenHash,
     });
     if (!ceremony) throw this.ceremonyUnavailable();
     const stepUpTokenHash = ceremony.metadata.stepUpTokenHash;
@@ -674,6 +709,7 @@ export class PasskeyService {
         stepUpTokenHash,
         credentialId: info.credential.id,
         publicKey: Buffer.from(info.credential.publicKey).toString('base64url'),
+        expectedRpId: passkey.rpId,
         counter: info.credential.counter,
         transports: info.credential.transports ?? [],
         deviceType: info.credentialDeviceType,

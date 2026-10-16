@@ -107,8 +107,11 @@ export class AuthController {
   }
 
   @Get('oauth/start')
-  startOAuth(@Query('providerId') providerId?: string) {
-    return this.authService.startOAuthLogin(providerId);
+  startOAuth(
+    @Query('providerId') providerId?: string,
+    @Headers('x-oauth-flow') flowToken?: string,
+  ) {
+    return this.authService.startOAuthLogin(providerId, flowToken);
   }
 
   @Get('oauth/callback')
@@ -131,6 +134,7 @@ export class AuthController {
     return this.authService.completeFrontendOAuthCallback(
       dto.callbackUrl,
       request,
+      dto.flowToken,
     );
   }
 
