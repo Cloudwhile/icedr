@@ -1,24 +1,17 @@
-.drive-share-dialog-layer {
+.icedr-dialog-container.drive-share-dialog-layer {
   align-items: center;
+  box-sizing: border-box;
   display: grid;
   inset: 0;
   justify-items: center;
+  max-width: none;
   padding: 24px;
   position: fixed;
+  width: 100%;
   z-index: 72;
 }
 
-.drive-share-dialog-scrim {
-  appearance: none;
-  background: var(--share-dialog-backdrop);
-  border: 0;
-  cursor: default;
-  inset: 0;
-  padding: 0;
-  position: absolute;
-}
-
-.drive-share-dialog {
+.icedr-dialog.drive-share-dialog {
   animation: drive-share-dialog-in 360ms var(--motion-ease-emphasized) both;
   background: var(--share-dialog-bg);
   border: 1px solid var(--share-dialog-border-strong);
@@ -530,11 +523,11 @@
 }
 
 @media (max-width: 560px) {
-  .drive-share-dialog-layer {
+  .icedr-dialog-container.drive-share-dialog-layer {
     padding: 14px;
   }
 
-  .drive-share-dialog {
+  .icedr-dialog.drive-share-dialog {
     max-height: calc(100dvh - 28px);
     width: min(100%, calc(100vw - 28px));
   }

@@ -1,5 +1,3 @@
-# ICEDR
-
 <p align="center">
   <img src="frontend/public/ICEDR.png" alt="ICEDR" width="760" />
 </p>
