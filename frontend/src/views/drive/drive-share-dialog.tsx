@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "@/compat/navigation";
 import { ActionButton } from "@/components/ui/action-button";
+import { AppDialogShell } from "@/components/ui/app-dialog-shell";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import { useMotionStagger } from "@/components/ui/motion";
 import { ShareScopePicker } from "@/components/ui/share-scope-picker";
@@ -159,14 +160,6 @@ function DriveShareDialogContent({
     return () => window.clearTimeout(timer);
   }, [createFeedback]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !creating) closeShareDialog();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeShareDialog, creating]);
-
   const createShare = () => {
     if (
       creating
@@ -206,23 +199,20 @@ function DriveShareDialogContent({
   };
 
   return (
-    <div className="drive-share-dialog-layer" data-theme={themeMode} style={dialogVariables(palette)}>
-        <button
-          {...buttonTypeAttr}
-          aria-label={t("app.close")}
-          className="drive-share-dialog-scrim"
-          disabled={creating}
-          onClick={() => {
-            if (!creating) closeShareDialog();
-          }}
-        />
-        <section
-          aria-labelledby="drive-share-dialog-title"
-          aria-modal="true"
-          className="drive-share-dialog"
-          data-created={created ? "true" : undefined}
-          role="dialog"
-        >
+    <AppDialogShell
+      aria-labelledby="drive-share-dialog-title"
+      className="drive-share-dialog"
+      containerClassName="drive-share-dialog-layer"
+      isDismissable={!creating}
+      isKeyboardDismissDisabled={creating}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !creating) closeShareDialog();
+      }}
+      open
+      palette={palette}
+      style={dialogVariables(palette)}
+      themeMode={themeMode}
+    >
           <header className="drive-share-dialog-header">
             <span className="drive-share-dialog-heading-icon" aria-hidden="true">
               <LocalIcon name="share2" size={18} />
@@ -238,6 +228,7 @@ function DriveShareDialogContent({
             <button
               {...buttonTypeAttr}
               aria-label={t("app.close")}
+              autoFocus
               className="drive-share-dialog-close"
               disabled={creating}
               onClick={() => {
@@ -361,8 +352,7 @@ function DriveShareDialogContent({
               </>
             )}
           </footer>
-        </section>
-      </div>
+    </AppDialogShell>
   );
 }
 
