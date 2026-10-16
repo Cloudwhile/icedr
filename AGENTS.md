@@ -118,6 +118,7 @@ N10:  使用Playwright确认UI设计是否合格。
 10. P1-F4 批量失败反馈已统一：新增 `frontend/src/components/drive/batch-operation-feedback.tsx` 与模型 helper，批量结果按全成功／部分失败／全部失败分别使用 `success`／`warning`／`error`；失败详情通过原始 `DriveItem` 映射显示文件名，不再暴露内部 UUID，最多列出 6 项并用本地化文案汇总剩余项，长文件名保留 `title` 悬停查看。下载、移动、复制、归档、恢复和永久删除均传入源项目名称；通知描述在桌面和移动布局中保持可读。
 11. P1-F5 非上传操作的错误兜底已按语义拆分：中英文 locale 新增通用操作以及重命名、删除、复制、移动、归档、恢复、收藏和新建文件夹失败文案；头像更新／清除使用通用操作失败，传输恢复取消使用通用操作失败，删除传输记录使用删除失败。`app.uploadFailed` 在 TypeScript 调用中只保留于生成文件和上传任务的真实上传链路；重命名失败明确显示“重命名失败”。
 12. P1-F6 上传失败入口已与活跃进度拆分：`upload-progress.ts` 新增只统计真实 `failed`、不包含 `expired` 的 `failedCount`；上传 HUD 使用两个并列的真实按钮呈现活跃上传与危险色“{count} 个失败”，失败归零后入口自动消失，不再嵌套交互元素。失败入口会导航到传输页、一次性选择并聚焦“需要关注”页签；传输页不再渲染 HUD，避免遮挡实时速度区域。HUD portal 注入现有主题变量，并移除在当前组合下显示异常的 `MotionPresence`，改用保留 reduced-motion 处理的 CSS 入场动画。
+13. P1-F7 分享弹窗已迁移到基于 HeroUI Modal 的 `AppDialogShell`：Tab／Shift+Tab 焦点被限制在弹窗内，打开时焦点落到关闭图标按钮，ESC、遮罩和关闭按钮结束后由 React Aria 恢复至原分享触发按钮。`AppDialogShell` 新增可复用的 ARIA 标注、主题、遮罩关闭与键盘关闭参数；创建分享期间同时禁用 ESC、遮罩和关闭按钮，保持原有业务约束。弹窗沿用原视觉变量与布局，HeroUI 容器宽度覆盖保证桌面居中并在移动视口内完整显示。
 
 ### 核验后未照报告修改的项目
 
@@ -126,7 +127,7 @@ N10:  使用Playwright确认UI设计是否合格。
 
 ### 尚未完成
 
-- 报告中的 B1–B10、F7–F9、D1–D2、D4–D5、A1–A7、A9 等其余可复现项均尚未进入实现阶段。
+- 报告中的 B1–B10、F8–F9、D1–D2、D4–D5、A1–A7、A9 等其余可复现项均尚未进入实现阶段。
 - `UI-ANALYSIS-REPORT.md` 是本轮用户提供的未跟踪输入文件，本轮未修改其内容。
 
 ### 验证与测试状态
@@ -145,3 +146,4 @@ N10:  使用Playwright确认UI设计是否合格。
 - P1-F4 新增批量反馈组件与 hook 回归，前端全量 `pnpm --filter frontend test` 为 87 个测试文件、501 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。构建产物下的 Playwright smoke 在 1440px 与 390px 触发 5 项归档中 2 项失败，通知显示 `3/5 completed, 2 failed`、`bravo.txt`、`delta.txt`，不含内部 UUID；桌面／移动通知均在视口内，移动端无横向溢出且内容与操作区不重叠。截图位于 `output/playwright/batch-operation-feedback-desktop.png` 和 `batch-operation-feedback-mobile.png`。
 - P1-F5 新增重命名失败 fallback 回归，前端全量 `pnpm --filter frontend test` 为 87 个测试文件、502 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。Playwright 使用构建产物模拟一次重命名接口失败，确认只发出 1 次请求、错误通知显示“重命名失败”且页面没有“上传失败”，通知位于 1440px 视口内并且页面无横向溢出。Vite preview 启动两次均被 Windows 对依赖文件的临时 `EPERM` 读取锁阻断，因此改用只读静态服务器承载同一份 `frontend/dist`，未启动 dev；专用浏览器与静态服务已关闭。截图与模拟脚本位于 `output/playwright/f5-rename-error-desktop.png` 和 `f5-rename-error-smoke.js`。控制台除刻意模拟的 418 外，仅记录已知的通用 Framer Motion `CSSStyleDeclaration` 错误。
 - P1-F6 的 3 个定向测试文件共 10 项通过；前端全量 `pnpm --filter frontend test` 为 87 个测试文件、505 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error；`git diff --check` 通过。Playwright 使用构建产物确认失败入口计算色值为 `rgb(220, 38, 38)`，在 1440px 与 390px 视口中均无横向溢出，失败归零后入口消失；点击入口后“需要关注”页签选中并获得焦点，失败行可见、运行中行不在该分组中，且传输页没有 HUD 覆盖。Vite preview 仍因 `picomatch/lib/scan.js` 的 Windows `EPERM` 读取锁失败，因此改用只读静态服务器承载 `frontend/dist`，未启动 dev；专用浏览器与静态服务已关闭。截图位于 `output/playwright/f6-upload-failure-anchor-desktop.png`、`f6-upload-failure-anchor-mobile.png` 和 `f6-upload-failure-attention.png`。最终控制台仅记录已知的通用 Framer Motion `CSSStyleDeclaration` 错误。
+- P1-F7 完成后，前端全量测试为 87 个测试文件、505 项测试全部通过；沙箱内首次启动 Vitest 时因 `magic-string` 依赖文件遭遇 Windows `EPERM` 读取限制，按原命令在沙箱外重跑通过。`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。Playwright 使用构建产物确认初始焦点位于关闭按钮，连续 18 次 Tab 与一次 Shift+Tab 均未离开弹窗，ESC 和遮罩关闭后焦点都恢复到原分享按钮；1440px 弹窗居中，390px 视口边界为 `left=14`、`top=14`、`right=376`、`bottom=830`，无横向溢出。截图与模拟脚本位于 `output/playwright/f7-share-dialog-focus-desktop.png`、`f7-share-dialog-focus-mobile.png` 和 `f7-share-dialog-focus-smoke.js`；专用浏览器已关闭，未启动 dev。
