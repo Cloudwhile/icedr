@@ -135,7 +135,6 @@ function ShareHeroCover({
           <span className="external-share-hero-cover-emblem">
             {coverItem ? <ItemIcon item={coverItem} palette={palette} size={28} /> : <LocalIcon name="folder" size={28} color={palette.primaryHover} />}
           </span>
-          <span className="external-share-hero-cover-mark" />
         </div>
       )}
     </div>

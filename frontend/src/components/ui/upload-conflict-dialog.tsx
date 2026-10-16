@@ -10,6 +10,13 @@ import type { LocalIconName, Palette } from "@/features/file/model";
 
 export type UploadConflictDialogProps = {
   conflictCount: number;
+  discardConfirmation?: {
+    confirmLabel: string;
+    description: string;
+    onCancel: () => void;
+    onConfirm: () => void;
+    title: string;
+  };
   fileNames: string[];
   onClose: () => void;
   onSelect: (strategy: UploadConflictStrategy) => void;
@@ -30,6 +37,7 @@ const conflictOptions: Array<{
 
 export function UploadConflictDialog({
   conflictCount,
+  discardConfirmation,
   fileNames,
   onClose,
   onSelect,
@@ -44,7 +52,10 @@ export function UploadConflictDialog({
     <AppDialogShell
       className="icedr-upload-conflict-dialog"
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
+        if (!nextOpen) {
+          if (discardConfirmation) discardConfirmation.onCancel();
+          else onClose();
+        }
       }}
       open={open}
       palette={palette}
@@ -56,7 +67,36 @@ export function UploadConflictDialog({
         "--upload-conflict-muted": palette.subtle,
       } as CSSProperties}
     >
-      <div className="icedr-upload-conflict-frame">
+      {discardConfirmation ? (
+        <div className="icedr-confirmation-frame" data-tone="warning">
+          <header className="icedr-confirmation-header">
+            <span className="icedr-confirmation-icon" aria-hidden="true">
+              <LocalIcon name="exclamation" size={18} />
+            </span>
+            <div>
+              <h2>{discardConfirmation.title}</h2>
+              <p>{discardConfirmation.description}</p>
+            </div>
+            <ToolButton
+              label={t("actions.close")}
+              palette={palette}
+              onClick={discardConfirmation.onCancel}
+            >
+              <LocalIcon name="cross" size={16} />
+            </ToolButton>
+          </header>
+          <footer className="icedr-confirmation-actions">
+            <button onClick={discardConfirmation.onCancel} type="button">
+              <LocalIcon name="cross" size={15} />
+              <span>{t("actions.cancel")}</span>
+            </button>
+            <button data-tone="warning" onClick={discardConfirmation.onConfirm} type="button">
+              <LocalIcon name="exclamation" size={15} />
+              <span>{discardConfirmation.confirmLabel}</span>
+            </button>
+          </footer>
+        </div>
+      ) : <div className="icedr-upload-conflict-frame">
         <header className="icedr-upload-conflict-header">
           <div className="icedr-upload-conflict-title">
             <LocalIcon name="upload" size={18} color={palette.primaryHover} />
@@ -88,7 +128,7 @@ export function UploadConflictDialog({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
     </AppDialogShell>
   );
 }

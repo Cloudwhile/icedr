@@ -14,6 +14,7 @@ export type UploadProgressSummary<T extends UploadProgressSource> = {
   activeRows: T[];
   batchIds: string[];
   estimated: boolean;
+  failedCount: number;
   memberRows: T[];
   missingByteRowCount: number;
   progress: number;
@@ -32,6 +33,9 @@ export function summarizeUploadProgress<T extends UploadProgressSource>(
   const activeRows = rows.filter((row) =>
     activeStatuses.has(resolveTaskLifecycleStatus(row)),
   );
+  const failedCount = rows.filter((row) =>
+    resolveTaskLifecycleStatus(row) === "failed",
+  ).length;
   const batchIds = Array.from(
     new Set(
       activeRows
@@ -58,6 +62,7 @@ export function summarizeUploadProgress<T extends UploadProgressSource>(
       activeRows,
       batchIds,
       estimated: false,
+      failedCount,
       memberRows,
       missingByteRowCount: 0,
       progress: 0,
@@ -93,6 +98,7 @@ export function summarizeUploadProgress<T extends UploadProgressSource>(
     activeRows,
     batchIds,
     estimated,
+    failedCount,
     memberRows,
     missingByteRowCount,
     progress:

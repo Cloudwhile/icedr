@@ -8,7 +8,7 @@ export type AppToastOptions = {
   description?: ReactNode;
   duration?: number;
   title: ReactNode;
-  tone?: AppToastTone;
+  tone: AppToastTone;
 };
 
 export type AppToastSnapshot = Required<Pick<AppToastOptions, "duration" | "tone">> & {
@@ -31,7 +31,7 @@ export function showAppToast({
   description,
   duration = defaultToastDurationMs,
   title,
-  tone = "success",
+  tone,
 }: AppToastOptions) {
   const toastKey = dedupeKey ?? createToastDedupeKey({ description, title, tone });
   const now = Date.now();

@@ -23,7 +23,7 @@ type UseDriveItemRenameOptions = {
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   refreshDriveItems: () => Promise<unknown>;
   setSelected: Dispatch<SetStateAction<string[]>>;
-  showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
+  showFeedback: (message: string, tone: WorkspaceNotificationTone) => void;
 };
 
 export function useDriveItemRename({
@@ -46,10 +46,10 @@ export function useDriveItemRename({
       await refreshDriveItems();
       setSelected([item.id]);
       setRenamingItemId(null);
-      showFeedback(t("app.renamed"));
+      showFeedback(t("app.renamed"), "success");
       return true;
     } catch (error) {
-      showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
+      showFeedback(getApiFeedback(error, "app.renameFailed", "form"), "error");
       return false;
     }
   }, [getApiFeedback, refreshDriveItems, setSelected, showFeedback, t]);

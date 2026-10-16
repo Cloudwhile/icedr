@@ -11,7 +11,7 @@ export type WorkspaceNotificationOptions = {
   description?: ReactNode;
   onAction?: () => boolean | void | Promise<boolean | void>;
   title: ReactNode;
-  tone?: WorkspaceNotificationTone;
+  tone: WorkspaceNotificationTone;
 };
 
 export type WorkspaceNotification = Required<Pick<WorkspaceNotificationOptions, "tone">> & {
@@ -41,7 +41,7 @@ export function showWorkspaceNotification({
   description,
   onAction,
   title,
-  tone = "success",
+  tone,
 }: WorkspaceNotificationOptions) {
   const now = Date.now();
   const hasExplicitDedupeKey = dedupeKey !== undefined;

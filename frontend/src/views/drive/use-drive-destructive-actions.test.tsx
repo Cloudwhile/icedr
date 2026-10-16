@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DriveItem } from "@/features/file/model";
 import { useDriveDestructiveActions } from "./use-drive-destructive-actions";
@@ -24,6 +24,7 @@ vi.mock("@/i18n/react", () => ({
 
 describe("useDriveDestructiveActions", () => {
   beforeEach(() => {
+    cleanup();
     vi.clearAllMocks();
     apiMocks.batchArchiveFileNodes.mockResolvedValue(successfulResult([node("a"), node("b")]));
     apiMocks.batchRestoreFileNodes.mockResolvedValue(successfulResult([node("a"), node("b")]));
@@ -123,7 +124,7 @@ describe("useDriveDestructiveActions", () => {
     });
 
     expect(result.current.restorePending).toBe(false);
-    expect(showFeedback).toHaveBeenCalledWith('app.restored:{"count":1}');
+    expect(showFeedback).toHaveBeenCalledWith('app.restored:{"count":1}', "success");
   });
 
   it("归档部分成功时保留批量摘要，撤销只恢复成功 ID", async () => {
@@ -141,7 +142,10 @@ describe("useDriveDestructiveActions", () => {
 
     const archiveNotification = notificationMocks.showWorkspaceNotification.mock.calls[0][0];
     expect(archiveNotification.title).toBe('files.batchResult:{"failed":1,"requested":3,"succeeded":2}');
-    expect(archiveNotification.description).toBe("b: locked");
+    expect(archiveNotification.tone).toBe("warning");
+    render(<>{archiveNotification.description}</>);
+    expect(screen.getByTitle("b.txt")).toBeInTheDocument();
+    expect(screen.queryByText("b")).not.toBeInTheDocument();
     expect(archiveNotification.actionLabel).toBe("actions.undo");
     expect(archiveNotification.actionIcon).toBe("refresh");
     expect(archiveNotification.dedupeKey).toContain("a|c");
@@ -153,6 +157,51 @@ describe("useDriveDestructiveActions", () => {
     });
 
     expect(apiMocks.batchRestoreFileNodes).toHaveBeenCalledWith(["a", "c"]);
+  });
+
+  it("批量永久删除部分失败时列出文件名并使用警告语气", async () => {
+    apiMocks.permanentlyDeleteFileNode.mockImplementation(async (id: string) => {
+      if (id === "b" || id === "d") throw new Error("locked");
+      return { deleted: 1, id, ok: true };
+    });
+    const { result } = renderDestructiveActions();
+
+    act(() => result.current.deletePermanentlyItems([
+      item("a"),
+      item("b"),
+      item("c"),
+      item("d"),
+      item("e"),
+    ]));
+    await act(async () => {
+      await result.current.confirmPermanentDelete();
+    });
+
+    const notification = notificationMocks.showWorkspaceNotification.mock.calls[0][0];
+    expect(notification.tone).toBe("warning");
+    render(<>{notification.description}</>);
+    expect(screen.getByTitle("b.txt")).toBeInTheDocument();
+    expect(screen.getByTitle("d.txt")).toBeInTheDocument();
+    expect(screen.queryByText("b")).not.toBeInTheDocument();
+    expect(screen.queryByText("d")).not.toBeInTheDocument();
+  });
+
+  it("批量操作全部失败时使用错误语气", async () => {
+    apiMocks.batchArchiveFileNodes.mockResolvedValue({
+      failed: [
+        { id: "a", message: "locked" },
+        { id: "b", message: "locked" },
+      ],
+      succeeded: [],
+      summary: { failed: 2, requested: 2, succeeded: 0 },
+    });
+    const { result } = renderDestructiveActions();
+
+    await act(async () => {
+      await result.current.archiveItems([item("a"), item("b")]);
+    });
+
+    expect(notificationMocks.showWorkspaceNotification.mock.calls[0][0].tone).toBe("error");
   });
 
   it("恢复锁占用时拒绝第二个撤销并保留重试语义", async () => {

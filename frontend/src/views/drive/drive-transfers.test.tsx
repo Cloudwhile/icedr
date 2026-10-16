@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { palettes } from "@/features/file/model";
 import type { TransferRow } from "./drive-types";
 import { TransfersModule } from "./drive-transfers";
@@ -71,8 +71,29 @@ function createRecoverableRow(): TransferRow {
   };
 }
 
+function createTransferRow(id: string, status: TransferRow["status"]): TransferRow {
+  const timestamp = "2026-07-30T00:00:00.000Z";
+  return {
+    createdAt: timestamp,
+    hasContent: false,
+    id,
+    name: `${id}.bin`,
+    nodeId: null,
+    progress: status === "failed" ? 35 : 50,
+    status,
+    type: "upload",
+    updatedAt: timestamp,
+    workspaceId: "workspace-default",
+  };
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
 });
 
 describe("TransfersModule upload recovery", () => {
@@ -94,5 +115,59 @@ describe("TransfersModule upload recovery", () => {
       screen.getByRole("button", { name: "transfers.resume" }),
     );
     expect(onRetryTransfer).toHaveBeenCalledWith("transfer-recovery");
+  });
+
+  it("persists real upload settings and omits the unsupported speed limit", () => {
+    const { unmount } = render(
+      <TransfersModule palette={palettes.light} rows={[]} />,
+    );
+
+    const concurrency = screen.getByRole("combobox", {
+      name: "transfers.concurrentUploads",
+    });
+    const autoClear = screen.getByRole("checkbox", {
+      name: "transfers.autoClearCompleted",
+    });
+    expect(concurrency).toHaveValue("3");
+    expect(autoClear).not.toBeChecked();
+    expect(screen.queryByText("transfers.uploadSpeedLimit")).not.toBeInTheDocument();
+
+    fireEvent.change(concurrency, { target: { value: "1" } });
+    fireEvent.click(autoClear);
+    unmount();
+
+    render(<TransfersModule palette={palettes.light} rows={[]} />);
+    expect(screen.getByRole("combobox", {
+      name: "transfers.concurrentUploads",
+    })).toHaveValue("1");
+    expect(screen.getByRole("checkbox", {
+      name: "transfers.autoClearCompleted",
+    })).toBeChecked();
+  });
+
+  it("selects and focuses the needs-attention tab when requested by the HUD", async () => {
+    const onAttentionRequestHandled = vi.fn();
+    render(
+      <TransfersModule
+        attentionRequestKey={1}
+        onAttentionRequestHandled={onAttentionRequestHandled}
+        palette={palettes.light}
+        rows={[
+          createTransferRow("failed-upload", "failed"),
+          createTransferRow("active-upload", "running"),
+        ]}
+      />,
+    );
+
+    const attentionTab = screen.getByRole("tab", {
+      name: /transfers\.needsAttention/,
+    });
+    await waitFor(() => {
+      expect(attentionTab).toHaveAttribute("aria-selected", "true");
+      expect(attentionTab).toHaveFocus();
+      expect(onAttentionRequestHandled).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("failed-upload.bin")).toBeInTheDocument();
+    expect(screen.queryByText("active-upload.bin")).not.toBeInTheDocument();
   });
 });

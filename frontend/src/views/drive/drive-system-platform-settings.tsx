@@ -213,7 +213,7 @@ export function DriveSystemPlatformSettings({
   const storageSecret = resolvedStorageDraftState.secret;
 
   const showToast = useCallback(
-    (message: string, tone: AppToastTone = "success") => {
+    (message: string, tone: AppToastTone) => {
       showAppToast({ title: message, tone });
     },
     [],
@@ -298,7 +298,7 @@ export function DriveSystemPlatformSettings({
       const next = await updateSiteSettings(site);
       setSite(next);
       setSavedSite(next);
-      showToast(t("admin.saved"));
+      showToast(t("admin.saved"), "success");
     } catch (error) {
       showToast(getAdminSaveFailedMessage(error, t), "error");
       throw error;
@@ -348,7 +348,7 @@ export function DriveSystemPlatformSettings({
             (left, right) => left.code.localeCompare(right.code),
           ),
         );
-        showToast(t("admin.translationUploaded"));
+        showToast(t("admin.translationUploaded"), "success");
       })
       .catch((error) => showToast(getAdminSaveFailedMessage(error, t), "error"))
       .finally(() => setSavingKey(null));
@@ -416,7 +416,7 @@ export function DriveSystemPlatformSettings({
       setSavedAuth(next.auth);
       setPasskey(next.passkey);
       setSavedPasskey(next.passkey);
-      showToast(t("admin.saved"));
+      showToast(t("admin.saved"), "success");
     } catch (error) {
       await refreshAuthoritativeAuthPolicy();
       showToast(getAdminSaveFailedMessage(error, t), "error");
@@ -448,7 +448,7 @@ export function DriveSystemPlatformSettings({
       setMail(next);
       setSavedMail(next);
       setMailPassword("");
-      showToast(t("admin.saved"));
+      showToast(t("admin.saved"), "success");
     } catch (error) {
       showToast(getAdminSaveFailedMessage(error, t), "error");
       throw error;
@@ -476,7 +476,7 @@ export function DriveSystemPlatformSettings({
       .then((next) => {
         setMail(next);
         setSavedMail(next);
-        showToast(t("admin.mailTestSent"));
+        showToast(t("admin.mailTestSent"), "success");
       })
       .catch(() => showToast(t("admin.mailTestFailed"), "error"))
       .finally(() => setSavingKey(null));
@@ -505,6 +505,7 @@ export function DriveSystemPlatformSettings({
             ? t("admin.storageSwitchedToObject")
             : t("admin.storageSwitchedToLocal")
           : t("admin.saved"),
+        "success",
       );
     } catch (error) {
       showToast(getAdminSaveFailedMessage(error, t), "error");
@@ -566,7 +567,7 @@ export function DriveSystemPlatformSettings({
     void testStorageSettings(
       storageInputFromSettings(next, storageSecret.trim() || undefined),
     )
-      .then(() => showToast(t("admin.objectStorageTested")))
+      .then(() => showToast(t("admin.objectStorageTested"), "success"))
       .catch(() => showToast(t("admin.objectStorageTestFailed"), "error"))
       .finally(() => setSavingKey(null));
   };

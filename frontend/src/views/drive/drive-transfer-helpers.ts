@@ -191,11 +191,11 @@ export function createRecoveryTelemetry(
 
 export function createDefaultUploadMeta(
   t: DriveTranslator,
-  showFeedback: (message: string, tone?: "neutral" | "success" | "warning" | "error") => void,
+  showFeedback: (message: string, tone: "neutral" | "success" | "warning" | "error") => void,
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string,
 ): UploadTaskMeta {
   return {
-    onCompleted: () => showFeedback(t("app.uploaded")),
+    onCompleted: () => showFeedback(t("app.uploaded"), "success"),
     onFailed: (error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"),
   };
 }

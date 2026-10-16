@@ -234,7 +234,7 @@ function UserProfileSettings({
         setCropSource(null);
         showAppToast({ title: t("settings.avatarUpdated"), tone: "success" });
       })
-      .catch(() => showAppToast({ title: t("app.uploadFailed"), tone: "error" }))
+      .catch(() => showAppToast({ title: t("app.operationFailed"), tone: "error" }))
       .finally(() => setAvatarSaving(false));
   };
   const clearAvatar = () => {
@@ -245,7 +245,7 @@ function UserProfileSettings({
         onUserUpdated(user);
         showAppToast({ title: t("settings.avatarRemoved"), tone: "success" });
       })
-      .catch(() => showAppToast({ title: t("app.uploadFailed"), tone: "error" }))
+      .catch(() => showAppToast({ title: t("app.operationFailed"), tone: "error" }))
       .finally(() => setAvatarSaving(false));
   };
   const saveProfile = () => {

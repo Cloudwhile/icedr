@@ -12,6 +12,7 @@ export function handleDriveItemKeyDown(
   onSelect: (item: DriveItem, checked: boolean) => void,
   extendSelection: (currentId: string, key: string) => string | null,
   openContextMenu: (item: DriveItem, target: HTMLElement) => void,
+  focusItem?: (itemId: string, target: HTMLElement) => void,
 ) {
   if (event.target !== event.currentTarget || event.nativeEvent.isComposing) return;
   const contextMenuKey = isDriveContextMenuKey(event.key, event.shiftKey);
@@ -26,6 +27,10 @@ export function handleDriveItemKeyDown(
     const focusId = extendSelection(item.id, event.key);
     if (focusId) {
       event.preventDefault();
+      if (focusItem) {
+        focusItem(focusId, event.currentTarget as HTMLElement);
+        return;
+      }
       const surface = (event.currentTarget as HTMLElement).closest(".drive-files-module");
       Array.from(surface?.querySelectorAll<HTMLElement>("[data-drive-item-id]") ?? [])
         .find((candidate) => candidate.dataset.driveItemId === focusId)

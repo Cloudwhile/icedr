@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { DriveItem } from "@/features/file/model";
-import { buildShareCollection } from "./drive-share-dialog";
+import {
+  buildShareCollection,
+} from "./drive-share-dialog";
+import { validateShareExpiryDays } from "@/features/share/expiry-validation";
 
 const now = new Date(0).toISOString();
 
@@ -188,5 +191,19 @@ describe("DriveShareDialog share selection", () => {
     expect(collection.selection).toBeNull();
     expect(collection.isValid).toBe(false);
     expect(collection.itemCount).toBe(0);
+  });
+});
+
+describe("share expiry validation", () => {
+  it("accepts only values within the visible policy range", () => {
+    expect(validateShareExpiryDays("1", 30)).toEqual({ error: null, value: 1 });
+    expect(validateShareExpiryDays("30", 30)).toEqual({ error: null, value: 30 });
+    expect(validateShareExpiryDays("90", 30)).toEqual({ error: "over-limit", value: null });
+  });
+
+  it("does not silently replace empty, zero, or malformed values", () => {
+    expect(validateShareExpiryDays("", 30)).toEqual({ error: "required", value: null });
+    expect(validateShareExpiryDays("0", 30)).toEqual({ error: "below-minimum", value: null });
+    expect(validateShareExpiryDays("1.5", 30)).toEqual({ error: "below-minimum", value: null });
   });
 });

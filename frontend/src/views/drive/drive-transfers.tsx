@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EChart, type EChartOption } from "@/components/ui/e-chart";
 import { MotionList } from "@/components/ui/motion";
 import { ProgressMeter } from "@/components/ui/progress-meter";
@@ -14,14 +14,20 @@ import {
   resolveTaskLifecycleStatus,
 } from "@/features/file/task-lifecycle";
 import { summarizeUploadProgress } from "@/features/file/upload-progress";
+import {
+  persistUploadPreferences,
+  readUploadPreferences,
+} from "@/features/file/upload-preferences";
 import type { TransferRow, TransferStatus } from "./drive-types";
 import { formatRemainingTime } from "./drive-formatters";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 
 export type TransfersModuleProps = {
+  attentionRequestKey?: number;
   controllableTransferIds?: string[];
   onCancelTransfer?: (id: string) => void;
   onDeleteTransfer?: (id: string) => void;
+  onAttentionRequestHandled?: () => void;
   onPauseTransfer?: (id: string) => void;
   onResumeTransfer?: (id: string) => void;
   onRetryTransfer?: (id: string) => void;
@@ -40,9 +46,11 @@ type TransferSection = {
 };
 
 export function TransfersModule({
+  attentionRequestKey = 0,
   controllableTransferIds = [],
   onCancelTransfer,
   onDeleteTransfer,
+  onAttentionRequestHandled,
   onPauseTransfer,
   onResumeTransfer,
   onRetryTransfer,
@@ -52,9 +60,8 @@ export function TransfersModule({
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const [statusFilter, setStatusFilter] = useState<TransferFilter>("all");
-  const [concurrentUploadLimit, setConcurrentUploadLimit] = useState("3");
-  const [uploadSpeedLimit, setUploadSpeedLimit] = useState("unlimited");
-  const [autoClearCompleted, setAutoClearCompleted] = useState(false);
+  const attentionTabRef = useRef<HTMLButtonElement | null>(null);
+  const [uploadPreferences, setUploadPreferences] = useState(readUploadPreferences);
   const controllableTransferIdSet = useMemo(() => new Set(controllableTransferIds), [controllableTransferIds]);
   const uploadingRows = rows.filter((row) => getTaskLifecycleGroup(row) === "active");
   const completedRows = rows.filter((row) => getTaskLifecycleGroup(row) === "completed");
@@ -103,6 +110,17 @@ export function TransfersModule({
     { count: pausedRows.length, label: t("transfers.paused"), value: "paused" },
   ];
 
+  useEffect(() => {
+    if (attentionRequestKey <= 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      setStatusFilter("attention");
+      attentionTabRef.current?.focus();
+      attentionTabRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      onAttentionRequestHandled?.();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [attentionRequestKey, onAttentionRequestHandled]);
+
   return (
     <div className="drive-module-stack drive-transfers-module">
       <div className="drive-transfer-toolbar">
@@ -114,6 +132,7 @@ export function TransfersModule({
               aria-selected={statusFilter === tab.value}
               data-active={statusFilter === tab.value ? "true" : undefined}
               onClick={() => setStatusFilter(tab.value)}
+              ref={tab.value === "attention" ? attentionTabRef : undefined}
               role="tab"
             >
               <span>{tab.label}</span>
@@ -188,30 +207,30 @@ export function TransfersModule({
             <div className="drive-transfer-settings">
               <UploadSettingSelect
                 label={t("transfers.concurrentUploads")}
-                onChange={setConcurrentUploadLimit}
+                onChange={(value) => {
+                  const next = {
+                    ...uploadPreferences,
+                    concurrentUploadLimit: Number(value),
+                  };
+                  setUploadPreferences(next);
+                  persistUploadPreferences(next);
+                }}
                 options={[
                   { label: "1", value: "1" },
                   { label: "2", value: "2" },
                   { label: "3", value: "3" },
                   { label: "4", value: "4" },
                 ]}
-                value={concurrentUploadLimit}
-              />
-              <UploadSettingSelect
-                label={t("transfers.uploadSpeedLimit")}
-                onChange={setUploadSpeedLimit}
-                options={[
-                  { label: t("transfers.speedUnlimited"), value: "unlimited" },
-                  { label: "1 MB/s", value: "1mb" },
-                  { label: "5 MB/s", value: "5mb" },
-                  { label: "10 MB/s", value: "10mb" },
-                ]}
-                value={uploadSpeedLimit}
+                value={String(uploadPreferences.concurrentUploadLimit)}
               />
               <UploadSettingSwitch
-                checked={autoClearCompleted}
+                checked={uploadPreferences.autoClearCompleted}
                 label={t("transfers.autoClearCompleted")}
-                onChange={setAutoClearCompleted}
+                onChange={(autoClearCompleted) => {
+                  const next = { ...uploadPreferences, autoClearCompleted };
+                  setUploadPreferences(next);
+                  persistUploadPreferences(next);
+                }}
               />
             </div>
             <div className="drive-transfer-health drive-transfer-settings-health">

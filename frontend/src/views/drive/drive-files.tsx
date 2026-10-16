@@ -18,6 +18,17 @@ import {
   DriveTableSortHeader,
 } from "@/components/drive/file-list-controls";
 import {
+  DRIVE_GRID_ESTIMATED_ROW_SIZE,
+  DRIVE_GRID_GAP,
+  DRIVE_TABLE_HEADER_SIZE,
+  DRIVE_TABLE_ROW_SIZE,
+  focusVirtualDriveItem,
+  getDriveGridColumnCount,
+  getRenderedDriveGridColumnCount,
+  measureDriveGridRowSize,
+} from "@/components/drive/drive-file-virtualization";
+import { useDriveVirtualRange } from "@/components/drive/use-drive-virtual-range";
+import {
   formatDriveItemModified,
   formatFileSize,
   getItemKind,
@@ -36,14 +47,6 @@ import type { DriveSortBy, DriveSortDirection } from "./drive-search-model";
 const buttonTypeAttr: { type?: "button" } = {
   type: "button",
 };
-
-function getRenderedGridColumnCount(itemElement: HTMLElement) {
-  const grid = itemElement.closest<HTMLElement>(".drive-grid");
-  const template = grid ? getComputedStyle(grid).gridTemplateColumns.trim() : "";
-  if (!template || template === "none") return 1;
-  const repeatedColumns = /^repeat\(\s*(\d+)\s*,/.exec(template);
-  return repeatedColumns ? Number(repeatedColumns[1]) : template.split(/\s+/).length;
-}
 
 type FileAction = (item: DriveItem) => void;
 
@@ -561,6 +564,14 @@ function FileTable({
   const allFileIds = items.map((item) => item.id);
   const allSelected = allFileIds.length > 0 && allFileIds.every((id) => selected.includes(id));
   const indeterminate = !allSelected && allFileIds.some((id) => selected.includes(id));
+  const resetKey = `${activeNav}:${currentFolderId ?? "root"}`;
+  const virtualRange = useDriveVirtualRange({
+    contentOffset: DRIVE_TABLE_HEADER_SIZE + (currentFolderId ? DRIVE_TABLE_ROW_SIZE : 0),
+    estimateRowSize: DRIVE_TABLE_ROW_SIZE,
+    itemCount: items.length,
+    resetKey,
+  });
+  const visibleItems = items.slice(virtualRange.startIndex, virtualRange.endIndex);
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
     destructivePending,
@@ -593,6 +604,15 @@ function FileTable({
     const rect = target.getBoundingClientRect();
     setContextMenu({ item, position: { x: rect.left + 24, y: rect.top + Math.min(rect.height, 32) } });
   };
+  const focusVirtualItem = (itemId: string, target: HTMLElement) => {
+    const scope = target.closest<HTMLElement>(".drive-files-module");
+    focusVirtualDriveItem({
+      itemId,
+      items,
+      scope,
+      scrollToIndex: virtualRange.scrollToIndex,
+    });
+  };
 
   const renderItemRow = (item: DriveItem) => {
     const checked = selected.includes(item.id);
@@ -621,7 +641,7 @@ function FileTable({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, 1), openContextMenuFromKeyboard)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, 1), openContextMenuFromKeyboard, focusVirtualItem)}
         onMouseDown={preventDriveEntryTextSelection}
         tabIndex={0}
       >
@@ -683,7 +703,7 @@ function FileTable({
 
   return (
     <>
-      <MotionList key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-table-shell">
+      <MotionList key={resetKey} className="drive-table-shell" containerRef={virtualRange.hostRef}>
         <table className="drive-table icedr-select-parent">
           <colgroup>
             <col className="drive-col-select" />
@@ -753,7 +773,17 @@ function FileTable({
                 <td />
               </tr>
             ) : null}
-            {items.map(renderItemRow)}
+            {virtualRange.topSpacerSize > 0 ? (
+              <tr aria-hidden="true" className="drive-virtual-table-spacer">
+                <td colSpan={7} style={{ height: virtualRange.topSpacerSize }} />
+              </tr>
+            ) : null}
+            {visibleItems.map(renderItemRow)}
+            {virtualRange.bottomSpacerSize > 0 ? (
+              <tr aria-hidden="true" className="drive-virtual-table-spacer">
+                <td colSpan={7} style={{ height: virtualRange.bottomSpacerSize }} />
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </MotionList>
@@ -772,6 +802,7 @@ function FileTable({
 }
 
 function FileGrid({
+  activeNav,
   currentFolderId,
   destructivePending,
   goUp,
@@ -821,6 +852,20 @@ function FileGrid({
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const [contextMenu, setContextMenu] = useState<{ item: DriveItem; position: AppContextMenuPosition } | null>(null);
+  const leadingItemCount = currentFolderId ? 1 : 0;
+  const resetKey = `${activeNav}:${currentFolderId ?? "root"}`;
+  const virtualRange = useDriveVirtualRange({
+    estimateRowSize: DRIVE_GRID_ESTIMATED_ROW_SIZE,
+    getColumnCount: getDriveGridColumnCount,
+    itemCount: items.length,
+    leadingItemCount,
+    measureRowSize: measureDriveGridRowSize,
+    resetKey,
+  });
+  const visibleItems = items.slice(
+    Math.max(0, virtualRange.startIndex - leadingItemCount),
+    Math.max(0, virtualRange.endIndex - leadingItemCount),
+  );
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
     destructivePending,
@@ -853,6 +898,15 @@ function FileGrid({
     const rect = target.getBoundingClientRect();
     setContextMenu({ item, position: { x: rect.left + 24, y: rect.top + Math.min(rect.height, 32) } });
   };
+  const focusVirtualItem = (itemId: string, target: HTMLElement) => {
+    const scope = target.closest<HTMLElement>(".drive-files-module");
+    focusVirtualDriveItem({
+      itemId,
+      items,
+      scope,
+      scrollToIndex: virtualRange.scrollToIndex,
+    });
+  };
 
   const renderCard = (item: DriveItem) => {
     const checked = selected.includes(item.id);
@@ -877,7 +931,7 @@ function FileGrid({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, getRenderedGridColumnCount(event.currentTarget)), openContextMenuFromKeyboard)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, getRenderedDriveGridColumnCount(event.currentTarget)), openContextMenuFromKeyboard, focusVirtualItem)}
         onMouseDown={preventDriveEntryTextSelection}
         role="option"
         tabIndex={0}
@@ -938,8 +992,15 @@ function FileGrid({
 
   return (
     <>
-      <MotionList aria-label={t("app.refreshTarget.files")} aria-multiselectable="true" key={`${currentFolderId ?? "root"}-${items.map((item) => item.id).join("|")}`} className="drive-grid" role="listbox">
-        {currentFolderId ? (
+      <MotionList aria-label={t("app.refreshTarget.files")} aria-multiselectable="true" key={resetKey} className="drive-grid" containerRef={virtualRange.hostRef} role="listbox">
+        {virtualRange.topSpacerSize > 0 ? (
+          <div
+            aria-hidden="true"
+            className="drive-virtual-grid-spacer"
+            style={{ height: Math.max(0, virtualRange.topSpacerSize - DRIVE_GRID_GAP) }}
+          />
+        ) : null}
+        {currentFolderId && virtualRange.startIndex === 0 ? (
           <button {...buttonTypeAttr} data-drive-entry data-motion-row className="drive-file-card drive-parent-card" onClick={goUp} onMouseDown={preventDriveEntryTextSelection} onContextMenu={(event) => event.preventDefault()}>
             <div className="drive-card-visual">
               <div className="drive-card-preview drive-parent-card-preview">
@@ -956,7 +1017,14 @@ function FileGrid({
             </div>
           </button>
         ) : null}
-        {items.map(renderCard)}
+        {visibleItems.map(renderCard)}
+        {virtualRange.bottomSpacerSize > 0 ? (
+          <div
+            aria-hidden="true"
+            className="drive-virtual-grid-spacer"
+            style={{ height: Math.max(0, virtualRange.bottomSpacerSize - DRIVE_GRID_GAP) }}
+          />
+        ) : null}
       </MotionList>
       <AppContextMenu
         ariaLabel={t("actions.more")}

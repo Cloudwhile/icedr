@@ -237,7 +237,7 @@ export function ExternalShareAdminSettingsPanel({
   const savedWorkspaceRef = useRef<WorkspaceShareForm | null>(null);
 
   const showToast = useCallback(
-    (message: string, tone: AppToastTone = "success") => {
+    (message: string, tone: AppToastTone) => {
       showAppToast({ title: message, tone });
     },
     [],
@@ -339,7 +339,7 @@ export function ExternalShareAdminSettingsPanel({
             saveWorkspaceForm(key, previous, saved, false),
           );
         else clearUndoAction(key);
-        showToast(t("admin.saved"));
+        showToast(t("admin.saved"), "success");
       })
       .catch(() => {
         applyWorkspaceForm(previous);
@@ -383,7 +383,7 @@ export function ExternalShareAdminSettingsPanel({
       setUndoAction("emailRule", () =>
         saveWorkspaceForm("emailRule", previous, next, false),
       );
-      showToast(t("admin.saved"));
+      showToast(t("admin.saved"), "success");
     } catch (error) {
       showToast(t("admin.saveFailed"), "error");
       throw error;

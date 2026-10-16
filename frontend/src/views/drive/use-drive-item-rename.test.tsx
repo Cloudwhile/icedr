@@ -97,6 +97,20 @@ describe("useDriveItemRename", () => {
     expect(renameFileNodeMock).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the rename-specific fallback when the request fails", async () => {
+    const options = createOptions();
+    const requestError = new Error("request failed");
+    renameFileNodeMock.mockRejectedValueOnce(requestError);
+    const { result } = renderHook(() => useDriveItemRename(options));
+
+    await act(async () => {
+      await expect(result.current.commitRenameItem(item, "summary.txt")).resolves.toBe(false);
+    });
+
+    expect(options.getApiFeedback).toHaveBeenCalledWith(requestError, "app.renameFailed", "form");
+    expect(options.showFeedback).toHaveBeenCalledWith("request failed", "error");
+  });
+
   it("submits the normalized form of a decomposed Unicode name", async () => {
     const options = createOptions();
     const { result } = renderHook(() => useDriveItemRename(options));

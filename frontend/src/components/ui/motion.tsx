@@ -161,14 +161,21 @@ export function MotionSurface({
 
 export function MotionList({
   children,
+  containerRef,
   style,
   ...rest
 }: {
   children: ReactNode;
+  containerRef?: (node: HTMLDivElement | null) => void;
   preset?: MotionPreset;
 } & Omit<ComponentProps<typeof motion.div>, "animate" | "children" | "exit" | "initial" | "variants">) {
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const reduce = useReducedMotion();
+
+  useEffect(() => {
+    containerRef?.(scope.current);
+    return () => containerRef?.(null);
+  }, [containerRef, scope]);
 
   useEffect(() => {
     const node = scope.current;

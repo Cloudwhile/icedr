@@ -7,6 +7,7 @@ import { getItemExtension, getItemKind } from "@/features/file/model";
 import { isImagePreviewFile, isVideoPreviewFile } from "@/features/file/open-with";
 import { cn } from "./cn";
 import { ItemIcon } from "./app-icon";
+import { useInViewOnce } from "./use-in-view-once";
 
 export type DriveItemPreviewProps = {
   className?: string;
@@ -26,9 +27,10 @@ export function DriveItemPreview({
   const kind = getItemKind(item);
   const extension = getItemExtension(item);
   const [sourceUrl, setSourceUrl] = useState<{ itemId: string; url: string | null } | null>(null);
+  const [previewRef, shouldLoadPreview] = useInViewOnce<HTMLDivElement>();
 
   useEffect(() => {
-    if (!previewableImage && !previewableVideo) {
+    if (!shouldLoadPreview || (!previewableImage && !previewableVideo)) {
       return;
     }
 
@@ -44,20 +46,21 @@ export function DriveItemPreview({
     return () => {
       cancelled = true;
     };
-  }, [item, previewableImage, previewableVideo]);
+  }, [item, previewableImage, previewableVideo, shouldLoadPreview]);
 
   const activeUrl = sourceUrl?.itemId === item.id ? sourceUrl.url : null;
   const hasMedia = Boolean(activeUrl && (previewableImage || previewableVideo));
 
   return (
     <div
+      ref={previewRef}
       className={cn("drive-item-preview", className)}
       data-has-media={hasMedia ? "true" : undefined}
       data-kind={kind}
       data-extension={extension || undefined}
     >
       {previewableImage && activeUrl ? (
-        <img alt="" className="drive-item-preview-media" src={activeUrl} />
+        <img alt="" className="drive-item-preview-media" decoding="async" loading="lazy" src={activeUrl} />
       ) : null}
       {previewableVideo && activeUrl ? (
         <video aria-label={item.name} className="drive-item-preview-media" muted playsInline preload="metadata" src={activeUrl} />

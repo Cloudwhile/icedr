@@ -166,7 +166,7 @@ describe("useUploadRecoveryHydration", () => {
 });
 
 type HydrationProps = {
-  showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
+  showFeedback: (message: string, tone: WorkspaceNotificationTone) => void;
   t: (key: string) => string;
   uploadOwnerUserId?: string;
   workspaceId: string | null;

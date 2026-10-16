@@ -64,7 +64,7 @@
   box-shadow: var(--drive-ui-shadow-1);
   min-height: 0;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   width: 100%;
 }
 
@@ -201,6 +201,17 @@
 .drive-table tbody tr[data-selected] {
   background: color-mix(in srgb, var(--drive-ui-blue-600) 10%, var(--drive-ui-surface));
   box-shadow: inset 2px 0 0 var(--drive-ui-blue-600), inset 0 0 0 1px color-mix(in srgb, var(--drive-ui-blue-600) 18%, transparent);
+}
+
+.drive-table tbody tr.drive-virtual-table-spacer {
+  cursor: default;
+  pointer-events: none;
+  transition: none;
+}
+
+.drive-table tbody tr.drive-virtual-table-spacer > td {
+  border-bottom: 0;
+  padding: 0;
 }
 
 .drive-table tbody tr:focus-visible,
@@ -450,6 +461,13 @@
   gap: 12px;
   grid-template-columns: repeat(auto-fill, minmax(168px, 188px));
   justify-content: start;
+}
+
+.drive-virtual-grid-spacer {
+  grid-column: 1 / -1;
+  min-width: 0;
+  pointer-events: none;
+  width: 100%;
 }
 
 .drive-file-card {

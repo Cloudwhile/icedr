@@ -116,14 +116,14 @@ export function OAuthAdminSettingsPage({
   );
 
   const showToast = useCallback(
-    (message: string, tone: AppToastTone = "success") =>
+    (message: string, tone: AppToastTone) =>
       showAppToast({ title: message, tone }),
     [],
   );
   const copyOAuthValue = useCallback(
     (value: string) => {
       void copyTextToClipboard(value)
-        .then(() => showToast(t("actions.copy")))
+        .then(() => showToast(t("actions.copy"), "success"))
         .catch(() => showToast(t("errors.unknown"), "error"));
     },
     [showToast, t],
@@ -344,7 +344,7 @@ export function OAuthAdminSettingsPage({
     try {
       const provider = await request;
       setProviders((current) => upsertOAuthProvider(current, provider));
-      showToast(enabled ? t("admin.oauthActivated") : t("admin.saved"));
+      showToast(enabled ? t("admin.oauthActivated") : t("admin.saved"), "success");
       resetEditor();
       if (enabled && authSettings && !authSettings.oauthEnabled) {
         setEnablePromptOpen(true);
@@ -418,6 +418,7 @@ export function OAuthAdminSettingsPage({
         setProviders((current) => upsertOAuthProvider(current, next));
         showToast(
           enabled ? t("admin.oauthActivated") : t("admin.oauthDeactivated"),
+          "success",
         );
         if (enabled && authSettings && !authSettings.oauthEnabled)
           setEnablePromptOpen(true);
@@ -448,7 +449,7 @@ export function OAuthAdminSettingsPage({
       .then((next) => {
         setAuthSettings(next);
         setEnablePromptOpen(false);
-        showToast(t("admin.oauthGlobalEnabled"));
+        showToast(t("admin.oauthGlobalEnabled"), "success");
       })
       .catch((error) =>
         showToast(
@@ -496,7 +497,7 @@ export function OAuthAdminSettingsPage({
           current.filter((item) => item.id !== provider.id),
         );
         setConfirmation(null);
-        showToast(t("admin.oauthDeleted"));
+        showToast(t("admin.oauthDeleted"), "success");
         await syncAfterMutation();
       })
       .catch((error) =>

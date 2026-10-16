@@ -108,4 +108,21 @@ describe("summarizeUploadProgress", () => {
     ]);
     expect(summary.progress).toBe(40);
   });
+
+  it("counts only failed tasks for the persistent failure anchor", () => {
+    const summary = summarizeUploadProgress([
+      createRow("failed", { status: "failed" }),
+      createRow("failed-lifecycle", {
+        lifecycle: {
+          status: "failed",
+          retryable: true,
+        },
+        status: "running",
+      }),
+      createRow("expired", { status: "expired" }),
+      createRow("completed", { status: "completed" }),
+    ]);
+
+    expect(summary.failedCount).toBe(2);
+  });
 });

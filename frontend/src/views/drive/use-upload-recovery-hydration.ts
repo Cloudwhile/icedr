@@ -48,7 +48,7 @@ type UseUploadRecoveryHydrationOptions = {
   setUploadTelemetry: Dispatch<SetStateAction<Record<string, UploadTelemetry>>>;
   showFeedback: (
     message: string,
-    tone?: WorkspaceNotificationTone,
+    tone: WorkspaceNotificationTone,
   ) => void;
   t: ReturnType<typeof useTranslations>;
   uploadOwnerUserId?: string;

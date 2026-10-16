@@ -57,6 +57,7 @@ describe("workspace notifications", () => {
       dedupeKey: "action-once",
       onAction,
       title: "Moved to trash",
+      tone: "success",
     });
 
     expect(id).not.toBeNull();
@@ -76,6 +77,7 @@ describe("workspace notifications", () => {
       dedupeKey: "busy-undo",
       onAction: () => false,
       title: "Moved to trash",
+      tone: "success",
     });
 
     await expect(triggerWorkspaceNotificationAction(id!)).resolves.toBe(false);
@@ -83,20 +85,33 @@ describe("workspace notifications", () => {
   });
 
   it("keeps only the latest notification for an explicit dedupe key", () => {
-    showWorkspaceNotification({ dedupeKey: "unique-archive", title: "First" });
-    showWorkspaceNotification({ dedupeKey: "unique-archive", title: "Second" });
+    showWorkspaceNotification({ dedupeKey: "unique-archive", title: "First", tone: "success" });
+    showWorkspaceNotification({ dedupeKey: "unique-archive", title: "Second", tone: "success" });
 
     expect(getWorkspaceNotificationsSnapshot()).toHaveLength(1);
     expect(getWorkspaceNotificationsSnapshot()[0]?.title).toBe("Second");
   });
 
   it("debounces notifications that use the generated content key", () => {
-    const firstId = showWorkspaceNotification({ title: "Repeated refresh result" });
-    const secondId = showWorkspaceNotification({ title: "Repeated refresh result" });
+    const firstId = showWorkspaceNotification({ title: "Repeated refresh result", tone: "success" });
+    const secondId = showWorkspaceNotification({ title: "Repeated refresh result", tone: "success" });
 
     expect(firstId).not.toBeNull();
     expect(secondId).toBeNull();
     expect(getWorkspaceNotificationsSnapshot()).toHaveLength(1);
+  });
+
+  it("renders warning feedback with an exclamation indicator instead of a success tick", () => {
+    act(() => {
+      showWorkspaceNotification({ title: "Select a file first", tone: "warning" });
+    });
+
+    render(<WorkspaceNotificationStack closeLabel="Close" palette={palettes.light} />);
+
+    const notification = screen.getByText("Select a file first").closest(".workspace-notification");
+    expect(notification).toHaveAttribute("data-tone", "warning");
+    expect(notification?.querySelector('[data-icon="exclamation"]')).toBeInTheDocument();
+    expect(notification?.querySelector('[data-icon="tick"]')).not.toBeInTheDocument();
   });
 
   it("renders an icon action with an accessible label", async () => {
@@ -109,6 +124,7 @@ describe("workspace notifications", () => {
         dedupeKey: "accessible-action",
         onAction,
         title: "Moved to trash",
+        tone: "success",
       });
     });
 

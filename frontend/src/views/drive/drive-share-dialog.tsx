@@ -31,6 +31,7 @@ import {
   type ShareSelectionInput,
 } from "@/features/share/registry";
 import { policyFromWorkspaceSettings } from "@/features/share/policy";
+import { validateShareExpiryDays } from "@/features/share/expiry-validation";
 import { useLocale, useTranslations } from "@/i18n/react";
 import type { WorkspaceShareSettings } from "@/lib/drive-api";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
@@ -38,6 +39,7 @@ import "./styles/drive-share-dialog.css";
 
 const buttonTypeAttr = { type: "button" as const };
 const shareScopeErrorId = "drive-share-dialog-scope-error";
+const shareExpiryErrorId = "drive-share-dialog-expiry-error";
 
 type ShareCollection = {
   allowedIds: Set<string>;
@@ -140,6 +142,12 @@ function DriveShareDialogContent({
   const shareUrl = createdShareUrl ?? (createdToken ? createShareUrl(createdToken) : "");
   const routeShareUrl = createdToken ? `/share/s/${encodeURIComponent(createdToken)}` : "";
   const expiryDays = expiryDaysInput ?? String(policy.expiresValue);
+  const expiryValidation = validateShareExpiryDays(expiryDays, maxExpiresDays);
+  const expiryError = expiryValidation.error === "over-limit"
+    ? t("share.expiryAboveMaximum", { count: maxExpiresDays })
+    : expiryValidation.error
+      ? t("share.expiryRequired", { count: maxExpiresDays })
+      : null;
 
   const closeShareDialog = useCallback(() => {
     onClose();
@@ -160,17 +168,21 @@ function DriveShareDialogContent({
   }, [closeShareDialog, creating]);
 
   const createShare = () => {
-    if (creating || !collection.isValid || !collection.selection) return;
+    if (
+      creating
+      || !collection.isValid
+      || !collection.selection
+      || expiryValidation.value === null
+    ) return;
     setCreating(true);
     setCreateFeedback(null);
-    const expires = Math.min(Math.max(Number(expiryDays) || policy.expiresValue, 1), maxExpiresDays);
     const record: RegisteredShare = {
       allowDownload,
       allowPreview,
       allowedItemIds: Array.from(collection.allowedIds),
       createdAt: new Date().toISOString(),
       dynamicRootId: collection.dynamicRootId,
-      expiresDays: expires,
+      expiresDays: expiryValidation.value,
       mode: collection.mode,
       owner: collection.owner,
       policy,
@@ -263,6 +275,7 @@ function DriveShareDialogContent({
                 allowDownload={allowDownload}
                 allowPreview={allowPreview}
                 expiryDays={expiryDays}
+                expiryError={expiryError}
                 maxDays={maxExpiresDays}
                 onToggleDownload={() => setAllowDownload((value) => !value)}
                 onTogglePreview={() => setAllowPreview((value) => !value)}
@@ -337,7 +350,7 @@ function DriveShareDialogContent({
                   <LocalIcon name="cross" size={17} />
                 </ToolButton>
                 <ActionButton
-                  disabled={creating || !collection.isValid}
+                  disabled={creating || !collection.isValid || expiryValidation.value === null}
                   icon={creating ? <LoadingSpinner palette={palette} size={14} /> : <LocalIcon name="link" size={17} />}
                   onClick={createShare}
                   palette={palette}
@@ -396,6 +409,7 @@ function ShareOptions({
   allowDownload,
   allowPreview,
   expiryDays,
+  expiryError,
   maxDays,
   onToggleDownload,
   onTogglePreview,
@@ -407,6 +421,7 @@ function ShareOptions({
   allowDownload: boolean;
   allowPreview: boolean;
   expiryDays: string;
+  expiryError: string | null;
   maxDays: number;
   onToggleDownload: () => void;
   onTogglePreview: () => void;
@@ -416,7 +431,6 @@ function ShareOptions({
   setRemark: (value: string) => void;
 }) {
   const t = useTranslations();
-  const overLimit = Number(expiryDays) > maxDays;
   return (
     <section className="drive-share-options">
       <span className="drive-share-section-label">{t("share.permissions")}</span>
@@ -442,15 +456,26 @@ function ShareOptions({
           <span>{t("share.expiry")}</span>
           <span className="drive-share-expiry-control">
             <input
+              aria-describedby={shareExpiryErrorId}
+              aria-invalid={Boolean(expiryError)}
               className="drive-share-input"
               inputMode="numeric"
+              max={maxDays}
+              min={1}
+              step={1}
+              type="number"
               value={expiryDays}
-              onChange={(event) => setExpiryDays(event.target.value.replace(/\D/g, ""))}
+              onChange={(event) => setExpiryDays(event.target.value)}
             />
             <span className="drive-share-unit">{t("share.units.days")}</span>
           </span>
-          <span className="drive-share-field-note" data-risk={overLimit ? "true" : undefined}>
-            {t("share.maximumAllowed", { count: maxDays })}
+          <span
+            className="drive-share-field-note"
+            data-risk={expiryError ? "true" : undefined}
+            id={shareExpiryErrorId}
+            role={expiryError ? "alert" : undefined}
+          >
+            {expiryError ?? t("share.maximumAllowed", { count: maxDays })}
           </span>
         </label>
         <label className="drive-share-field">

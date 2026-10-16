@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { createElement, useCallback, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { BatchOperationFailureDescription } from "@/components/drive/batch-operation-feedback";
+import { getBatchOperationTone } from "@/components/drive/batch-operation-feedback-model";
 import { showWorkspaceNotification, type WorkspaceNotificationTone } from "@/components/ui/workspace-notification-store";
 import {
   copyTextToClipboard,
@@ -29,7 +31,7 @@ type UseDriveFileActionsOptions = {
   refreshStorageUsage: () => Promise<unknown>;
   setSelected: Dispatch<SetStateAction<string[]>>;
   setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
-  showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
+  showFeedback: (message: string, tone: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;
   workspaceId: string | null;
   workspaceTimerRef: MutableRefObject<number | null>;
@@ -63,14 +65,15 @@ export function useDriveFileActions({
 
   const showBatchResult = useCallback((
     summary: { failed: number; requested: number; succeeded: number },
-    failed: Array<{ id: string; message: string }> = [],
+    failed: Array<{ id: string; message: string }>,
+    sourceItems: DriveItem[],
   ) => {
     showWorkspaceNotification({
       description: failed.length > 0
-        ? failed.slice(0, 6).map((item) => `${item.id}: ${item.message}`).join("\n")
+        ? createElement(BatchOperationFailureDescription, { failures: failed, items: sourceItems })
         : undefined,
       title: t("files.batchResult", summary),
-      tone: summary.failed > 0 ? "neutral" : "success",
+      tone: getBatchOperationTone(summary),
     });
   }, [t]);
   const getActionItems = (items: DriveItem[]) => items.length > 0 ? items : activeItem ? [activeItem] : [];
@@ -85,36 +88,36 @@ export function useDriveFileActions({
   const copyItemsLink = async (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
     if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
+      showFeedback(t("app.noSelection"), "warning");
       return;
     }
     await copyTextToClipboard(actionItems.map((item) => createPreviewUrl(item.id)).join("\n"));
-    showFeedback(t("app.copied"));
+    showFeedback(t("app.copied"), "success");
   };
   const downloadItems = (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
     if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
+      showFeedback(t("app.noSelection"), "warning");
       return;
     }
     if (actionItems.length > 1) {
       void downloadWorkspaceDriveItems(actionItems)
-        .then((result) => showBatchResult(result.summary, result.failed))
+        .then((result) => showBatchResult(result.summary, result.failed, actionItems))
         .catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
       return;
     }
     void downloadWorkspaceDriveItem(actionItems[0], workspaceId ?? undefined)
-      .then(() => showFeedback(t("app.downloaded")))
+      .then(() => showFeedback(t("app.downloaded"), "success"))
       .catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
   };
   const setClipboardItems = (items: DriveItem[], mode: DriveClipboardState["mode"]) => {
     const actionItems = getActionItems(items).filter((item) => !item.archivedAt);
     if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
+      showFeedback(t("app.noSelection"), "warning");
       return;
     }
     setDriveClipboard({ items: actionItems, mode, spaceScope, workspaceId });
-    showFeedback(mode === "copy" ? t("app.copied") : t("app.cut"));
+    showFeedback(mode === "copy" ? t("app.copied") : t("app.cut"), "success");
   };
   const pasteClipboard = () => {
     if (!driveClipboard || !canPasteClipboard) {
@@ -134,7 +137,7 @@ export function useDriveFileActions({
           .filter((entry): entry is { item: DriveItem; result: PromiseRejectedResult } => entry.result.status === "rejected")
           .map(({ item, result }) => ({
             id: item.id,
-            message: result.reason instanceof Error ? result.reason.message : t("app.uploadFailed"),
+            message: result.reason instanceof Error ? result.reason.message : t("app.copyFailed"),
           }));
         return Promise.all([refreshDriveItems(), refreshStorageUsage()]).then(() => {
           if (succeeded.length > 0) setSelected(succeeded.map((node) => node.id));
@@ -171,12 +174,15 @@ export function useDriveFileActions({
     void action
       .then((result) => {
         if (result.summary.requested === 1 && result.summary.failed === 0) {
-          showFeedback(mode === "copy" ? t("app.duplicated") : t("app.moved"));
+          showFeedback(mode === "copy" ? t("app.duplicated") : t("app.moved"), "success");
           return;
         }
-        showBatchResult(result.summary, result.failed);
+        showBatchResult(result.summary, result.failed, items);
       })
-      .catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"))
+      .catch((error) => showFeedback(
+        getApiFeedback(error, mode === "copy" ? "app.copyFailed" : "app.moveFailed", "form"),
+        "error",
+      ))
       .finally(() => {
         if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
         workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);

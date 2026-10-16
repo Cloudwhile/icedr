@@ -12,8 +12,8 @@ import { DriveFilePreviewDialog } from "@/components/ui/drive-file-preview-dialo
 import { FileOpenWithDialog } from "@/components/ui/file-open-with-dialog";
 import { DriveUploadHud } from "@/components/ui/drive-upload-hud";
 import { DriveHiddenFileInput } from "@/components/ui/drive-hidden-file-input";
-import { UploadConflictDialog } from "@/components/ui/upload-conflict-dialog";
 import { DriveDestructiveDialogs } from "@/components/drive/drive-destructive-dialogs";
+import { UploadConflictDialogs } from "@/components/drive/upload-conflict-dialogs";
 import { WorkspaceRefreshStatus } from "@/components/drive/workspace-refresh-status";
 import { AppLoading, LdrsLoadingState, WorkspaceSkeleton } from "@/components/common/ui/loading-state";
 import { findDriveItem, getChildItems, getFolderPath, getItemKind, type DriveItem, type DriveUserNav, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
@@ -119,6 +119,7 @@ export function DriveWorkbench({
   const [shareSettings, setShareSettings] = useState<WorkspaceShareSettings | null>(null);
   const [shareSettingsError, setShareSettingsError] = useState<string | null>(null);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
+  const [transfersAttentionRequestKey, setTransfersAttentionRequestKey] = useState(0);
   const workspaceTimerRef = useRef<number | null>(null);
   const bootLoadingStartedRef = useRef(0);
   const initialPreviewOpenedRef = useRef(false);
@@ -432,7 +433,7 @@ export function DriveWorkbench({
     setWorkspaceLoading(true);
     workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);
   };
-  const showFeedback = useCallback((message: string, tone: WorkspaceNotificationTone = "success") => {
+  const showFeedback = useCallback((message: string, tone: WorkspaceNotificationTone) => {
     showWorkspaceNotification({
       title: message,
       tone,
@@ -440,9 +441,12 @@ export function DriveWorkbench({
   }, []);
   const {
     cancelUploadTransfer,
+    cancelUploadConflictDiscard,
     clearStorageUsage,
+    confirmUploadConflictDiscard,
     controllableTransferIds,
     deleteTransferRow,
+    dismissUploadConflictPrompt,
     handleUploadFiles,
     pauseUploadTransfer,
     refreshStorageUsage,
@@ -455,6 +459,7 @@ export function DriveWorkbench({
     storageUsage,
     triggerUpload,
     uploadConflictPrompt,
+    uploadConflictDiscardOpen,
     uploadInputRef,
     visibleTransferRows,
   } = useDriveTransfers({
@@ -617,8 +622,15 @@ export function DriveWorkbench({
     setDetailsOpen(false);
     setSidebarOpen(false);
   };
+  const openFailedTransfers = () => {
+    setTransfersAttentionRequestKey((current) => current + 1);
+    openTransfers();
+  };
+  const clearTransfersAttentionRequest = useCallback(() => {
+    setTransfersAttentionRequestKey(0);
+  }, []);
   const closeShareLink = (id: string) => {
-    void revokeRegisteredShare(id).then(() => refreshShares()).then(() => showFeedback(t("links.linkClosed"))).catch((error) => {
+    void revokeRegisteredShare(id).then(() => refreshShares()).then(() => showFeedback(t("links.linkClosed"), "success")).catch((error) => {
       const message = getApiFeedback(error, "links.closeFailed");
       setLinksError(message);
       showFeedback(message, "error");
@@ -628,7 +640,7 @@ export function DriveWorkbench({
     const link = linkRows.find(candidate => candidate.token === id);
     if (!link) return;
     await copyTextToClipboard(link.url ?? createShareUrl(link.token));
-    showFeedback(t("app.copied"));
+    showFeedback(t("app.copied"), "success");
   };
   const toggleSelected = (id: string, checked: boolean) => {
     setFocusedItemId(null);
@@ -647,11 +659,11 @@ export function DriveWorkbench({
       const updatedItem = mapFileNodeToDriveItem(updatedNode);
       setDriveItems(current => withShareFlags(current.map(candidate => candidate.id === id ? updatedItem : candidate), registeredShares));
       setArchivedItems(current => withShareFlags(current.map(candidate => candidate.id === id ? updatedItem : candidate), registeredShares));
-    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"));
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.favoriteFailed", "form"), "error"));
   };
   const createFolder = () => {
     if (!workspaceId) {
-      showFeedback(t("app.uploadFailed"), "error");
+      showFeedback(t("app.folderCreateFailed"), "error");
       return;
     }
     const name = createUniqueDriveName(t("actions.newFolder"), currentDirectoryItems);
@@ -667,8 +679,8 @@ export function DriveWorkbench({
       setSelected([createdNode.id]);
       setFocusedItemId(null);
       setRenamingItemId(createdNode.id);
-      showFeedback(t("app.folderCreated"));
-    }).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error")).finally(() => {
+      showFeedback(t("app.folderCreated"), "success");
+    }).catch((error) => showFeedback(getApiFeedback(error, "app.folderCreateFailed", "form"), "error")).finally(() => {
       if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
       workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);
     });
@@ -686,7 +698,7 @@ export function DriveWorkbench({
         setSelected([createdNode.id]);
         setFocusedItemId(null);
         setRenamingItemId(createdNode.id);
-        showFeedback(t("app.fileCreated"));
+        showFeedback(t("app.fileCreated"), "success");
       },
       onFailed: error => {
         if (isStorageCapacityError(error)) {
@@ -796,7 +808,7 @@ export function DriveWorkbench({
     }
     if (remember) {
       window.localStorage.setItem(getFileOpenWithStorageKey(openWithDialogItem), value);
-      showFeedback(t("preview.saved"));
+      showFeedback(t("preview.saved"), "success");
     }
     setPreviewState({ itemId: openWithDialogItem.id, openWith: value });
     setOpenWithDialogItem(null);
@@ -814,7 +826,7 @@ export function DriveWorkbench({
   const shareItems = (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
     if (actionItems.length === 0) {
-      showFeedback(t("app.noSelection"));
+      showFeedback(t("app.noSelection"), "warning");
       return;
     }
     setSelected(actionItems.map((item) => item.id));
@@ -939,7 +951,7 @@ export function DriveWorkbench({
                 setShareOpen(true);
               }} onShowDetailsItem={showItemDetails} onSecurityItem={openItemSecurity} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} searchLoading={searchLoading} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} sortBy={searchFilters.sortBy} sortDirection={searchFilters.sortDirection} onSortChange={applyDriveSort} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}
                     {activeModule === "links" ? <LinksModule error={linksError} links={linkRows} onCloseLink={closeShareLink} onCopyLink={copyShareLink} palette={palette} sourceItems={allKnownItems} /> : null}
-                    {activeModule === "transfers" ? <TransfersModule controllableTransferIds={controllableTransferIds} onCancelTransfer={cancelUploadTransfer} onDeleteTransfer={deleteTransferRow} onPauseTransfer={pauseUploadTransfer} onResumeTransfer={resumeUploadTransfer} onRetryTransfer={retryUploadTransfer} palette={palette} rows={visibleTransferRows} /> : null}
+                    {activeModule === "transfers" ? <TransfersModule attentionRequestKey={transfersAttentionRequestKey} controllableTransferIds={controllableTransferIds} onAttentionRequestHandled={clearTransfersAttentionRequest} onCancelTransfer={cancelUploadTransfer} onDeleteTransfer={deleteTransferRow} onPauseTransfer={pauseUploadTransfer} onResumeTransfer={resumeUploadTransfer} onRetryTransfer={retryUploadTransfer} palette={palette} rows={visibleTransferRows} /> : null}
                     {activeModule === "settings" ? (
                       <DriveSettingsWorkspace
                         currentUser={activeUser}
@@ -973,13 +985,14 @@ export function DriveWorkbench({
       </div>
 
       <DriveHiddenFileInput inputRef={uploadInputRef} onChange={handleUploadFiles} />
-      <UploadConflictDialog
-        conflictCount={uploadConflictPrompt?.conflictCount ?? 0}
-        fileNames={uploadConflictPrompt?.fileNames ?? []}
-        onClose={() => resolveUploadConflictPrompt(null)}
+      <UploadConflictDialogs
+        discardOpen={uploadConflictDiscardOpen}
+        onCancelDiscard={cancelUploadConflictDiscard}
+        onConfirmDiscard={confirmUploadConflictDiscard}
+        onDismissPrompt={dismissUploadConflictPrompt}
         onSelect={resolveUploadConflictPrompt}
-        open={Boolean(uploadConflictPrompt)}
         palette={palette}
+        prompt={uploadConflictPrompt}
       />
       <DriveDestructiveDialogs deleteCount={permanentDeleteItems.length} deleteOpen={permanentDeleteOpen} deletePending={permanentDeletePending} extensionPending={extensionRenamePending} extensionPrompt={extensionRenamePrompt} onCancelDelete={cancelPermanentDelete} onCancelExtension={cancelExtensionRename} onConfirmDelete={() => void confirmPermanentDelete()} onConfirmExtension={confirmExtensionRename} palette={palette} />
       <DriveShareDialog currentDirectoryItems={currentDirectoryItems} currentFolder={currentFolder} onClose={() => setShareOpen(false)} onShareCreated={share => {
@@ -1006,12 +1019,15 @@ export function DriveWorkbench({
         options={openWithOptions}
         palette={palette}
       />
-      <DriveUploadHud
-        locale={locale}
-        onOpenTransfers={openTransfers}
-        palette={palette}
-        rows={visibleTransferRows}
-      />
+      {activeModule !== "transfers" ? (
+        <DriveUploadHud
+          locale={locale}
+          onOpenFailedTransfers={openFailedTransfers}
+          onOpenTransfers={openTransfers}
+          palette={palette}
+          rows={visibleTransferRows}
+        />
+      ) : null}
       <MotionPresence show={bootLoading && bootLoadingStage !== null} preset="fade">
         {bootLoadingStage ? <AppLoading label={t(bootLoadingStage === "progress" ? "app.loading" : "app.syncing")} palette={palette} stage={bootLoadingStage} viewMode={viewMode} /> : null}
       </MotionPresence>

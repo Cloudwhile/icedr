@@ -30,6 +30,12 @@ import {
   type UploadRecoveryDescriptor,
 } from "@/features/file/upload-recovery";
 import type { DriveItem, DriveUserNav } from "@/features/file/model";
+import { autoClearCompletedUpload } from "@/features/file/upload-auto-clear";
+import {
+  createUploadConflictPromptQueue,
+  type UploadConflictPrompt,
+} from "@/features/file/upload-conflict-prompt-queue";
+import { readUploadPreferences } from "@/features/file/upload-preferences";
 import { useTranslations } from "@/i18n/react";
 import {
   cancelUploadSessionRecovery,
@@ -77,11 +83,6 @@ import { createLatestDriveItemsRequestRunner } from "./drive-items-refresh";
 export type { UploadTaskMeta } from "./drive-transfer-helpers";
 export { isStorageCapacityError } from "./drive-transfer-helpers";
 
-type UploadConflictPromptState = {
-  conflictCount: number;
-  fileNames: string[];
-};
-
 type StartUploadFileOptions = {
   batchId?: string;
   draftId?: string;
@@ -96,7 +97,7 @@ type UseDriveTransfersOptions = {
   currentFolderId: string | null;
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   refreshDriveItems: () => Promise<unknown> | void;
-  showFeedback: (message: string, tone?: WorkspaceNotificationTone) => void;
+  showFeedback: (message: string, tone: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;
   uploadActor?: string;
   uploadOwnerUserId?: string;
@@ -120,9 +121,13 @@ export function useDriveTransfers({
   const [uploadTelemetry, setUploadTelemetry] = useState<Record<string, UploadTelemetry>>({});
   const [controllableTransferIds, setControllableTransferIds] = useState<string[]>([]);
   const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
-  const [uploadConflictPrompt, setUploadConflictPrompt] = useState<UploadConflictPromptState | null>(null);
+  const [uploadConflictPrompt, setUploadConflictPrompt] = useState<UploadConflictPrompt | null>(null);
+  const [uploadConflictDiscardOpen, setUploadConflictDiscardOpen] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
-  const uploadConflictResolverRef = useRef<((strategy: UploadConflictStrategy | null) => void) | null>(null);
+  const uploadConflictPromptQueue = useMemo(
+    () => createUploadConflictPromptQueue(setUploadConflictPrompt),
+    [],
+  );
   const uploadBatchCounterRef = useRef(0);
   const uploadDraftCounterRef = useRef(0);
   const uploadRecoveryDescriptorsRef = useRef(new Map<string, UploadRecoveryDescriptor>());
@@ -162,13 +167,12 @@ export function useDriveTransfers({
     const uploadTasks = uploadTasksRef.current;
     const uploadTaskMeta = uploadTaskMetaRef.current;
     return () => {
-      uploadConflictResolverRef.current?.(null);
-      uploadConflictResolverRef.current = null;
+      uploadConflictPromptQueue.dispose();
       uploadTasks.forEach((task) => task.detach());
       uploadTasks.clear();
       uploadTaskMeta.clear();
     };
-  }, []);
+  }, [uploadConflictPromptQueue]);
   useUploadRecoveryHydration({
     setControllableTransferIds,
     setUploadTelemetry,
@@ -265,22 +269,27 @@ export function useDriveTransfers({
       tone: "error",
     });
   }, [t]);
-  const requestUploadConflictStrategy = useCallback((conflictingFiles: File[]) => {
-    uploadConflictResolverRef.current?.(null);
-    return new Promise<UploadConflictStrategy | null>((resolve) => {
-      uploadConflictResolverRef.current = resolve;
-      setUploadConflictPrompt({
-        conflictCount: conflictingFiles.length,
-        fileNames: [...new Set(conflictingFiles.map((file) => file.name))],
-      });
-    });
-  }, []);
+  const requestUploadConflictStrategy = useCallback((conflictingFiles: File[], batchCount: number) => (
+    uploadConflictPromptQueue.request({
+      batchCount,
+      conflictCount: conflictingFiles.length,
+      fileNames: [...new Set(conflictingFiles.map((file) => file.name))],
+    })
+  ), [uploadConflictPromptQueue]);
   const resolveUploadConflictPrompt = useCallback((strategy: UploadConflictStrategy | null) => {
-    const resolver = uploadConflictResolverRef.current;
-    uploadConflictResolverRef.current = null;
-    setUploadConflictPrompt(null);
-    resolver?.(strategy);
+    setUploadConflictDiscardOpen(false);
+    uploadConflictPromptQueue.resolve(strategy);
+  }, [uploadConflictPromptQueue]);
+  const dismissUploadConflictPrompt = useCallback(() => {
+    if (uploadConflictPrompt) setUploadConflictDiscardOpen(true);
+  }, [uploadConflictPrompt]);
+  const cancelUploadConflictDiscard = useCallback(() => {
+    setUploadConflictDiscardOpen(false);
   }, []);
+  const confirmUploadConflictDiscard = useCallback(() => {
+    setUploadConflictDiscardOpen(false);
+    uploadConflictPromptQueue.resolve(null);
+  }, [uploadConflictPromptQueue]);
   const syncControllableTransferIds = () => {
     setControllableTransferIds(Array.from(new Set([
       ...uploadTasksRef.current.keys(),
@@ -522,6 +531,16 @@ export function useDriveTransfers({
         if (draftId) unregisterUploadTask(draftId);
         if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
         meta.onCompleted(createdNode);
+        void autoClearCompletedUpload({
+          deleteTransfer,
+          enabled: readUploadPreferences().autoClearCompleted,
+          onRemoveLocal: () => {
+            removeUploadTelemetryRows(draftId, transferId);
+            setTransferRows((current) => current.filter((row) => row.id !== transferId));
+          },
+          refreshTransfers,
+          transferId,
+        });
       })
       .catch((error) => {
         const state = task.getState();
@@ -730,7 +749,7 @@ export function useDriveTransfers({
         })
         .catch((error) => {
           showFeedback(
-            getApiFeedback(error, "app.uploadFailed", "form"),
+            getApiFeedback(error, "app.operationFailed", "form"),
             "error",
           );
         });
@@ -762,7 +781,7 @@ export function useDriveTransfers({
     });
     setTransferRows((current) => current.filter((row) => row.id !== id));
     if (isLocalUploadTransferId(id)) {
-      showFeedback(t("transfers.deleted"));
+      showFeedback(t("transfers.deleted"), "success");
       return;
     }
     const prepareDelete =
@@ -774,7 +793,7 @@ export function useDriveTransfers({
         : Promise.resolve();
     void prepareDelete
       .then(() => deleteTransfer(id))
-      .then(() => showFeedback(t("transfers.deleted")))
+      .then(() => showFeedback(t("transfers.deleted"), "success"))
       .catch((error) => {
         if (recovery) {
           saveUploadRecoveryDescriptor(recovery);
@@ -788,7 +807,7 @@ export function useDriveTransfers({
           }));
         }
         void refreshTransfers();
-        showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
+        showFeedback(getApiFeedback(error, "app.deleteFailed", "form"), "error");
       });
   };
   const triggerUpload = () => {
@@ -859,7 +878,10 @@ export function useDriveTransfers({
       const conflictingFiles = conflictAnalysis.conflictingFiles;
       let conflictStrategy: UploadConflictStrategy = "version";
       if (conflictingFiles.length > 0) {
-        const selectedStrategy = await requestUploadConflictStrategy(conflictingFiles);
+        const selectedStrategy = await requestUploadConflictStrategy(
+          conflictingFiles,
+          selectedFiles.length,
+        );
         if (!selectedStrategy) {
           return;
         }
@@ -901,7 +923,7 @@ export function useDriveTransfers({
         );
       });
       void runUploadGroups(queuedGroups, ({ draftId, item: file }) => startUploadFile(file, {
-        onCompleted: () => showFeedback(t("app.uploaded")),
+        onCompleted: () => showFeedback(t("app.uploaded"), "success"),
         onFailed: (error) => {
           if (isStorageCapacityError(error)) {
             showStorageInsufficient();
@@ -914,15 +936,18 @@ export function useDriveTransfers({
         batchId,
         draftId,
         prequeued: true,
-      }));
+      }), readUploadPreferences().concurrentUploadLimit);
     }
   };
 
   return {
     cancelUploadTransfer,
+    cancelUploadConflictDiscard,
     clearStorageUsage,
+    confirmUploadConflictDiscard,
     controllableTransferIds,
     deleteTransferRow,
+    dismissUploadConflictPrompt,
     fetchLatestStorageUsage,
     handleUploadFiles,
     pauseUploadTransfer,
@@ -936,6 +961,7 @@ export function useDriveTransfers({
     storageUsage,
     triggerUpload,
     uploadConflictPrompt,
+    uploadConflictDiscardOpen,
     uploadInputRef,
     uploadTelemetry,
     visibleTransferRows,

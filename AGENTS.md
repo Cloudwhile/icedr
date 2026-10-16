@@ -98,3 +98,50 @@ N10:  使用Playwright确认UI设计是否合格。
 - 用户在修复完成后明确要求创建 commit；本次提交保留现有 GPG 签名与认证流程，不覆盖签名配置，不跳过检查。
 - 提交说明使用中文和英文类型前缀：`fix(auth): 统一 OAuth 与 Passkey 认证流程并防止管理员锁号`。
 - 根目录 `AGENTS.md` 原被 `.gitignore` 的 `AGENTS*` 规则忽略；按本会话统一记录要求，将该文件一并纳入本次提交。Playwright 本地模拟脚本、截图与会话快照继续保留在忽略目录中。
+
+## 本会话：UI 分析报告修复（2026-10-16，已恢复）
+
+- 目标：阅读根目录 `UI-ANALYSIS-REPORT.md`，修复其中仍可复现的 UI/UX 问题，并避免为实现细节堆叠低价值测试。
+- 状态：用户曾在第一批改动尚未完成及尚未验证时要求停止，现已明确恢复任务并要求逐项处理；以下继续只记录已经落盘且实际完成的状态，不把未验收项视为完成。
+
+### 已落盘的改动
+
+1. 缩略图请求懒加载：新增 `frontend/src/components/ui/use-in-view-once.ts`，`DriveItemPreview` 仅在进入视口前后 200px 范围后请求预览 URL；图片增加 `loading="lazy"` 与 `decoding="async"`，进入视口后保持加载状态，不因滚出视口卸载。该项已于恢复任务后完成独立回归与浏览器验收。
+2. 传输设置已接入真实行为：新增 `frontend/src/features/file/upload-preferences.ts`，使用 `icedr.ui.uploadPreferences` 持久化并发数与自动清除选择；上传批次把持久化并发数传给 `runUploadGroups`，默认值从界面显示的 3 真正作用于调度。该项已于恢复任务后完成独立回归与浏览器验收。
+3. 移除无法实现的假限速控件：传输页已删除没有任何传输层支持的“上传限速”选择器，避免继续展示不会生效的设置。
+4. 自动清除已接入完成路径：上传成功后若启用自动清除，会移除本地行并请求删除对应传输记录；删除失败时重新刷新传输列表，避免界面与服务端长期不一致。
+5. P0-5 对外分享页暗色迁移已完成：`external-share.css` 的页面根节点、工作台、侧栏、hero、文件浏览区与反馈浮层均改用现有 `--ui-*` 主题 token，文件内不再存在裸写的 hex／rgba 颜色；无封面占位已移除装饰性标记与伪元素，改为简单的主题色图标占位，以符合 N06。浅色视觉层级保持不变，暗色卡片、文字、边框及状态反馈已能随主题正确切换。
+6. P0-1 文件列表／网格虚拟化已完成：新增 `frontend/src/components/drive/use-drive-virtual-range.ts` 与 `drive-file-virtualization.ts`，超过 80 项时按视口和 overscan 仅渲染完整行；列表使用上下占位表格行，网格按列数切分完整行。`MotionList` 的 key 只绑定导航与目录，不再拼接全部文件 ID；跨虚拟窗口的 Shift+方向键会先滚动并恢复目标焦点，右键菜单和单项更新后的焦点保持不变。表格外壳改为实际纵向滚动容器，sticky 表头与列宽保持原样。
+7. P1-F1 上传冲突关闭语义已修复：新增 `upload-conflict-prompt-queue.ts` 串行协调多个批次，后来的冲突请求不会再以 `null` 静默结束当前批次。ESC、关闭按钮或遮罩关闭冲突选择时，改为在同一弹窗内显示“放弃整批”二次确认，明确说明本批全部文件（包括无冲突文件）都会被放弃；取消确认会返回原冲突选择，只有明确确认才结束该批次。冲突策略 skip／overwrite／rename／version 的既有语义不变。
+8. P1-F2 分享过期天数不再静默钳制：新增 `features/share/expiry-validation.ts`，统一要求输入为 1 至管理员上限内的整数；过大、空值、0 或非整数都会显示明确错误并禁用创建按钮。输入框补齐 `type="number"`、`min`、`max`、`step`、`aria-invalid` 与错误描述关联；提交时直接使用已验证的可见值，不再回退默认值或把超限值改写为上限。
+9. P1-F3 通知语气已收紧：报告列出的 6 处以及额外发现的分享入口共 7 处 `app.noSelection` 均显式使用 `warning`。`showAppToast`、`showWorkspaceNotification`、工作台 `showFeedback` 及三个管理设置页的通知包装函数均要求调用方显式传 tone，原先依赖默认成功语气的真实成功路径已逐处补为 `success`。Playwright 还发现工作区通知的 `AnimatePresence + motion.div(layout)` 在当前 React／Framer Motion 组合下会生成两个完全重叠且透明的节点；该通知组件已改为单节点 CSS 入场动画，并保留 reduced-motion 处理，避免 warning 语义正确却不可见。
+10. P1-F4 批量失败反馈已统一：新增 `frontend/src/components/drive/batch-operation-feedback.tsx` 与模型 helper，批量结果按全成功／部分失败／全部失败分别使用 `success`／`warning`／`error`；失败详情通过原始 `DriveItem` 映射显示文件名，不再暴露内部 UUID，最多列出 6 项并用本地化文案汇总剩余项，长文件名保留 `title` 悬停查看。下载、移动、复制、归档、恢复和永久删除均传入源项目名称；通知描述在桌面和移动布局中保持可读。
+11. P1-F5 非上传操作的错误兜底已按语义拆分：中英文 locale 新增通用操作以及重命名、删除、复制、移动、归档、恢复、收藏和新建文件夹失败文案；头像更新／清除使用通用操作失败，传输恢复取消使用通用操作失败，删除传输记录使用删除失败。`app.uploadFailed` 在 TypeScript 调用中只保留于生成文件和上传任务的真实上传链路；重命名失败明确显示“重命名失败”。
+12. P1-F6 上传失败入口已与活跃进度拆分：`upload-progress.ts` 新增只统计真实 `failed`、不包含 `expired` 的 `failedCount`；上传 HUD 使用两个并列的真实按钮呈现活跃上传与危险色“{count} 个失败”，失败归零后入口自动消失，不再嵌套交互元素。失败入口会导航到传输页、一次性选择并聚焦“需要关注”页签；传输页不再渲染 HUD，避免遮挡实时速度区域。HUD portal 注入现有主题变量，并移除在当前组合下显示异常的 `MotionPresence`，改用保留 reduced-motion 处理的 CSS 入场动画。
+
+### 核验后未照报告修改的项目
+
+1. 报告 P0-4 所述“登录态过期后永久空白”在当前基线已有全局处理：`main.tsx` 始终挂载 `AuthSessionCoordinator`，API 的 session 过期事件会清理会话、提示并携带完整路径跳转登录；`auth-gate.test.tsx` 已覆盖 `/admin/audit?cursor=next#events` 返回地址。`AuthGate` 中的静默分支用于把跳转交给协调器，本轮未重复实现第二套跳转。
+2. 报告 P1-D3 要求增加 `HeroUIProvider` 与当前安装的 HeroUI v3.1 不符。仓库本地 `@heroui/react` README 明确说明 v3 不需要 Provider，因此未加入不存在或多余的 Provider，也未进行报告建议的强制包装迁移。
+
+### 尚未完成
+
+- 报告中的 B1–B10、F7–F9、D1–D2、D4–D5、A1–A7、A9 等其余可复现项均尚未进入实现阶段。
+- `UI-ANALYSIS-REPORT.md` 是本轮用户提供的未跟踪输入文件，本轮未修改其内容。
+
+### 验证与测试状态
+
+- 恢复任务后，P0-2 已新增 `frontend/src/components/ui/drive-item-preview.test.tsx`，覆盖进入预加载区前不请求、进入后仅请求一次、滚出后不卸载，以及图片 `loading="lazy"` / `decoding="async"`；目标测试 1 项通过。
+- `pnpm --filter frontend lint` 通过，保留原有 23 项 warning，无 error；`pnpm --filter frontend build` 通过，保留现有大 chunk 提示。该结果确认当前工作区的 P0 改动可编译。
+- P0-2 使用构建后的本地 preview 与 Playwright 模拟 200 个图片文件：首屏仅请求 8 个缩略图签名 URL，滚动到底部后增至 17；确认继续按需加载、媒体替换前后尺寸一致且无横向溢出。截图与模拟脚本位于 `output/playwright/thumbnail-lazy-smoke.png`、`thumbnail-lazy-smoke.js`，未启动 dev。
+- P0-1 新增 2 项纯虚拟窗口计算测试；当时前端全量 `pnpm --filter frontend test` 为 83 个测试文件、481 项测试全部通过。`pnpm --filter frontend build` 与 `lint` 再次通过，lint 仍只有原有 23 项 warning；`git diff --check` 通过。
+- P0-1 使用构建后的本地 preview 与 Playwright 模拟 1000 个文件：列表首屏 11 个、末端 12 个 DOM 项，网格 30 个 DOM 项；列表／网格均可到达第 1000 项，跨窗口 Shift+方向键焦点正确，单项状态更新不替换已聚焦节点，右键菜单保持在视口内且无横向溢出。截图与模拟脚本位于 `output/playwright/drive-virtual-scroll-smoke.png`、`drive-virtual-scroll-smoke.js`。
+- P0-3 新增偏好存储和自动清除编排回归，覆盖并发值归一化、关闭时保留完成记录、开启时先移除本地行再删除服务端记录、删除失败刷新恢复。最终前端全量测试为 85 个测试文件、490 项测试全部通过；build、lint 通过，仍只有原有 23 项 warning。
+- P0-3 使用构建后的本地 preview 与 Playwright 验证默认并发为 3，改为 1 并开启自动清除后刷新仍保持；页面不再存在假限速控件；1440px 与 390px 均无横向溢出。截图与模拟脚本位于 `output/playwright/transfer-settings-desktop.png`、`transfer-settings-mobile.png`、`transfer-settings-smoke.js`。
+- P0-5 的相关弹窗测试 10 项通过；`external-share.css` 中裸写的 hex／rgba 颜色以及报告点名的白色、边框色均为零命中。Playwright 使用构建产物模拟 `/share/s/:token`，检查 1440px 浅色／暗色、下载失败反馈浮层和 390px 暗色视口：卡片、文字、边框均随主题切换，hero chip 正常换行，无横向溢出或同级元素重叠。截图与模拟脚本位于 `output/playwright/external-share-light-desktop.png`、`external-share-dark-desktop.png`、`external-share-dark-feedback.png`、`external-share-dark-mobile.png` 和 `external-share-theme-smoke.js`。尚未完成对“无所谓的测试”的价值审计，因此没有在缺乏证据时删除现有回归覆盖。
+- P1-F1 新增 3 项冲突提示队列回归，与既有冲突规划测试合计 16 项定向测试通过；最终前端全量测试为 86 个测试文件、493 项测试全部通过，build、lint 通过，仍只有原有 23 项 warning。Playwright 连续提交两个冲突批次，确认第一批不会被第二批静默关闭、取消放弃会恢复原选择、明确放弃后第二批才出现，二次确认会显示包含非冲突文件在内的整批范围；1440px 与 390px 均无弹窗重叠或横向溢出。截图与模拟脚本位于 `output/playwright/upload-conflict-discard-confirm.png`、`upload-conflict-second-batch.png`、`upload-conflict-mobile.png` 和 `upload-conflict-queue-smoke.js`。
+- P1-F2 新增 2 项范围校验回归，最终前端全量测试为 86 个测试文件、495 项测试全部通过；build、lint 通过，仍只有原有 23 项 warning。Playwright 在管理员上限 30 天时输入 90，确认错误提示可见、`max="30"` 与 `aria-invalid="true"` 生效、创建按钮禁用且没有发出请求；改回 30 后按钮恢复，只发出一次请求且载荷 `expiresDays` 为 30。1440px 与 390px 均无横向溢出，移动端弹窗保持在视口内。截图与模拟脚本位于 `output/playwright/share-expiry-invalid-desktop.png`、`share-expiry-invalid-mobile.png` 和 `share-expiry-validation-smoke.js`。
+- P1-F3 新增 1 项工作区通知视觉语义回归，最终前端全量测试为 86 个测试文件、496 项测试全部通过；build、lint 通过，lint 仍只有原有 23 项 warning。Playwright 使用构建后的 13002 preview 分别触发复制和归档的空选择防御分支，两次文案均为 `Select files first`、`data-tone="warning"`，图标为感叹号且计算色值为 `rgb(217, 119, 6)`；1440px 与 390px 均位于视口内，移动端文案与关闭操作不重叠且无横向溢出。截图与模拟脚本位于 `output/playwright/no-selection-warning-desktop.png`、`no-selection-warning-mobile.png` 和 `no-selection-warning-smoke.js`。页面仍会记录此前已知的通用 Framer Motion `CSSStyleDeclaration` 控制台错误，本项已确保工作区通知不再使用会受其影响的 motion 节点，未把全站 motion 治理扩展进 F3。
+- P1-F4 新增批量反馈组件与 hook 回归，前端全量 `pnpm --filter frontend test` 为 87 个测试文件、501 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。构建产物下的 Playwright smoke 在 1440px 与 390px 触发 5 项归档中 2 项失败，通知显示 `3/5 completed, 2 failed`、`bravo.txt`、`delta.txt`，不含内部 UUID；桌面／移动通知均在视口内，移动端无横向溢出且内容与操作区不重叠。截图位于 `output/playwright/batch-operation-feedback-desktop.png` 和 `batch-operation-feedback-mobile.png`。
+- P1-F5 新增重命名失败 fallback 回归，前端全量 `pnpm --filter frontend test` 为 87 个测试文件、502 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。Playwright 使用构建产物模拟一次重命名接口失败，确认只发出 1 次请求、错误通知显示“重命名失败”且页面没有“上传失败”，通知位于 1440px 视口内并且页面无横向溢出。Vite preview 启动两次均被 Windows 对依赖文件的临时 `EPERM` 读取锁阻断，因此改用只读静态服务器承载同一份 `frontend/dist`，未启动 dev；专用浏览器与静态服务已关闭。截图与模拟脚本位于 `output/playwright/f5-rename-error-desktop.png` 和 `f5-rename-error-smoke.js`。控制台除刻意模拟的 418 外，仅记录已知的通用 Framer Motion `CSSStyleDeclaration` 错误。
+- P1-F6 的 3 个定向测试文件共 10 项通过；前端全量 `pnpm --filter frontend test` 为 87 个测试文件、505 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error；`git diff --check` 通过。Playwright 使用构建产物确认失败入口计算色值为 `rgb(220, 38, 38)`，在 1440px 与 390px 视口中均无横向溢出，失败归零后入口消失；点击入口后“需要关注”页签选中并获得焦点，失败行可见、运行中行不在该分组中，且传输页没有 HUD 覆盖。Vite preview 仍因 `picomatch/lib/scan.js` 的 Windows `EPERM` 读取锁失败，因此改用只读静态服务器承载 `frontend/dist`，未启动 dev；专用浏览器与静态服务已关闭。截图位于 `output/playwright/f6-upload-failure-anchor-desktop.png`、`f6-upload-failure-anchor-mobile.png` 和 `f6-upload-failure-attention.png`。最终控制台仅记录已知的通用 Framer Motion `CSSStyleDeclaration` 错误。

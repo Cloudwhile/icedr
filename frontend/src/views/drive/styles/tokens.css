@@ -1,5 +1,6 @@
 .drive-shell,
-.admin-shell {
+.admin-shell,
+.drive-portal-theme {
   --drive-ui-blue-700: var(--ui-accent-hover);
   --drive-ui-blue-600: var(--ui-accent);
   --drive-ui-blue-500: var(--ui-accent);

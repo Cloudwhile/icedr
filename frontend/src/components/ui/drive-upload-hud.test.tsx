@@ -1,19 +1,8 @@
-import type { ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { palettes } from "@/features/file/model";
 import type { TransferRow } from "@/views/drive/drive-types";
 import { DriveUploadHud } from "./drive-upload-hud";
-
-vi.mock("@/components/ui/motion", () => ({
-  MotionPresence: ({
-    children,
-    show,
-  }: {
-    children: ReactNode;
-    show: boolean;
-  }) => (show ? <>{children}</> : null),
-}));
 
 vi.mock("@/components/ui/progress-meter", () => ({
   ProgressMeter: ({ value }: { value: number }) => (
@@ -32,7 +21,7 @@ vi.mock("@/i18n/react", () => ({
   ) => values?.count === undefined ? key : `${key}:${values.count}`,
 }));
 
-function createRow(index: number): TransferRow {
+function createRow(index: number, input: Partial<TransferRow> = {}): TransferRow {
   const timestamp = "2026-07-30T00:00:00.000Z";
   return {
     batchId: "batch-many",
@@ -48,6 +37,7 @@ function createRow(index: number): TransferRow {
     type: "upload",
     updatedAt: timestamp,
     workspaceId: "workspace-default",
+    ...input,
   };
 }
 
@@ -73,5 +63,42 @@ describe("DriveUploadHud", () => {
       "45",
     );
     expect(screen.getByText("45%")).toBeInTheDocument();
+  });
+
+  it("keeps a failed-task anchor visible and removes it after the failure clears", () => {
+    const onOpenFailedTransfers = vi.fn();
+    const failedRow = createRow(0, { status: "failed" });
+    const { rerender } = render(
+      <DriveUploadHud
+        locale="en-US"
+        onOpenFailedTransfers={onOpenFailedTransfers}
+        palette={palettes.light}
+        rows={[failedRow]}
+      />,
+    );
+
+    const failureAnchor = screen.getByRole("button", {
+      name: "transfers.failedCount:1",
+    });
+    expect(failureAnchor.closest(".drive-upload-hud")).toHaveAttribute(
+      "data-failed-upload-count",
+      "1",
+    );
+    expect(screen.queryByRole("button", { name: "nav.transfers" })).not.toBeInTheDocument();
+    fireEvent.click(failureAnchor);
+    expect(onOpenFailedTransfers).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <DriveUploadHud
+        locale="en-US"
+        onOpenFailedTransfers={onOpenFailedTransfers}
+        palette={palettes.light}
+        rows={[{ ...failedRow, status: "completed" }]}
+      />,
+    );
+
+    expect(screen.queryByRole("button", {
+      name: "transfers.failedCount:1",
+    })).not.toBeInTheDocument();
   });
 });
