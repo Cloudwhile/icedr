@@ -994,7 +994,7 @@ export function DriveWorkbench({
         palette={palette}
         prompt={uploadConflictPrompt}
       />
-      <DriveDestructiveDialogs deleteCount={permanentDeleteItems.length} deleteOpen={permanentDeleteOpen} deletePending={permanentDeletePending} extensionPending={extensionRenamePending} extensionPrompt={extensionRenamePrompt} onCancelDelete={cancelPermanentDelete} onCancelExtension={cancelExtensionRename} onConfirmDelete={() => void confirmPermanentDelete()} onConfirmExtension={confirmExtensionRename} palette={palette} />
+      <DriveDestructiveDialogs deleteItems={permanentDeleteItems} deleteOpen={permanentDeleteOpen} deletePending={permanentDeletePending} extensionPending={extensionRenamePending} extensionPrompt={extensionRenamePrompt} onCancelDelete={cancelPermanentDelete} onCancelExtension={cancelExtensionRename} onConfirmDelete={() => void confirmPermanentDelete()} onConfirmExtension={confirmExtensionRename} palette={palette} />
       <DriveShareDialog currentDirectoryItems={currentDirectoryItems} currentFolder={currentFolder} onClose={() => setShareOpen(false)} onShareCreated={share => {
       setRegisteredShares(current => [share, ...current.filter(item => item.token !== share.token)]);
       setLinksError(null);

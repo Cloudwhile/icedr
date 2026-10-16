@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { LocalIconName, Palette } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
 import { AppInput } from "./app-input";
@@ -17,6 +17,7 @@ export type ConfirmationDialogProps = {
   onConfirm: () => void;
   open: boolean;
   palette: Palette;
+  supportingContent?: ReactNode;
   title: string;
   confirmLabel: string;
   tone?: "danger" | "warning";
@@ -32,10 +33,13 @@ export function ConfirmationDialog({
   onConfirm,
   open,
   palette,
+  supportingContent,
   title,
   tone = "danger",
 }: ConfirmationDialogProps) {
   const t = useTranslations();
+  const descriptionId = useId();
+  const titleId = useId();
   const [confirmation, setConfirmation] = useState("");
   const requiresConfirmation = Boolean(confirmationValue);
   const confirmed = !requiresConfirmation || confirmation === confirmationValue;
@@ -54,6 +58,8 @@ export function ConfirmationDialog({
 
   return (
     <AppDialogShell
+      aria-describedby={descriptionId}
+      aria-labelledby={titleId}
       className="icedr-confirmation-dialog"
       onOpenChange={(nextOpen) => {
         if (!nextOpen) closeDialog();
@@ -68,8 +74,8 @@ export function ConfirmationDialog({
             <LocalIcon name="exclamation" size={18} />
           </span>
           <div>
-            <h2>{title}</h2>
-            <p>{description}</p>
+            <h2 id={titleId}>{title}</h2>
+            <p id={descriptionId}>{description}</p>
           </div>
           <ToolButton
             disabled={isPending}
@@ -80,6 +86,12 @@ export function ConfirmationDialog({
             <LocalIcon name="cross" size={16} />
           </ToolButton>
         </header>
+
+        {supportingContent ? (
+          <div className="icedr-confirmation-supporting-content">
+            {supportingContent}
+          </div>
+        ) : null}
 
         {confirmationValue ? (
           <label className="icedr-confirmation-field">

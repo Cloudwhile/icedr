@@ -177,7 +177,7 @@ export function createUploadRecoveryDescriptor(
 }
 
 export function readUploadRecoveryDescriptors(
-  storage: UploadRecoveryStorage | null = getSessionStorage(),
+  storage: UploadRecoveryStorage | null = getRecoveryStorage(),
 ) {
   if (!storage) return [];
   let raw: string | null;
@@ -194,7 +194,13 @@ export function readUploadRecoveryDescriptors(
       removeRecoveryStorage(storage);
       return [];
     }
-    return parsed.records;
+    const activeRecords = parsed.records.filter(
+      (descriptor) => new Date(descriptor.expiresAt).getTime() > Date.now(),
+    );
+    if (activeRecords.length !== parsed.records.length) {
+      writeRecoveryEnvelope(activeRecords, storage);
+    }
+    return activeRecords;
   } catch {
     removeRecoveryStorage(storage);
     return [];
@@ -203,7 +209,7 @@ export function readUploadRecoveryDescriptors(
 
 export function saveUploadRecoveryDescriptor(
   descriptor: UploadRecoveryDescriptor,
-  storage: UploadRecoveryStorage | null = getSessionStorage(),
+  storage: UploadRecoveryStorage | null = getRecoveryStorage(),
 ) {
   if (!storage || !isUploadRecoveryDescriptor(descriptor)) return false;
   const safeDescriptor = projectUploadRecoveryDescriptor(descriptor);
@@ -220,7 +226,7 @@ export function saveUploadRecoveryDescriptor(
 
 export function removeUploadRecoveryDescriptor(
   sessionId: string,
-  storage: UploadRecoveryStorage | null = getSessionStorage(),
+  storage: UploadRecoveryStorage | null = getRecoveryStorage(),
 ) {
   if (!storage || !isBoundedString(sessionId, 256)) return 0;
   return removeMatchingRecoveryDescriptors(
@@ -231,7 +237,7 @@ export function removeUploadRecoveryDescriptor(
 
 export function clearUploadRecoveryBatch(
   batchId: string,
-  storage: UploadRecoveryStorage | null = getSessionStorage(),
+  storage: UploadRecoveryStorage | null = getRecoveryStorage(),
 ) {
   if (!storage || !isBoundedString(batchId, 128)) return 0;
   return removeMatchingRecoveryDescriptors(
@@ -242,7 +248,7 @@ export function clearUploadRecoveryBatch(
 
 export function clearUploadRecoveryOwner(
   ownerUserId: string,
-  storage: UploadRecoveryStorage | null = getSessionStorage(),
+  storage: UploadRecoveryStorage | null = getRecoveryStorage(),
 ) {
   if (!storage || !isBoundedString(ownerUserId, 256)) return 0;
   return removeMatchingRecoveryDescriptors(
@@ -252,7 +258,7 @@ export function clearUploadRecoveryOwner(
 }
 
 export function clearAllUploadRecoveryDescriptors(
-  storage: UploadRecoveryStorage | null = getSessionStorage(),
+  storage: UploadRecoveryStorage | null = getRecoveryStorage(),
 ) {
   if (!storage) return;
   removeRecoveryStorage(storage);
@@ -449,10 +455,55 @@ function removeRecoveryStorage(storage: UploadRecoveryStorage) {
   }
 }
 
-function getSessionStorage(): UploadRecoveryStorage | null {
+function getRecoveryStorage(): UploadRecoveryStorage | null {
+  if (typeof window === "undefined") return null;
+  const persistentStorage = getBrowserStorage("localStorage");
+  const legacyStorage = getBrowserStorage("sessionStorage");
+  if (!persistentStorage) return legacyStorage;
+  if (!legacyStorage) return persistentStorage;
+
+  let hasLegacyRecords = false;
+  try {
+    hasLegacyRecords = Boolean(legacyStorage.getItem(uploadRecoveryStorageKey));
+  } catch {
+    return persistentStorage;
+  }
+  if (!hasLegacyRecords) return persistentStorage;
+
+  const merged = new Map<string, UploadRecoveryDescriptor>();
+  [
+    ...readUploadRecoveryDescriptors(persistentStorage),
+    ...readUploadRecoveryDescriptors(legacyStorage),
+  ].forEach((descriptor) => {
+    const current = merged.get(descriptor.sessionId);
+    if (
+      !current ||
+      new Date(descriptor.updatedAt).getTime() >=
+        new Date(current.updatedAt).getTime()
+    ) {
+      merged.set(descriptor.sessionId, descriptor);
+    }
+  });
+  const records = Array.from(merged.values())
+    .sort(
+      (left, right) =>
+        new Date(right.updatedAt).getTime() -
+        new Date(left.updatedAt).getTime(),
+    )
+    .slice(0, maxRecoveryRecords);
+  if (!writeRecoveryEnvelope(records, persistentStorage)) {
+    return legacyStorage;
+  }
+  removeRecoveryStorage(legacyStorage);
+  return persistentStorage;
+}
+
+function getBrowserStorage(
+  name: "localStorage" | "sessionStorage",
+): UploadRecoveryStorage | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage;
+    return window[name];
   } catch {
     return null;
   }

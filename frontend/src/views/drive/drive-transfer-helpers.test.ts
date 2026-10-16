@@ -1,10 +1,31 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   isUploadRecoveryPersistenceContextCurrent,
+  mergeTransferRows,
   prepareUploadQueueGroups,
 } from "./drive-transfer-helpers";
 
 describe("prepareUploadQueueGroups", () => {
+  it("places recoverable uploads before newer ordinary transfers", () => {
+    const rows = mergeTransferRows(
+      [
+        {
+          createdAt: "2026-10-17T12:00:00.000Z",
+          id: "ordinary",
+        },
+      ] as Parameters<typeof mergeTransferRows>[0],
+      [
+        {
+          createdAt: "2026-10-17T10:00:00.000Z",
+          id: "recoverable",
+          recoveryRequired: true,
+        },
+      ] as Parameters<typeof mergeTransferRows>[1],
+    );
+
+    expect(rows.map(({ id }) => id)).toEqual(["recoverable", "ordinary"]);
+  });
+
   it("allocates every batch member before the concurrent scheduler starts", () => {
     const createDraftId = vi
       .fn()

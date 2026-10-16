@@ -354,6 +354,11 @@
   background: color-mix(in srgb, var(--drive-ui-surface) 64%, transparent);
 }
 
+.drive-transfers-module .drive-transfer-row[data-recovery="true"] {
+  background: color-mix(in srgb, var(--drive-ui-blue-50) 72%, var(--drive-ui-surface));
+  box-shadow: inset 3px 0 0 var(--drive-ui-blue-600);
+}
+
 .drive-transfers-module .drive-transfer-row:hover {
   background: color-mix(in srgb, var(--drive-ui-surface-raised) 84%, transparent);
   box-shadow: var(--drive-ui-shadow-1);

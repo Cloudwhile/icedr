@@ -9,8 +9,25 @@ vi.mock("@/i18n/react", () => ({
 }));
 
 vi.mock("./app-dialog-shell", () => ({
-  AppDialogShell: ({ children, open }: { children: ReactNode; open: boolean }) =>
-    open ? <div>{children}</div> : null,
+  AppDialogShell: ({
+    "aria-describedby": ariaDescribedBy,
+    "aria-labelledby": ariaLabelledBy,
+    children,
+    open,
+  }: {
+    "aria-describedby"?: string;
+    "aria-labelledby"?: string;
+    children: ReactNode;
+    open: boolean;
+  }) => open ? (
+    <div
+      aria-describedby={ariaDescribedBy}
+      aria-labelledby={ariaLabelledBy}
+      role="dialog"
+    >
+      {children}
+    </div>
+  ) : null,
 }));
 
 vi.mock("./app-icon", () => ({
@@ -55,6 +72,9 @@ describe("ConfirmationDialog", () => {
     );
 
     expect(screen.getByRole("button", { name: "Delete" })).toHaveAttribute("data-tone", "danger");
+    expect(screen.getByRole("dialog", { name: "Delete file" })).toHaveAccessibleDescription(
+      "Delete this file permanently",
+    );
     expect(document.querySelector(".icedr-confirmation-frame")).toHaveAttribute("data-tone", "danger");
     expect(document.querySelector('[data-icon="trash"]')).toBeInTheDocument();
   });

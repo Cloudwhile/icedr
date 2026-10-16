@@ -387,7 +387,12 @@ function TransferTableRow({
   const remainingLabel = row.remainingSeconds !== undefined && row.remainingSeconds !== null ? formatRemainingTime(row.remainingSeconds, t) : "--";
 
   return (
-    <div data-motion-row data-status={status} className="drive-module-table-row drive-transfer-row">
+    <div
+      className="drive-module-table-row drive-transfer-row"
+      data-motion-row
+      data-recovery={row.recoveryRequired ? "true" : undefined}
+      data-status={status}
+    >
       <TransferFileIcon palette={palette} row={row} />
       <div className="drive-module-row-copy">
         <span className="drive-module-row-title icedr-truncate">{row.name}</span>

@@ -31,12 +31,34 @@ vi.mock("@/lib/drive-api", async (importOriginal) => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   window.sessionStorage.clear();
   fetchUploadSessionRecoveryMock.mockReset();
   updateTransferMock.mockReset();
 });
 
 describe("useUploadRecoveryHydration", () => {
+  it("announces the number of uploads that can be recovered", async () => {
+    const descriptor = createDescriptor();
+    saveUploadRecoveryDescriptor(descriptor);
+    fetchUploadSessionRecoveryMock.mockResolvedValue(
+      createRecoveryResponse(descriptor),
+    );
+    const onRecoveryAvailable = vi.fn();
+
+    renderHydration(createHydrationRefs(), {
+      onRecoveryAvailable,
+      showFeedback: vi.fn(),
+      t: (key) => key,
+      uploadOwnerUserId: descriptor.ownerUserId,
+      workspaceId: descriptor.workspaceId,
+    });
+
+    await waitFor(() =>
+      expect(onRecoveryAvailable).toHaveBeenCalledWith(1),
+    );
+  });
+
   it("does not rehydrate or pause sessions when translation callbacks change", async () => {
     const descriptor = createDescriptor();
     saveUploadRecoveryDescriptor(descriptor);
@@ -166,6 +188,7 @@ describe("useUploadRecoveryHydration", () => {
 });
 
 type HydrationProps = {
+  onRecoveryAvailable?: (count: number) => void;
   showFeedback: (message: string, tone: WorkspaceNotificationTone) => void;
   t: (key: string) => string;
   uploadOwnerUserId?: string;
