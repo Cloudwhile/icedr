@@ -173,7 +173,18 @@ export function useDriveTransfers({
       uploadTaskMeta.clear();
     };
   }, [uploadConflictPromptQueue]);
+  const notifyRecoveryAvailable = useCallback((count: number) => {
+    showWorkspaceNotification({
+      actionIcon: "arrow_right",
+      actionLabel: t("upload.openRecoverableUploads"),
+      dedupeKey: `upload-recovery:${uploadOwnerUserId ?? "anonymous"}:${workspaceId ?? "none"}`,
+      onAction: () => activateNav("transfers"),
+      title: t("upload.recoveryAvailable", { count }),
+      tone: "info",
+    });
+  }, [activateNav, t, uploadOwnerUserId, workspaceId]);
   useUploadRecoveryHydration({
+    onRecoveryAvailable: notifyRecoveryAvailable,
     setControllableTransferIds,
     setUploadTelemetry,
     showFeedback,
@@ -784,23 +795,26 @@ export function useDriveTransfers({
       showFeedback(t("transfers.deleted"), "success");
       return;
     }
+    let recoverySessionCanceled = false;
     const prepareDelete =
       recovery &&
       recovery.status !== "completed" &&
       recovery.status !== "canceled" &&
       recovery.status !== "expired"
-        ? cancelUploadSessionRecovery(recovery.sessionId)
+        ? cancelUploadSessionRecovery(recovery.sessionId).then(() => {
+            recoverySessionCanceled = true;
+          })
         : Promise.resolve();
     void prepareDelete
       .then(() => deleteTransfer(id))
       .then(() => showFeedback(t("transfers.deleted"), "success"))
       .catch((error) => {
-        if (recovery) {
+        if (recovery && !recoverySessionCanceled) {
           saveUploadRecoveryDescriptor(recovery);
           uploadRecoveryDescriptorsRef.current.set(id, recovery);
           syncControllableTransferIds();
         }
-        if (telemetrySnapshot) {
+        if (telemetrySnapshot && !recoverySessionCanceled) {
           setUploadTelemetry((current) => ({
             ...current,
             [id]: telemetrySnapshot,

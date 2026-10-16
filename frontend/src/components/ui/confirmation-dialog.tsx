@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { LocalIconName, Palette } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
 import { AppInput } from "./app-input";
@@ -17,6 +17,7 @@ export type ConfirmationDialogProps = {
   onConfirm: () => void;
   open: boolean;
   palette: Palette;
+  supportingContent?: ReactNode;
   title: string;
   confirmLabel: string;
   tone?: "danger" | "warning";
@@ -32,6 +33,7 @@ export function ConfirmationDialog({
   onConfirm,
   open,
   palette,
+  supportingContent,
   title,
   tone = "danger",
 }: ConfirmationDialogProps) {
@@ -80,6 +82,12 @@ export function ConfirmationDialog({
             <LocalIcon name="cross" size={16} />
           </ToolButton>
         </header>
+
+        {supportingContent ? (
+          <div className="icedr-confirmation-supporting-content">
+            {supportingContent}
+          </div>
+        ) : null}
 
         {confirmationValue ? (
           <label className="icedr-confirmation-field">

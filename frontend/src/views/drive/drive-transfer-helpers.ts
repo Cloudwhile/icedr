@@ -43,6 +43,7 @@ export function mergeTransferRows(rows: TransferRow[], telemetryRows: UploadTele
     });
   });
   return Array.from(merged.values()).sort((left, right) => (
+    Number(Boolean(right.recoveryRequired)) - Number(Boolean(left.recoveryRequired)) ||
     new Date(right.lifecycle?.createdAt ?? right.createdAt).getTime()
     - new Date(left.lifecycle?.createdAt ?? left.createdAt).getTime()
   ));

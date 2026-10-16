@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   clearAllUploadRecoveryDescriptors,
   clearUploadRecoveryBatch,
@@ -13,6 +13,11 @@ import {
   saveUploadRecoveryDescriptor,
   type UploadRecoveryDescriptor,
 } from "./upload-recovery";
+
+afterEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+});
 
 describe("upload recovery identity", () => {
   it.each([
@@ -243,6 +248,21 @@ describe("upload recovery identity", () => {
 });
 
 describe("upload recovery storage", () => {
+  it("migrates live session records to persistent storage and removes expired ones", () => {
+    const active = createDescriptor();
+    const expired = createDescriptor({
+      expiresAt: "2000-01-01T00:00:00.000Z",
+      sessionId: "session-expired",
+      transferId: "transfer-expired",
+    });
+    saveUploadRecoveryDescriptor(active, window.sessionStorage);
+    saveUploadRecoveryDescriptor(expired, window.sessionStorage);
+
+    expect(readUploadRecoveryDescriptors()).toEqual([active]);
+    expect(window.sessionStorage.getItem("icedr.upload.recovery.v2")).toBeNull();
+    expect(window.localStorage.getItem("icedr.upload.recovery.v2")).not.toBeNull();
+  });
+
   it("stores only strict descriptors and replaces a session snapshot", () => {
     const storage = new MemoryStorage();
     const original = createDescriptor();
@@ -362,7 +382,7 @@ function createDescriptor(
     batchId: "batch-1",
     conflictStrategy: "version",
     contentFingerprint: `sha256:${"a".repeat(64)}`,
-    expiresAt: "2026-07-31T00:00:00.000Z",
+    expiresAt: "2099-07-31T00:00:00.000Z",
     failureCode: null,
     fileLastModified: 100,
     fileName: "recover.txt",
@@ -376,7 +396,7 @@ function createDescriptor(
     spaceScope: "workspace",
     status: "running",
     transferId: "transfer-1",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    updatedAt: "2099-07-30T00:00:00.000Z",
     uploadedBytes: 0,
     workspaceId: "workspace-1",
     ...overrides,

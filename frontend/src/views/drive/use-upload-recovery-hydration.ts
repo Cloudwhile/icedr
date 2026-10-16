@@ -44,6 +44,7 @@ type UploadRecoveryHydrationResult =
   | null;
 
 type UseUploadRecoveryHydrationOptions = {
+  onRecoveryAvailable?: (count: number) => void;
   setControllableTransferIds: Dispatch<SetStateAction<string[]>>;
   setUploadTelemetry: Dispatch<SetStateAction<Record<string, UploadTelemetry>>>;
   showFeedback: (
@@ -63,6 +64,7 @@ type UseUploadRecoveryHydrationOptions = {
 };
 
 export function useUploadRecoveryHydration({
+  onRecoveryAvailable,
   setControllableTransferIds,
   setUploadTelemetry,
   showFeedback,
@@ -74,13 +76,15 @@ export function useUploadRecoveryHydration({
   workspaceId,
 }: UseUploadRecoveryHydrationOptions) {
   const generationRef = useRef(0);
+  const onRecoveryAvailableRef = useRef(onRecoveryAvailable);
   const showFeedbackRef = useRef(showFeedback);
   const tRef = useRef(t);
 
   useEffect(() => {
+    onRecoveryAvailableRef.current = onRecoveryAvailable;
     showFeedbackRef.current = showFeedback;
     tRef.current = t;
-  }, [showFeedback, t]);
+  }, [onRecoveryAvailable, showFeedback, t]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -323,6 +327,12 @@ export function useUploadRecoveryHydration({
           ]),
         ),
       );
+      const recoverableCount = visible.filter(
+        ({ descriptor }) => descriptor.status !== "completed",
+      ).length;
+      if (recoverableCount > 0) {
+        onRecoveryAvailableRef.current?.(recoverableCount);
+      }
       if (results.some((result) => result && "invalid" in result)) {
         showFeedbackRef.current(
           tRef.current("upload.recoveryUnavailable"),
