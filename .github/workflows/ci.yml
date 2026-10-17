@@ -58,25 +58,43 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Setup Go for MinIO
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Build MinIO
+        # RELEASE.2025-09-07T16-13-09Z; community images are no longer public.
+        run: go install github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb
+        env:
+          CGO_ENABLED: "0"
+          GOBIN: ${{ runner.temp }}/minio-bin
+
       - name: Start MinIO service
         run: |
-          docker run --detach --rm --name icedr-ci-minio \
-            --publish 9000:9000 \
-            --env MINIO_ROOT_USER=icedr-ci-minio \
-            --env MINIO_ROOT_PASSWORD=icedr-ci-minio-secret \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          mkdir -p "$RUNNER_TEMP/minio-data"
+          "$RUNNER_TEMP/minio-bin/minio" server "$RUNNER_TEMP/minio-data" \
+            --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 \
+            >"$RUNNER_TEMP/minio.log" 2>&1 &
+          minio_pid=$!
+          echo "$minio_pid" >"$RUNNER_TEMP/minio.pid"
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+            if curl --fail --silent --connect-timeout 1 --max-time 2 \
+              http://127.0.0.1:9000/minio/health/ready >/dev/null; then
               exit 0
             fi
-            if ! docker inspect icedr-ci-minio >/dev/null 2>&1; then
-              docker logs icedr-ci-minio || true
+            if ! kill -0 "$minio_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/minio.log"
               exit 1
             fi
             sleep 1
           done
-          docker logs icedr-ci-minio || true
+          cat "$RUNNER_TEMP/minio.log"
           exit 1
+        env:
+          MINIO_ROOT_USER: icedr-ci-minio
+          MINIO_ROOT_PASSWORD: icedr-ci-minio-secret
 
       - name: Test
         run: pnpm test
@@ -89,7 +107,10 @@ jobs:
 
       - name: Stop MinIO service
         if: always()
-        run: docker rm --force icedr-ci-minio || true
+        run: |
+          if [ -f "$RUNNER_TEMP/minio.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/minio.pid")" 2>/dev/null || true
+          fi
 
       - name: E2E smoke
         run: pnpm test:e2e
