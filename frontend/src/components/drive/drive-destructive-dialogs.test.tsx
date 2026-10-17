@@ -57,7 +57,6 @@ describe("DriveDestructiveDialogs", () => {
     expect(disclosure).toHaveAttribute("open");
     expect(screen.getByText("item-25.txt")).toHaveAttribute("title", "item-25.txt");
   });
-
   it("keeps every target inspectable without a disclosure for batches up to twenty", () => {
     const items = createItems(20);
     renderDialogs(items);
