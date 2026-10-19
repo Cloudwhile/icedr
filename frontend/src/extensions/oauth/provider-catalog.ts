@@ -92,7 +92,7 @@ export const oauthProviderTemplates: OAuthProviderTemplate[] = [
     trustVerifiedEmail: true,
   },
   {
-    accent: "#2563eb",
+    accent: "#5e6ad2",
     authorizationUrl: "",
     audience: "",
     displayName: "ICETOWNE BLOG",

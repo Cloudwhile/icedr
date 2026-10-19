@@ -55,7 +55,7 @@
 }
 
 .icedr-app-toast[data-variant="accent"] {
-  --icedr-toast-accent: #2563eb;
+  --icedr-toast-accent: var(--ui-accent);
 }
 
 .icedr-app-toast-countdown {
