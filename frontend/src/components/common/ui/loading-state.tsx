@@ -92,9 +92,9 @@ export function LdrsLoadingState({
         <span
           style={{
             color: palette.muted,
-            fontSize: "12px",
+            fontSize: "var(--text-ui-xs)",
             fontWeight: "600",
-            lineHeight: "1.4",
+            lineHeight: 1.5,
             whiteSpace: "nowrap",
           }}
         >
@@ -149,7 +149,7 @@ export function LoadingCurtain({
       <span
         style={{
           color: palette.muted,
-          fontSize: "12px",
+          fontSize: "var(--text-ui-xs)",
           fontWeight: "600",
           whiteSpace: "nowrap",
         }}

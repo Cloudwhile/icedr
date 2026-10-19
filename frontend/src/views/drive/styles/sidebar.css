@@ -97,15 +97,16 @@
 
 .drive-space-trigger-label {
   color: var(--drive-ui-ink);
-  font-size: 14px;
-  font-weight: 800;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-space-trigger-meta,
 .drive-space-menu-text span + span {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 17px);
 }
 
 .drive-space-trigger-progress {
@@ -249,7 +250,7 @@
 }
 
 .drive-directory-tree-row[data-root="true"] {
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-directory-tree-toggle,
@@ -285,13 +286,14 @@
   border: 0;
   color: inherit;
   display: flex;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   height: 30px;
   min-width: 0;
   padding: 0 8px 0 0;
   text-align: left;
+  line-height: 1.5;
 }
 
 .drive-directory-tree-button:focus-visible {
@@ -309,7 +311,7 @@
 
 .drive-directory-tree-row[aria-selected="true"] .drive-directory-tree-label,
 .drive-directory-tree-row[aria-selected="true"] .drive-directory-tree-button .icedr-truncate {
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-directory-tree-label,
@@ -326,9 +328,9 @@
 
 .drive-sidebar-section-label {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 1.25;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
   margin: 5px 10px 4px;
   text-transform: none;
 }
@@ -349,8 +351,9 @@
 }
 
 .drive-sidebar-item span:last-child {
-  font-size: 14px;
-  font-weight: 720;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-sidebar-item::before {
@@ -414,5 +417,5 @@
 
 .drive-mobile-sidebar-title {
   color: var(--drive-ui-ink);
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }

@@ -8,9 +8,10 @@
 
 .admin-scope-selector > span:first-child {
   color: var(--drive-ui-muted, currentColor);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-scope-selector .icedr-app-select-shell {
@@ -19,8 +20,9 @@
 }
 
 .admin-scope-selector .icedr-app-select {
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 @media (max-width: 560px) {

@@ -54,17 +54,17 @@
 
 .icedr-confirmation-header h2 {
   color: inherit;
-  font-size: 17px;
-  font-weight: 820;
-  line-height: 23px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 23px);
   margin: 0;
 }
 
 .icedr-confirmation-header p {
   color: var(--app-subtle, var(--ui-text-tertiary));
-  font-size: 13px;
-  font-weight: 620;
-  line-height: 19px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 19px);
   margin: 5px 0 0;
 }
 
@@ -100,18 +100,20 @@
 
 .drive-delete-confirmation-item > span:last-child {
   color: inherit;
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-delete-confirmation-more {
   color: var(--app-subtle, var(--ui-text-tertiary));
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-delete-confirmation-more > summary {
@@ -125,10 +127,11 @@
 
 .drive-delete-confirmation-more-label {
   color: var(--app-subtle, var(--ui-text-tertiary));
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   margin: 0;
   padding: 4px 2px;
+  line-height: 1.5;
 }
 
 .icedr-confirmation-field {
@@ -138,8 +141,9 @@
 
 .icedr-confirmation-field > span {
   color: var(--app-subtle, var(--ui-text-tertiary));
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .icedr-confirmation-actions {
@@ -157,11 +161,12 @@
   border-radius: 7px;
   color: inherit;
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 7px;
   min-height: 36px;
   padding: 0 12px;
+  line-height: 1.5;
 }
 
 .icedr-confirmation-actions button:hover:not(:disabled) {

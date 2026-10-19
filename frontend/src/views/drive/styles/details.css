@@ -41,7 +41,7 @@
   color: var(--drive-ui-ink);
   display: flex;
   flex: 0 0 auto;
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
   justify-content: space-between;
   min-height: 56px;
   min-width: 0;
@@ -107,12 +107,13 @@
   background: transparent;
   border: 0;
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   justify-self: stretch;
   padding: 14px 6px 11px;
   position: relative;
   text-align: center;
+  line-height: 1.5;
 }
 
 .drive-details-tabs button:hover {
@@ -240,8 +241,9 @@
 
 .drive-details-directory-summary > span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-details-title-block {
@@ -255,9 +257,9 @@
 .drive-details-title {
   color: var(--drive-ui-ink);
   display: block;
-  font-size: 15px;
-  font-weight: 820;
-  line-height: 23px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 23px);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,12 +269,13 @@
 .drive-details-subtitle {
   color: var(--drive-ui-muted);
   display: block;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-details-section-title {
@@ -280,9 +283,9 @@
   border-bottom: 1px solid var(--drive-ui-line);
   color: var(--drive-ui-ink);
   display: flex;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   margin-top: 2px;
   min-height: 28px;
   min-width: 0;
@@ -311,23 +314,25 @@
 
 .drive-details-list span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 660;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-details-list span:last-child {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: right;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-details-quick-actions {
@@ -399,15 +404,16 @@
 
 .drive-version-list-header {
   color: var(--drive-ui-ink);
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-version-list-header span:last-child,
 .drive-version-empty,
 .drive-version-error {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-version-error {
@@ -431,12 +437,13 @@
 
 .drive-version-meta span:first-child {
   color: var(--drive-ui-ink);
-  font-weight: 720;
+  font-weight: var(--font-weight-semibold);
 }
 
 .drive-version-meta span:not(:first-child) {
   color: var(--drive-ui-muted);
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
+  line-height: 1.5;
 }
 
 .drive-version-actions {

@@ -573,7 +573,7 @@ function buildAdminDistributionOption(
         style: {
           fill: palette.ink,
           fontSize: 20,
-          fontWeight: 860,
+          fontWeight: 700,
           text: centerValue,
           textAlign: "center",
         },
@@ -585,7 +585,7 @@ function buildAdminDistributionOption(
         style: {
           fill: palette.subtle,
           fontSize: 11,
-          fontWeight: 720,
+          fontWeight: 600,
           text: centerLabel,
           textAlign: "center",
         },

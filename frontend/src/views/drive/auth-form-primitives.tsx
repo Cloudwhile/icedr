@@ -109,7 +109,7 @@ export function AuthStatusNotice({
     borderWidth: "1px",
     borderColor: tone.borderColor,
     color: palette.ink,
-    fontSize: "12px",
+    fontSize: "var(--text-ui-xs)",
     lineHeight: "1.5",
     boxShadow: tone.shadow
   }}>

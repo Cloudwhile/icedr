@@ -56,8 +56,8 @@ export function AdminSection({
             <span>{title}</span>
             {description ? <small style={{
             color: palette.subtle,
-            fontSize: "12px",
-            fontWeight: "560",
+            fontSize: "var(--text-ui-xs)",
+            fontWeight: "600",
             lineHeight: "1.5"
           }}>{description}</small> : null}
           </span>
@@ -106,7 +106,7 @@ export function SettingStatusLine({
     display: "flex",
     gap: "8px",
     color: color,
-    fontSize: "12px",
+    fontSize: "var(--text-ui-xs)",
     lineHeight: "1.5"
   }}>
       <LocalIcon name={icon} size={14} />

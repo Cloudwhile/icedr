@@ -25,7 +25,7 @@
 .share-details-heading {
   min-width: 0;
   gap: 8px;
-  font-weight: 650;
+  font-weight: var(--font-weight-semibold);
 }
 
 .share-details-body {
@@ -64,12 +64,14 @@
 .share-details-member-copy span:last-child,
 .share-details-scope-row > span:first-child {
   color: var(--ui-text-tertiary);
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
+  line-height: 1.5;
 }
 
 .share-details-metric strong {
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .share-details-scope-row {
@@ -117,7 +119,8 @@
   justify-content: center;
   padding: 10px 12px;
   color: var(--ui-text-tertiary);
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
+  line-height: 1.5;
 }
 
 .share-details-state {

@@ -61,8 +61,8 @@ function NotFoundContent({
           <h1 className="icedr-r-font-size" style={{
           color: palette.ink,
           "--r-font-size-base": "72px",
-          "--r-font-size-md": "96px",
-          fontWeight: "780",
+          "--r-font-size-md": "72px",
+          fontWeight: "700",
           lineHeight: "1",
           letterSpacing: "0px"
         } as React.CSSProperties}>
@@ -70,7 +70,7 @@ function NotFoundContent({
           </h1>
           <span style={{
           color: palette.muted,
-          fontSize: "15px",
+          fontSize: "var(--text-ui-base)",
           lineHeight: "1.7",
           maxWidth: "500px"
         }}>
@@ -125,9 +125,9 @@ function ActionButton({
   } as React.CSSProperties}>
       <LocalIcon name={icon} size={17} />
       <span style={{
-      fontSize: "12px",
-      fontWeight: "650",
-      lineHeight: "1.3"
+      fontSize: "var(--text-ui-xs)",
+      fontWeight: "600",
+      lineHeight: 1.5
     }}>
         {label}
       </span>

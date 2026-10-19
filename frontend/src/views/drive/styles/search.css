@@ -53,16 +53,16 @@
 
 .drive-search-popover-head > div span:first-child {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 820;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-search-popover-head > div span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-search-count {
@@ -70,9 +70,9 @@
   border: 1px solid var(--drive-ui-line);
   border-radius: 999px;
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   padding: 2px 9px;
   white-space: nowrap;
 }
@@ -88,11 +88,12 @@
   border-top: 1px solid var(--drive-ui-line);
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   min-height: 30px;
   min-width: 0;
   padding: 6px 8px 0;
+  line-height: 1.5;
 }
 
 .drive-search-popover-query span {
@@ -115,10 +116,10 @@
   align-items: center;
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 11px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   justify-content: space-between;
-  line-height: 15px;
+  line-height: max(1.5em, 15px);
   min-width: 0;
   padding: 4px 8px 2px;
 }
@@ -184,16 +185,16 @@
 
 .drive-search-result-copy span:first-child {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-search-result-copy span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-search-result-row > svg {
@@ -213,11 +214,12 @@
   align-items: center;
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-height: 44px;
   padding: 0 8px;
+  line-height: 1.5;
 }
 
 .drive-search-scope-chip {
@@ -227,13 +229,14 @@
   border-radius: 999px;
   color: var(--drive-ui-muted);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 730;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 6px;
   min-height: 30px;
   min-width: 0;
   padding: 0 11px;
   transition: background-color 160ms var(--drive-ui-ease), border-color 160ms var(--drive-ui-ease), color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease);
+  line-height: 1.5;
 }
 
 .drive-search-scope-chip[data-active="true"] {
@@ -283,10 +286,11 @@
   align-items: center;
   color: var(--drive-ui-ink);
   display: inline-flex;
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-filter-panel-head > span svg {
@@ -327,9 +331,9 @@
 
 .drive-filter-field > span {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 780;
-  line-height: 14px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 14px);
 }
 
 .drive-filter-field .icedr-app-select-shell {

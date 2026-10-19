@@ -11,10 +11,11 @@
   color: var(--drive-ui-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-module-console-strip {
@@ -101,16 +102,17 @@
 
 .drive-links-summary-copy strong {
   color: var(--drive-ui-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  font-weight: 820;
-  line-height: 21px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 21px);
 }
 
 .drive-links-summary-copy span {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 680;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -177,16 +179,17 @@
 
 .drive-module-stat-copy span:first-child {
   color: var(--drive-ui-blue-600);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 22px;
-  font-weight: 860;
-  line-height: 28px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 28px);
 }
 
 .drive-module-stat-copy span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 720;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-module-stat-icon,
@@ -263,13 +266,14 @@
 }
 
 .drive-risk-title > span:nth-child(2) {
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-risk-copy {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-risk-meta {
@@ -277,10 +281,11 @@
   color: var(--drive-ui-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px 12px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-risk-actions {
@@ -322,8 +327,9 @@
 }
 
 .drive-module-panel-header > div:first-child > span:last-child {
-  font-size: 14px;
-  font-weight: 780;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-module-panel-header svg {
@@ -378,11 +384,13 @@
   background: transparent;
   color: #7c8aa3;
   display: grid;
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-height: 46px;
   padding: 0 16px;
   white-space: nowrap;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
 }
 
 .drive-module-table-head span {
@@ -439,14 +447,14 @@
 .drive-module-row-title {
   color: var(--drive-ui-ink);
   display: block;
-  font-size: 14px;
-  font-weight: 760;
-  line-height: 19px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 19px);
 }
 
 .drive-module-row-title strong {
   color: var(--drive-ui-ink);
-  font-weight: 840;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-module-row-meta {
@@ -454,10 +462,11 @@
   color: var(--drive-ui-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 12px;
-  font-weight: 640;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px 12px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-module-meta-icon {
@@ -471,8 +480,9 @@
 .drive-module-inline-note {
   color: var(--drive-ui-subtle);
   display: block;
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-module-row-actions {
@@ -548,10 +558,11 @@
   color: var(--drive-ui-muted);
   display: flex;
   flex-direction: column;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 6px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-link-policy-cell .icedr-status-pill {
@@ -608,24 +619,27 @@
 
 .drive-module-info-row span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-module-info-row span:last-child {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   max-width: 160px;
+  line-height: 1.5;
 }
 
 .drive-audit-time-cell,
 .drive-audit-ip-cell {
   color: var(--drive-ui-muted);
   display: block;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-audit-filter-panel {
@@ -649,10 +663,11 @@
   align-items: center;
   color: var(--drive-ui-ink);
   display: inline-flex;
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-audit-filter-panel-header svg {
@@ -686,8 +701,9 @@
 
 .drive-audit-filter > span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-audit-filter .icedr-app-select-shell,
@@ -725,14 +741,15 @@
 .drive-audit-name-cell {
   color: var(--drive-ui-ink);
   display: block;
-  font-size: 13px;
-  font-weight: 740;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-audit-name-cell {
   color: var(--drive-ui-muted);
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-module-empty {
@@ -760,12 +777,13 @@
 
 .drive-module-empty > span:nth-child(2) {
   color: var(--drive-ui-ink);
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-module-empty > span:nth-child(3) {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 640;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   max-width: 360px;
+  line-height: 1.5;
 }

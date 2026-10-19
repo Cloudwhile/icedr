@@ -35,10 +35,10 @@
 }
 
 .admin-integrity-commandbar h1 {
-  font-size: 19px;
-  font-weight: 850;
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
-  line-height: 25px;
+  line-height: max(1.5em, 25px);
 }
 
 .admin-integrity-commandbar p,
@@ -48,19 +48,20 @@
 }
 
 .admin-integrity-commandbar p {
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   margin-top: 3px;
 }
 
 .admin-integrity-kicker {
   color: var(--drive-ui-blue-600);
   display: block;
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 840;
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0.11em;
-  line-height: 15px;
+  line-height: max(1.5em, 15px);
   text-transform: uppercase;
 }
 
@@ -85,17 +86,17 @@
 
 .admin-integrity-summary span {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 740;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-integrity-summary strong {
   color: var(--drive-ui-ink);
-  font-size: 23px;
+  font-size: var(--text-ui-xl);
   font-variant-numeric: tabular-nums;
-  font-weight: 860;
-  line-height: 29px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 29px);
 }
 
 .admin-integrity-summary [data-tone="info"] strong {
@@ -120,11 +121,12 @@
   border-bottom: 1px solid var(--drive-ui-line);
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 11px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 7px;
   min-height: 32px;
   padding: 0 18px;
+  line-height: 1.5;
 }
 
 .admin-integrity-alert,
@@ -137,11 +139,12 @@
   align-items: center;
   border-bottom: 1px solid color-mix(in srgb, var(--ui-danger) 24%, var(--drive-ui-line));
   display: flex;
-  font-size: 12px;
-  font-weight: 740;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   min-height: 40px;
   padding: 7px 18px;
+  line-height: 1.5;
 }
 
 .admin-integrity-zone {
@@ -181,15 +184,15 @@
 }
 
 .admin-integrity-zone-heading h3 {
-  font-size: 14px;
-  font-weight: 820;
-  line-height: 19px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 19px);
 }
 
 .admin-integrity-zone-heading p {
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
   margin-top: 2px;
 }
 
@@ -208,9 +211,9 @@
 
 .admin-integrity-form > label > span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 730;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-integrity-submit {
@@ -230,12 +233,13 @@
   border: 1px solid color-mix(in srgb, var(--ui-info) 24%, var(--drive-ui-line));
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   grid-column: 1 / -1;
   min-height: 42px;
   padding: 8px 11px;
+  line-height: 1.5;
 }
 
 .admin-integrity-target-unavailable svg {
@@ -248,10 +252,10 @@
   color: var(--drive-ui-muted);
   cursor: pointer;
   display: inline-flex;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
-  line-height: 16px;
+  line-height: max(1.5em, 16px);
   min-width: 0;
 }
 
@@ -264,8 +268,9 @@
 
 .admin-integrity-scope-note {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-integrity-progress {
@@ -286,11 +291,12 @@
 .admin-integrity-history-list code {
   color: var(--drive-ui-ink);
   font-family: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
-  font-size: 11px;
+  font-size: var(--text-ui-xs);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-integrity-task-line > span,
@@ -299,9 +305,10 @@
   border: 1px solid var(--drive-ui-line);
   border-radius: 3px;
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 780;
-  line-height: 16px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
   padding: 1px 6px;
   white-space: nowrap;
 }
@@ -351,17 +358,18 @@
 .admin-integrity-table small,
 .admin-integrity-history-list small {
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 680;
-  line-height: 14px;
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 14px);
 }
 
 .admin-integrity-progress-facts strong {
   color: var(--drive-ui-ink);
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   font-variant-numeric: tabular-nums;
-  font-weight: 820;
-  line-height: 18px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -369,9 +377,10 @@
 
 .admin-integrity-task-error {
   border-left: 3px solid var(--drive-ui-danger);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   padding: 9px 11px;
+  line-height: 1.5;
 }
 
 .admin-integrity-empty {
@@ -380,12 +389,13 @@
   border: 1px dashed var(--drive-ui-line-strong);
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 12px;
-  font-weight: 690;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   justify-content: center;
   min-height: 86px;
   padding: 14px;
   text-align: center;
+  line-height: 1.5;
 }
 
 .admin-integrity-table-scroll {
@@ -413,10 +423,11 @@
 .admin-integrity-table th {
   background: var(--drive-ui-surface-soft);
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.03em;
-  line-height: 15px;
+  line-height: max(1.5em, 15px);
   text-transform: uppercase;
 }
 
@@ -444,20 +455,21 @@
 
 .admin-integrity-table time {
   color: var(--drive-ui-ink);
-  font-size: 11px;
-  font-weight: 710;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-integrity-object {
   color: var(--drive-ui-ink);
   display: block;
   font-family: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
-  font-size: 11px;
-  font-weight: 690;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-integrity-object-references {
@@ -477,8 +489,10 @@
 
 .admin-integrity-object-references small > span {
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 9px;
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-integrity-result-state {
@@ -492,11 +506,12 @@
   align-items: center;
   color: var(--drive-ui-muted);
   display: grid;
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 9px;
-  font-weight: 720;
+  font-weight: var(--font-weight-semibold);
   gap: 2px 4px;
   grid-template-columns: 12px minmax(0, 1fr);
-  line-height: 13px;
+  line-height: max(1.5em, 13px);
   min-width: 0;
 }
 
@@ -507,8 +522,9 @@
 
 .admin-integrity-acknowledged time {
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 9px;
-  line-height: 12px;
+  line-height: max(1.5em, 12px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -566,9 +582,11 @@
 
 .admin-integrity-history-list > button > span:nth-child(n + 3),
 .admin-integrity-history-list strong {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-integrity-history-icon {
@@ -608,9 +626,11 @@
 
 .admin-integrity-pagination > span {
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-integrity-pagination > div {

@@ -29,13 +29,15 @@
 
 .drive-oauth-google-mark {
   color: #4285f4;
-  font-size: 24px;
-  font-weight: 850;
-  line-height: 1;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-oauth-provider-mark-lg .drive-oauth-google-mark {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 40px;
+  line-height: 1.5;
 }
 
 .drive-oauth-github-mark {

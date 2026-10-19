@@ -25,9 +25,9 @@
 }
 
 .admin-unsaved-changes-title {
-  font-size: 16px;
-  font-weight: 760;
-  line-height: 22px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 22px);
   margin: 0;
 }
 
@@ -41,8 +41,8 @@
 
 .admin-unsaved-changes-body > p {
   color: var(--admin-unsaved-muted);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--text-ui-sm);
+  line-height: max(1.5em, 20px);
   margin: 0;
 }
 

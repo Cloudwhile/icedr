@@ -14,9 +14,9 @@
 
 .drive-settings-header h1 {
   color: var(--drive-ui-ink);
-  font-size: 25px;
-  font-weight: 840;
-  line-height: 31px;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 31px);
   margin: 0;
 }
 
@@ -80,12 +80,13 @@
 }
 
 .drive-settings-tab span:last-child {
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-settings-tab-panel {
@@ -107,18 +108,18 @@
 
 .drive-settings-panel-heading h2 {
   color: var(--drive-ui-ink);
-  font-size: 17px;
-  font-weight: 840;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
-  line-height: 23px;
+  line-height: max(1.5em, 23px);
   margin: 0;
 }
 
 .drive-settings-panel-heading span {
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-settings-profile-grid {
@@ -187,15 +188,17 @@
 .drive-settings-profile-title {
   color: var(--drive-ui-ink);
   display: block;
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  font-weight: 840;
-  line-height: 24px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 24px);
 }
 
 .drive-settings-profile-copy span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-settings-profile-fields {
@@ -249,24 +252,24 @@
 
 .drive-settings-label {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
 }
 
 .drive-settings-helper {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
 }
 
 .drive-settings-value {
   color: var(--drive-ui-ink);
   display: block;
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 19px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 19px);
 }
 
 .drive-settings-meta-grid,
@@ -358,10 +361,11 @@
   color: var(--drive-ui-ink);
   display: flex;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   min-height: 46px;
   padding: 0 16px;
+  line-height: 1.5;
 }
 
 .drive-settings-side-header svg,
@@ -408,16 +412,18 @@
 .drive-settings-info-row span:first-child,
 .drive-system-side-row span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-settings-info-row span:last-child,
 .drive-system-side-row span:last-child,
 .drive-settings-action-row span:last-child {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-settings-info-row span[data-tone="secure"],
@@ -437,7 +443,7 @@
 
 .drive-settings-placeholder span {
   color: var(--drive-ui-ink);
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-settings-storage-row {
@@ -487,7 +493,7 @@
   color: var(--drive-ui-ink);
   display: flex;
   gap: 9px;
-  font-weight: 800;
+  font-weight: var(--font-weight-bold);
   min-height: 34px;
   padding-bottom: 12px;
 }
@@ -509,8 +515,9 @@
 
 .drive-system-breakdown-panel > span:first-child {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 780;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-system-breakdown-panel > div {
@@ -525,15 +532,17 @@
 
 .drive-system-breakdown-panel > div span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-system-breakdown-panel > div span:last-child {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-system-trend-panel {
@@ -575,8 +584,9 @@
 
 .drive-system-side-action span {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-quota-field {
@@ -601,8 +611,9 @@
 }
 
 .drive-settings-header h1 {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 26px;
-  line-height: 32px;
+  line-height: max(1.5em, 32px);
 }
 
 .drive-settings-user {
@@ -675,8 +686,9 @@
 }
 
 .drive-settings-section-header > div:first-child span {
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-settings-section-trailing {
@@ -701,14 +713,15 @@
 }
 
 .drive-settings-profile-title {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  line-height: 24px;
+  line-height: max(1.5em, 24px);
 }
 
 .drive-settings-profile-note {
   color: var(--drive-ui-subtle) !important;
-  font-size: 12px !important;
-  line-height: 17px;
+  font-size: var(--text-ui-xs) !important;
+  line-height: max(1.5em, 17px);
   margin-top: 3px;
 }
 
@@ -767,9 +780,9 @@
 .drive-settings-avatar-hint {
   color: var(--drive-ui-subtle);
   display: block;
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   margin-top: 12px;
   text-align: center;
 }
@@ -825,9 +838,9 @@
 
 .drive-settings-account-actions > span {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   text-align: center;
 }
 
@@ -881,8 +894,9 @@
 }
 
 .drive-system-settings-nav a span {
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-system-settings-main {
@@ -954,13 +968,14 @@
 
 .drive-system-translation-row span:first-child {
   color: var(--drive-ui-ink);
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-system-translation-row span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-system-usage-grid {

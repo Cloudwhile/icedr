@@ -27,13 +27,14 @@
   border-radius: 6px;
   cursor: pointer;
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 7px;
   justify-content: center;
   min-height: 34px;
   min-width: 0;
   padding: 0 10px;
+  line-height: 1.5;
 }
 
 .share-scope-picker-mode-button:hover {
@@ -64,10 +65,11 @@
   border: 1px solid var(--share-scope-hairline);
   border-radius: 8px;
   display: flex;
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   gap: 8px;
   min-height: 42px;
   padding: 0 12px;
+  line-height: 1.5;
 }
 
 .share-scope-picker-tree {
@@ -92,13 +94,15 @@
 .share-scope-picker-root-row {
   background: var(--share-scope-surface-2);
   border-bottom: 1px solid var(--share-scope-hairline);
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   padding-left: 8px;
+  line-height: 1.5;
 }
 
 .share-scope-picker-row {
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   padding-left: calc(8px + var(--share-scope-depth, 0) * 18px);
+  line-height: 1.5;
 }
 
 .share-scope-picker-row:hover {
@@ -169,21 +173,21 @@
 .share-scope-picker-name,
 .share-scope-picker-root-row strong,
 .share-scope-picker-root-context strong {
-  font-weight: 660;
-  line-height: 18px;
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   margin-left: 2px;
   min-width: 0;
 }
 
 .share-scope-picker-root-row strong,
 .share-scope-picker-root-context strong {
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .share-scope-picker-empty {
   color: var(--share-scope-subtle);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 18px);
   margin: 0;
   padding: 18px 12px;
   text-align: center;
@@ -191,9 +195,9 @@
 
 .share-scope-picker-summary {
   color: var(--share-scope-subtle);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   margin: 0;
   min-width: 0;
 }

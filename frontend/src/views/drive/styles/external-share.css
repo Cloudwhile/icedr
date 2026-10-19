@@ -49,9 +49,10 @@
 
 .external-share-brand-name {
   color: var(--ui-text-primary);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 26px;
-  font-weight: 880;
-  line-height: 30px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 30px);
 }
 
 .external-share-topbar-actions {
@@ -67,13 +68,14 @@
   border: 0;
   border-radius: 0;
   color: var(--ui-text-secondary);
-  font-size: 14px;
-  font-weight: 740;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   letter-spacing: 0;
   min-height: 34px;
   padding: 0;
   transition: color 160ms var(--motion-ease), transform 180ms var(--motion-ease);
+  line-height: 1.5;
 }
 
 .external-share-topbar-status svg,
@@ -181,10 +183,11 @@
   align-items: center;
   color: var(--ui-text-primary);
   display: flex;
-  font-size: 16px;
-  font-weight: 820;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
   gap: 10px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .external-share-side-card-heading svg {
@@ -197,9 +200,9 @@
 
 .external-share-verification-card p {
   color: var(--ui-text-tertiary);
-  font-size: 14px;
-  font-weight: 610;
-  line-height: 23px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 23px);
   margin: -3px 0 0;
 }
 
@@ -212,14 +215,15 @@
   color: var(--ui-on-accent);
   cursor: pointer;
   display: inline-flex;
-  font-size: 15px;
-  font-weight: 840;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   justify-content: center;
   min-height: 45px;
   padding: 0 16px;
   transition: filter 160ms var(--motion-ease), transform 170ms var(--motion-ease), box-shadow 190ms var(--motion-ease);
   width: 100%;
+  line-height: 1.5;
 }
 
 .external-share-auth-primary:hover {
@@ -242,11 +246,11 @@
   align-items: center;
   color: var(--ui-text-tertiary);
   display: flex;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   justify-content: center;
-  line-height: 18px;
+  line-height: max(1.5em, 18px);
   min-width: 0;
 }
 
@@ -265,12 +269,13 @@
   box-shadow: none;
   color: var(--ui-text-secondary);
   display: flex;
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   min-height: 24px;
   min-width: 0;
   padding: 0;
+  line-height: 1.5;
 }
 
 .external-share-info-chip svg {
@@ -299,15 +304,17 @@
 
 .external-share-fact-row span:first-child {
   color: var(--ui-text-tertiary);
-  font-size: 13px;
-  font-weight: 690;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .external-share-fact-row span:last-child {
   color: var(--ui-text-primary);
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   text-align: right;
+  line-height: 1.5;
 }
 
 .external-share-hero-card {
@@ -345,8 +352,9 @@
   background: linear-gradient(180deg, var(--ui-surface) 0%, var(--ui-surface-subtle) 100%) !important;
   border-color: var(--ui-border-default) !important;
   color: var(--ui-text-secondary) !important;
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   min-height: 29px;
+  line-height: 1.5;
 }
 
 .external-share-hero-card .icedr-status-pill svg {
@@ -428,9 +436,10 @@
 
 .external-share-hero-title-row h1 {
   color: var(--ui-text-primary);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 28px;
-  font-weight: 860;
-  line-height: 36px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 36px);
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -443,9 +452,9 @@
 
 .external-share-hero-copy p {
   color: var(--ui-text-secondary);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 21px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 21px);
   margin: 7px 0 0;
 }
 
@@ -489,19 +498,19 @@
 
 .external-share-hero-meta > span:nth-child(2) {
   color: var(--ui-text-tertiary);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   grid-column: 2;
-  line-height: 16px;
+  line-height: max(1.5em, 16px);
   min-width: 0;
 }
 
 .external-share-hero-meta strong {
   color: var(--ui-text-primary);
-  font-size: 14px;
-  font-weight: 780;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   grid-column: 2;
-  line-height: 20px;
+  line-height: max(1.5em, 20px);
   min-width: 0;
   overflow-wrap: normal;
   white-space: nowrap;
@@ -563,14 +572,16 @@
 
 .external-share-browser-title {
   color: var(--ui-text-primary);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .external-share-browser-subtitle {
   color: var(--ui-text-tertiary);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .external-share-browser-list {
@@ -591,8 +602,8 @@
   color: var(--ui-accent);
   cursor: pointer;
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   justify-content: center;
   margin-top: auto;
@@ -600,6 +611,7 @@
   padding: 0 18px;
   transition: background-color 160ms var(--motion-ease), color 160ms var(--motion-ease), transform 170ms var(--motion-ease);
   width: 100%;
+  line-height: 1.5;
 }
 
 .external-share-browser-footer:hover {
@@ -624,11 +636,13 @@
   border-bottom: 1px solid var(--ui-border-subtle);
   color: var(--ui-text-tertiary);
   display: grid;
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   grid-template-columns: minmax(0, 1fr) 132px 132px 58px;
   min-height: 38px;
   padding: 0 30px 0 56px;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
 }
 
 .external-share-workbench .external-share-browser-table-head {
@@ -684,9 +698,10 @@
   align-items: center;
   color: var(--ui-text-tertiary);
   display: flex;
-  font-size: 12px;
-  font-weight: 660;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .external-share-file-type {
@@ -768,11 +783,12 @@
   border: 0;
   color: var(--ui-text-inverse);
   content: "!";
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  font-weight: 800;
+  font-weight: var(--font-weight-bold);
   height: auto;
   left: 24px;
-  line-height: 1;
+  line-height: 1.5;
   top: calc(50% - 9px);
   transform: none;
   width: auto;
@@ -837,8 +853,10 @@
   }
 
   .external-share-brand-name {
-    font-size: 22px;
-  }
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 22px;
+  line-height: 1.5;
+}
 
   .external-share-topbar-actions {
     gap: 10px;
@@ -866,8 +884,8 @@
   }
 
   .external-share-hero-title-row h1 {
-    font-size: 24px;
-    line-height: 31px;
+    font-size: var(--text-ui-xl);
+    line-height: max(1.5em, 31px);
   }
 
   .external-share-hero-meta-grid {

@@ -544,7 +544,7 @@ function AuthPage({
     overscrollBehaviorY: "contain",
     background: "transparent",
     color: palette.ink,
-    fontSize: "14px",
+    fontSize: "var(--text-ui-base)",
     letterSpacing: "0px"
   } as React.CSSProperties}>
       <main className="icedr-auth-main">

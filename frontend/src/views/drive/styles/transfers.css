@@ -29,10 +29,10 @@
   border-radius: 7px 7px 0 0;
   color: var(--drive-ui-muted);
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 780;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
-  line-height: 34px;
+  line-height: max(1.5em, 34px);
   min-height: 42px;
   padding: 0 2px 9px;
   position: relative;
@@ -70,12 +70,13 @@
   border-radius: 999px;
   color: var(--drive-ui-blue-600);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   height: 20px;
   justify-content: center;
   min-width: 23px;
   padding-inline: 7px;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-tabs button:not([data-active="true"]) strong {
@@ -123,15 +124,15 @@
 
 .drive-transfers-module .drive-module-stat-copy span:first-child {
   color: var(--transfer-stat-accent);
-  font-size: 24px;
-  line-height: 29px;
+  font-size: var(--text-ui-xl);
+  line-height: max(1.5em, 29px);
 }
 
 .drive-transfers-module .drive-module-stat-copy span:nth-child(2) {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-transfers-module .drive-module-stat-copy {
@@ -141,9 +142,9 @@
 .drive-transfers-module .drive-module-stat-copy strong {
   color: var(--drive-ui-muted);
   display: -webkit-box;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   max-width: 156px;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -209,8 +210,9 @@
 }
 
 .drive-transfers-module .drive-module-panel-header > div:first-child > span:last-child {
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-section {
@@ -246,10 +248,11 @@
   align-items: center;
   color: var(--drive-ui-ink);
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 820;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-section-header .icedr-status-pill {
@@ -286,10 +289,11 @@
 .drive-transfers-module .drive-transfer-section .drive-transfer-section-table .drive-module-table-head {
   background: color-mix(in srgb, var(--drive-ui-surface-soft) 70%, transparent);
   color: var(--drive-ui-muted);
-  font-size: 11px;
+  font-size: var(--text-ui-xs);
   letter-spacing: 0;
   min-height: 38px;
   padding-inline: 18px;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-section:not(:first-child) .drive-transfer-section-table .drive-module-table-head {
@@ -393,17 +397,17 @@
 
 .drive-transfers-module .drive-transfer-section .drive-module-row-title {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-transfers-module .drive-transfer-row-error {
   color: var(--drive-ui-danger);
   display: block;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
   min-width: 0;
 }
 
@@ -479,15 +483,16 @@
   align-items: center;
   color: var(--drive-ui-subtle);
   display: flex;
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   gap: 10px;
   justify-content: space-between;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-progress-header span:first-child {
   color: var(--drive-ui-ink);
-  font-weight: 820;
+  font-weight: var(--font-weight-bold);
   min-width: 34px;
 }
 
@@ -503,9 +508,10 @@
 .drive-transfers-module .drive-transfer-time-cell {
   color: var(--drive-ui-muted);
   display: block;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-actions {
@@ -582,8 +588,9 @@
 
 .drive-transfers-module .drive-transfer-setting-row > span:first-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-setting-select {
@@ -604,11 +611,12 @@
   background: transparent;
   border: 0;
   color: inherit;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   min-width: 0;
   outline: 0;
   width: 100%;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-setting-select svg {
@@ -693,7 +701,7 @@
 
 .drive-transfers-module .drive-module-info-row span:last-child {
   color: var(--drive-ui-ink);
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-transfers-module .drive-transfer-health {
@@ -712,16 +720,17 @@
 
 .drive-transfers-module .drive-transfer-health > div span {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-transfer-health > div strong {
   color: var(--drive-ui-ink);
-  font-size: 15px;
-  font-weight: 840;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
   white-space: nowrap;
 }
 
@@ -737,9 +746,10 @@
   color: var(--drive-ui-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   gap: 7px;
-  font-weight: 720;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-speed-dot {
@@ -786,8 +796,9 @@
   bottom: 8px;
   color: var(--drive-ui-muted);
   display: flex;
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   left: 58px;
   opacity: 0;
@@ -797,6 +808,7 @@
   transform: translateY(4px);
   transition: opacity 160ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
   z-index: 3;
+  line-height: 1.5;
 }
 
 .drive-transfers-module .drive-speed-chart:hover .drive-speed-samples {
@@ -808,11 +820,12 @@
   align-items: center;
   color: var(--drive-ui-subtle);
   display: flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   inset: 0;
   justify-content: center;
   position: absolute;
+  line-height: 1.5;
 }
 
 @media (max-width: 1180px) {
@@ -867,4 +880,10 @@
   .drive-transfers-module .drive-transfer-section-table .drive-module-table-row {
     min-width: 880px;
   }
+}
+
+.drive-transfer-section-table,
+.drive-speed-value,
+.drive-transfers-module .drive-module-stat-value {
+  font-variant-numeric: tabular-nums;
 }

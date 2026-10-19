@@ -55,9 +55,9 @@ export function PublicPageNav({
         }} />
             <span className="icedr-truncate" style={{
           color: palette.ink,
-          fontSize: "14px",
-          fontWeight: "750",
-          lineHeight: "1.2"
+          fontSize: "var(--text-ui-base)",
+          fontWeight: "600",
+          lineHeight: 1.5
         }}>
               {siteName}
             </span>

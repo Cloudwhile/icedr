@@ -115,15 +115,16 @@
 .drive-upload-hud-title span:first-child,
 .drive-upload-hud-percent {
   color: var(--drive-ui-ink);
-  font-size: 14px;
-  font-weight: 780;
-  line-height: 18px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-upload-hud-title span:last-child {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-upload-hud-meter {
@@ -146,14 +147,15 @@
   cursor: pointer;
   display: flex;
   font: inherit;
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-height: 40px;
   padding: 8px 12px 8px 14px;
   text-align: left;
   transition: background-color 150ms var(--drive-ui-ease), color 150ms var(--drive-ui-ease);
   width: 100%;
+  line-height: 1.5;
 }
 
 .drive-upload-hud-failure:first-child {
@@ -266,9 +268,9 @@
 
 .workspace-notification-title {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -277,9 +279,9 @@
 
 .workspace-notification-description {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   max-height: 119px;
   overflow: hidden;
   white-space: pre-line;
@@ -337,12 +339,13 @@
   border: 0;
   color: var(--workspace-notification-accent);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   padding: 7px 6px;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentcolor 42%, transparent);
   text-underline-offset: 3px;
+  line-height: 1.5;
 }
 
 .workspace-notification-action-label:hover {

@@ -103,13 +103,13 @@ export function LegalConsentDialog({
                   minWidth: "0px"
                 }}>
                     <Modal.Heading className="icedr-truncate" style={{
-                      fontWeight: "780"
+                      fontWeight: "700"
                     }}>
                     {t("legal.consent.title")}
                     </Modal.Heading>
                     <span className="icedr-truncate" style={{
                     color: palette.subtle,
-                    fontSize: "12px"
+                    fontSize: "var(--text-ui-xs)"
                   }}>
                       {t("legal.consent.subtitle")}
                     </span>
@@ -146,13 +146,13 @@ export function LegalConsentDialog({
                 minWidth: "0px"
               }}>
                   <span className="icedr-truncate" style={{
-                  fontWeight: "760"
+                  fontWeight: "700"
                 }}>
                     {activePageLabel}
                   </span>
                   <span style={{
                   color: readState[activePage] ? palette.success : palette.subtle,
-                  fontSize: "12px"
+                  fontSize: "var(--text-ui-xs)"
                 }}>
                     {readState[activePage] ? t("legal.consent.read") : t("legal.consent.readToBottom")}
                   </span>
@@ -196,7 +196,7 @@ export function LegalConsentDialog({
                 alignItems: "center",
                 display: "flex",
                 color: allRead ? palette.success : palette.subtle,
-                fontSize: "12px",
+                fontSize: "var(--text-ui-xs)",
                 gap: "8px"
               }}>
                   <LocalIcon name={allRead ? "tick" : "info"} size={15} />

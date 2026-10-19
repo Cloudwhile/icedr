@@ -50,15 +50,17 @@
 }
 
 .admin-brand span {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 22px;
-  font-weight: 850;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-sidebar-label {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
   margin: 0 10px 9px;
 }
 
@@ -83,8 +85,8 @@
   border-radius: 10px;
   color: var(--drive-ui-muted);
   display: inline-flex;
-  font-size: 14px;
-  font-weight: 760;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 10px;
   justify-content: flex-start;
   min-height: 40px;
@@ -96,6 +98,7 @@
     box-shadow 160ms var(--drive-ui-ease),
     color 160ms var(--drive-ui-ease);
   width: 100%;
+  line-height: 1.5;
 }
 
 .admin-panel-nav button:hover {
@@ -134,11 +137,12 @@
 .admin-panel-subnav button {
   border-radius: 7px;
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   min-height: 32px;
   padding: 0 9px;
+  line-height: 1.5;
 }
 
 .admin-panel-subnav button:hover {
@@ -185,16 +189,16 @@
 
 .admin-sidebar-status div > span:first-child {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .admin-sidebar-status span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .admin-main {
@@ -229,16 +233,16 @@
 
 .admin-header-title > span:last-child {
   color: var(--drive-ui-ink);
-  font-size: 17px;
-  font-weight: 820;
-  line-height: 22px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 22px);
 }
 
 .admin-header-kicker {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .admin-header-actions {
@@ -299,18 +303,19 @@
 
 .admin-workspace-heading h1 {
   color: var(--drive-ui-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 26px;
-  font-weight: 840;
-  line-height: 31px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 31px);
   margin: 0;
 }
 
 .admin-workspace-heading span {
   color: var(--drive-ui-muted);
   display: block;
-  font-size: 13px;
-  font-weight: 640;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   margin-top: 5px;
 }
 
@@ -357,10 +362,11 @@
 .admin-inline-alert > span {
   align-items: center;
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 740;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .admin-overview-grid {
@@ -447,9 +453,9 @@
 .admin-overview-stat-label,
 .admin-overview-stat-meta {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
 }
 
 .admin-overview-stat-meta {
@@ -461,9 +467,10 @@
 
 .admin-overview-stat-card strong {
   color: var(--drive-ui-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 22px;
-  font-weight: 860;
-  line-height: 28px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 28px);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -519,11 +526,12 @@
 }
 
 .admin-overview-card-header strong {
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-overview-card-header button {
@@ -531,12 +539,13 @@
   border: 0;
   color: var(--drive-ui-blue-600);
   flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   padding: 0;
   transition:
     color 150ms var(--drive-ui-ease),
     transform 150ms var(--drive-ui-ease);
+  line-height: 1.5;
 }
 
 .admin-overview-card-header button:hover {
@@ -606,14 +615,16 @@
 
 .admin-distribution-row span:not(.admin-distribution-dot) {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-distribution-row strong {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-system-list {
@@ -636,15 +647,17 @@
 
 .admin-system-row span {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .admin-system-row strong {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-system-row strong[data-tone="success"] {
@@ -691,9 +704,9 @@
 
 .admin-recent-activity-avatar > span {
   color: currentColor;
-  font-size: 11px;
-  font-weight: 860;
-  line-height: 1;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-recent-activity-avatar[data-actor="visitor"] {
@@ -728,17 +741,17 @@
 
 .admin-recent-activity-copy > span {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 17px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .admin-recent-activity-meta,
 .admin-recent-activity-row time {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-recent-activity-meta {
@@ -798,15 +811,16 @@
 
 .admin-storage-total strong {
   color: var(--drive-ui-ink);
-  font-size: 20px;
-  font-weight: 860;
-  line-height: 26px;
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 26px);
 }
 
 .admin-storage-total span {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-storage-track {
@@ -836,9 +850,9 @@
   border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   min-width: 0;
   overflow: hidden;
   padding: 10px 12px;
@@ -882,9 +896,10 @@
 .admin-shell .external-share-admin-kicker {
   align-items: center;
   display: flex;
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .admin-shell .external-share-section-anonymous,
@@ -1003,8 +1018,10 @@
   }
 
   .admin-brand span {
-    font-size: 18px;
-  }
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 18px;
+  line-height: 1.5;
+}
 
   .admin-sidebar-label {
     display: none;
@@ -1131,7 +1148,8 @@
   }
 
   .admin-workspace-heading h1 {
-    font-size: 22px;
-    line-height: 28px;
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 22px;
+    line-height: max(1.5em, 28px);
   }
 }

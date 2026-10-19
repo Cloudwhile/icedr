@@ -61,16 +61,16 @@
 
 .admin-system-status-metric-copy small {
   color: var(--ui-text-secondary);
-  font-size: 11px;
-  font-weight: 720;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-system-status-metric-copy strong {
   color: var(--ui-text-primary);
-  font-size: 15px;
-  font-weight: 820;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -102,9 +102,9 @@
 
 .admin-system-status-section h2 {
   color: var(--ui-text-primary);
-  font-size: 14px;
-  font-weight: 810;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
   margin: 0;
 }
 
@@ -128,16 +128,16 @@
 
 .admin-system-status-section dt {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 680;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .admin-system-status-section dd {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;

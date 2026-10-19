@@ -75,18 +75,18 @@
 
 .admin-shell .drive-oauth-summary dt {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 690;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
   margin: 0;
   overflow-wrap: anywhere;
 }
 
 .admin-shell .drive-oauth-summary dd {
   color: var(--drive-ui-ink);
-  font-size: 19px;
-  font-weight: 840;
-  line-height: 23px;
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 23px);
   margin: 0;
 }
 
@@ -120,8 +120,9 @@
 
 .admin-shell .drive-oauth-filterbar .icedr-app-select,
 .admin-shell .drive-oauth-filterbar .icedr-app-input {
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-oauth-search-field {
@@ -199,9 +200,9 @@
 
 .admin-shell .drive-oauth-provider-group-copy strong {
   display: block;
-  font-size: 15px;
-  font-weight: 820;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -214,12 +215,13 @@
   border-radius: 999px;
   color: var(--drive-ui-muted);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   height: 26px;
   justify-content: center;
   padding: 0 8px;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-oauth-table-shell {
@@ -240,10 +242,12 @@
 .admin-shell .drive-oauth-table-head {
   background: var(--drive-ui-surface-soft);
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-height: 40px;
   padding: 0 15px;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
 }
 
 .admin-shell .drive-oauth-table-row {
@@ -271,17 +275,17 @@
 
 .admin-shell .drive-oauth-config-name strong {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 790;
-  line-height: 17px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .admin-shell .drive-oauth-config-name small,
 .admin-shell .drive-oauth-muted {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .admin-shell .drive-oauth-copy-cell {
@@ -293,9 +297,10 @@
 
 .admin-shell .drive-oauth-copy-cell > span {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-oauth-copy-cell button {
@@ -347,12 +352,13 @@
   align-items: center;
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   justify-content: center;
   min-height: 96px;
   padding: 16px;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-oauth-provider-mark[data-provider="oidc"],
@@ -414,9 +420,10 @@
     color: var(--drive-ui-subtle);
     content: attr(data-label);
     display: block;
-    font-size: 10px;
-    font-weight: 740;
-    line-height: 14px;
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 10px;
+    font-weight: var(--font-weight-semibold);
+    line-height: max(1.5em, 14px);
   }
 
   .admin-shell .drive-oauth-table-row .drive-oauth-config-name,
@@ -541,10 +548,10 @@
 
 .drive-oauth-dialog-heading h2 {
   color: var(--drive-ui-ink);
-  font-size: 20px;
-  font-weight: 830;
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
-  line-height: 26px;
+  line-height: max(1.5em, 26px);
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -567,16 +574,16 @@
 
 .drive-oauth-dialog-context strong {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 17px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .drive-oauth-dialog-context small {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-oauth-dialog .drive-oauth-dialog-body {
@@ -605,10 +612,10 @@
 
 .drive-oauth-dialog-section-title {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 780;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
-  line-height: 18px;
+  line-height: max(1.5em, 18px);
   margin: 0;
 }
 
@@ -672,16 +679,16 @@
 
 .drive-oauth-template-option strong {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 780;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-oauth-template-option small {
   color: var(--drive-ui-subtle);
-  font-size: 11px;
-  font-weight: 620;
-  line-height: 14px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 14px);
 }
 
 .drive-oauth-form-panel {
@@ -721,9 +728,9 @@
 
 .drive-oauth-form-panel .icedr-field-label {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-oauth-form-panel .icedr-app-input {
@@ -776,9 +783,9 @@
 .drive-oauth-advanced summary::after {
   color: var(--drive-ui-subtle);
   content: "+";
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
   text-align: center;
 }
 
@@ -787,8 +794,9 @@
 }
 
 .drive-oauth-advanced summary span {
-  font-size: 12px;
-  font-weight: 740;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-oauth-advanced-body {
@@ -798,9 +806,9 @@
 
 .drive-oauth-policy-title {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-oauth-policy-toggle {
@@ -858,9 +866,9 @@
 }
 
 .drive-oauth-policy-toggle span {
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
   min-width: 0;
 }
 
@@ -868,10 +876,10 @@
   align-items: center;
   color: var(--drive-ui-blue-600);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 5px;
-  line-height: 16px;
+  line-height: max(1.5em, 16px);
   max-width: 100%;
   text-decoration: none;
 }
@@ -909,9 +917,9 @@
 }
 
 .drive-oauth-test-result > header strong {
-  font-size: 12px;
-  font-weight: 780;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-oauth-test-result > div {
@@ -937,8 +945,10 @@
 }
 
 .drive-oauth-test-result small {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-oauth-dialog > .drive-oauth-dialog-actions {
@@ -973,9 +983,9 @@
   border-radius: 10px;
   color: var(--ui-danger);
   display: flex;
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   min-height: 40px;
   padding: 9px 12px;
 }
@@ -1012,9 +1022,9 @@
 
 .drive-oauth-global-dialog > header h2 {
   color: var(--drive-ui-ink);
-  font-size: 16px;
-  font-weight: 820;
-  line-height: 22px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 22px);
   margin: 0;
 }
 
@@ -1025,8 +1035,8 @@
 
 .drive-oauth-global-dialog p {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 18px);
   margin: 0;
 }
 

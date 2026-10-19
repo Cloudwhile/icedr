@@ -30,9 +30,9 @@
 .admin-integrity-target-heading strong,
 .admin-integrity-target-selection strong {
   color: var(--drive-ui-ink);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -44,9 +44,10 @@
 .admin-integrity-target-status,
 .admin-integrity-target-results small {
   color: var(--drive-ui-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 680;
-  line-height: 14px;
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 14px);
 }
 
 .admin-integrity-target-search {
@@ -147,9 +148,9 @@
 }
 
 .admin-integrity-target-results strong {
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-integrity-target-selection {
@@ -178,8 +179,10 @@
 }
 
 .admin-integrity-target-selection > [role="alert"] {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
   grid-column: 2 / -1;
+  line-height: 1.5;
 }
 
 @media (max-width: 680px) {

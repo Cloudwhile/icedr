@@ -43,16 +43,16 @@
 
 .icedr-app-error-copy h1 {
   color: var(--app-error-ink);
-  font-size: 20px;
-  font-weight: 760;
-  line-height: 28px;
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 28px);
 }
 
 .icedr-app-error-copy p {
   color: var(--app-error-muted);
-  font-size: 14px;
-  font-weight: 520;
-  line-height: 22px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-medium);
+  line-height: max(1.5em, 22px);
   max-width: 520px;
 }
 

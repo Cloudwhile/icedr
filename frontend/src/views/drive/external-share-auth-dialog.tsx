@@ -144,7 +144,7 @@ export function ShareAuthDialog({
                   <Modal.Heading className="icedr-truncate" style={{ fontWeight: "600" }}>
                     {accessItem?.name ?? actionLabel}
                   </Modal.Heading>
-                  <span style={{ color: palette.subtle, fontSize: "12px", marginTop: "4px" }}>
+                  <span style={{ color: palette.subtle, fontSize: "var(--text-ui-xs)", marginTop: "4px" }}>
                     {accessItem ? formatFileSize(sumDriveItemSizes([accessItem], sourceItems), locale) : actionLabel}
                   </span>
                 </div>
@@ -158,7 +158,7 @@ export function ShareAuthDialog({
           <Modal.Body style={{ padding: "16px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <span style={{ color: palette.ink, fontWeight: "650" }}>{t("share.visitorAccessTitle")}</span>
+                <span style={{ color: palette.ink, fontWeight: "600" }}>{t("share.visitorAccessTitle")}</span>
                 <AuthStatusNotice
                   palette={palette}
                   status={{
@@ -300,14 +300,14 @@ export function ShareAuthDialog({
                       tone: "success",
                     }}
                   />
-                  <span style={{ color: palette.subtle, fontSize: "12px" }}>
+                  <span style={{ color: palette.subtle, fontSize: "var(--text-ui-xs)" }}>
                     {experience.waitSeconds > 0
                       ? t("share.nextWait", {
                           seconds: experience.waitSeconds,
                         })
                       : t("share.ready")}
                   </span>
-                  <span style={{ color: palette.subtle, fontSize: "12px" }}>
+                  <span style={{ color: palette.subtle, fontSize: "var(--text-ui-xs)" }}>
                     {t("share.speedValue", {
                       speed: experience.speedLabel,
                     })}{" "}

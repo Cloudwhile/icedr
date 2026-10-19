@@ -213,8 +213,9 @@
   }
 
   .drive-page-title {
-    font-size: 22px;
-    line-height: 28px;
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 22px;
+    line-height: max(1.5em, 28px);
   }
 
   .drive-table-shell {
@@ -254,8 +255,9 @@
 
   .drive-module-scope-strip,
   .drive-module-console-strip {
-    font-size: 11px;
-  }
+    font-size: var(--text-ui-xs);
+  line-height: 1.5;
+}
 
   .drive-module-panel-header {
     min-height: 50px;
@@ -301,8 +303,9 @@
   }
 
   .drive-settings-header h1 {
-    font-size: 22px;
-    line-height: 28px;
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 22px;
+    line-height: max(1.5em, 28px);
   }
 
   .drive-settings-tab-list {

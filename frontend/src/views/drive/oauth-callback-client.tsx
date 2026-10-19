@@ -100,7 +100,7 @@ function OAuthCallbackPage({
             </div>
             <span style={{
             textAlign: "center",
-            fontWeight: "760"
+            fontWeight: "700"
           }}>{t("auth.oauthCallbackTitle")}</span>
             <AuthStatusNotice palette={palette} status={status} />
             {status.tone === "error" ? <AuthPrimaryButton icon="arrow_left" palette={palette} onClick={() => router.replace("/login")}>

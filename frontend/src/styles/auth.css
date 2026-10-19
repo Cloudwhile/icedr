@@ -104,10 +104,10 @@
 
 .icedr-auth-visual-brand strong {
   color: var(--auth-ink);
-  font-size: 24px;
-  font-weight: 860;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
-  line-height: 1;
+  line-height: 1.5;
 }
 
 .icedr-auth-visual-copy {
@@ -118,25 +118,26 @@
 .icedr-auth-visual-copy span {
   color: var(--auth-accent-hover);
   display: block;
-  font-size: 13px;
-  font-weight: 820;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   margin-bottom: 14px;
 }
 
 .icedr-auth-visual-copy h1 {
   color: var(--auth-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 35px;
-  font-weight: 860;
-  line-height: 1.18;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
   margin: 0;
   max-width: 560px;
 }
 
 .icedr-auth-visual-copy p {
   color: var(--auth-muted);
-  font-size: 15px;
-  font-weight: 620;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.72;
   margin: 16px 0 0;
   max-width: 520px;
@@ -286,16 +287,16 @@
 
 .icedr-auth-feature strong {
   color: var(--auth-ink);
-  font-size: 12px;
-  font-weight: 820;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .icedr-auth-feature small {
   color: var(--ui-text-tertiary);
-  font-size: 11px;
-  font-weight: 620;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-auth-panel {
@@ -317,9 +318,9 @@
 
 .icedr-auth-mode-prompt {
   color: var(--auth-muted);
-  font-size: 13px;
-  font-weight: 720;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   text-decoration: none;
   --hover-color: var(--auth-accent-hover);
   --hover-transform: translateY(-1px);
@@ -376,17 +377,18 @@
 
 .icedr-auth-form-heading h1 {
   color: var(--auth-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 28px;
-  font-weight: 860;
-  line-height: 36px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 36px);
   margin: 0;
 }
 
 .icedr-auth-form-heading p {
   color: var(--ui-text-tertiary);
-  font-size: 13px;
-  font-weight: 620;
-  line-height: 20px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 20px);
   margin: 9px auto 0;
   max-width: 360px;
 }
@@ -422,7 +424,7 @@
   display: inline-flex;
   font: inherit;
   justify-content: center;
-  line-height: 1;
+  line-height: 1.5;
   height: 44px;
   min-height: 44px;
   outline: none;
@@ -500,7 +502,7 @@
   gap: 9px;
   height: 100%;
   justify-content: center;
-  line-height: 1.2;
+  line-height: 1.5;
   min-width: 0;
   position: relative;
   z-index: 1;
@@ -509,9 +511,9 @@
 .icedr-auth-button-label {
   align-items: center;
   display: block;
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   transform: translateY(0);
 }
 
@@ -526,8 +528,9 @@
 
 .icedr-auth-form-card .icedr-field-label {
   color: var(--auth-ink);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-auth-form-card .icedr-app-input {
@@ -547,9 +550,9 @@
 
 .icedr-auth-link {
   color: var(--auth-link-color);
-  font-size: 13px;
-  font-weight: 720;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   --hover-color: var(--auth-link-hover);
 }
 
@@ -595,9 +598,10 @@
 .icedr-auth-current-avatar-fallback {
   background: transparent;
   color: var(--auth-accent-hover);
-  font-size: 12px;
-  font-weight: 820;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
+  line-height: 1.5;
 }
 
 .icedr-auth-current-copy {
@@ -608,16 +612,16 @@
 
 .icedr-auth-current-copy > span:first-child {
   color: var(--auth-current-ink);
-  font-size: 13px;
-  font-weight: 740;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .icedr-auth-current-copy > span + span {
   color: var(--auth-current-muted);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-auth-current-action,
@@ -629,9 +633,9 @@
   cursor: pointer;
   flex: 0 0 auto;
   font: inherit;
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   padding: 0;
   text-decoration: none;
 }
@@ -657,8 +661,8 @@
 
 .icedr-auth-code-error {
   color: var(--auth-danger);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 18px);
 }
 
 .icedr-auth-code-recipient {
@@ -672,9 +676,9 @@
 
 .icedr-auth-code-recipient > .icedr-truncate {
   color: var(--auth-code-ink);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 @keyframes icedr-auth-shell-in {
@@ -748,16 +752,19 @@
   }
 
   .icedr-auth-visual-brand strong {
-    font-size: 20px;
-  }
+    font-size: var(--text-ui-lg);
+  line-height: 1.5;
+}
 
   .icedr-auth-visual-copy {
     margin-top: 34px;
   }
 
   .icedr-auth-visual-copy h1 {
-    font-size: 26px;
-  }
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 26px;
+  line-height: 1.5;
+}
 
   .icedr-auth-panel {
     padding: 22px 20px 0;
@@ -768,8 +775,10 @@
   }
 
   .icedr-auth-form-heading h1 {
-    font-size: 22px;
-  }
+    /* Preserve this fixed display/counter size to avoid changing its layout. */
+  font-size: 22px;
+  line-height: 1.5;
+}
 }
 
 .icedr-auth-provider-label {

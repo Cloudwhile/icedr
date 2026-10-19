@@ -200,7 +200,7 @@ export function VisitorShareBrowser({
                     gap: "8px",
                     marginTop: "4px",
                     color: palette.subtle,
-                    fontSize: "12px",
+                    fontSize: "var(--text-ui-xs)",
                   }}
                 >
                   <span>{t(`files.kind.${getItemKind(item)}`)}</span>

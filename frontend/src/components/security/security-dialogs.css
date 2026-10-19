@@ -38,9 +38,9 @@
 
 .icedr-security-dialog-heading > div > span {
   color: var(--drive-ui-muted, #64748b);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   overflow-wrap: anywhere;
 }
 
@@ -58,14 +58,15 @@
 
 .icedr-security-dialog-field > span:first-child {
   color: var(--drive-ui-ink, #172033);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-security-dialog-field > span:last-child {
   color: var(--drive-ui-muted, #64748b);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 18px);
 }
 
 .icedr-security-dialog-method-copy,
@@ -76,10 +77,10 @@
   border: 1px solid var(--drive-ui-line, #e2e8f0);
   border-radius: 8px;
   display: flex;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 9px;
-  line-height: 18px;
+  line-height: max(1.5em, 18px);
   padding: 11px 12px;
 }
 
@@ -142,17 +143,19 @@
 
 .icedr-recovery-codes-list li > span {
   color: var(--drive-ui-muted, #64748b);
-  font-size: 11px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-recovery-codes-list code {
   color: var(--drive-ui-ink, #172033);
   font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
   overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 @media (max-width: 520px) {

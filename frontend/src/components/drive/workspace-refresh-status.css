@@ -33,14 +33,15 @@
 }
 
 .drive-refresh-status-copy strong {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-refresh-status-copy span {
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--text-ui-xs);
+  line-height: 1.5;
 }
 
 @media (max-width: 620px) {

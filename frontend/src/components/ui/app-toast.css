@@ -113,16 +113,16 @@
 
 .icedr-app-toast-title {
   color: var(--foreground, #111827);
-  font-size: 13px;
-  font-weight: 790;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .icedr-app-toast-description {
   color: var(--muted, #64748b);
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
 }
 
 .icedr-app-toast-close {

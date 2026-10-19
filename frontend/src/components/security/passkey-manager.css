@@ -32,8 +32,9 @@
 
 .drive-security-section-header > div:first-child {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 790;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-security-section-header > div:first-child svg {
@@ -60,9 +61,9 @@
 .drive-security-policy span,
 .drive-security-policy p {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 640;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   margin: 0;
 }
 
@@ -81,15 +82,17 @@
 
 .drive-security-policy-counts strong {
   color: var(--drive-ui-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  font-weight: 850;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-security-policy-counts small {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-security-policy[data-tone="risk"] {
@@ -149,17 +152,17 @@
 .drive-auth-method-row strong,
 .drive-recovery-manager-row strong {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 780;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .drive-auth-method-row > div > span,
 .drive-recovery-manager-row > div > span {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 620;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
   overflow-wrap: anywhere;
 }
 
@@ -167,10 +170,11 @@
   align-items: center;
   color: var(--drive-ui-subtle);
   display: inline-flex;
-  font-size: 11px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 5px;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .drive-auth-method-state[data-enabled="true"] {
@@ -189,11 +193,12 @@
   border-bottom: 1px solid var(--ui-border-subtle);
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   min-height: 39px;
   padding: 0 15px;
+  line-height: 1.5;
 }
 
 .drive-passkey-manager-status[data-tone="secure"] {
@@ -220,10 +225,12 @@
   background: var(--drive-ui-surface-soft);
   border-bottom: 1px solid var(--drive-ui-line);
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 740;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   min-height: 34px;
   padding: 0 15px;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
 }
 
 .drive-passkey-row {
@@ -249,9 +256,9 @@
 .drive-passkey-storage-cell strong,
 .drive-passkey-activity-cell strong {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 780;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -261,9 +268,9 @@
 .drive-passkey-storage-cell span,
 .drive-passkey-activity-cell span {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  font-weight: 620;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -277,10 +284,10 @@
   align-items: center;
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 12px;
-  font-weight: 630;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 10px;
-  line-height: 18px;
+  line-height: max(1.5em, 18px);
   min-height: 78px;
   padding: 14px 15px;
 }
@@ -330,8 +337,9 @@
 
 .drive-passkey-name-field > span {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-passkey-dialog footer {

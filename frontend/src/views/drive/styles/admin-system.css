@@ -35,8 +35,9 @@
 }
 
 .admin-shell .drive-system-save-all span {
-  font-size: 13px;
-  font-weight: 780;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-system-save-all:hover {
@@ -69,10 +70,11 @@
 .admin-shell .drive-system-settings-nav a {
   border-radius: 8px;
   color: var(--ui-text-secondary);
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   min-height: 39px;
   padding-inline: 11px;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-system-settings-nav a:hover {
@@ -126,8 +128,8 @@
   border-radius: 7px;
   color: var(--ui-text-secondary);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   justify-content: center;
   min-height: 38px;
@@ -138,6 +140,7 @@
     background-color 160ms var(--drive-ui-ease),
     border-color 160ms var(--drive-ui-ease),
     color 160ms var(--drive-ui-ease);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-platform-section-nav button:hover {
@@ -211,9 +214,9 @@
 
 .admin-shell .drive-system-settings-block-heading > span {
   color: var(--drive-ui-ink);
-  font-size: 15px;
-  font-weight: 840;
-  line-height: 21px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 21px);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -222,9 +225,9 @@
 
 .admin-shell .drive-system-settings-block-heading small {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
 }
 
 .admin-shell .drive-system-settings-block-title svg {
@@ -267,9 +270,10 @@
 
 .admin-shell .drive-settings-label {
   color: var(--ui-text-secondary);
-  font-size: 11px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-settings-fact {
@@ -283,7 +287,7 @@
 
 .admin-shell .drive-settings-value {
   color: var(--ui-text-primary);
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }
 
 .admin-shell .drive-system-breakdown-grid {
@@ -301,7 +305,8 @@
 
 .admin-shell .drive-system-breakdown-panel > span:first-child {
   color: var(--ui-text-primary);
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-system-breakdown-panel > div {
@@ -346,7 +351,7 @@
 
 .admin-shell .drive-system-side-card-header span {
   color: var(--ui-text-primary);
-  font-weight: 830;
+  font-weight: var(--font-weight-bold);
 }
 
 .admin-shell .drive-system-side-card-header svg {

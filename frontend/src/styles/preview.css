@@ -82,16 +82,16 @@
 
 .icedr-file-preview-title-block strong {
   color: var(--preview-text, var(--foreground));
-  font-size: 15px;
-  font-weight: 820;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
 }
 
 .icedr-file-preview-title-block span {
   color: var(--preview-muted, var(--muted));
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-file-preview-actions {
@@ -237,18 +237,20 @@
   border-right: 1px solid var(--preview-border, var(--border));
   color: var(--preview-muted, var(--muted));
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 7px;
   height: 30px;
   padding: 0 12px 0 8px;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .icedr-preview-page-meter strong {
   color: var(--preview-text, var(--foreground));
-  font-size: 13px;
-  font-weight: 820;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-preview-media-toolbar[data-visible="false"] {
@@ -264,13 +266,14 @@
   border-right: 1px solid var(--preview-border, var(--border));
   color: var(--preview-text, var(--foreground));
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   height: 30px;
   justify-content: center;
   min-width: 64px;
   padding: 0 10px;
   transition: background-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+  line-height: 1.5;
 }
 
 .icedr-preview-zoom-value:hover {
@@ -314,9 +317,9 @@ video.icedr-preview-media-object {
 
 .icedr-preview-media-error {
   color: var(--preview-muted, var(--muted));
-  font-size: 13px;
-  font-weight: 680;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   padding: 18px;
   text-align: center;
 }
@@ -350,9 +353,9 @@ video.icedr-preview-media-object {
   background: transparent;
   border: 0;
   color: var(--preview-muted, var(--muted));
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 52px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 52px);
   padding: 0;
   position: relative;
   white-space: nowrap;
@@ -406,11 +409,12 @@ video.icedr-preview-media-object {
   align-items: center;
   color: var(--preview-text, var(--foreground));
   display: grid;
-  font-size: 13px;
-  font-weight: 820;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   gap: 9px;
   grid-template-columns: auto minmax(0, 1fr);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .icedr-preview-metadata-title > div {
@@ -423,15 +427,17 @@ video.icedr-preview-media-object {
 .icedr-preview-metadata-title span {
   color: var(--preview-text, var(--foreground));
   display: block;
-  font-size: 13px;
-  font-weight: 820;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-preview-metadata-title strong {
   color: var(--preview-muted, var(--muted));
   display: block;
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .icedr-preview-metadata-list {
@@ -456,16 +462,16 @@ video.icedr-preview-media-object {
 
 .icedr-preview-metadata-row span {
   color: var(--preview-muted, var(--muted));
-  font-size: 12px;
-  font-weight: 660;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-preview-metadata-row strong {
   color: var(--preview-text, var(--foreground));
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   min-width: 0;
   overflow: hidden;
   text-align: right;
@@ -504,10 +510,10 @@ video.icedr-preview-media-object {
   align-items: center;
   color: var(--preview-text, var(--foreground));
   display: flex;
-  font-size: 13px;
-  font-weight: 820;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   justify-content: space-between;
-  line-height: 18px;
+  line-height: max(1.5em, 18px);
 }
 
 .icedr-preview-tags-list {
@@ -523,9 +529,9 @@ video.icedr-preview-media-object {
   border-radius: 999px;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 76%, transparent);
   color: color-mix(in srgb, var(--preview-text, var(--foreground)) 82%, var(--preview-muted, var(--ui-text-tertiary)));
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
   max-width: 100%;
   overflow: hidden;
   padding: 4px 9px;
@@ -538,25 +544,28 @@ video.icedr-preview-media-object {
   border-bottom: 1px solid var(--preview-border, var(--border));
   color: var(--preview-text, var(--foreground));
   display: flex;
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   justify-content: space-between;
   min-height: 34px;
   padding-bottom: 10px;
+  line-height: 1.5;
 }
 
 .icedr-preview-version-heading strong {
   color: var(--preview-muted, var(--muted));
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-preview-version-empty,
 .icedr-preview-version-error {
   color: var(--preview-muted, var(--muted));
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   padding-top: 12px;
+  line-height: 1.5;
 }
 
 .icedr-preview-version-error {
@@ -612,16 +621,16 @@ video.icedr-preview-media-object {
 
 .icedr-preview-version-copy span {
   color: var(--preview-text, var(--foreground));
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-preview-version-copy strong {
   color: var(--preview-muted, var(--muted));
-  font-size: 12px;
-  font-weight: 660;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-preview-version-actions {
@@ -635,12 +644,13 @@ video.icedr-preview-media-object {
   color: var(--preview-muted, var(--muted));
   display: flex;
   flex-direction: column;
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 12px;
   justify-content: center;
   min-height: 240px;
   min-width: 240px;
+  line-height: 1.5;
 }
 
 .icedr-preview-lifecycle {
@@ -659,8 +669,9 @@ video.icedr-preview-media-object {
 
 .icedr-preview-lifecycle strong {
   color: var(--preview-text, var(--ink));
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 .icedr-preview-lifecycle > span:not(.icedr-preview-lifecycle-icon) {
@@ -750,8 +761,9 @@ video.icedr-preview-media-object {
 
 .icedr-preview-editor-title {
   color: var(--preview-editor-text, var(--foreground));
-  font-size: 13px;
-  font-weight: 780;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-preview-editor-textarea {
@@ -802,17 +814,19 @@ video.icedr-preview-media-object {
   align-items: center;
   color: var(--open-with-text, var(--foreground));
   display: flex;
-  font-size: 15px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .icedr-open-with-file {
   color: var(--open-with-muted, var(--muted));
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .icedr-open-with-list {
@@ -862,13 +876,14 @@ video.icedr-preview-media-object {
   border-radius: 8px;
   color: var(--open-with-text, var(--foreground));
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   justify-content: center;
   min-height: 42px;
   min-width: 0;
   padding: 0 12px;
+  line-height: 1.5;
 }
 
 .icedr-open-with-action[data-primary="true"] {
@@ -896,10 +911,11 @@ video.icedr-preview-media-object {
 .icedr-upload-conflict-title {
   align-items: center;
   display: inline-flex;
-  font-size: 15px;
-  font-weight: 760;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 8px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .icedr-upload-conflict-files {
@@ -911,8 +927,9 @@ video.icedr-preview-media-object {
 
 .icedr-upload-conflict-files span {
   color: var(--upload-conflict-muted, var(--muted));
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   min-width: 0;
+  line-height: 1.5;
 }
 
 .icedr-upload-conflict-options {
@@ -928,13 +945,14 @@ video.icedr-preview-media-object {
   color: inherit;
   cursor: pointer;
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 720;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   justify-content: flex-start;
   min-height: 40px;
   min-width: 0;
   padding: 0 12px;
+  line-height: 1.5;
 }
 
 .icedr-upload-conflict-option:hover {

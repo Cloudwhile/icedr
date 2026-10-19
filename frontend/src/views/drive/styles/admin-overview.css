@@ -31,10 +31,11 @@
   color: var(--drive-ui-ink);
   flex: 1 1 auto;
   font: inherit;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
   outline: 0;
+  line-height: 1.5;
 }
 
 .admin-header-search input::placeholder {
@@ -60,11 +61,11 @@
   color: var(--drive-ui-muted);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   height: 24px;
   justify-content: center;
-  line-height: 1;
+  line-height: 1.5;
   min-width: 40px;
   padding: 0 8px;
 }
@@ -174,9 +175,9 @@
 .admin-overview-stat-label,
 .admin-overview-stat-meta {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
   min-width: 0;
   white-space: normal;
 }
@@ -207,16 +208,16 @@
 
 .admin-overview-stat-card strong {
   color: var(--ui-text-primary);
-  font-size: 24px;
-  font-weight: 850;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
   grid-area: value;
-  line-height: 29px;
+  line-height: max(1.5em, 29px);
   overflow-wrap: anywhere;
 }
 
 .admin-overview-stat-card[data-tone="danger"] strong {
-  font-size: 21px;
-  line-height: 26px;
+  font-size: var(--text-ui-lg);
+  line-height: max(1.5em, 26px);
 }
 
 .admin-overview-card {
@@ -288,9 +289,9 @@
 }
 
 .admin-overview-card-header strong {
-  font-size: 14px;
-  font-weight: 820;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
 }
 
 .admin-overview-card-header button {
@@ -300,13 +301,14 @@
   color: var(--drive-ui-blue-600);
   cursor: pointer;
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 4px;
   padding: 6px 0;
   transition:
     color 150ms var(--drive-ui-ease),
     transform 150ms var(--drive-ui-ease);
+  line-height: 1.5;
 }
 
 .admin-overview-card-header button:hover {
@@ -363,14 +365,16 @@
 
 .admin-distribution-row span:not(.admin-distribution-dot) {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-distribution-row strong {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-system-list {
@@ -383,10 +387,11 @@
   border-bottom: 1px solid color-mix(in srgb, var(--ui-danger) 28%, var(--ui-border-default));
   color: var(--ui-danger);
   display: flex;
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 7px;
   padding: 8px 18px;
+  line-height: 1.5;
 }
 
 .admin-overview-module-state[data-stale="true"] {
@@ -403,18 +408,20 @@
 
 .admin-system-row span {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 690;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .admin-system-row strong {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-system-row strong[data-tone] {
@@ -473,9 +480,9 @@
 
 .admin-recent-activity-copy > span {
   color: var(--ui-text-primary);
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .admin-recent-activity-meta {
@@ -510,9 +517,9 @@
 
 .admin-recent-activity-row time {
   color: var(--ui-text-secondary);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 15px);
   white-space: nowrap;
 }
 
@@ -530,9 +537,9 @@
 
 .admin-storage-total strong {
   color: var(--ui-text-primary);
-  font-size: 20px;
-  font-weight: 860;
-  line-height: 26px;
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 26px);
 }
 
 .admin-storage-total span {
@@ -540,9 +547,9 @@
   border: 1px solid color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border-default));
   border-radius: 999px;
   color: var(--drive-ui-blue-600);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
   padding: 6px 9px;
 }
 
@@ -602,25 +609,28 @@
 
 .admin-storage-breakdown-copy span {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-storage-breakdown-copy strong {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-storage-breakdown-copy em {
   color: var(--ui-text-secondary);
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   font-style: normal;
-  font-weight: 720;
+  font-weight: var(--font-weight-semibold);
   min-width: 48px;
   text-align: right;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .admin-storage-breakdown-track {
@@ -695,16 +705,16 @@
 
 .admin-resource-copy span {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .admin-resource-copy strong {
   color: var(--ui-text-primary);
-  font-size: 13px;
-  font-weight: 820;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .admin-resource-track {
@@ -831,8 +841,9 @@
 .admin-data-freshness span,
 .admin-overview-context span {
   color: var(--ui-text-secondary);
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-data-freshness strong {

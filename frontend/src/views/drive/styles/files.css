@@ -43,12 +43,13 @@
 
 .drive-batch-summary span:first-child {
   color: var(--drive-ui-ink);
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-batch-summary span:last-child {
   color: var(--drive-ui-muted);
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
+  line-height: 1.5;
 }
 
 .drive-batch-actions {
@@ -73,10 +74,11 @@
   border-collapse: separate;
   border-spacing: 0;
   color: var(--drive-ui-ink);
-  font-size: 13px;
+  font-size: var(--text-ui-sm);
   min-width: 880px;
   table-layout: fixed;
   width: 100%;
+  line-height: 1.5;
 }
 
 .drive-col-select {
@@ -121,8 +123,8 @@
 .drive-table th {
   background: color-mix(in srgb, var(--drive-ui-surface-soft) 74%, transparent);
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 780;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   height: 46px;
   padding-block: 0;
   position: sticky;
@@ -130,6 +132,8 @@
   top: 0;
   white-space: nowrap;
   z-index: 1;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
 }
 
 .drive-table th:first-child,
@@ -245,8 +249,8 @@
 .drive-file-name-text {
   align-self: end;
   color: var(--drive-ui-ink);
-  font-weight: 780;
-  line-height: 18px;
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-file-open-button {
@@ -263,6 +267,8 @@
 
 .drive-file-name-text.drive-file-open-button {
   display: block;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
   width: 100%;
 }
 
@@ -275,10 +281,10 @@
 .drive-file-meta-text,
 .drive-file-path-text {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   grid-column: 2 / -1;
-  line-height: 15px;
+  line-height: max(1.5em, 15px);
 }
 
 .drive-row-preview,
@@ -311,11 +317,11 @@
   align-items: center;
   color: #ffffff;
   display: inline-flex;
-  font-size: 11px;
-  font-weight: 850;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   height: 100%;
   justify-content: center;
-  line-height: 1;
+  line-height: 1.5;
   text-transform: uppercase;
   width: 100%;
 }
@@ -544,7 +550,9 @@
 
 .drive-card-preview .drive-item-preview-mark,
 .drive-details-preview-frame .drive-item-preview-mark {
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
+  line-height: 1.5;
 }
 
 .drive-card-preview[data-has-media="true"] {
@@ -603,10 +611,10 @@
   -webkit-line-clamp: 2;
   color: var(--drive-ui-ink);
   display: -webkit-box;
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 17px;
-  max-height: 34px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
+  max-height: 3em;
   overflow: hidden;
   overflow-wrap: anywhere;
   width: 100%;
@@ -614,8 +622,8 @@
 
 .drive-card-path {
   color: var(--drive-ui-muted);
-  font-size: 11px;
-  line-height: 14px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 14px);
 }
 
 .drive-card-meta {
@@ -623,11 +631,12 @@
   border-top: 1px solid var(--drive-ui-line);
   color: var(--drive-ui-muted);
   display: flex;
-  font-size: 12px;
+  font-size: var(--text-ui-xs);
   gap: 6px;
   justify-content: space-between;
   min-width: 0;
   padding-top: 6px;
+  line-height: 1.5;
 }
 
 .drive-card-size {
@@ -682,7 +691,7 @@
 
 .drive-empty-state-title {
   color: var(--drive-ui-ink);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   line-height: 1.5;
 }
 
@@ -700,10 +709,10 @@
   color: var(--drive-ui-muted);
   display: inline-flex;
   flex-direction: column;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 5px;
-  line-height: 16px;
+  line-height: max(1.5em, 16px);
   min-width: 56px;
 }
 
@@ -900,4 +909,12 @@
   outline: 2px dashed var(--ui-accent);
   outline-offset: -3px;
   background: var(--ui-selection);
+}
+
+.drive-table td:nth-child(4),
+.drive-table td:nth-child(5),
+.drive-table td:nth-child(6),
+.drive-card-size,
+.drive-card-date {
+  font-variant-numeric: tabular-nums;
 }

@@ -20,9 +20,9 @@ export function LegalFooter({
   const resolvedSiteName = resolvePublicSiteName(siteName);
   const linkStyle: CSSProperties = {
     color: palette.subtle,
-    fontSize: "12px",
-    fontWeight: 650,
-    lineHeight: "1.4",
+    fontSize: "var(--text-ui-xs)",
+    fontWeight: 600,
+    lineHeight: 1.5,
     transition: "color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)"
   };
   return <footer style={{
@@ -37,7 +37,7 @@ export function LegalFooter({
     borderTopWidth: "1px",
     borderColor: palette.hairline,
     background: "transparent",
-    fontSize: "12px",
+    fontSize: "var(--text-ui-xs)",
     flexWrap: "wrap"
   }}>
       <span>© 2026 {resolvedSiteName}</span>

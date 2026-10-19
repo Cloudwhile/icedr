@@ -48,7 +48,7 @@ function LegalPage({
     overflow: "hidden",
     background: "transparent",
     color: palette.ink,
-    fontSize: "14px",
+    fontSize: "var(--text-ui-base)",
     letterSpacing: "0px"
   }}>
       <PublicPageNav palette={palette} setThemeMode={setThemeMode} siteSettings={siteSettings} themeMode={themeMode} />
@@ -89,17 +89,17 @@ function LegalPage({
             }}>
                 <LocalIcon name={documentKey === "terms" ? "document" : "shield"} size={18} />
                 <span style={{
-                fontSize: "12px",
-                fontWeight: "760",
+                fontSize: "var(--text-ui-xs)",
+                fontWeight: "700",
                 textTransform: "uppercase"
               }}>
                   {t("legal.sectionLabel")}
                 </span>
               </div>
               <h1 style={{
-              fontSize: "32px",
-              fontWeight: "800",
-              lineHeight: "1.12",
+              fontSize: "var(--text-ui-2xl)",
+              fontWeight: "700",
+              lineHeight: 1.5,
               letterSpacing: "0px",
               maxWidth: "820px"
             }}>
@@ -151,8 +151,8 @@ export function LegalDocumentColumns({
             <div>
               <span style={{
             color: palette.tertiary,
-            fontSize: "12px",
-            fontWeight: "760",
+            fontSize: "var(--text-ui-xs)",
+            fontWeight: "700",
             textTransform: "uppercase"
           }}>
                 {t(`legal.language.${language}`)}
@@ -160,15 +160,15 @@ export function LegalDocumentColumns({
               <h2 style={{
             marginTop: "4px",
             fontSize: "22px",
-            fontWeight: "780",
-            lineHeight: "1.22"
+            fontWeight: "700",
+            lineHeight: 1.5
           }}>
                 {readLegalMessage(language, getLegalDocumentTitleKey(documentKey, language))}
               </h2>
               <span style={{
             marginTop: "8px",
             color: palette.subtle,
-            fontSize: "13px"
+            fontSize: "var(--text-ui-sm)"
           }}>
                 {t(`legal.effectiveDate.${language}`)}: {readLegalMessage(language, getLegalDocumentEffectiveDateKey(documentKey, language))}
               </span>
@@ -193,9 +193,9 @@ export function LegalDocumentColumns({
           paddingTop: "16px"
         }}>
                 <h3 style={{
-            fontSize: "17px",
-            fontWeight: "760",
-            lineHeight: "1.35"
+            fontSize: "var(--text-ui-md)",
+            fontWeight: "700",
+            lineHeight: 1.5
           }}>
                   {readLegalMessage(language, getLegalDocumentSectionTitleKey(documentKey, language, section.index))}
                 </h3>

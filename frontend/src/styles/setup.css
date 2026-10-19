@@ -3,11 +3,12 @@
     linear-gradient(180deg, rgba(250, 252, 255, 0.98), rgba(255, 255, 255, 0.99) 38%, rgba(247, 250, 255, 0.98)),
     var(--background);
   color: var(--foreground);
-  font-size: 14px;
+  font-size: var(--text-ui-base);
   height: 100dvh;
   letter-spacing: 0;
   min-height: 100dvh;
   overflow: hidden;
+  line-height: 1.5;
 }
 
 [data-theme="dark"] .icedr-setup-page {
@@ -80,9 +81,10 @@
 
 .icedr-setup-access-heading h1 {
   color: var(--foreground);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  font-weight: 820;
-  line-height: 24px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 24px);
   margin: 0;
 }
 
@@ -112,11 +114,11 @@
   border-top: 1px solid color-mix(in srgb, var(--accent) 8%, var(--border));
   color: var(--muted);
   display: flex;
-  font-size: 13px;
-  font-weight: 620;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 12px;
   justify-content: space-between;
-  line-height: 19px;
+  line-height: max(1.5em, 19px);
   min-height: 63px;
   min-width: 0;
   padding-top: 18px;
@@ -150,16 +152,16 @@
 
 .icedr-setup-brand-text strong {
   color: var(--foreground);
-  font-size: 17px;
-  font-weight: 840;
-  line-height: 21px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 21px);
 }
 
 .icedr-setup-brand-text span {
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 660;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-setup-step-button {
@@ -214,9 +216,9 @@
 
 .icedr-setup-step-label {
   display: -webkit-box;
-  font-size: 13px;
-  font-weight: 770;
-  line-height: 17px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
@@ -227,9 +229,9 @@
 .icedr-setup-step-description {
   color: var(--setup-step-muted);
   display: -webkit-box;
-  font-size: 11px;
-  font-weight: 620;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
   min-width: 0;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -241,9 +243,10 @@
   border: 1px solid color-mix(in srgb, var(--setup-step-active-border) 14%, var(--setup-step-border));
   border-radius: 999px;
   color: var(--setup-step-muted);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 760;
-  line-height: 14px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 14px);
   padding: 2px 7px;
   white-space: nowrap;
 }
@@ -271,13 +274,15 @@
   box-shadow: 0 2px 8px rgba(51, 84, 142, 0.08);
   color: var(--setup-step-muted);
   display: inline-flex;
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
-  font-weight: 820;
+  font-weight: var(--font-weight-bold);
   height: 28px;
   justify-content: center;
   min-width: 28px;
   position: relative;
   z-index: 1;
+  line-height: 1.5;
 }
 
 .icedr-setup-step-button[data-active="true"] .icedr-setup-step-index,
@@ -312,17 +317,18 @@
   align-items: center;
   color: var(--muted);
   display: flex;
-  font-size: 12px;
-  font-weight: 730;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   justify-content: space-between;
-  line-height: 16px;
+  line-height: max(1.5em, 16px);
   padding: 2px 2px 0;
 }
 
 .icedr-setup-rail-head strong {
   color: var(--foreground);
-  font-size: 13px;
-  font-weight: 830;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .icedr-setup-rail-steps,
@@ -389,16 +395,16 @@
 
 .icedr-setup-step-kicker > span:first-child {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 15px);
 }
 
 .icedr-setup-step-head p {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 620;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   margin: 0;
 }
 
@@ -421,11 +427,12 @@
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 9%, var(--border));
   color: var(--foreground);
   display: flex;
-  font-size: 14px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 9px;
   min-height: 34px;
   padding-bottom: 12px;
+  line-height: 1.5;
 }
 
 .icedr-setup-section-index {
@@ -489,16 +496,16 @@
 
 .icedr-setup-info-tile span {
   color: var(--setup-info-label);
-  font-size: 12px;
-  font-weight: 690;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .icedr-setup-info-tile strong {
   color: var(--setup-info-value);
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .icedr-setup-toggle-row,
@@ -522,9 +529,9 @@
 }
 
 .icedr-setup-toggle-row > span:first-child {
-  font-size: 13px;
-  font-weight: 720;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   min-width: 0;
 }
 
@@ -543,8 +550,9 @@
 }
 
 .icedr-setup-select-card > span:last-child {
-  font-size: 13px;
-  font-weight: 730;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .icedr-setup-select-card:disabled {
@@ -674,8 +682,8 @@
   }
 
   .icedr-setup-step-button[data-compact="true"] .icedr-setup-step-label {
-    font-size: 11px;
-    line-height: 14px;
+    font-size: var(--text-ui-xs);
+    line-height: max(1.5em, 14px);
     -webkit-line-clamp: 1;
   }
 
@@ -688,8 +696,9 @@
   }
 
   .icedr-setup-brand-text strong {
-    font-size: 14px;
-  }
+    font-size: var(--text-ui-base);
+  line-height: 1.5;
+}
 
   .icedr-setup-body {
     padding: 12px;

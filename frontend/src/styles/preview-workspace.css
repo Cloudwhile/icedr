@@ -86,16 +86,16 @@
 
 .icedr-file-preview-dialog-media .icedr-file-preview-title-block strong {
   color: #f8fafc;
-  font-size: 13px;
-  font-weight: 780;
-  line-height: 17px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-title-block span {
   color: #9aa6b8;
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button,
@@ -267,9 +267,9 @@
 
 .icedr-file-preview-dialog-media .icedr-preview-metadata-tabs button {
   color: #98a4b6;
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 48px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 48px);
 }
 
 .icedr-file-preview-dialog-media

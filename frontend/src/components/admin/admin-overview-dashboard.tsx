@@ -463,7 +463,7 @@ function buildDistributionOption(rows: ReturnType<typeof buildAuditDistribution>
   return {
     backgroundColor: "transparent",
     color: rows.map((row) => colors[row.tone]),
-    graphic: [{ left: "center", style: { fill: palette.ink, fontSize: 20, fontWeight: 800, text: formatter.format(total), textAlign: "center" }, top: "45%", type: "text" }],
+    graphic: [{ left: "center", style: { fill: palette.ink, fontSize: 20, fontWeight: 700, text: formatter.format(total), textAlign: "center" }, top: "45%", type: "text" }],
     series: [{ data: rows.map((row) => ({ name: row.label, value: row.count })), itemStyle: { borderColor: palette.surface1, borderRadius: 4, borderWidth: 3 }, label: { show: false }, radius: ["66%", "88%"], type: "pie" }],
     tooltip: { backgroundColor: palette.surface1, borderColor: palette.hairline, textStyle: { color: palette.ink }, trigger: "item" },
   };

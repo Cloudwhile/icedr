@@ -10,9 +10,9 @@
 
 .drive-settings-header h1 {
   color: var(--drive-ui-ink);
-  font-size: 24px;
-  font-weight: 850;
-  line-height: 30px;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 30px);
 }
 
 .drive-settings-user {
@@ -94,15 +94,16 @@
 
 .drive-settings-panel-heading h2 {
   color: var(--drive-ui-ink);
-  font-size: 16px;
-  font-weight: 850;
-  line-height: 23px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 23px);
 }
 
 .drive-settings-panel-heading span {
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-settings-profile-grid {
@@ -174,8 +175,9 @@
 .drive-settings-section-header > div:first-child span,
 .drive-settings-side-header span {
   color: var(--drive-ui-ink);
-  font-size: 14px;
-  font-weight: 830;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-settings-section-trailing {
@@ -209,22 +211,24 @@
 
 .drive-settings-profile-title {
   color: var(--drive-ui-ink);
+  /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 18px;
-  font-weight: 850;
-  line-height: 24px;
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 24px);
 }
 
 .drive-settings-profile-copy > span:nth-child(2) {
   color: var(--drive-ui-muted);
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-settings-profile-note {
   color: var(--drive-ui-subtle) !important;
-  font-size: 12px !important;
-  font-weight: 620 !important;
-  line-height: 17px;
+  font-size: var(--text-ui-xs) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  line-height: max(1.5em, 17px);
 }
 
 .drive-settings-profile-status {
@@ -257,14 +261,15 @@
 
 .drive-settings-label {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-settings-helper {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  line-height: max(1.5em, 17px);
 }
 
 .drive-settings-email-field {
@@ -322,14 +327,16 @@
 
 .drive-settings-action-row span:nth-child(2) {
   color: var(--drive-ui-muted);
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-settings-action-row span:last-child {
   color: var(--drive-ui-ink);
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-settings-action-row span[data-tone="secure"] {
@@ -399,9 +406,9 @@
 .drive-settings-avatar-hint {
   color: var(--drive-ui-subtle);
   display: block;
-  font-size: 12px;
-  font-weight: 640;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   margin-top: 9px;
   text-align: center;
 }
@@ -447,9 +454,9 @@
 
 .drive-settings-account-actions > span {
   color: var(--drive-ui-subtle);
-  font-size: 12px;
-  font-weight: 640;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   text-align: center;
 }
 

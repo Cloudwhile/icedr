@@ -226,7 +226,7 @@ export function ExternalShareStandalone({
     minHeight: "100vh",
     background: "transparent",
     color: palette.ink,
-    fontSize: "14px",
+    fontSize: "var(--text-ui-base)",
     letterSpacing: "0px"
   }}>
       {previewLoading ? <ExternalSharePageLoading label={t("app.loading")} palette={palette} /> : !registeredShare || !collection ? (
@@ -656,7 +656,7 @@ function ExternalSharePreview({
       boxShadow: "0 18px 44px rgba(0, 0, 0, 0.34)"
     } as React.CSSProperties}>
           <span className="icedr-truncate" style={{
-        fontSize: "13px",
+        fontSize: "var(--text-ui-sm)",
         fontWeight: "600"
       }}>
             {feedback.message}
@@ -784,7 +784,7 @@ function SharePreviewDialog({
                     </Modal.Heading>
                     <span className="icedr-truncate" style={{
                     color: palette.subtle,
-                    fontSize: "12px",
+                    fontSize: "var(--text-ui-xs)",
                     marginTop: "4px"
                   }}>
                       {item ? `${formatDriveItemModified(item, locale, timeZone)} / ${size}` : statusLabel}

@@ -33,10 +33,11 @@
   align-items: center;
   color: var(--ui-text-primary);
   display: flex;
-  font-size: 15px;
-  font-weight: 840;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
   gap: 9px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-filter-title svg {
@@ -49,9 +50,9 @@
   border-radius: 999px;
   color: var(--ui-text-secondary);
   flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 780;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
   padding: 2px 7px;
 }
 
@@ -81,9 +82,9 @@
 
 .admin-shell .drive-audit-filter > span:first-child {
   color: var(--ui-text-secondary);
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-shell .drive-audit-filter .icedr-app-select-shell,
@@ -95,13 +96,15 @@
 }
 
 .admin-shell .drive-audit-filter .icedr-app-input {
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-filter .icedr-app-select {
-  font-size: 12px;
-  font-weight: 690;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-filter .icedr-app-select-shell:focus-within,
@@ -130,8 +133,9 @@
 }
 
 .admin-shell .drive-audit-panel .drive-module-panel-header > div:first-child > span:last-child {
-  font-size: 15px;
-  font-weight: 820;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-table-toolbar {
@@ -151,15 +155,16 @@
   color: var(--ui-text-secondary);
   display: flex;
   flex-wrap: wrap;
-  font-size: 12px;
-  font-weight: 740;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 8px 14px;
   min-width: 0;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-table-summary span:first-child {
   color: var(--ui-text-primary);
-  font-weight: 820;
+  font-weight: var(--font-weight-bold);
 }
 
 .admin-shell .drive-audit-table-summary span + span::before {
@@ -195,8 +200,9 @@
 }
 
 .admin-shell .drive-audit-pagination .icedr-app-select {
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-pagination .icedr-tool-button {
@@ -222,12 +228,13 @@
 .admin-shell .drive-audit-table .drive-module-table-head {
   background: var(--ui-surface-subtle);
   color: var(--ui-text-secondary);
-  font-size: 11px;
-  font-weight: 820;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0;
   min-height: 40px;
   padding-inline: 20px;
   text-transform: none;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-table .drive-module-table-row {
@@ -265,16 +272,16 @@
 
 .admin-shell .drive-audit-time-cell span:first-child {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 780;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
 }
 
 .admin-shell .drive-audit-time-cell span:last-child {
   color: var(--ui-text-tertiary);
-  font-size: 11px;
-  font-weight: 680;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 15px);
 }
 
 .admin-shell .drive-audit-actor-cell {
@@ -308,10 +315,10 @@
 
 .admin-shell .drive-audit-actor-avatar > span {
   color: currentColor;
-  font-size: 12px;
-  font-weight: 860;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
-  line-height: 1;
+  line-height: 1.5;
 }
 
 .admin-shell .drive-audit-actor-avatar[data-actor="visitor"] {
@@ -349,16 +356,16 @@
 }
 
 .admin-shell .drive-audit-actor-cell .drive-module-row-title {
-  font-size: 13px;
-  font-weight: 840;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .admin-shell .drive-audit-actor-meta {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 680;
-  line-height: 17px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 17px);
   min-width: 0;
 }
 
@@ -371,25 +378,25 @@
 
 .admin-shell .drive-audit-object-cell {
   color: var(--ui-text-primary);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 17px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 17px);
   min-width: 0;
 }
 
 .admin-shell .drive-audit-name-cell {
   color: var(--ui-text-secondary);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
   min-width: 0;
 }
 
 .admin-shell .drive-audit-content-cell {
   color: var(--ui-text-primary);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 18px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   min-width: 0;
 }
 
@@ -400,11 +407,11 @@
   border-radius: 999px;
   color: var(--ui-text-primary);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 720;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
   gap: 5px;
   justify-self: start;
-  line-height: 17px;
+  line-height: max(1.5em, 17px);
   max-width: 100%;
   min-width: 0;
   padding: 4px 9px;
@@ -431,11 +438,11 @@
   border-radius: 999px;
   color: var(--ui-text-secondary);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 820;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   gap: 7px;
   justify-self: start;
-  line-height: 18px;
+  line-height: max(1.5em, 18px);
   max-width: 100%;
   min-height: 27px;
   min-width: 0;
@@ -560,4 +567,9 @@
   .admin-shell .drive-audit-filter[data-wide="true"] {
     grid-column: auto;
   }
+}
+
+.admin-shell .drive-audit-time-cell,
+.admin-shell .drive-audit-ip-cell {
+  font-variant-numeric: tabular-nums;
 }

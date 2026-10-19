@@ -27,7 +27,7 @@
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1fr);
-  margin: 0 0 18px;
+  margin: 0 0 12px;
   min-height: auto;
   padding: 0;
   position: static;
@@ -74,9 +74,9 @@
 .drive-page-title {
   color: var(--drive-ui-ink);
   display: block;
-  font-size: 24px;
-  font-weight: 840;
-  line-height: 30px;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 30px);
   max-width: 100%;
 }
 
@@ -130,9 +130,9 @@
 .drive-module-subtitle {
   color: var(--drive-ui-muted);
   display: block;
-  font-size: 13px;
-  font-weight: 640;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
   max-width: min(560px, 100%);
 }
 
@@ -166,11 +166,12 @@
   border-radius: var(--drive-ui-radius);
   color: var(--drive-ui-muted);
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 5px;
   min-height: 26px;
   padding-inline: 2px;
+  line-height: 1.5;
 }
 
 .drive-address-home:hover,
@@ -181,7 +182,7 @@
 
 .drive-address-segment[data-current="true"] {
   color: var(--drive-ui-ink);
-  font-weight: 760;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-address-separator {
@@ -200,9 +201,9 @@
 .drive-mobile-selection-status {
   color: var(--drive-ui-ink);
   flex: 1 1 auto;
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

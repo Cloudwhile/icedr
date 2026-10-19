@@ -48,9 +48,9 @@
 .drive-brand-name {
   color: var(--drive-ui-ink);
   display: block;
-  font-size: 24px;
-  font-weight: 850;
-  line-height: 1;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
 }
 
 .drive-header-search-wrap {
@@ -90,11 +90,12 @@
   box-shadow: none !important;
   color: var(--drive-ui-ink);
   flex: 1 1 auto;
-  font-size: 14px;
-  font-weight: 520;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-medium);
   height: 100%;
   min-width: 0;
   padding: 0;
+  line-height: 1.5;
 }
 
 .drive-search .input,
@@ -135,7 +136,7 @@
 
 .drive-user-avatar-fallback {
   color: var(--drive-ui-blue-600);
-  font-weight: 780;
+  font-weight: var(--font-weight-bold);
 }
 
 .drive-account-text {
@@ -147,9 +148,10 @@
 
 .drive-account-name {
   color: var(--drive-ui-ink);
-  font-size: 13px;
-  font-weight: 760;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   max-width: 140px;
+  line-height: 1.5;
 }
 
 .drive-account-menu {

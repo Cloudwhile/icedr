@@ -88,7 +88,7 @@ export function ExternalShareAdminSettingsPage({
         style={{
           background: "transparent",
           color: palette.ink,
-          fontSize: "14px",
+          fontSize: "var(--text-ui-base)",
           letterSpacing: "0px",
         }}
       >
@@ -113,7 +113,7 @@ export function ExternalShareAdminSettingsPage({
       style={{
         background: "transparent",
         color: palette.ink,
-        fontSize: "14px",
+        fontSize: "var(--text-ui-base)",
         height: "100dvh",
         letterSpacing: "0px",
         minHeight: "100dvh",
@@ -160,7 +160,7 @@ export function ExternalShareAdminSettingsPage({
             </span>
             <span
               className="icedr-truncate"
-              style={{ color: palette.subtle, fontSize: "12px" }}
+              style={{ color: palette.subtle, fontSize: "var(--text-ui-xs)" }}
             >
               {t("admin.externalLinkPolicySubtitle")}
             </span>
@@ -420,7 +420,7 @@ export function ExternalShareAdminSettingsPanel({
               alignItems: "center",
               color: palette.subtle,
               display: "flex",
-              fontSize: "12px",
+              fontSize: "var(--text-ui-xs)",
               gap: "8px",
             }}
           >

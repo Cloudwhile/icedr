@@ -83,16 +83,16 @@
 
 .drive-share-dialog-title {
   color: var(--share-dialog-text);
-  font-size: 15px;
-  font-weight: 840;
-  line-height: 20px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 20px);
 }
 
 .drive-share-dialog-subtitle {
   color: var(--share-dialog-subtle);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-share-dialog-body {
@@ -131,16 +131,16 @@
 
 .drive-share-target-name {
   color: var(--share-dialog-text);
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 19px;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 19px);
 }
 
 .drive-share-target-meta {
   color: var(--share-dialog-subtle);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-share-metrics {
@@ -165,16 +165,16 @@
 
 .drive-share-metric > span {
   color: var(--share-dialog-subtle);
-  font-size: 11px;
-  font-weight: 720;
-  line-height: 14px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 14px);
 }
 
 .drive-share-metric > strong {
   color: var(--share-dialog-text);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-share-dialog-notice,
@@ -200,16 +200,16 @@
 
 .drive-share-scope-error {
   color: var(--share-dialog-danger);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 15px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 15px);
 }
 
 .drive-share-section-label {
   color: var(--share-dialog-muted);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-share-option-grid {
@@ -227,8 +227,8 @@
   color: var(--share-dialog-muted);
   cursor: pointer;
   display: grid;
-  font-size: 13px;
-  font-weight: 740;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   gap: 8px;
   grid-template-columns: auto minmax(0, 1fr) 18px;
   min-height: 38px;
@@ -239,6 +239,7 @@
     border-color 150ms var(--motion-ease),
     color 150ms var(--motion-ease),
     transform 170ms var(--motion-ease);
+  line-height: 1.5;
 }
 
 .drive-share-option-toggle:hover {
@@ -279,9 +280,9 @@
 
 .drive-share-field > span:first-child {
   color: var(--share-dialog-subtle);
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 16px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 16px);
 }
 
 .drive-share-expiry-control {
@@ -301,10 +302,11 @@
   border: 0;
   color: var(--share-dialog-text);
   font: inherit;
-  font-size: 13px;
-  font-weight: 720;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
   outline: 0;
+  line-height: 1.5;
 }
 
 .drive-share-input {
@@ -317,17 +319,18 @@
   border-left: 1px solid var(--share-dialog-border);
   color: var(--share-dialog-subtle);
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-bold);
   height: 100%;
   padding: 0 11px;
+  line-height: 1.5;
 }
 
 .drive-share-field-note {
   color: var(--share-dialog-subtle);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 14px;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 14px);
 }
 
 .drive-share-field-note[data-risk="true"] {
@@ -395,17 +398,18 @@
 
 .drive-share-collection-copy > span:first-child {
   color: var(--share-dialog-text);
-  font-size: 13px;
-  font-weight: 730;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-share-collection-copy > span:last-child,
 .drive-share-collection-size,
 .drive-share-collection-more {
   color: var(--share-dialog-subtle);
-  font-size: 12px;
-  font-weight: 660;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-share-collection-size {
@@ -446,16 +450,16 @@
 
 .drive-share-created-copy > span:first-child {
   color: var(--share-dialog-text);
-  font-size: 16px;
-  font-weight: 850;
-  line-height: 22px;
+  font-size: var(--text-ui-md);
+  font-weight: var(--font-weight-bold);
+  line-height: max(1.5em, 22px);
 }
 
 .drive-share-created-copy > span:last-child {
   color: var(--share-dialog-subtle);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 18px;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: max(1.5em, 18px);
 }
 
 .drive-share-link-field {
@@ -474,8 +478,9 @@
 
 .drive-share-link-field > span {
   color: var(--share-dialog-muted);
-  font-size: 12px;
-  font-weight: 690;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
 }
 
 .drive-share-open-inline {
@@ -486,11 +491,12 @@
   color: var(--share-dialog-accent-hover);
   cursor: pointer;
   display: inline-flex;
-  font-size: 13px;
-  font-weight: 780;
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
   gap: 6px;
   padding: 0;
   transition: color 150ms var(--motion-ease), transform 170ms var(--motion-ease);
+  line-height: 1.5;
 }
 
 .drive-share-open-inline:hover {
