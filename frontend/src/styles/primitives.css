@@ -269,10 +269,9 @@ button.icedr-surface-panel[data-hovered="true"] {
   overflow: visible;
 }
 
-.icedr-ext-icon img {
+.icedr-ext-icon svg {
   display: block;
   height: 100%;
-  object-fit: contain;
   pointer-events: none;
   user-select: none;
   width: 100%;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import {
   AlertTriangle,
   AtSign,
@@ -74,7 +74,12 @@ export type LocalIconProps = {
   style?: CSSProperties;
 };
 
-const unavailableExtensionIconNames = new Set<string>();
+const extensionIcons: Record<string, LocalIconName> = {
+  folder: "folder", markdown: "document", txt: "document", pdf: "document", docx: "document",
+  xls: "grid", xlsx: "grid", jpg: "image", png: "image", svg: "image",
+  avi: "play", m4v: "play", mp4: "play", mpeg: "play", mpg: "play", wav: "play",
+  "7zip": "file", "7z": "file", zip: "file", rar: "file", deb: "file", exe: "file", msi: "file", rom: "file", ttf: "abc",
+};
 
 const iconByName: Record<LocalIconName, IconComponent> = {
   abc: Text,
@@ -184,53 +189,34 @@ export function ItemIcon({
   palette: Palette;
   size?: number;
 }) {
-  const fallback = <LocalIcon name={kindIcons[getItemKind(item)]} size={size} color={itemColor(item, palette)} />;
-
-  return (
-    <ExtensionIcon item={item} fallback={fallback} size={size} />
-  );
+  return <ExtensionIcon item={item} color={itemColor(item, palette)} size={size} />;
 }
 
 export function ExtensionIcon({
   className,
+  color,
   fallback,
   item,
   size = 20,
 }: {
   className?: string;
+  color?: string;
   fallback?: ReactNode;
   item: DriveItem;
   size?: number;
 }) {
   const iconName = getItemExtensionIconName(item);
-  const [failedIconName, setFailedIconName] = useState<string | null>(null);
-
-  if (!iconName || failedIconName === iconName || unavailableExtensionIconNames.has(iconName)) {
-    return fallback ?? null;
-  }
+  const name = extensionIcons[iconName];
 
   return (
     <span
       aria-hidden="true"
       className={className ? `icedr-ext-icon ${className}` : "icedr-ext-icon"}
-      style={{ height: size, width: size }}
+      style={{ color, height: size, width: size }}
     >
-      <img
-        alt=""
-        draggable={false}
-        onError={() => {
-          unavailableExtensionIconNames.add(iconName);
-          setFailedIconName(iconName);
-        }}
-        src={getExtensionIconSrc(iconName)}
-      />
+      {!name && fallback ? fallback : <LocalIcon name={name ?? kindIcons[getItemKind(item)]} size={size} />}
     </span>
   );
-}
-
-function getExtensionIconSrc(iconName: string) {
-  const base = import.meta.env.BASE_URL || "/";
-  return `${base.endsWith("/") ? base : `${base}/`}ext-icon/${encodeURIComponent(iconName)}.png`;
 }
 
 export function AnimatedCheckMark({

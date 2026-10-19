@@ -212,7 +212,7 @@ export const kindIcons: Record<DriveItemKind, LocalIconName> = {
   doc: "document",
   sheet: "grid",
   image: "image",
-  video: "visible",
+  video: "play",
   archive: "file",
   other: "file",
 };
