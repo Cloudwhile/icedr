@@ -1,4 +1,26 @@
 :root {
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --text-ui-xs: 12px;
+  --text-ui-xs-line-height: 18px;
+  --text-ui-sm: 13px;
+  --text-ui-sm-line-height: 20px;
+  --text-ui-base: 14px;
+  --text-ui-base-line-height: 21px;
+  --text-ui-md: 16px;
+  --text-ui-md-line-height: 24px;
+  --text-ui-lg: 20px;
+  --text-ui-lg-line-height: 30px;
+  --text-ui-xl: 24px;
+  --text-ui-xl-line-height: 36px;
+  --text-ui-2xl: 32px;
+  --text-ui-2xl-line-height: 48px;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.05em;
+
   --ui-media-canvas: #080a0f;
   --ui-success-text: #147a2e;
   --ui-canvas: #f5f6f6;
