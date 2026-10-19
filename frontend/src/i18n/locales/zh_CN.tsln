@@ -1697,3 +1697,7 @@ language: "中文-简体"
 "preview.next": "下一个文件"
 
 "files.invalidMoveTarget": "不能将文件夹移入自身或其子文件夹。"
+
+"admin.publicAccessConfirmTitle": "允许公开访问？"
+"admin.publicAccessConfirmDescription": "此工作区的分享将允许访客无需验证身份即可访问。请确认内容适合公开。"
+"admin.publicAccessConfirmAction": "允许公开访问"

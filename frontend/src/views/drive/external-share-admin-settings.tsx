@@ -4,6 +4,7 @@ import { TextArea } from "@heroui/react";
 import { useRouter } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { MotionPresence } from "@/components/ui/motion";
 import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
 import {
@@ -215,6 +216,7 @@ export function ExternalShareAdminSettingsPanel({
   workspaceId: string;
 }) {
   const t = useTranslations();
+  const [confirmPublic, setConfirmPublic] = useState(false);
   const [anonymousPolicy, setAnonymousPolicy] =
     useState<AnonymousAccessPolicy>("email-required");
   const [emailRule, setEmailRule] = useState<"any" | "domains">("any");
@@ -397,6 +399,11 @@ export function ExternalShareAdminSettingsPanel({
       className="external-share-admin-settings-panel"
       style={{ display: "flex", flexDirection: "column", gap: "16px" }}
     >
+      <ConfirmationDialog open={confirmPublic} palette={palette} tone="danger"
+        title={t("admin.publicAccessConfirmTitle")} description={t("admin.publicAccessConfirmDescription")}
+        confirmLabel={t("admin.publicAccessConfirmAction")} isPending={saving}
+        onClose={() => setConfirmPublic(false)}
+        onConfirm={() => { setConfirmPublic(false); commitWorkspaceForm("anonymousPolicy", { anonymousAccess: "public" }); }} />
       {guardUnsavedChanges ? (
         <ExternalShareDomainGuard
           id={`external-share-domains:${workspaceId}`}
@@ -474,6 +481,7 @@ export function ExternalShareAdminSettingsPanel({
             palette={palette}
           />
         </SettingItem>
+        <div className="external-share-public-risk" style={{ borderTop: `1px solid ${palette.hairlineStrong}`, paddingTop: "12px", marginTop: "4px" }}>
         <SettingItem
           palette={palette}
           undoAction={
@@ -485,15 +493,12 @@ export function ExternalShareAdminSettingsPanel({
           <RadioRow
             active={anonymousPolicy === "public"}
             label={t("admin.publicAnonymous")}
-            onClick={() =>
-              commitWorkspaceForm("anonymousPolicy", {
-                anonymousAccess: "public",
-              })
-            }
+            onClick={() => { if (!saving && savedWorkspaceSnapshot && anonymousPolicy !== "public") setConfirmPublic(true); }}
             palette={palette}
             tone="risk"
           />
         </SettingItem>
+        </div>
       </AdminSection>
 
       <AdminSection

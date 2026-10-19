@@ -210,6 +210,20 @@ afterEach(() => {
 });
 
 describe("ExternalShareAdminSettingsPage", () => {
+  it("does not publish anonymous access until explicitly confirmed", async () => {
+    renderGuardedPage();
+    await screen.findByRole("textbox", { name: "admin.specifiedDomains" });
+    fireEvent.click(screen.getByRole("button", { name: "admin.publicAnonymous" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(driveApi.updateWorkspaceShareSettings).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "actions.cancel" }));
+    expect(screen.getByRole("button", { name: "admin.emailRequiredAnonymous" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "admin.publicAnonymous" }));
+    fireEvent.click(screen.getByRole("button", { name: "admin.publicAccessConfirmAction" }));
+    await waitFor(() => expect(driveApi.updateWorkspaceShareSettings).toHaveBeenCalledOnce());
+    expect(driveApi.updateWorkspaceShareSettings).toHaveBeenCalledWith("workspace-1", expect.objectContaining({ anonymousAccess: "public" }));
+  });
+
   it("does not request settings when no explicit workspace scope exists", async () => {
     render(
       <ExternalShareAdminSettingsPage

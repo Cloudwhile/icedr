@@ -200,7 +200,7 @@ export function RadioRow({
   return <button {...buttonTypeAttr} aria-checked={active} onClick={onClick} role="radio" style={{
     textAlign: "left",
     width: "100%",
-    color: tone === "risk" ? palette.primaryHover : palette.ink
+    color: tone === "risk" ? palette.danger : palette.ink
   }}>
       <div style={{
       alignItems: "center",
@@ -225,6 +225,7 @@ export function RadioRow({
         }} /> : null}
         </div>
         <span>{label}</span>
+        {tone === "risk" ? <LocalIcon name="exclamation" color={palette.danger} size={16} /> : null}
       </div>
     </button>;
 }

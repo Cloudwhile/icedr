@@ -1697,3 +1697,7 @@ language: "ENGLISH"
 "preview.next": "Next file"
 
 "files.invalidMoveTarget": "A folder cannot be moved into itself or one of its subfolders."
+
+"admin.publicAccessConfirmTitle": "Allow public access?"
+"admin.publicAccessConfirmDescription": "Visitors will be able to access shares in this workspace without verifying their identity. Confirm that this content is suitable for public access."
+"admin.publicAccessConfirmAction": "Allow public access"
