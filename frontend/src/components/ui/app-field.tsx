@@ -45,7 +45,7 @@ export function AppField({
       variant="secondary"
     >
       <Label className="icedr-field-label" htmlFor={id}>
-        {label}
+        <span>{label}{required ? <span aria-hidden="true" className="icedr-field-required">*</span> : null}</span>
       </Label>
       {children}
       {invalid && errorText ? (

@@ -263,17 +263,20 @@
   padding: 0;
 }
 
-.admin-shell .drive-settings-field,
+.admin-shell .drive-settings-field {
+  gap: 6px;
+}
+
 .admin-shell .drive-settings-option-row {
   gap: 8px;
 }
 
 .admin-shell .drive-settings-label {
-  color: var(--ui-text-secondary);
+  color: var(--drive-ui-muted);
   font-size: var(--text-ui-xs);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0;
-  line-height: 1.5;
+  line-height: var(--text-ui-xs-line-height);
 }
 
 .admin-shell .drive-settings-fact {

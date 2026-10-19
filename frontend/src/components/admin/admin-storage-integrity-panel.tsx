@@ -514,7 +514,7 @@ function NumberField({
 }) {
   return (
     <label>
-      <span>{label}</span>
+      <span>{label}{required ? <span aria-hidden="true" className="icedr-field-required">*</span> : null}</span>
       <AppInput
         aria-label={label}
         inputMode="numeric"

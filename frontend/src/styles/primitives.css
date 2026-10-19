@@ -492,3 +492,14 @@ button.icedr-surface-panel[data-hovered="true"] {
   height: 7px;
   width: 7px;
 }
+
+/* AppField owns the marker so assistive technology does not announce it twice. */
+.icedr-field > .icedr-field-label::after {
+  content: none;
+}
+
+.icedr-field-required {
+  color: var(--ui-danger);
+  display: inline-block;
+  margin-inline-start: 2px;
+}
