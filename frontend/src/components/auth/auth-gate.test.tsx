@@ -12,6 +12,7 @@ import { RootI18nProvider } from "@/components/i18n/root-i18n-provider";
 import { palettes } from "@/features/file/model";
 import {
   clearStoredAuthToken,
+  getStoredAuthToken,
   requestDriveApi,
   setStoredAuthToken,
 } from "@/lib/drive-api-client";
@@ -49,7 +50,7 @@ describe("AuthGate session expiry coordination", () => {
     window.localStorage.clear();
   });
 
-  it("lets the coordinator preserve the complete return location", async () => {
+  it.each([true, false])("handles expiry with or without a coordinator (%s) and preserves the return location", async (withCoordinator) => {
     setStoredAuthToken("token-a");
     const fetchMock = vi
       .fn()
@@ -68,7 +69,7 @@ describe("AuthGate session expiry coordination", () => {
 
     render(
       <RootI18nProvider>
-        <AuthSessionCoordinator />
+        {withCoordinator ? <AuthSessionCoordinator /> : null}
         <AuthGate palette={palettes.light}>
           <p>Protected content</p>
         </AuthGate>
@@ -81,6 +82,27 @@ describe("AuthGate session expiry coordination", () => {
     expect(replaceRoute).toHaveBeenCalledWith(
       "/login?next=%2Fadmin%2Faudit%3Fcursor%3Dnext%23events",
     );
+    expect(getStoredAuthToken()).toBeNull();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
+
+  it("does not let an old expired request redirect a newly signed-in session", async () => {
+    setStoredAuthToken("old-token");
+    let expire!: (response: Response) => void;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ needsSetup: false }))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { expire = resolve; }))
+      .mockResolvedValueOnce(Response.json({ needsSetup: false }))
+      .mockResolvedValueOnce(Response.json({ id: "new-user" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RootI18nProvider><AuthGate palette={palettes.light}><p>Protected content</p></AuthGate></RootI18nProvider>);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    setStoredAuthToken("new-token");
+    await act(async () => expire(Response.json({ code: "AUTH_SESSION_EXPIRED" }, { status: 401 })));
+    expect(await screen.findByText("Protected content")).toBeInTheDocument();
+    expect(getStoredAuthToken()).toBe("new-token");
+    expect(replaceRoute).not.toHaveBeenCalled();
   });
 
   it("redirects an incomplete installation to setup before loading the user", async () => {
@@ -103,7 +125,7 @@ describe("AuthGate session expiry coordination", () => {
       expect(replaceRoute).toHaveBeenCalledOnce();
     });
     expect(replaceRoute).toHaveBeenCalledWith(
-      "/setup?next=%2Fadmin%2Faudit",
+      "/setup?next=%2Fadmin%2Faudit%3Fcursor%3Dnext%23events",
     );
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();

@@ -1,4 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { LdrsLoadingState } from "@/components/common/ui/loading-state";
+import { showAppToast } from "@/components/ui/app-toast-store";
+import { getStoredAuthToken } from "@/lib/drive-api-client";
+import { createLoginRedirect } from "./auth-session-navigation";
 import { ApiErrorState } from "@/components/ui/app-error-boundary";
 import { usePathname, useRouter } from "@/compat/navigation";
 import type { Palette } from "@/features/file/model";
@@ -30,7 +34,7 @@ export function AuthGate({
 
   useEffect(() => {
     let cancelled = false;
-    const nextPath = pathname || "/";
+    const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     void (async () => {
       try {
         const setup = await fetchSetupStatus();
@@ -48,14 +52,27 @@ export function AuthGate({
         return;
       }
 
+      const requestToken = getStoredAuthToken();
       try {
-        const currentUser = await fetchCurrentUser();
+        // The gate owns this redirect; ordinary protected requests still use the coordinator.
+        const currentUser = await fetchCurrentUser({ auth: "optional" });
         if (cancelled) return;
+        if (getStoredAuthToken() !== requestToken) {
+          setRetryRevision((revision) => revision + 1);
+          return;
+        }
         setUser(currentUser);
         setReady(true);
       } catch (error) {
         if (cancelled) return;
         if (isAuthExpiredApiError(error)) {
+          const currentToken = getStoredAuthToken();
+          if (currentToken && currentToken !== requestToken) {
+            setRetryRevision((revision) => revision + 1);
+            return;
+          }
+          if (requestToken) showAppToast({ dedupeKey: "auth-session-expired", duration: 3600, title: t("errors.authExpired"), tone: "warning" });
+          router.replace(createLoginRedirect(nextPath));
           return;
         }
         setLoadError(getDriveApiErrorMessage(error, t, {
@@ -84,6 +101,6 @@ export function AuthGate({
       />
     );
   }
-  if (!ready) return null;
+  if (!ready) return <LdrsLoadingState label={t("app.loading")} minHeight="100dvh" palette={palette} />;
   return typeof children === "function" ? children(user) : children;
 }
