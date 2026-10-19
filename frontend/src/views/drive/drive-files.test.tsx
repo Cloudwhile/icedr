@@ -35,14 +35,14 @@ describe("FilesModule", () => {
   it.each([
     [null, "files.emptyRootTitle"],
     ["folder-empty", "files.emptyFolderTitle"],
-  ] as const)("renders a quiet empty state at %s without action buttons or an icon", (currentFolderId, title) => {
+  ] as const)("renders a folder empty state at %s without unavailable action buttons", (currentFolderId, title) => {
     const { container } = render(
       <KeyboardFilesHarness currentFolderId={currentFolderId} fileItems={[]} viewMode="grid" />,
     );
 
     expect(screen.getByRole("status")).toHaveTextContent(title);
     expect(container.querySelector(".drive-empty-state-actions")).not.toBeInTheDocument();
-    expect(container.querySelector(".drive-empty-state-icon")).not.toBeInTheDocument();
+    expect(container.querySelector(".drive-empty-state-icon svg")).toHaveAttribute("width", "44");
   });
 
   it("leaves multi-selection actions to the workspace toolbar", () => {

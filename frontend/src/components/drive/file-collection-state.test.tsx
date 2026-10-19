@@ -88,7 +88,7 @@ describe("DriveFileCollectionStateView", () => {
   it.each([
     ["root-empty", "files.emptyRootTitle"],
     ["folder-empty", "files.emptyFolderTitle"],
-  ] as const)("keeps a %s state free of decorative icons and actions", (kind, title) => {
+  ] as const)("shows a folder icon for %s without inventing unavailable actions", (kind, title) => {
     render(
       <DriveFileCollectionStateView
         actions={[]}
@@ -99,6 +99,6 @@ describe("DriveFileCollectionStateView", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent(title);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-icon]")).not.toBeInTheDocument();
+    expect(document.querySelector('[data-icon="folder"]')).toBeInTheDocument();
   });
 });
