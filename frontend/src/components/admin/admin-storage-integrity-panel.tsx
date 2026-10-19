@@ -298,7 +298,7 @@ export function AdminStorageIntegrityPanel({
               <span>{t("storageIntegrity.targetWorkspaceOnly")}</span>
             </div>
           )}
-          <div className="admin-integrity-submit">
+          <div className="admin-integrity-submit" data-scope={globalRun ? "global" : "workspace"}>
             {globalRun ? (
               <label className="admin-integrity-confirm">
                 <input
@@ -312,6 +312,7 @@ export function AdminStorageIntegrityPanel({
                   }
                   type="checkbox"
                 />
+                <LocalIcon name="exclamation" size={16} />
                 <span>{t("storageIntegrity.confirmAll")}</span>
               </label>
             ) : (
@@ -324,7 +325,7 @@ export function AdminStorageIntegrityPanel({
               isPending={controller.operationPending}
               label={t("storageIntegrity.start")}
               palette={palette}
-              tone="accent"
+              tone={globalRun ? "danger" : "accent"}
               type="submit"
               visual="surface"
             >

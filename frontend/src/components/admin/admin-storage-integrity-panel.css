@@ -218,7 +218,7 @@
 
 .admin-integrity-submit {
   align-items: center;
-  border-top: 1px dashed var(--drive-ui-line-strong);
+  border-top: 1px solid var(--drive-ui-line);
   display: flex;
   gap: 12px;
   grid-column: 1 / -1;
@@ -683,11 +683,12 @@
   }
 
   .admin-integrity-submit {
-    align-items: flex-start;
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .admin-integrity-confirm {
-    max-width: calc(100% - 48px);
+  .admin-integrity-submit > .icedr-tool-button {
+    align-self: flex-end;
   }
 
   .admin-integrity-task-line {
@@ -747,4 +748,26 @@
   .admin-integrity-history-list > button > strong {
     display: none;
   }
+}
+
+.admin-integrity-submit[data-scope="global"] {
+  background: color-mix(in srgb, var(--ui-danger) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-danger) 30%, var(--drive-ui-line));
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.admin-integrity-submit[data-scope="global"] .admin-integrity-confirm {
+  color: var(--drive-ui-danger);
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--text-ui-sm-line-height);
+}
+
+.admin-integrity-submit[data-scope="global"] .admin-integrity-confirm input {
+  accent-color: var(--ui-danger);
+}
+.admin-integrity-submit[data-scope="global"] .icedr-tool-button {
+  border-color: color-mix(in srgb, var(--ui-danger) 35%, var(--drive-ui-line));
+  color: var(--ui-danger);
 }
