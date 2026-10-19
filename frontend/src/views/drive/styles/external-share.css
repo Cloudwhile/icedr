@@ -325,8 +325,8 @@
 }
 
 .external-share-workbench .external-share-hero-card {
-  background: transparent !important;
-  border: 0 !important;
+  background: transparent;
+  border: 0;
   border-radius: 0;
   box-shadow: none !important;
   min-height: 0;
@@ -622,7 +622,7 @@
   align-items: center;
   background: var(--ui-surface-subtle);
   border-bottom: 1px solid var(--ui-border-subtle);
-  color: var(--ui-text-disabled);
+  color: var(--ui-text-tertiary);
   display: grid;
   font-size: 12px;
   font-weight: 720;
