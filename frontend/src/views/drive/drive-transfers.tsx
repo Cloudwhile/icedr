@@ -313,7 +313,7 @@ function TransferSectionTable({
         </div>
         <StatusPill palette={palette}>{section.rows.length}</StatusPill>
       </header>
-      <MotionList key={section.rows.map((row) => row.id).join("|")} className="drive-module-table drive-transfer-section-table">
+      <MotionList key={section.id} className="drive-module-table drive-transfer-section-table">
         <div className="drive-module-table-head" aria-hidden="true">
           <span>{t("files.name")}</span>
           <span>{t("files.size")}</span>

@@ -72,7 +72,7 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
             </div>
           ) : null}
 
-          <MotionList key={links.map((link) => link.token).join("|")} className="drive-module-table drive-link-table">
+          <MotionList key="links" className="drive-module-table drive-link-table">
             {links.length === 0 && !error ? <EmptyModuleState icon="link" title={t("links.emptyTitle")} hint={t("links.emptyHint")} /> : null}
             {links.length > 0 ? (
               <div className="drive-module-table-head" aria-hidden="true">
@@ -150,7 +150,7 @@ export function LinksModule({ error, links, onCloseLink, onCopyLink, palette, so
           </div>
         ) : riskLinks.length > 0 ? (
           <aside className="drive-module-side-stack drive-links-side-stack">
-            <MotionList key={riskLinks.map((link) => link.token).join("|")} className="drive-risk-grid">
+            <MotionList key="risk-links" className="drive-risk-grid">
               {riskLinks.slice(0, 2).map((link) => {
                 const item = findDriveItem(link.rootItemIds[0] ?? "", sourceItems);
                 return (
@@ -396,7 +396,7 @@ export function AuditModule({
               </StatusPill>
             </div>
           ) : null}
-          <MotionList key={filteredEvents.map((row) => row.id).join("|")} className="drive-module-table drive-audit-table">
+          <MotionList key="audit" className="drive-module-table drive-audit-table">
             {filteredEvents.length === 0 && !error ? <EmptyModuleState icon="shield" title={t("audit.emptyTitle")} hint={t("audit.emptyHint")} /> : null}
             {filteredEvents.length > 0 ? (
               <div className="drive-module-table-head" aria-hidden="true">

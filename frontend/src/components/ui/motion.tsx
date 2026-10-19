@@ -187,21 +187,16 @@ export function MotionList({
       return;
     }
 
-    void animate(
+    const animation = animate(
       targets,
-      { filter: ["blur(7px)", "blur(0px)"], opacity: [0, 1], scale: [0.985, 1], y: [16, 0] },
+      { opacity: [0, 1], y: [8, 0] },
       {
-        delay: stagger(Math.min(0.045, 0.3 / targets.length)),
-        duration: 0.46,
+        delay: stagger(Math.min(0.0225, 0.15 / targets.length)),
+        duration: 0.28,
         ease: [0.16, 1, 0.3, 1],
       },
-    ).then(() => {
-      targets.forEach((target) => {
-        target.style.filter = "none";
-        target.style.opacity = "1";
-        target.style.transform = "none";
-      });
-    });
+    );
+    return () => animation.stop();
   }, [animate, reduce, scope]);
 
   return (
