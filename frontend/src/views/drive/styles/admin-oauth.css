@@ -1099,3 +1099,24 @@
 .admin-shell .drive-oauth-table-row .drive-oauth-row-actions { gap: 8px; }
 .admin-shell .drive-oauth-action-group { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
 .admin-shell .drive-oauth-action-group-risk { border-left: 1px solid var(--ui-border-subtle); padding-left: 8px; }
+
+.drive-oauth-form-panel .icedr-app-input[data-invalid="true"] {
+  border-color: var(--ui-danger);
+}
+
+.drive-oauth-form-panel .icedr-field-error {
+  color: var(--ui-danger);
+  font-size: var(--text-ui-xs);
+  line-height: var(--text-ui-xs-line-height);
+  overflow-wrap: anywhere;
+}
+
+.drive-oauth-test-result[data-tone="risk"] {
+  background: color-mix(in srgb, var(--ui-danger) 10%, var(--ui-surface));
+  border-color: color-mix(in srgb, var(--ui-danger) 36%, var(--ui-border-default));
+  color: var(--ui-danger);
+}
+
+.drive-oauth-test-result[data-tone="risk"] > div > span[data-ok="false"] {
+  color: var(--ui-danger);
+}

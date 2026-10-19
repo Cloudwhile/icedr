@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { AppField } from "@/components/ui/app-field";
 import {
   AppDialogBody,
@@ -47,6 +47,15 @@ type OAuthProviderDialogProps = {
   validationErrorKey: string | null;
 };
 
+const validationFields: Record<string, readonly string[]> = {
+  "admin.oauthClientIdRequired": ["clientId"],
+  "admin.oauthSecretRequired": ["secret"],
+  "admin.oauthRedirectInvalid": ["redirectUri"],
+  "admin.oauthIssuerInvalid": ["issuerUrl"],
+  "admin.oauthEndpointInvalid": ["authorizationUrl", "tokenUrl", "userinfoUrl"],
+  "admin.oauthDomainInvalid": ["allowedEmailDomains"],
+};
+
 export function OAuthProviderDialog({
   draft,
   mode,
@@ -71,6 +80,16 @@ export function OAuthProviderDialog({
   const titleKey =
     mode === "edit" ? "admin.oauthEditProvider" : "admin.oauthAddProvider";
   const busy = savingKey !== null;
+  const advancedRef = useRef<HTMLDetailsElement>(null);
+  const fieldError = (field: string) => validationErrorKey && validationFields[validationErrorKey]?.includes(field)
+    ? t(validationErrorKey)
+    : undefined;
+
+  useEffect(() => {
+    if (advancedRef.current && (validationErrorKey === "admin.oauthRedirectInvalid" || validationErrorKey === "admin.oauthDomainInvalid")) {
+      advancedRef.current.open = true;
+    }
+  }, [validationErrorKey]);
 
   return (
     <AppDialogShell
@@ -216,9 +235,10 @@ export function OAuthProviderDialog({
                 </OAuthInputField>
                 <OAuthInputField
                   label={t("admin.oauthClientId")}
+                  errorText={fieldError("clientId")}
                   palette={palette}
                 >
-                  <AppInput
+                  <AppInput invalid={Boolean(fieldError("clientId"))}
                     disabled={busy}
                     onChange={(event) =>
                       onDraftChange({ ...draft, clientId: event.target.value })
@@ -229,10 +249,11 @@ export function OAuthProviderDialog({
                 </OAuthInputField>
                 <OAuthInputField
                   label={t("admin.oauthSecret")}
+                  errorText={fieldError("secret")}
                   palette={palette}
                 >
                   <div className="drive-oauth-copy-field">
-                    <AppInput
+                    <AppInput invalid={Boolean(fieldError("secret"))}
                       disabled={busy}
                       onChange={(event) => onSecretChange(event.target.value)}
                       palette={palette}
@@ -281,9 +302,10 @@ export function OAuthProviderDialog({
                   <>
                     <OAuthInputField
                       label={t("admin.oauthAuthorizationUrl")}
+                      errorText={fieldError("authorizationUrl")}
                       palette={palette}
                     >
-                      <AppInput
+                      <AppInput invalid={Boolean(fieldError("authorizationUrl"))}
                         disabled={busy}
                         onChange={(event) =>
                           onDraftChange({
@@ -297,9 +319,10 @@ export function OAuthProviderDialog({
                     </OAuthInputField>
                     <OAuthInputField
                       label={t("admin.oauthTokenUrl")}
+                      errorText={fieldError("tokenUrl")}
                       palette={palette}
                     >
-                      <AppInput
+                      <AppInput invalid={Boolean(fieldError("tokenUrl"))}
                         disabled={busy}
                         onChange={(event) =>
                           onDraftChange({
@@ -313,9 +336,10 @@ export function OAuthProviderDialog({
                     </OAuthInputField>
                     <OAuthInputField
                       label={t("admin.oauthUserinfoUrl")}
+                      errorText={fieldError("userinfoUrl")}
                       palette={palette}
                     >
-                      <AppInput
+                      <AppInput invalid={Boolean(fieldError("userinfoUrl"))}
                         disabled={busy}
                         onChange={(event) =>
                           onDraftChange({
@@ -331,9 +355,10 @@ export function OAuthProviderDialog({
                 ) : (
                   <OAuthInputField
                     label={t("admin.oauthIssuerDiscoveryUrl")}
+                    errorText={fieldError("issuerUrl")}
                     palette={palette}
                   >
-                    <AppInput
+                    <AppInput invalid={Boolean(fieldError("issuerUrl"))}
                       disabled={busy}
                       onChange={(event) =>
                         onDraftChange({
@@ -349,7 +374,7 @@ export function OAuthProviderDialog({
               </div>
             </div>
 
-            <details className="drive-oauth-advanced">
+            <details className="drive-oauth-advanced" ref={advancedRef}>
               <summary>
                 <LocalIcon name="settings" size={15} />
                 <span>{t("admin.oauthAdvancedSettings")}</span>
@@ -359,10 +384,11 @@ export function OAuthProviderDialog({
                   <div className="drive-oauth-form-column">
                     <OAuthInputField
                       label={t("admin.oauthRedirectUri")}
+                      errorText={fieldError("redirectUri")}
                       palette={palette}
                     >
                       <div className="drive-oauth-copy-field">
-                        <AppInput
+                        <AppInput invalid={Boolean(fieldError("redirectUri"))}
                           disabled={busy}
                           onChange={(event) =>
                             onDraftChange({
@@ -454,9 +480,10 @@ export function OAuthProviderDialog({
                     />
                     <OAuthInputField
                       label={t("admin.oauthAllowedDomains")}
+                      errorText={fieldError("allowedEmailDomains")}
                       palette={palette}
                     >
-                      <AppInput
+                      <AppInput invalid={Boolean(fieldError("allowedEmailDomains"))}
                         disabled={busy}
                         onChange={(event) =>
                           onDraftChange({
@@ -568,15 +595,17 @@ function getOAuthCheckLabelKey(check: OAuthConnectionCheck) {
 
 function OAuthInputField({
   children,
+  errorText,
   label,
   palette,
 }: {
   children: ReactNode;
+  errorText?: string;
   label: string;
   palette: Palette;
 }) {
   return (
-    <AppField label={label} palette={palette}>
+    <AppField errorText={errorText} invalid={Boolean(errorText)} label={label} palette={palette}>
       {children}
     </AppField>
   );
