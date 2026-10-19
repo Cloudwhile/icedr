@@ -88,6 +88,7 @@ export function AuthGate({
   if (loadError) {
     return (
       <ApiErrorState
+        detail="ACCESS_CHECK_FAILED"
         fillViewport
         message={loadError}
         onRetry={() => {

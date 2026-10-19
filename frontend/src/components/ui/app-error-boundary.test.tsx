@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("AppErrorBoundary", () => {
-  it("renders a redacted alert and exposes icon-only recovery actions", () => {
+  it("renders a redacted alert and exposes labelled recovery actions", () => {
     const reloadPage = vi.fn();
     const navigateHome = vi.fn();
 
@@ -48,8 +48,8 @@ describe("AppErrorBoundary", () => {
 
     const reloadButton = screen.getByRole("button", { name: "Reload page" });
     const homeButton = screen.getByRole("button", { name: "Return home" });
-    expect(reloadButton).not.toHaveTextContent("Reload page");
-    expect(homeButton).not.toHaveTextContent("Return home");
+    expect(reloadButton).toHaveTextContent("Reload page");
+    expect(homeButton).toHaveTextContent("Return home");
 
     fireEvent.click(reloadButton);
     fireEvent.click(homeButton);

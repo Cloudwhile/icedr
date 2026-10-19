@@ -1,32 +1,41 @@
 .icedr-api-error-state {
+  align-items: center;
   color: var(--app-error-ink);
+  display: flex;
+  justify-content: center;
+  padding: 32px;
   width: 100%;
 }
 
 .icedr-api-error-state.is-fill-viewport {
   background: var(--app-error-canvas);
   min-height: 100dvh;
-  padding: 64px 32px;
 }
 
 .icedr-api-error-content {
-  border-top: 3px solid var(--app-error-danger);
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 620px;
-  padding-top: 24px;
+  max-width: 480px;
+  text-align: center;
   width: 100%;
 }
 
 .icedr-app-error-heading {
-  align-items: flex-start;
+  align-items: center;
   display: flex;
-  gap: 14px;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.icedr-app-error-heading > span {
-  margin-top: 2px;
+.icedr-app-error-symbol {
+  align-items: center;
+  background: color-mix(in srgb, var(--app-error-danger) 10%, transparent);
+  border-radius: 50%;
+  display: inline-flex;
+  height: 64px;
+  justify-content: center;
+  width: 64px;
 }
 
 .icedr-app-error-copy {
@@ -34,38 +43,57 @@
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .icedr-app-error-copy h1,
-.icedr-app-error-copy p {
+.icedr-app-error-copy p,
+.icedr-app-error-detail {
   margin: 0;
 }
 
 .icedr-app-error-copy h1 {
   color: var(--app-error-ink);
-  font-size: var(--text-ui-lg);
+  font-size: var(--text-ui-xl);
   font-weight: var(--font-weight-bold);
-  line-height: max(1.5em, 28px);
+  line-height: var(--text-ui-xl-line-height);
 }
 
 .icedr-app-error-copy p {
   color: var(--app-error-muted);
   font-size: var(--text-ui-base);
-  font-weight: var(--font-weight-medium);
-  line-height: max(1.5em, 22px);
-  max-width: 520px;
+  font-weight: var(--font-weight-regular);
+  line-height: var(--text-ui-base-line-height);
 }
 
 .icedr-app-error-actions {
   align-items: center;
-  border-top: 1px solid var(--app-error-hairline);
   display: flex;
-  gap: 8px;
-  padding-top: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.icedr-app-error-actions .icedr-action-button {
+  height: 44px;
+}
+
+.icedr-app-error-actions .icedr-app-error-home {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.icedr-app-error-detail {
+  color: var(--app-error-muted);
+  font-size: var(--text-ui-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--text-ui-xs-line-height);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 540px) {
-  .icedr-api-error-state.is-fill-viewport {
-    padding: 40px 20px;
+  .icedr-api-error-state {
+    padding: 24px;
   }
 }

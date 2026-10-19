@@ -16,7 +16,7 @@ import {
   hardNavigateHome,
   hardReloadPage,
 } from "./app-error-boundary-navigation";
-import { ToolButton } from "./tool-button";
+import { ActionButton } from "./action-button";
 import "./app-error-boundary.css";
 
 export type AppErrorBoundaryProps = {
@@ -28,6 +28,7 @@ export type AppErrorBoundaryProps = {
 };
 
 export type ApiErrorStateProps = {
+  detail?: string;
   fillViewport?: boolean;
   homeLabel?: string;
   message: string;
@@ -106,6 +107,7 @@ function AppErrorBoundaryFallback({
 }
 
 export function ApiErrorState({
+  detail,
   fillViewport = false,
   homeLabel,
   message,
@@ -141,7 +143,9 @@ export function ApiErrorState({
     >
       <div className="icedr-api-error-content">
         <div className="icedr-app-error-heading">
-          <LocalIcon color={palette.danger} name="exclamation" size={22} />
+          <span className="icedr-app-error-symbol">
+            <LocalIcon color={palette.danger} name="exclamation" size={32} />
+          </span>
           <div className="icedr-app-error-copy">
             <h1 id={titleId}>{title}</h1>
             <p id={descriptionId}>{message}</p>
@@ -154,30 +158,28 @@ export function ApiErrorState({
             role="group"
           >
             {onRetry ? (
-              <ToolButton
-                label={resolvedRetryLabel}
-                onPress={onRetry}
+              <ActionButton
+                icon={<LocalIcon name="refresh" size={18} />}
+                onClick={onRetry}
                 palette={palette}
-                tone="accent"
-                tooltipPlacement="bottom"
-                visual="surface"
+                tone="primary"
               >
-                <LocalIcon name="refresh" size={18} />
-              </ToolButton>
+                {resolvedRetryLabel}
+              </ActionButton>
             ) : null}
             {onHome ? (
-              <ToolButton
-                label={resolvedHomeLabel}
-                onPress={onHome}
+              <ActionButton
+                className="icedr-app-error-home"
+                icon={<LocalIcon name="house" size={18} />}
+                onClick={onHome}
                 palette={palette}
-                tooltipPlacement="bottom"
-                visual="surface"
               >
-                <LocalIcon name="house" size={18} />
-              </ToolButton>
+                {resolvedHomeLabel}
+              </ActionButton>
             ) : null}
           </div>
         ) : null}
+        {detail ? <p className="icedr-app-error-detail">{detail}</p> : null}
       </div>
     </section>
   );
