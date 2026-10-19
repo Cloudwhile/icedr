@@ -1,4 +1,6 @@
 :root {
+  --ui-media-canvas: #080a0f;
+  --ui-success-text: #147a2e;
   --ui-canvas: #f5f6f6;
   --ui-surface: #ffffff;
   --ui-surface-subtle: #f6f7f7;
@@ -15,6 +17,7 @@
   --ui-border-strong: #bdc2cf;
   --ui-accent: #5e6ad2;
   --ui-accent-hover: #4f5cc6;
+  --ui-on-accent: #ffffff;
   --ui-selection: #eef0ff;
   --ui-focus-ring: rgba(94, 106, 210, 0.35);
   --ui-danger: #dc2626;
@@ -40,7 +43,7 @@
   --surface-tertiary: var(--ui-surface-raised);
   --overlay: var(--ui-overlay);
   --accent: var(--ui-accent);
-  --accent-foreground: var(--ui-text-inverse);
+  --accent-foreground: var(--ui-on-accent);
   --accent-hover: var(--ui-accent-hover);
   --muted: var(--ui-text-secondary);
   --border: var(--ui-border-default);
@@ -76,8 +79,9 @@
   --ui-border-subtle: #23252a;
   --ui-border-default: #23252a;
   --ui-border-strong: #34343a;
-  --ui-accent: #5e6ad2;
+  --ui-accent: #626ed6;
   --ui-accent-hover: #828fff;
+  --ui-on-accent: #010102;
   --ui-selection: #171a2f;
   --ui-focus-ring: rgba(94, 106, 210, 0.5);
   --ui-danger: #f87171;
@@ -86,6 +90,7 @@
   --ui-warning: #fbbf24;
   --ui-on-warning: #211400;
   --ui-success: #27a644;
+  --ui-success-text: #4ade80;
   --ui-info: #38bdf8;
   --ui-secure: #7a7fad;
   --ui-control-border: #23252a;

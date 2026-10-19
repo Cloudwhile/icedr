@@ -1,6 +1,7 @@
 "use client";
 
 import { useLocale, useTimeZone, useTranslations } from "@/i18n/react";
+import { useDriveRovingFocus } from "@/components/drive/use-drive-roving-focus";
 import { useState } from "react";
 import { MotionLayoutGroup, MotionList } from "@/components/ui/motion";
 import { AppContextMenu, type AppContextMenuPosition } from "@/components/ui/app-context-menu";
@@ -51,13 +52,14 @@ const buttonTypeAttr: { type?: "button" } = {
 type FileAction = (item: DriveItem) => void;
 
 type FileSelectionHandlers = {
-  extendKeyboardSelection: (currentId: string, key: string, columnCount: number) => string | null;
+  extendKeyboardSelection: (currentId: string, key: string, columnCount: number, extend?: boolean) => string | null;
   onSelectItem: (event: React.MouseEvent, item: DriveItem) => void;
   onSelectItemCheckbox: (item: DriveItem, checked: boolean) => void;
   selectSingleItem: (id: string) => void;
 };
 
 export type FilesModuleProps = {
+  onKeyboardAction?: (action: "copy" | "cut" | "delete", items: DriveItem[]) => void;
   activeNav: string;
   createMenuItems: AppMenuItem[];
   currentFolderId: string | null;
@@ -108,6 +110,7 @@ export type FilesModuleProps = {
 };
 
 export function FilesModule({
+  onKeyboardAction,
   activeNav,
   createMenuItems,
   currentFolderId,
@@ -232,7 +235,7 @@ export function FilesModule({
     toggleSelected(item.id, checked);
     setSelectionAnchorId(item.id);
   };
-  const extendKeyboardSelection = (currentId: string, key: string, columnCount: number) => {
+  const extendKeyboardSelection = (currentId: string, key: string, columnCount: number, extend = true) => {
     const visibleIds = items.map((item) => item.id);
     const extension = resolveDriveSelectionExtension({
       anchorId: selectionAnchorId,
@@ -244,6 +247,7 @@ export function FilesModule({
     });
     if (!extension) return null;
 
+    if (!extend) { setSelectionAnchorId(extension.focusId); return extension.focusId; }
     const nextSelected = new Set(extension.selectedIds);
     new Set([...selected, ...visibleIds]).forEach((id) => {
       const nextChecked = nextSelected.has(id);
@@ -253,6 +257,26 @@ export function FilesModule({
     return extension.focusId;
   };
   const handleModuleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.altKey || event.repeat) return;
+    if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable=true], [role="menu"], [role="dialog"]')) return;
+    const command = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    const targets = items.filter((item) => selected.includes(item.id));
+    if (command && !event.shiftKey && ["a", "c", "x", "v"].includes(key)) {
+      event.preventDefault();
+      if (key === "a") items.forEach((item) => toggleSelected(item.id, true));
+      if (key === "v" && canPaste) onBlankPaste();
+      if (targets.length && activeNav !== "trash" && (key === "c" || key === "x")) onKeyboardAction?.(key === "c" ? "copy" : "cut", targets);
+      return;
+    }
+    if (!command && !event.shiftKey) {
+      if (event.key === "Delete" && targets.length) {
+        event.preventDefault();
+        if (!destructivePending?.archive && !destructivePending?.delete) onKeyboardAction?.("delete", targets);
+      }
+      const focused = items.find((item) => item.id === (event.target as HTMLElement).closest<HTMLElement>("[data-drive-item-id]")?.dataset.driveItemId);
+      if (event.key === "F2" && focused && activeNav !== "trash") { event.preventDefault(); onRenameItem(focused); }
+    }
     if (
       event.key !== "Escape" ||
       event.defaultPrevented ||
@@ -273,14 +297,17 @@ export function FilesModule({
           { icon: "refresh", label: t("app.refresh"), onClick: onRetrySearch ?? onBlankRefresh },
         ]
       : collectionState === "folder-empty" || collectionState === "root-empty"
-        ? []
+        ? createMenuItems.filter((action) => ["new-folder", "upload"].includes(action.value) && !action.disabled && action.onClick).map((action) => ({
+          icon: action.value === "upload" ? "upload" as const : "folder" as const,
+          label: String(action.label), onClick: action.onClick!,
+        }))
         : collectionState === "trash-empty" || collectionState === "collection-empty"
           ? [{ icon: "refresh", label: t("app.refresh"), onClick: onBlankRefresh }]
           : [];
 
   return (
     <MotionLayoutGroup>
-      <div className="drive-files-module" onClick={clearBlankSelection} onContextMenu={openBlankContextMenu} onKeyDown={handleModuleKeyDown}>
+      <div className="drive-files-module" role="region" aria-label={t("nav.drive")} tabIndex={items.length === 0 ? 0 : -1} onClick={clearBlankSelection} onContextMenu={openBlankContextMenu} onKeyDown={handleModuleKeyDown}>
         {error && collectionState === "ready" ? (
           <div className="drive-error-banner">
             <StatusPill palette={palette} tone="risk">
@@ -572,6 +599,7 @@ function FileTable({
     resetKey,
   });
   const visibleItems = items.slice(virtualRange.startIndex, virtualRange.endIndex);
+  const rovingFocus = useDriveRovingFocus(visibleItems);
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
     destructivePending,
@@ -632,6 +660,8 @@ function FileTable({
         aria-selected={checked}
         key={item.id}
         data-drive-entry
+        {...rovingFocus(item.id)}
+        draggable={activeNav === "drive" && !isRenaming}
         data-drive-item-id={item.id}
         data-motion-row
         data-selected={checked ? "" : undefined}
@@ -641,9 +671,8 @@ function FileTable({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, 1), openContextMenuFromKeyboard, focusVirtualItem)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, 1, event.shiftKey), openContextMenuFromKeyboard, focusVirtualItem)}
         onMouseDown={preventDriveEntryTextSelection}
-        tabIndex={0}
       >
         <td>
           <DriveFileSelectBox checked={checked} label={t("files.selectItem", { name: item.name })} palette={palette} visible={false} onChange={(nextChecked) => onSelectItemCheckbox(item, nextChecked)} />
@@ -866,6 +895,7 @@ function FileGrid({
     Math.max(0, virtualRange.startIndex - leadingItemCount),
     Math.max(0, virtualRange.endIndex - leadingItemCount),
   );
+  const rovingFocus = useDriveRovingFocus(visibleItems);
 
   const buildActions = (item: DriveItem) => buildFileActionItems({
     destructivePending,
@@ -922,6 +952,8 @@ function FileGrid({
         key={item.id}
         data-motion-row
         data-drive-entry
+        {...rovingFocus(item.id)}
+        draggable={activeNav === "drive" && !isRenaming}
         data-drive-item-id={item.id}
         data-selected={checked ? "" : undefined}
         className="drive-file-card icedr-select-parent"
@@ -931,10 +963,9 @@ function FileGrid({
           event.preventDefault();
           openItemSurface(item, openFolder, openPreview);
         }}
-        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, getRenderedDriveGridColumnCount(event.currentTarget)), openContextMenuFromKeyboard, focusVirtualItem)}
+        onKeyDown={(event) => handleDriveItemKeyDown(event, item, checked, openFolder, openPreview, onSelectItemCheckbox, (currentId, key) => extendKeyboardSelection(currentId, key, getRenderedDriveGridColumnCount(event.currentTarget), event.shiftKey), openContextMenuFromKeyboard, focusVirtualItem)}
         onMouseDown={preventDriveEntryTextSelection}
         role="option"
-        tabIndex={0}
       >
         <div className="drive-card-visual">
           <DriveItemPreview className="drive-card-preview" iconSize={48} item={item} palette={palette} />

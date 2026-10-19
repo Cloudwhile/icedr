@@ -1,4 +1,4 @@
-import { createElement, useCallback, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { createElement, useCallback, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { BatchOperationFailureDescription } from "@/components/drive/batch-operation-feedback";
 import { getBatchOperationTone } from "@/components/drive/batch-operation-feedback-model";
 import { showWorkspaceNotification, type WorkspaceNotificationTone } from "@/components/ui/workspace-notification-store";
@@ -189,7 +189,26 @@ export function useDriveFileActions({
       });
   };
 
+  const dropPending = useRef(false);
+  const moveItemsToFolder = async (items: DriveItem[], folderId: string | null) => {
+    if (dropPending.current || activeNav !== "drive" || !items.length) return;
+    if (items.some((item) => item.workspaceId !== workspaceId || item.spaceScope !== spaceScope)) return;
+    if (items.some((item) => item.archivedAt) || (folderId && isFolderWithinItems(folderId, items, driveItems))) { showFeedback(t("files.invalidMoveTarget"), "warning"); return; }
+    const movable = items.filter((item) => item.parentId !== folderId);
+    if (!movable.length) return;
+    dropPending.current = true;
+    try {
+      const result = await batchMoveFileNodes(movable.map((item) => item.id), folderId);
+      await refreshDriveItems();
+      const moved = new Set(result.succeeded.map((item) => item.id));
+      setSelected((current) => current.filter((id) => !moved.has(id)));
+      showBatchResult(result.summary, result.failed, movable);
+    } catch (error) { showFeedback(getApiFeedback(error, "app.moveFailed", "form"), "error"); }
+    finally { dropPending.current = false; }
+  };
+
   return {
+    moveItemsToFolder,
     canPasteClipboard,
     copyItem: (item: DriveItem) => setClipboardItems([item], "copy"),
     copyItems: (items: DriveItem[]) => setClipboardItems(items, "copy"),

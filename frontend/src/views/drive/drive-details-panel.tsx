@@ -84,6 +84,7 @@ export function DetailsPanel({
   const owner = displayItem?.owner ?? currentFolder?.owner ?? "--";
   const shared = displayItem?.shared ?? currentFolder?.shared;
   const versionItem = !multiSelect && displayItem?.hasContent && !displayItem.archivedAt ? displayItem : null;
+  const versionItemId = versionItem?.id;
   const quickActionItem = !multiSelect ? displayItem ?? currentFolder : null;
   const quickActionItems = selectedItems.length > 0 ? selectedItems : quickActionItem ? [quickActionItem] : [];
   const canPreview = Boolean(quickActionItem && getItemKind(quickActionItem) !== "folder" && onPreviewItem);
@@ -135,25 +136,25 @@ export function DetailsPanel({
   ];
 
   useEffect(() => {
-    if (!versionItem) {
+    if (!versionItemId) {
       return;
     }
     let cancelled = false;
-    void fetchFileVersions(versionItem.id).then((items) => {
+    void fetchFileVersions(versionItemId).then((items) => {
       if (!cancelled) {
-        setVersionState({ itemId: versionItem.id, versions: items });
+        setVersionState({ itemId: versionItemId, versions: items });
         setVersionError(null);
       }
     }).catch(() => {
       if (!cancelled) {
-        setVersionState({ itemId: versionItem.id, versions: [] });
+        setVersionState({ itemId: versionItemId, versions: [] });
         setVersionError(t("files.versionsLoadFailed"));
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [t, versionItem]);
+  }, [t, versionItemId]);
 
   const handlePanelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) {
@@ -196,7 +197,6 @@ export function DetailsPanel({
 
   return (
     <MotionSurface
-      key={`${displayName}-${selectedSize}`}
       preset="panel-right"
       className="drive-details-panel"
       aria-labelledby={headingId}

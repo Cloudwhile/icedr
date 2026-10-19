@@ -1672,3 +1672,28 @@ language: "中文-简体"
 "transfers.uploadSettings": "上传设置"
 "transfers.uploadSpeedLimit": "上传速度限制"
 "transfers.uploadQueue": "上传队列"
+
+"preview.unsavedTitle": "放弃未保存的修改？"
+"preview.unsavedDescription": "关闭预览将丢失尚未保存的文件内容。"
+
+"auth.showPassword": "显示密码"
+"auth.hidePassword": "隐藏密码"
+
+"settings.unsavedTitle": "设置尚未保存"
+
+"settings.preferenceSaveFailed": "偏好保存失败，已恢复原设置。"
+
+"audit.tableLabel": "审计记录"
+
+"search.viewAll": "查看全部搜索结果"
+
+"preview.contentLoadFailed": "文件内容加载失败，请重新打开预览。"
+
+"storageIntegrity.confirmOperation": "确认运行"
+"storageIntegrity.startConfirmDescription": "这将检查所选范围内所有工作空间的存储对象，可能产生较多读取流量和存储请求费用。是否继续？"
+"storageIntegrity.retryConfirmDescription": "这将重新处理当前任务中所有可重试的异常对象，可能产生额外读取流量和存储请求费用。是否继续？"
+
+"preview.previous": "上一个文件"
+"preview.next": "下一个文件"
+
+"files.invalidMoveTarget": "不能将文件夹移入自身或其子文件夹。"

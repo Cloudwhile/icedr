@@ -3,8 +3,8 @@
   flex-direction: column;
   min-height: 0;
   max-height: min(680px, calc(100dvh - 190px));
-  border: 1px solid var(--hairline, #d9dde5);
-  background: var(--surface-1, #ffffff);
+  border: 1px solid var(--ui-border-default);
+  background: var(--ui-surface);
 }
 .share-details-header,
 .share-details-heading,
@@ -19,7 +19,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--hairline, #d9dde5);
+  border-bottom: 1px solid var(--ui-border-default);
 }
 
 .share-details-heading {
@@ -39,7 +39,7 @@
 .share-details-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-bottom: 1px solid var(--hairline, #d9dde5);
+  border-bottom: 1px solid var(--ui-border-default);
 }
 
 .share-details-metric {
@@ -48,8 +48,8 @@
   flex-direction: column;
   gap: 4px;
   padding: 11px 12px;
-  border-right: 1px solid var(--hairline, #d9dde5);
-  border-bottom: 1px solid var(--hairline, #d9dde5);
+  border-right: 1px solid var(--ui-border-default);
+  border-bottom: 1px solid var(--ui-border-default);
 }
 
 .share-details-metric:nth-child(2n) {
@@ -63,7 +63,7 @@
 .share-details-metric span,
 .share-details-member-copy span:last-child,
 .share-details-scope-row > span:first-child {
-  color: var(--subtle, #687080);
+  color: var(--ui-text-tertiary);
   font-size: 12px;
 }
 
@@ -76,7 +76,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--hairline, #d9dde5);
+  border-bottom: 1px solid var(--ui-border-default);
 }
 
 .share-details-members {
@@ -88,7 +88,7 @@
   min-height: 52px;
   gap: 9px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--hairline, #d9dde5);
+  border-bottom: 1px solid var(--ui-border-default);
 }
 
 .share-details-member:last-child {
@@ -98,7 +98,7 @@
 .share-details-member-icon {
   display: inline-flex;
   flex: 0 0 auto;
-  color: var(--subtle, #687080);
+  color: var(--ui-text-tertiary);
 }
 
 .share-details-member-copy {
@@ -116,7 +116,7 @@
   align-items: center;
   justify-content: center;
   padding: 10px 12px;
-  color: var(--subtle, #687080);
+  color: var(--ui-text-tertiary);
   font-size: 12px;
 }
 

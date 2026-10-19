@@ -153,7 +153,8 @@
   transition: background-color 150ms var(--drive-ui-ease), border-color 150ms var(--drive-ui-ease), box-shadow 170ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
 }
 
-.drive-search-result-row:hover {
+.drive-search-result-row:hover,
+.drive-search-result-row[aria-selected="true"] {
   background: color-mix(in srgb, var(--drive-ui-blue-600) 7%, var(--drive-ui-surface));
   border-color: color-mix(in srgb, var(--drive-ui-blue-600) 22%, var(--drive-ui-line));
   box-shadow: var(--drive-ui-shadow-hover);

@@ -103,6 +103,7 @@ export type Palette = {
   controlSurface: string;
   primary: string;
   primaryHover: string;
+  onPrimary: string;
   inverseInk: string;
   ink: string;
   muted: string;
@@ -134,8 +135,9 @@ export const palettes: Record<ThemeMode, Palette> = {
     backdrop: "rgba(0, 0, 0, 0.58)",
     controlBorder: "#23252a",
     controlSurface: "#0f1011",
-    primary: "#5e6ad2",
+    primary: "#626ed6",
     primaryHover: "#828fff",
+    onPrimary: "#010102",
     inverseInk: "#ffffff",
     ink: "#f7f8f8",
     muted: "#d0d6e0",
@@ -167,6 +169,7 @@ export const palettes: Record<ThemeMode, Palette> = {
     controlSurface: "transparent",
     primary: "#5e6ad2",
     primaryHover: "#4f5cc6",
+    onPrimary: "#ffffff",
     inverseInk: "#ffffff",
     ink: "#111217",
     muted: "#343843",

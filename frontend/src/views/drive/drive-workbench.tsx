@@ -1,4 +1,8 @@
-﻿"use client";
+"use client";
+
+import { useDriveDrop } from "@/components/drive/use-drive-drop";
+
+import { readViewPreference, persistViewPreference } from "@/features/file/view-preference";
 
 import { usePathname, useRouter } from "@/compat/navigation";
 import { isAdminUser } from "@/features/auth/permissions";
@@ -103,7 +107,7 @@ export function DriveWorkbench({
   const [selected, setSelected] = useState<string[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [spaceScope, setSpaceScope] = useState<DriveSpaceScope>("workspace");
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<"list" | "grid">(readViewPreference);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [registeredShares, setRegisteredShares] = useState<RegisteredShare[]>([]);
   const [linksError, setLinksError] = useState<string | null>(null);
@@ -447,7 +451,7 @@ export function DriveWorkbench({
     controllableTransferIds,
     deleteTransferRow,
     dismissUploadConflictPrompt,
-    handleUploadFiles,
+    handleUploadFiles, uploadDroppedFiles,
     pauseUploadTransfer,
     refreshStorageUsage,
     refreshTransfers,
@@ -487,7 +491,7 @@ export function DriveWorkbench({
     deletePermanentlyItems,
     downloadItems,
     getActionItems,
-    moveItem,
+    moveItem, moveItemsToFolder,
     pasteClipboard,
     permanentDeleteItems,
     permanentDeleteOpen,
@@ -764,6 +768,7 @@ export function DriveWorkbench({
   };
   const setDirectoryViewMode = (mode: "list" | "grid") => {
     setViewMode(mode);
+    persistViewPreference(mode);
   };
   const openPreview = (id: string) => {
     const item = findDriveItem(id, allKnownItems);
@@ -882,7 +887,12 @@ export function DriveWorkbench({
       router.replace("/login");
     });
   };
-  return <div className="drive-shell" data-theme={themeMode} style={createDriveThemeVariables(palette) as React.CSSProperties}>
+  const dropHandlers = useDriveDrop({ enabled: activeModule === "drive" && activeNavForView === "drive" && !query.trim() && !hasSearchFilters,
+    items: driveItems, selected, currentFolderId,
+    onMove: (items, folderId) => void moveItemsToFolder(items, folderId),
+    onUpload: (files, folderId) => void uploadDroppedFiles(files, folderId, driveItems.filter((item) => item.parentId === folderId)).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed"), "error")),
+  });
+  return <div {...dropHandlers} className="drive-shell" data-theme={themeMode} style={createDriveThemeVariables(palette) as React.CSSProperties}>
       <AppHeader currentUser={activeUser} activeScopeLabel={searchScopeLabel} searchLoading={searchLoading} searchResultCount={serverSearchActive ? searchTotal : filteredFiles.length} searchResults={filteredFiles} brandLogo={brandLogo} onOpenSearchResult={openSearchResult} onOpenAdmin={openAdmin} onLogout={logout} onOpenSettings={openSettings} onRefresh={refreshWorkspace} palette={palette} query={query} refreshing={workspaceRefreshing} setQuery={setQuery} siteName={resolvePublicSiteName(siteSettings.siteName)} openSidebar={() => setSidebarOpen(true)} />
 
       <div className="drive-main-grid" style={{
@@ -946,7 +956,7 @@ export function DriveWorkbench({
             <div className="drive-workspace-content" data-details-open={showDetailsPanel ? "true" : undefined}>
               <MotionSurface key={`${activeModule}-${currentFolderId ?? "root"}`} preset="surface" aria-busy={workspaceBusy} className="drive-workspace-body">
                 {showSettingsSkeleton ? <WorkspaceSkeleton activeModule={activeModule} palette={palette} viewMode={viewMode} /> : showWorkspaceLoader ? <LdrsLoadingState label={t("app.syncing")} palette={palette} minHeight="min(420px, calc(100dvh - 180px))" size={30} /> : <>
-                    {activeModule === "drive" ? <FilesModule activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
+                    {activeModule === "drive" ? <FilesModule onKeyboardAction={(action, items) => { if (action === "copy") copyItems(items); else if (action === "cut") cutItems(items); else if (activeNavForView === "trash") deletePermanentlyItems(items); else archiveItems(items); }} activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
                 setSelected([item.id]);
                 setShareOpen(true);
               }} onShowDetailsItem={showItemDetails} onSecurityItem={openItemSecurity} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} searchLoading={searchLoading} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} sortBy={searchFilters.sortBy} sortDirection={searchFilters.sortDirection} onSortChange={applyDriveSort} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}
@@ -1001,6 +1011,8 @@ export function DriveWorkbench({
       void refreshShares();
     }} open={shareOpen} palette={palette} policyLoadError={shareSettingsError} rootTitle={currentSpaceRootLabel} selectedItems={selectedItems} sourceItems={allKnownItems} themeMode={themeMode} workspaceId={workspaceId ?? undefined} workspaceSettings={shareSettings} />
       <DriveFilePreviewDialog
+        adjacentItems={filteredFiles.filter(canOpenFilePreview)}
+        onNavigate={(item) => { setSelected([item.id]); setPreviewState({ itemId: item.id, openWith: getDefaultFileOpenWith(item) }); }}
         item={previewItem}
         itemId={previewState?.itemId ?? null}
         locale={locale}

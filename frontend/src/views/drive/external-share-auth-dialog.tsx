@@ -1,5 +1,6 @@
 "use client";
 
+import { AuthCodeInput } from "@/components/auth/auth-code-input";
 import { Modal } from "@heroui/react";
 import { MotionPresence } from "@/components/ui/motion";
 import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
@@ -71,7 +72,7 @@ export function ShareAuthDialog({
   onMethodChange: (method: AuthMethod) => void;
   onResendCode: () => void;
   onSendCode: () => void;
-  onVerifyCode: () => void;
+  onVerifyCode: (value?: string) => void;
   open: boolean;
   palette: Palette;
   remaining: number;
@@ -242,15 +243,16 @@ export function ShareAuthDialog({
               <MotionPresence show={authMethod === "email" && stage === "code"} preset="surface">
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   <AuthField label={t("share.codePrompt")} palette={palette} required>
-                    <AuthInput
-                      autoComplete="one-time-code"
-                      inputMode="numeric"
+                    <AuthCodeInput
+                      ariaLabel={t("share.codePrompt")}
+                      busy={busy || verifyCooldownSeconds > 0}
+                      code={code}
+                      codeLength={6}
+                      digitsOnly
+                      invalid={emailStatus?.tone === "error"}
                       palette={palette}
-                      placeholder="000000"
-                      value={code}
-                      onChange={(event) =>
-                        onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))
-                      }
+                      onChange={onCodeChange}
+                      onComplete={(value) => { if (!busy && verifyCooldownSeconds <= 0) onVerifyCode(value); }}
                     />
                   </AuthField>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>

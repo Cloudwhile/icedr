@@ -98,6 +98,7 @@ function RootSegment({ current, label, onNavigate }: {
       aria-current={current ? "page" : undefined}
       className="drive-address-segment drive-address-root icedr-truncate"
       data-current={current ? "true" : undefined}
+      data-drive-drop-folder=""
       onClick={onNavigate}
     >
       <span className="icedr-truncate">{label}</span>
@@ -124,6 +125,7 @@ function BreadcrumbSegment({
         aria-current={current ? "page" : undefined}
         className="drive-address-segment icedr-truncate"
         data-current={current ? "true" : undefined}
+        data-drive-drop-folder={item.id}
         onClick={() => onNavigate(item.id)}
       >
         <span className="icedr-truncate">{item.name}</span>

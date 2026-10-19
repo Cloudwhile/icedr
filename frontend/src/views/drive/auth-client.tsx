@@ -5,13 +5,13 @@ import Link from "@/compat/link";
 import { usePathname, useRouter, useSearchParams } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { palettes, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
+import { type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { clearStoredAuthToken, confirmPasswordReset, defaultPublicSiteSettings, DriveApiError, exchangeOAuthCode, fetchAuthSettings, fetchCurrentUser, fetchIdentityConfig, fetchPublicSiteSettings, fetchSetupStatus, loginLocalUser, logoutLocalUser, registerLocalUser, requestPasswordReset, resolvePublicSiteName, startOAuthLogin, createPasskeyAuthenticationOptions, verifyPasskeyAuthentication, verifyPasswordReset, setStoredAuthToken, type AuthUser, type AuthSettings, type OAuthPublicProvider, type PublicSiteSettings } from "@/lib/drive-api";
 import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication } from "@simplewebauthn/browser";
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { normalizeAuthCodeValue } from "@/components/auth/auth-code-utils";
 import { AuthCodePanel, AuthCurrentUserRow, AuthFormTitleBlock, AuthPasswordStrengthHint } from "@/components/auth/auth-page-parts";
-import { LocalizedDriveShell } from "./drive-shell";
+import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LegalConsentDialog } from "./legal-consent-dialog";
 import { LegalFooter } from "./legal-footer";
 import { Surface } from "./drive-primitives";
@@ -49,7 +49,7 @@ export function AuthRoute({
 }) {
   return <Suspense fallback={null}>
       <LocalizedDriveShell>
-        {shellState => <AuthPage {...shellState} mode={mode} palette={palettes.light} />}
+        {shellState => <AuthPage {...shellState} mode={mode} />}
       </LocalizedDriveShell>
     </Suspense>;
 }
@@ -57,7 +57,7 @@ function AuthPage({
   locale,
   mode,
   palette,
-  setThemeMode: _setThemeMode,
+  setThemeMode,
   themeMode
 }: {
   locale: Locale;
@@ -515,7 +515,7 @@ function AuthPage({
     });
   };
   if (authRedirectReadyKey !== authRedirectKey && !oauthCode) return null;
-  return <div ref={pageRef} className="icedr-auth-page" data-auth-mode={mode} style={{
+  return <div ref={pageRef} className="icedr-auth-page" data-auth-mode={mode} data-theme={themeMode} style={{
     "--auth-canvas": palette.canvas,
     "--auth-surface": palette.surface1,
     "--auth-surface-2": palette.surface2,
@@ -528,9 +528,12 @@ function AuthPage({
     "--auth-tertiary": palette.tertiary,
     "--auth-accent": palette.primary,
     "--auth-accent-hover": palette.primaryHover,
+    "--auth-on-accent": palette.onPrimary,
     "--auth-accent-soft": palette.selected,
     "--auth-focus": palette.focusRing,
     "--auth-danger": palette.danger,
+    "--auth-shadow-card": palette.shadowCard,
+    "--auth-shadow-popover": palette.shadowPopover,
     WebkitOverflowScrolling: "touch",
     display: "flex",
     flexDirection: "column",
@@ -549,6 +552,7 @@ function AuthPage({
           <AuthVisualPanel brandLogo={brandLogo} mode={mode} siteName={siteName} />
           <section className="icedr-auth-panel">
             <div className="icedr-auth-panel-top">
+              <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
               <AuthModePrompt mode={mode} next={next} />
             </div>
             <div ref={formRef} className="icedr-auth-form-slot">

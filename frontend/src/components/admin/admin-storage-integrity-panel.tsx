@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { AppInput } from "@/components/ui/app-input";
 import { LocalIcon } from "@/components/ui/app-icon";
 import { AppSelect } from "@/components/ui/app-select";
@@ -41,6 +42,8 @@ export function AdminStorageIntegrityPanel({
   scope: AdminScope;
   timeZone: string;
 }) {
+  const [pendingConfirmation, setPendingConfirmation] = useState<{ kind: "start" | "retry"; input: CreateStorageIntegrityTaskInput; scopeKey: string; taskId: string | null } | null>(null);
+  const confirming = useRef(false);
   const t = useTranslations();
   const controller = useStorageIntegrity({
     onTaskIdChange,
@@ -118,10 +121,12 @@ export function AdminStorageIntegrityPanel({
 
   const startTask = () => {
     if (startDisabled) return;
-    void controller.start(formInput);
+    if (globalRun) setPendingConfirmation({ kind: "start", input: formInput, scopeKey: integrityScopeKey, taskId: null });
+    else void controller.start(formInput);
   };
 
   return (
+    <>
     <section
       aria-busy={
         controller.loadingSummary ||
@@ -341,7 +346,7 @@ export function AdminStorageIntegrityPanel({
               disabled={controller.operationPending}
               isPending={controller.operationPending}
               label={t("storageIntegrity.retryAll")}
-              onClick={() => void controller.retry()}
+              onClick={() => setPendingConfirmation({ kind: "retry", input: formInput, scopeKey: integrityScopeKey, taskId: controller.task?.id ?? null })}
               palette={palette}
               visual="surface"
             >
@@ -442,6 +447,27 @@ export function AdminStorageIntegrityPanel({
         />
       </section>
     </section>
+    <ConfirmationDialog
+      open={Boolean(pendingConfirmation)}
+      palette={palette}
+      tone="warning"
+      title={t(pendingConfirmation?.kind === "retry" ? "storageIntegrity.retryAll" : "storageIntegrity.start")}
+      description={t(pendingConfirmation?.kind === "retry" ? "storageIntegrity.retryConfirmDescription" : "storageIntegrity.startConfirmDescription")}
+      confirmLabel={t("storageIntegrity.confirmOperation")}
+      isPending={controller.operationPending}
+      onClose={() => setPendingConfirmation(null)}
+      onConfirm={() => {
+        if (!pendingConfirmation || confirming.current || controller.operationPending) return;
+        if (pendingConfirmation.scopeKey !== integrityScopeKey || (pendingConfirmation.kind === "retry" && pendingConfirmation.taskId !== controller.task?.id)) {
+          setPendingConfirmation(null);
+          return;
+        }
+        confirming.current = true;
+        const operation = pendingConfirmation.kind === "start" ? controller.start(pendingConfirmation.input) : controller.retry();
+        void operation.finally(() => { confirming.current = false; setPendingConfirmation(null); });
+      }}
+    />
+    </>
   );
 }
 

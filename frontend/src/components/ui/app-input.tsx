@@ -1,5 +1,7 @@
 "use client";
 
+import { PasswordField } from "./password-field";
+
 import { Input, TextArea } from "@heroui/react";
 import type { ComponentProps, CSSProperties } from "react";
 import { cn } from "./cn";
@@ -31,7 +33,14 @@ function fieldStyle(palette: Palette, invalid?: boolean): CSSProperties {
   } as CSSProperties;
 }
 
-export function AppInput({ className, invalid, palette, style, ...props }: AppInputProps) {
+export function AppInput(props: AppInputProps) {
+  if (props.type === "password") {
+    return <PasswordField disabled={props.disabled}>{(visible) => <InputField {...props} type={visible ? "text" : "password"} />}</PasswordField>;
+  }
+  return <InputField {...props} />;
+}
+
+function InputField({ className, invalid, palette, style, ...props }: AppInputProps) {
   return (
     <Input
       aria-invalid={invalid ? true : props["aria-invalid"]}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Input } from "@heroui/react";
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { DriveItemPreview } from "@/components/ui/drive-item-preview";
 import { useLocale, useTranslations } from "@/i18n/react";
@@ -35,6 +35,8 @@ export function DriveSearchBox({
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const [open, setOpen] = useState(false);
+  const listId = useId();
+  const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const trimmedQuery = query.trim();
   const visibleResults = results.slice(0, 6);
@@ -61,15 +63,38 @@ export function DriveSearchBox({
   }, [open]);
 
   return (
-    <div className="drive-search-shell" ref={shellRef} data-open={open ? "true" : undefined}>
+    <div className="drive-search-shell" ref={shellRef} data-open={open ? "true" : undefined} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }}>
       <div className="drive-search">
         <LocalIcon name="search" size={17} color={palette.subtle} />
         <Input
           aria-label={t("app.search")}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          aria-activedescendant={open && visibleResults.some((item) => item.id === activeResultId) ? `${listId}-${activeResultId}` : undefined}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              setOpen(true);
+              const index = visibleResults.findIndex((item) => item.id === activeResultId);
+              const next = index < 0 ? (event.key === "ArrowDown" ? 0 : visibleResults.length - 1) : (index + (event.key === "ArrowDown" ? 1 : -1) + visibleResults.length) % visibleResults.length;
+              setActiveResultId(visibleResults[next]?.id ?? null);
+            } else if (event.key === "Enter" && open) {
+              const item = visibleResults.find((result) => result.id === activeResultId);
+              if (item) { event.preventDefault(); onOpenResult(item); setOpen(false); }
+            } else if (event.key === "Escape") {
+              event.preventDefault(); setOpen(false); setActiveResultId(null);
+            }
+          }}
           placeholder={t("app.search")}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
+            setActiveResultId(null);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -109,11 +134,16 @@ export function DriveSearchBox({
               <span>{trimmedQuery ? t("search.suggestions") : t("search.quickAccess")}</span>
               <span>{loading ? t("search.loading") : t("search.resultCount", { count: resultCount })}</span>
             </div>
-            <div className="drive-search-result-list">
+            <div className="drive-search-result-list" id={listId} role="listbox" aria-label={t("search.suggestions")}>
               {visibleResults.length > 0 ? visibleResults.map((item) => (
                 <button
                   {...buttonTypeAttr}
                   aria-label={`${t("actions.open")} ${item.name}`}
+                  role="option"
+                  id={`${listId}-${item.id}`}
+                  aria-selected={activeResultId === item.id}
+                  tabIndex={-1}
+                  onPointerMove={() => setActiveResultId(item.id)}
                   className="drive-search-result-row"
                   key={item.id}
                   onClick={() => {
@@ -135,6 +165,12 @@ export function DriveSearchBox({
                 </div>
               )}
             </div>
+            {resultCount > visibleResults.length ? (
+              <ToolButton label={t("search.viewAll")} palette={palette} onClick={() => {
+                setOpen(false);
+                document.querySelector<HTMLElement>("[data-drive-item-id]")?.focus();
+              }}><LocalIcon name="arrow_right" size={17} /></ToolButton>
+            ) : null}
           </div>
         </div>
       ) : null}

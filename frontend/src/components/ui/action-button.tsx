@@ -52,11 +52,11 @@ export function ActionButton({
       style={{
         "--action-bg": primary ? `linear-gradient(180deg, ${palette.primary} 0%, ${palette.primaryHover} 100%)` : palette.surface1,
         "--action-border": primary ? palette.primaryHover : palette.hairline,
-        "--action-color": primary ? "#ffffff" : palette.ink,
+        "--action-color": primary ? palette.onPrimary : palette.ink,
         "--action-focus": palette.focusRing,
         "--action-hover-bg": primary ? palette.primaryHover : palette.surface2,
         "--action-hover-border": primary ? palette.primaryHover : palette.hairlineStrong,
-        "--action-shadow": primary ? "0 10px 22px rgba(79, 128, 255, 0.22)" : "0 1px 2px rgba(15, 23, 42, 0.035)",
+        "--action-shadow": primary ? palette.shadowPopover : palette.shadowCard,
       } as CSSProperties}
       type={type}
       variant="ghost"

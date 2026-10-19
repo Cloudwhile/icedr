@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminUnsavedChangesProvider } from "@/components/admin/unsaved-changes-provider";
+import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "@/compat/navigation";
@@ -50,7 +52,16 @@ const settingsTabs: UserSettingsNavigationItem[] = [
   { icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageSpace" },
 ];
 
-export function DriveSettingsWorkspace({
+export function DriveSettingsWorkspace(props: DriveSettingsWorkspaceProps) {
+  const t = useTranslations();
+  return <AdminUnsavedChangesProvider palette={props.palette} labels={{
+    cancel: t("admin.unsavedCancel"), description: t("admin.unsavedDescription"),
+    discard: t("admin.unsavedDiscard"), discardFailed: t("admin.unsavedDiscardFailed"),
+    save: t("admin.unsavedSave"), saveFailed: t("admin.unsavedSaveFailed"), title: t("settings.unsavedTitle"),
+  }}><DriveSettingsContent {...props} /></AdminUnsavedChangesProvider>;
+}
+
+function DriveSettingsContent({
   currentUser,
   languageOptions,
   locale,
@@ -69,9 +80,7 @@ export function DriveSettingsWorkspace({
   const searchParams = useSearchParams();
   const t = useTranslations();
   const requestedTab = parseSettingsTab(searchParams.get("tab"));
-  const [selectedUserTabState, setSelectedUserTabState] =
-    useState<UserSettingsTab>("profile");
-  const selectedUserTab = requestedTab ?? selectedUserTabState;
+  const selectedUserTab = requestedTab ?? "profile";
   const [methodStatus, setMethodStatus] =
     useState<AuthenticationMethodStatus | null>(null);
 
@@ -82,7 +91,6 @@ export function DriveSettingsWorkspace({
         if (cancelled) return;
         setMethodStatus(status);
         if (!status.compliant && !requestedTab) {
-          setSelectedUserTabState("security");
           router.replace("/settings?tab=security");
         }
       })
@@ -93,7 +101,6 @@ export function DriveSettingsWorkspace({
   }, [requestedTab, router]);
 
   const selectTab = (tab: UserSettingsTab) => {
-    setSelectedUserTabState(tab);
     const next = new URLSearchParams(searchParams);
     next.set("tab", tab);
     next.delete("oauthStepUpCode");
@@ -113,6 +120,18 @@ export function DriveSettingsWorkspace({
             return (
               <button
                 aria-selected={active}
+                aria-controls={`settings-panel-${tab.id}`}
+                id={`settings-tab-${tab.id}`}
+                tabIndex={active ? 0 : -1}
+                onKeyDown={(event) => {
+                  const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+                  if (!offset && event.key !== "Home" && event.key !== "End") return;
+                  event.preventDefault();
+                  const index = event.key === "Home" ? 0 : event.key === "End" ? settingsTabs.length - 1 : (settingsTabs.indexOf(tab) + offset + settingsTabs.length) % settingsTabs.length;
+                  const nextTab = settingsTabs[index].id;
+                  document.getElementById(`settings-tab-${nextTab}`)?.focus();
+                  selectTab(nextTab);
+                }}
                 className="drive-settings-tab"
                 data-active={active ? "true" : undefined}
                 key={tab.id}
@@ -127,7 +146,7 @@ export function DriveSettingsWorkspace({
           })}
         </div>
 
-        <div className="drive-settings-tab-panel" role="tabpanel">
+        <div className="drive-settings-tab-panel" role="tabpanel" id={`settings-panel-${selectedUserTab}`} aria-labelledby={`settings-tab-${selectedUserTab}`} tabIndex={0}>
           <header className="drive-settings-panel-heading">
             <h2>{t(getSettingsPanelTitleKey(selectedUserTab))}</h2>
             <span>{t(getSettingsTabDescriptionKey(selectedUserTab))}</span>
@@ -136,17 +155,11 @@ export function DriveSettingsWorkspace({
             <UserProfileSettings
               key={currentUser?.id ?? "guest"}
               currentUser={currentUser}
-              languageOptions={languageOptions}
               locale={locale}
               onLogout={onLogout}
               onUserUpdated={onUserUpdated}
               palette={palette}
-              setLocale={setLocale}
-              setThemePreference={setThemePreference}
-              setTimeZonePreference={setTimeZonePreference}
-              themePreference={themePreference}
               timeZone={timeZone}
-              timeZonePreference={timeZonePreference}
             />
           ) : null}
           {selectedUserTab === "preferences" ? (
@@ -179,30 +192,18 @@ export function DriveSettingsWorkspace({
 
 function UserProfileSettings({
   currentUser,
-  languageOptions,
   locale,
   onLogout,
   onUserUpdated,
   palette,
-  setLocale,
-  setThemePreference,
-  setTimeZonePreference,
-  themePreference,
   timeZone,
-  timeZonePreference,
 }: {
   currentUser: AuthUser | null;
-  languageOptions: LanguageOption[];
   locale: Locale;
   onLogout: () => void;
   onUserUpdated: (user: AuthUser) => void;
   palette: Palette;
-  setLocale: Dispatch<SetStateAction<Locale>>;
-  setThemePreference: Dispatch<SetStateAction<ThemePreference>>;
-  setTimeZonePreference: Dispatch<SetStateAction<string>>;
-  themePreference: ThemePreference;
   timeZone: string;
-  timeZonePreference: string;
 }) {
   const t = useTranslations();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -248,18 +249,25 @@ function UserProfileSettings({
       .catch(() => showAppToast({ title: t("app.operationFailed"), tone: "error" }))
       .finally(() => setAvatarSaving(false));
   };
-  const saveProfile = () => {
+  const saveProfile = async () => {
     const nextDisplayName = displayNameDraft.trim();
-    if (!currentUser || profileSaving || !nextDisplayName) return;
+    if (!currentUser || profileSaving || !nextDisplayName) throw new Error(t("admin.saveFailed"));
     setProfileSaving(true);
-    void updateCurrentUserProfile({ displayName: nextDisplayName })
-      .then((user) => {
-        onUserUpdated(user);
-        showAppToast({ title: t("settings.profileUpdated"), tone: "success" });
-      })
-      .catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" }))
-      .finally(() => setProfileSaving(false));
+    try {
+      const user = await updateCurrentUserProfile({ displayName: nextDisplayName });
+      onUserUpdated(user);
+      setDisplayNameDraft(user.displayName ?? "");
+      showAppToast({ title: t("settings.profileUpdated"), tone: "success" });
+    } finally {
+      setProfileSaving(false);
+    }
   };
+  useUnsavedChangesSection({
+    id: "user-profile",
+    isDirty: displayNameDraft.trim() !== (currentUser?.displayName ?? ""),
+    onSave: saveProfile,
+    onDiscard: () => setDisplayNameDraft(currentUser?.displayName ?? ""),
+  });
 
   return (
     <>
@@ -267,7 +275,7 @@ function UserProfileSettings({
         <div className="drive-settings-main-stack">
           <section className="drive-settings-main-column drive-settings-profile-card" aria-label={t("settings.personalInfo")}>
             <SettingsSectionHeader icon="user_avatar" title={t("settings.personalInfo")} trailing={(
-              <ToolButton disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={saveProfile} visual="surface">
+              <ToolButton disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="surface">
                 <LocalIcon name="save" size={16} />
               </ToolButton>
             )} />
@@ -318,18 +326,7 @@ function UserProfileSettings({
             </div>
           </section>
 
-          <PreferenceSettings
-            currentUser={currentUser}
-            languageOptions={languageOptions}
-            locale={locale}
-            onUserUpdated={onUserUpdated}
-            palette={palette}
-            setLocale={setLocale}
-            setThemePreference={setThemePreference}
-            setTimeZonePreference={setTimeZonePreference}
-            themePreference={themePreference}
-            timeZonePreference={timeZonePreference}
-          />
+
 
         </div>
 
@@ -410,11 +407,17 @@ function PreferenceSettings({
 }) {
   const t = useTranslations();
   const systemTimeZone = useMemo(() => resolveSystemTimeZoneLabel(), []);
-  const persistPreference = (input: Parameters<typeof updateCurrentUserProfile>[0]) => {
+  const [preferencePending, setPreferencePending] = useState(false);
+  const persistPreference = (input: Parameters<typeof updateCurrentUserProfile>[0], rollback: () => void) => {
     if (!currentUser) return;
+    setPreferencePending(true);
     void updateCurrentUserProfile(input)
       .then(onUserUpdated)
-      .catch(() => undefined);
+      .catch(() => {
+        rollback();
+        showAppToast({ title: t("settings.preferenceSaveFailed"), tone: "error" });
+      })
+      .finally(() => setPreferencePending(false));
   };
 
   return (
@@ -422,30 +425,33 @@ function PreferenceSettings({
       <SettingsSectionHeader icon="settings" title={t("settings.languageRegion")} />
       <div className="drive-settings-preference-grid">
         <SettingsSelectRow
+          disabled={preferencePending}
           label={t("settings.languagePreference")}
           onChange={(value) => {
             setLocale(value as Locale);
-            persistPreference({ locale: value });
+            persistPreference({ locale: value }, () => setLocale(locale));
           }}
           options={languageOptions}
           palette={palette}
           value={locale}
         />
         <SettingsSelectRow
+          disabled={preferencePending}
           label={t("settings.timezonePreference")}
           onChange={(value) => {
             setTimeZonePreference(value);
-            persistPreference({ timezone: value });
+            persistPreference({ timezone: value }, () => setTimeZonePreference(timeZonePreference));
           }}
           options={getTimeZoneOptions(t, systemTimeZone)}
           palette={palette}
           value={timeZonePreference}
         />
         <SettingsSelectRow
+          disabled={preferencePending}
           label={t("settings.themePreference")}
           onChange={(value) => {
             setThemePreference(value as ThemePreference);
-            persistPreference({ theme: value });
+            persistPreference({ theme: value }, () => setThemePreference(themePreference));
           }}
           options={[
             { label: t("settings.themeSystem"), value: "system" },
@@ -529,12 +535,14 @@ function StorageSettingsPanel({
 }
 
 function SettingsSelectRow({
+  disabled,
   label,
   onChange,
   options,
   palette,
   value,
 }: {
+  disabled?: boolean;
   label: string;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
@@ -544,7 +552,7 @@ function SettingsSelectRow({
   return (
     <div className="drive-settings-option-row">
       <span className="drive-settings-label">{label}</span>
-      <AppSelect aria-label={label} onChange={(event) => onChange(event.target.value)} options={options} palette={palette} value={value} />
+      <AppSelect disabled={disabled} aria-label={label} onChange={(event) => onChange(event.target.value)} options={options} palette={palette} value={value} />
     </div>
   );
 }

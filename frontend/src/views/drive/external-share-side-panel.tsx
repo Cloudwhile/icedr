@@ -20,7 +20,6 @@ export function ExternalShareSidePanel({
   expiresLabel,
   onStartAccess,
   registeredShare,
-  selectedEmail,
   totalItems,
   totalSize,
   verified,
@@ -30,7 +29,6 @@ export function ExternalShareSidePanel({
   expiresLabel: string;
   onStartAccess?: () => void;
   registeredShare: RegisteredShare;
-  selectedEmail: string;
   totalItems: number;
   totalSize: string;
   verified: boolean;
@@ -50,21 +48,6 @@ export function ExternalShareSidePanel({
           <span>{t("share.authenticate")}</span>
         </div>
         <p>{verified ? t("share.verifiedAccess") : t("share.verificationHint")}</p>
-        <div className="external-share-auth-fields" aria-hidden="true">
-          <div className="external-share-auth-field">
-            <span>{t("auth.email")}</span>
-            <strong className="icedr-truncate">{selectedEmail || t("share.emailPlaceholder")}</strong>
-          </div>
-          <div className="external-share-auth-code-row">
-            <div className="external-share-auth-field">
-              <span>{t("share.verificationCode")}</span>
-              <strong>{verified ? "******" : "000000"}</strong>
-            </div>
-            <button className="external-share-auth-secondary" disabled type="button">
-              {t("share.sendCode")}
-            </button>
-          </div>
-        </div>
         <button
           className="external-share-auth-primary"
           disabled={!onStartAccess}

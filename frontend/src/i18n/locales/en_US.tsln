@@ -1672,3 +1672,28 @@ language: "ENGLISH"
 "transfers.uploadSettings": "Upload settings"
 "transfers.uploadSpeedLimit": "Upload speed limit"
 "transfers.uploadQueue": "Upload queue"
+
+"preview.unsavedTitle": "Discard unsaved changes?"
+"preview.unsavedDescription": "Closing the preview will discard your unsaved file content."
+
+"auth.showPassword": "Show password"
+"auth.hidePassword": "Hide password"
+
+"settings.unsavedTitle": "Unsaved settings"
+
+"settings.preferenceSaveFailed": "Could not save preferences. Your previous setting has been restored."
+
+"audit.tableLabel": "Audit records"
+
+"search.viewAll": "View all search results"
+
+"preview.contentLoadFailed": "Could not load file content. Reopen the preview to try again."
+
+"storageIntegrity.confirmOperation": "Confirm operation"
+"storageIntegrity.startConfirmDescription": "This checks storage objects across all workspaces in the selected scope and may incur substantial read traffic and storage request costs. Continue?"
+"storageIntegrity.retryConfirmDescription": "This reprocesses all retryable findings in the current task and may incur additional read traffic and storage request costs. Continue?"
+
+"preview.previous": "Previous file"
+"preview.next": "Next file"
+
+"files.invalidMoveTarget": "A folder cannot be moved into itself or one of its subfolders."

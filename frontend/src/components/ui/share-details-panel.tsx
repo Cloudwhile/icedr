@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { formatFileSize, type Locale, type Palette } from "@/features/file/model";
+import { createUiThemeVariables } from "@/features/file/theme-tokens";
 import {
   fetchRegisteredShareManagement,
   type RegisteredShare,
@@ -65,11 +66,7 @@ export function ShareDetailsPanel({
     <aside
       className="share-details-panel"
       aria-label={t("links.viewDetails")}
-      style={{
-        "--hairline": palette.hairline,
-        "--subtle": palette.subtle,
-        "--surface-1": palette.surface1,
-      } as CSSProperties}
+      style={createUiThemeVariables(palette) as CSSProperties}
     >
       <header className="share-details-header">
         <span className="share-details-heading">

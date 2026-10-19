@@ -1,12 +1,14 @@
-import type { InputHTMLAttributes, ReactNode } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { palettes, type DriveItem } from "@/features/file/model";
 import { ShareAuthDialog } from "./external-share-auth-dialog";
 
-vi.mock("@heroui/react", () => {
+vi.mock("@heroui/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@heroui/react")>();
   const Part = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
+    ...actual,
     Modal: {
       Backdrop: ({ children, isOpen }: { children: ReactNode; isOpen: boolean }) =>
         isOpen ? <div>{children}</div> : null,
@@ -138,7 +140,11 @@ const commonProps = {
   verifyCooldownSeconds: 0,
 };
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+});
+
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("ShareAuthDialog email verification", () => {
   it("allows a signed-out visitor to choose account sign-in", () => {
@@ -257,31 +263,21 @@ describe("ShareAuthDialog email verification", () => {
     expect(onSendCode).toHaveBeenCalledOnce();
   });
 
-  it("normalizes verification code input and submits a complete code", () => {
+  it("normalizes a pasted code and automatically submits the completed value once", async () => {
     const onCodeChange = vi.fn();
     const onVerifyCode = vi.fn();
-
-    render(
-      <ShareAuthDialog
-        {...commonProps}
-        authMethod="email"
-        code="123456"
-        email="visitor@example.com"
-        onCodeChange={onCodeChange}
-        onEmailChange={vi.fn()}
-        onMethodChange={vi.fn()}
-        onSendCode={vi.fn()}
-        onVerifyCode={onVerifyCode}
-        stage="code"
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("share.codePrompt"), {
-      target: { value: "12a34567" },
+    function Harness() {
+      const [code, setCode] = useState("");
+      return <ShareAuthDialog {...commonProps} authMethod="email" code={code} email="visitor@example.com"
+        onCodeChange={(value) => { onCodeChange(value); setCode(value); }} onEmailChange={vi.fn()}
+        onMethodChange={vi.fn()} onSendCode={vi.fn()} onVerifyCode={onVerifyCode} stage="code" />;
+    }
+    render(<Harness />);
+    fireEvent.paste(screen.getByLabelText("share.codePrompt"), {
+      clipboardData: { getData: () => "12a34567" },
     });
     expect(onCodeChange).toHaveBeenCalledWith("123456");
-
-    fireEvent.click(screen.getByRole("button", { name: "share.verifyCode" }));
+    await waitFor(() => expect(onVerifyCode).toHaveBeenCalledWith("123456"));
     expect(onVerifyCode).toHaveBeenCalledOnce();
   });
 

@@ -152,6 +152,8 @@ describe("AdminStorageIntegrityPanel", () => {
     );
     const { props } = renderPanel({ requestedTaskId: "task-1" });
     fireEvent.click(await screen.findByRole("button", { name: "storageIntegrity.retryAll" }));
+    expect(retryStorageIntegrityTask).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "storageIntegrity.confirmOperation" }));
     await waitFor(() => expect(retryStorageIntegrityTask).toHaveBeenCalledWith("task-1", {}));
     expect(props.onTaskIdChange).toHaveBeenCalledWith("task-retried");
   });
@@ -219,6 +221,8 @@ describe("AdminStorageIntegrityPanel", () => {
       }),
     );
     fireEvent.click(start);
+    expect(createStorageIntegrityTask).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "storageIntegrity.confirmOperation" }));
 
     await waitFor(() => expect(createStorageIntegrityTask).toHaveBeenCalled());
     expect(createStorageIntegrityTask).toHaveBeenCalledWith(
@@ -265,6 +269,8 @@ describe("AdminStorageIntegrityPanel", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "storageIntegrity.retryAll" }),
     );
+    expect(retryStorageIntegrityTask).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "storageIntegrity.confirmOperation" }));
     await waitFor(() =>
       expect(retryStorageIntegrityTask).toHaveBeenCalledWith("task-1", {}),
     );

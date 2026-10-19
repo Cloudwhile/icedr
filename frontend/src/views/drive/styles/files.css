@@ -894,3 +894,9 @@
     animation: none;
   }
 }
+
+[data-drive-drop-target] {
+  outline: 2px dashed var(--ui-accent);
+  outline-offset: -3px;
+  background: var(--ui-selection);
+}

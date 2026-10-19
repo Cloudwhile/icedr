@@ -31,6 +31,16 @@ function createKeyboardEvent({
 }
 
 describe("drive files keyboard helpers", () => {
+  it("moves ordinary arrow focus through the virtual focus handler without toggling selection", () => {
+    const currentTarget = document.createElement("div");
+    const onSelect = vi.fn(); const focusItem = vi.fn();
+    const event = createKeyboardEvent({ currentTarget, key: "ArrowDown" });
+    handleDriveItemKeyDown(event, { id: "one" } as DriveItem, false, vi.fn(), vi.fn(), onSelect, () => "two", vi.fn(), focusItem);
+    expect(focusItem).toHaveBeenCalledWith("two", currentTarget);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+
   it("keeps the anchor while extending and contracting a range", () => {
     const itemIds = ["one", "two", "three"];
 

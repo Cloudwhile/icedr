@@ -473,6 +473,9 @@ export function AdminAuditPanel({
           <div
             className="drive-module-table drive-audit-table"
             role="table"
+            aria-label={t("audit.tableLabel")}
+            aria-rowcount={data ? data.total + 1 : undefined}
+            aria-colcount={7}
           >
             {initialLoading && !data ? (
               <LdrsLoadingState
@@ -589,21 +592,22 @@ function AuditTable({
 
   return (
     <>
-      <div className="drive-module-table-head" aria-hidden="true" role="row">
-        <span>{t("files.modified")}</span>
-        <span>{t("audit.actor")}</span>
-        <span>{t("audit.actionType")}</span>
-        <span>{t("audit.resource")}</span>
-        <span>{t("audit.actionContent")}</span>
-        <span>{t("audit.ipAddress")}</span>
-        <span>{t("audit.result")}</span>
+      <div className="drive-module-table-head" role="row" aria-rowindex={1}>
+        <span role="columnheader">{t("files.modified")}</span>
+        <span role="columnheader">{t("audit.actor")}</span>
+        <span role="columnheader">{t("audit.actionType")}</span>
+        <span role="columnheader">{t("audit.resource")}</span>
+        <span role="columnheader">{t("audit.actionContent")}</span>
+        <span role="columnheader">{t("audit.ipAddress")}</span>
+        <span role="columnheader">{t("audit.result")}</span>
       </div>
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <AuditRow
           key={row.id}
           locale={locale}
           palette={palette}
           row={row}
+          rowIndex={(data?.offset ?? 0) + index + 2}
           timeZone={timeZone}
           t={t}
         />
@@ -616,12 +620,14 @@ function AuditRow({
   locale,
   palette,
   row,
+  rowIndex,
   timeZone,
   t,
 }: {
   locale: Locale;
   palette: Palette;
   row: AdminAuditEventResponse;
+  rowIndex: number;
   timeZone?: string;
   t: ReturnType<typeof useTranslations>;
 }) {
@@ -638,16 +644,17 @@ function AuditRow({
       className="drive-module-table-row drive-audit-row"
       data-result={row.result}
       role="row"
+      aria-rowindex={rowIndex}
     >
       <time
-        className="drive-audit-time-cell"
+        role="cell" className="drive-audit-time-cell"
         dateTime={row.createdAt}
         title={formatAbsoluteDate(row.createdAt, locale, timeZone)}
       >
         <span className="icedr-truncate">{timeParts.date}</span>
         <span className="icedr-truncate">{timeParts.time}</span>
       </time>
-      <div className="drive-audit-actor-cell">
+      <div role="cell" className="drive-audit-actor-cell">
         <span
           className="drive-audit-actor-avatar"
           data-actor={row.actor}
@@ -669,7 +676,7 @@ function AuditRow({
         </div>
       </div>
       <span
-        className="drive-audit-action-cell"
+        role="cell" className="drive-audit-action-cell"
         data-tone={failed ? "risk" : getActionTone(row.action)}
       >
         <span className="drive-audit-action-icon" aria-hidden="true">
@@ -678,7 +685,7 @@ function AuditRow({
         <span className="icedr-truncate">{actionLabel}</span>
       </span>
       <span
-        className="drive-audit-resource-cell"
+        role="cell" className="drive-audit-resource-cell"
         title={`${resourceLabel} / ${resourceName}`}
       >
         <span className="drive-audit-object-cell icedr-truncate">
@@ -688,11 +695,11 @@ function AuditRow({
           {resourceName}
         </span>
       </span>
-      <span className="drive-audit-content-cell icedr-truncate" title={content}>
+      <span role="cell" className="drive-audit-content-cell icedr-truncate" title={content}>
         {content}
       </span>
       <span
-        className="drive-audit-ip-cell"
+        role="cell" className="drive-audit-ip-cell"
         data-empty={row.ipAddress ? undefined : "true"}
         title={row.ipAddress ?? "--"}
       >
@@ -700,7 +707,7 @@ function AuditRow({
         <span className="icedr-truncate">{row.ipAddress ?? "--"}</span>
       </span>
       <StatusPill
-        className="drive-audit-result-pill"
+        role="cell" className="drive-audit-result-pill"
         palette={palette}
         tone={failed ? "risk" : "secure"}
       >

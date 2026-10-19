@@ -20,6 +20,7 @@ export function createUiThemeVariables(palette: Palette): UiThemeVariables {
     "--ui-border-strong": palette.hairlineStrong,
     "--ui-accent": palette.primary,
     "--ui-accent-hover": palette.primaryHover,
+    "--ui-on-accent": palette.onPrimary,
     "--ui-selection": palette.selected,
     "--ui-focus-ring": palette.focusRing,
     "--ui-danger": palette.danger,

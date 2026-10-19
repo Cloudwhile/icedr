@@ -77,11 +77,11 @@ export function AuthPrimaryButton({
   const buttonDisabled = disabled || isDisabled || busy;
   const secondary = variant === "secondary";
   return <button type={type} disabled={buttonDisabled} aria-busy={busy} data-busy={busy ? "true" : undefined} data-disabled={buttonDisabled ? "true" : undefined} data-variant={variant} className="icedr-auth-primary-button" onClick={onClick ?? onPress} style={{
-    "--auth-primary-bg": secondary ? palette.surface1 : "linear-gradient(180deg, #376cff 0%, #2355ee 100%)",
-    "--auth-primary-border": secondary ? palette.hairlineStrong : "#2f65ff",
+    "--auth-primary-bg": secondary ? palette.surface1 : `linear-gradient(180deg, ${palette.primary} 0%, ${palette.primaryHover} 100%)`,
+    "--auth-primary-border": secondary ? palette.hairlineStrong : palette.primaryHover,
     "--auth-primary-focus": palette.focusRing,
-    "--auth-primary-hover": secondary ? palette.surface2 : "linear-gradient(180deg, #4778ff 0%, #2b5df3 100%)",
-    "--auth-primary-text": secondary ? palette.ink : "#ffffff"
+    "--auth-primary-hover": secondary ? palette.surface2 : palette.primaryHover,
+    "--auth-primary-text": secondary ? palette.ink : palette.onPrimary
   } as React.CSSProperties}>
       <div className="icedr-auth-button-content">
         {busy ? <AuthButtonLoader /> : null}

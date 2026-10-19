@@ -1,6 +1,6 @@
 "use client";
 
-import { InputOTP } from "@heroui/react";
+import { AuthCodeInput } from "./auth-code-input";
 import type { CSSProperties } from "react";
 import { useTranslations } from "@/i18n/react";
 import type { AuthUser } from "@/lib/drive-api";
@@ -17,7 +17,6 @@ export type AuthWorkspaceCopy = {
 };
 
 const defaultAuthCodeLength = 6;
-const authCodePattern = "[A-Za-z0-9]*";
 
 export function AuthFormTitleBlock({
   authCopy,
@@ -143,82 +142,6 @@ export function AuthCodePanel({
   );
 }
 
-function AuthCodeInput({
-  ariaLabel,
-  busy,
-  code,
-  codeLength,
-  invalid,
-  onChange,
-  onComplete,
-  palette,
-}: {
-  ariaLabel: string;
-  busy: boolean;
-  code: string;
-  codeLength: number;
-  invalid?: boolean;
-  onChange: (value: string) => void;
-  onComplete?: (value: string) => void;
-  palette: Palette;
-}) {
-  const normalizedCode = normalizeAuthCodeValue(code, codeLength);
-  const splitIndex = Math.ceil(codeLength / 2);
-  const slotIndexes = Array.from({ length: codeLength }, (_, index) => index);
-  const firstGroup = slotIndexes.slice(0, splitIndex);
-  const secondGroup = slotIndexes.slice(splitIndex);
-
-  const handleChange = (value: string) => {
-    onChange(normalizeAuthCodeValue(value, codeLength));
-  };
-
-  const handleComplete = (value: string) => {
-    const next = normalizeAuthCodeValue(value, codeLength);
-    if (next.length === codeLength) onComplete?.(next);
-  };
-
-  return (
-    <InputOTP
-      aria-label={ariaLabel}
-      className="icedr-auth-otp"
-      inputMode="text"
-      isDisabled={busy}
-      isInvalid={invalid}
-      maxLength={codeLength}
-      name="code"
-      pasteTransformer={value => normalizeAuthCodeValue(value, codeLength)}
-      pattern={authCodePattern}
-      textAlign="center"
-      value={normalizedCode}
-      variant="secondary"
-      onChange={handleChange}
-      onComplete={handleComplete}
-      style={{
-        "--auth-otp-bg": palette.surface1,
-        "--auth-otp-border": palette.hairlineStrong,
-        "--auth-otp-filled": palette.selected,
-        "--auth-otp-focus": palette.primary,
-        "--auth-otp-focus-ring": palette.focusRing,
-        "--auth-otp-ink": palette.ink,
-        "--auth-otp-muted": palette.tertiary,
-      } as CSSProperties}
-    >
-      <InputOTP.Group className="icedr-auth-otp-group">
-        {firstGroup.map(index => (
-          <InputOTP.Slot key={index} className="icedr-auth-otp-slot" index={index} />
-        ))}
-      </InputOTP.Group>
-      {secondGroup.length > 0 ? <InputOTP.Separator className="icedr-auth-otp-separator" /> : null}
-      {secondGroup.length > 0 ? (
-        <InputOTP.Group className="icedr-auth-otp-group">
-          {secondGroup.map(index => (
-            <InputOTP.Slot key={index} className="icedr-auth-otp-slot" index={index} />
-          ))}
-        </InputOTP.Group>
-      ) : null}
-    </InputOTP>
-  );
-}
 
 export function AuthPasswordStrengthHint({
   palette,

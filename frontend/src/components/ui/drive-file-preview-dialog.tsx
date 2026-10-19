@@ -2,7 +2,7 @@
 
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { LoadingSpinner } from "@/components/common/ui/loading-state";
 import { DrivePreviewMetadataPanel, type PreviewMediaMetadata } from "./drive-preview-metadata-panel";
 import { AppDialogShell } from "./app-dialog-shell";
@@ -48,7 +48,10 @@ import {
   getPreviewStatusMessageKey,
   getPreviewTitleMessageKey,
 } from "@/features/file/preview-status";
-import { fetchFileNode, fetchFileNodeContent, updateFileNodeContent } from "@/lib/drive-api";
+import { fetchFileNode } from "@/lib/drive-api";
+
+import { ConfirmationDialog } from "./confirmation-dialog";
+import { usePreviewTextEditor, type PreviewEditStatus } from "./use-preview-text-editor";
 
 const mediaDetailsPreferenceKey = "icedr.preview.mediaDetailsOpen";
 
@@ -58,6 +61,8 @@ export type DriveFilePreviewDialogProps = {
   locale: Locale;
   onClose: () => void;
   onSaved?: () => void;
+  adjacentItems?: DriveItem[];
+  onNavigate?: (item: DriveItem) => void;
   openWith?: FileOpenWithApp | null;
   open: boolean;
   palette: Palette;
@@ -70,11 +75,32 @@ export function DriveFilePreviewDialog({
   locale,
   onClose,
   onSaved,
+  adjacentItems = [],
+  onNavigate,
   openWith,
   open,
   palette,
   workspaceId,
 }: DriveFilePreviewDialogProps) {
+  const [editStatus, setEditStatus] = useState<PreviewEditStatus>({ dirty: false, pending: false });
+  const [confirmClose, setConfirmClose] = useState(false);
+  const pendingLeave = useRef<() => void>(onClose);
+  const requestLeave = (action: () => void) => {
+    if (editStatus.pending) return;
+    pendingLeave.current = action;
+    if (editStatus.dirty) setConfirmClose(true);
+    else action();
+  };
+  const requestClose = () => requestLeave(onClose);
+  const currentIndex = adjacentItems.findIndex((candidate) => candidate.id === (item?.id ?? itemId));
+  const previousItem = currentIndex > 0 ? adjacentItems[currentIndex - 1] : undefined;
+  const nextItem = currentIndex >= 0 ? adjacentItems[currentIndex + 1] : undefined;
+  const navigate = (target: DriveItem | undefined) => {
+    if (target && onNavigate) requestLeave(() => {
+      setEditStatus({ dirty: false, pending: false });
+      onNavigate(target);
+    });
+  };
   const t = useTranslations();
   const timeZone = useTimeZone();
   const targetItemId = item?.id ?? itemId ?? null;
@@ -150,11 +176,12 @@ export function DriveFilePreviewDialog({
   if (activeItem && !previewAvailable) return null;
 
   return (
+    <>
     <AppDialogShell
       className={cn("icedr-file-preview-dialog", workspacePreview && "icedr-file-preview-dialog-media")}
       containerClassName={workspacePreview ? "icedr-dialog-container-media" : undefined}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
+        if (!nextOpen) requestClose();
       }}
       open={open}
       palette={palette}
@@ -166,6 +193,14 @@ export function DriveFilePreviewDialog({
       } as CSSProperties}
     >
       <div
+        onKeyDown={(event) => {
+          if (event.defaultPrevented || event.nativeEvent.isComposing || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || confirmClose) return;
+          if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable=true], video, audio, [role=slider]")) return;
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            navigate(event.key === "ArrowLeft" ? previousItem : nextItem);
+          }
+        }}
         className="icedr-file-preview-frame"
         style={
           {
@@ -184,7 +219,7 @@ export function DriveFilePreviewDialog({
         <header className="icedr-file-preview-header">
           <div className="icedr-file-preview-identity">
             {workspacePreview ? (
-              <button className="icedr-file-preview-back" type="button" aria-label={t("preview.back")} onClick={onClose}>
+              <button className="icedr-file-preview-back" type="button" aria-label={t("preview.back")} onClick={requestClose}>
                 <LocalIcon name="arrow_left" size={18} />
               </button>
             ) : null}
@@ -206,13 +241,17 @@ export function DriveFilePreviewDialog({
           </div>
 
           <div className="icedr-file-preview-actions">
+            {onNavigate && currentIndex >= 0 ? <>
+              <ToolButton disabled={!previousItem || editStatus.pending} label={t("preview.previous")} palette={palette} onClick={() => navigate(previousItem)} visual="surface"><LocalIcon name="arrow_left" size={17} /></ToolButton>
+              <ToolButton disabled={!nextItem || editStatus.pending} label={t("preview.next")} palette={palette} onClick={() => navigate(nextItem)} visual="surface"><LocalIcon name="arrow_right" size={17} /></ToolButton>
+            </> : null}
             <ToolButton disabled={!activeItem} label={t("actions.download")} palette={palette} onClick={downloadActiveItem} tone="accent" visual="surface">
               <LocalIcon name="download" size={17} />
             </ToolButton>
             <ToolButton disabled={!activeItem} label={t("actions.copyLink")} palette={palette} onClick={copyActivePreviewLink} visual="surface">
               <LocalIcon name="share2" size={17} />
             </ToolButton>
-            <ToolButton label={t("app.close")} palette={palette} onClick={onClose} visual="surface">
+            <ToolButton label={t("app.close")} palette={palette} onClick={requestClose} visual="surface">
               <LocalIcon name="cross" size={17} />
             </ToolButton>
           </div>
@@ -233,6 +272,7 @@ export function DriveFilePreviewDialog({
                   item={activeItem}
                   locale={locale}
                   onSaved={onSaved}
+                  onEditStatusChange={setEditStatus}
                   onMediaDetailsClose={() => updateMediaDetailsOpen(false)}
                   onMediaDetailsOpen={() => updateMediaDetailsOpen(true)}
                   openWith={openWith ?? null}
@@ -257,6 +297,17 @@ export function DriveFilePreviewDialog({
         </div>
       </div>
     </AppDialogShell>
+    <ConfirmationDialog
+      open={open && confirmClose}
+      palette={palette}
+      title={t("preview.unsavedTitle")}
+      description={t("preview.unsavedDescription")}
+      confirmLabel={t("admin.unsavedDiscard")}
+      tone="warning"
+      onClose={() => setConfirmClose(false)}
+      onConfirm={() => { setConfirmClose(false); pendingLeave.current(); }}
+    />
+    </>
   );
 }
 
@@ -282,6 +333,7 @@ function DriveFilePreviewContent({
   onMediaDetailsClose,
   onMediaDetailsOpen,
   onSaved,
+  onEditStatusChange,
   openWith: requestedOpenWith,
   palette,
   previewIntent,
@@ -294,6 +346,9 @@ function DriveFilePreviewContent({
   onMediaDetailsClose: () => void;
   onMediaDetailsOpen: () => void;
   onSaved?: () => void;
+  adjacentItems?: DriveItem[];
+  onNavigate?: (item: DriveItem) => void;
+  onEditStatusChange: (status: PreviewEditStatus) => void;
   openWith: FileOpenWithApp | null;
   palette: Palette;
   previewIntent: PreviewIntentResponse | null;
@@ -316,7 +371,6 @@ function DriveFilePreviewContent({
   const statusLabel = t(getPreviewStatusMessageKey(previewIntent, previewCapability));
   const previewTitle = t(getPreviewTitleMessageKey(previewIntent, previewCapability));
   const openWith = resolveFileOpenWith(previewItem, requestedOpenWith);
-  const [textState, setTextState] = useState<{ content: string; itemId: string | null }>({ content: "", itemId: null });
   const [mediaState, setMediaState] = useState<{ error: boolean; itemId: string | null; openWith: string; url: string | null }>({
     error: false,
     itemId: null,
@@ -336,29 +390,13 @@ function DriveFilePreviewContent({
   const canEditText = isTextEditableFile(previewItem);
   const canPreviewDocument = isOfficePreviewFile(previewItem);
   const isMarkdown = openWith === "markdown" && isMarkdownFile(previewItem);
-  const textContent = textState.itemId === previewItem.id ? textState.content : "";
-  const textLoading = canEditText && textState.itemId !== previewItem.id;
+  const editor = usePreviewTextEditor(previewItem.id, canEditText, onEditStatusChange, onSaved);
   const mediaUrl = mediaState.itemId === previewItem.id && mediaState.openWith === openWith ? mediaState.url : null;
   const mediaError = mediaState.itemId === previewItem.id && mediaState.openWith === openWith && mediaState.error;
   const mediaMetadata =
     mediaMetadataState.itemId === previewItem.id && mediaMetadataState.openWith === openWith ? mediaMetadataState : {};
   const documentHtml = documentState.itemId === previewItem.id && documentState.openWith === openWith ? documentState.html : "";
   const documentUrl = documentState.itemId === previewItem.id && documentState.openWith === openWith ? documentState.url : null;
-
-  useEffect(() => {
-    if (!canEditText) return;
-    let cancelled = false;
-    void fetchFileNodeContent(previewItem.id)
-      .then((content) => {
-        if (!cancelled) setTextState({ content: content.content, itemId: previewItem.id });
-      })
-      .catch(() => {
-        if (!cancelled) setTextState({ content: "", itemId: previewItem.id });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [canEditText, previewItem.id]);
 
   useEffect(() => {
     if (!["image", "video"].includes(openWith)) return;
@@ -416,28 +454,22 @@ function DriveFilePreviewContent({
     };
   }, [canPreviewDocument, extension, openWith, previewItem, workspaceId]);
 
-  const saveTextContent = () => {
-    void updateFileNodeContent(previewItem.id, textContent)
-      .then((content) => {
-        setTextState({ content: content.content, itemId: previewItem.id });
-        showAppToast({ title: t("preview.saved"), tone: "success" });
-        onSaved?.();
-      })
-      .catch(() => showAppToast({ title: t("preview.saveFailed"), tone: "error" }));
-  };
-
   const previewNode =
     openWith === "image" && isImagePreviewFile(previewItem) ? (
       <ImagePreview error={mediaError} errorLabel={t("preview.notConfiguredHint")} imageUrl={mediaUrl} item={previewItem} loadingLabel={t("app.loading")} onMetadata={(metadata) => setMediaMetadataState({ ...metadata, itemId: previewItem.id, openWith })} palette={palette} />
     ) : openWith === "video" && isVideoPreviewFile(previewItem) ? (
       <VideoPreview error={mediaError} errorLabel={t("preview.notConfiguredHint")} item={previewItem} loadingLabel={t("app.loading")} onMetadata={(metadata) => setMediaMetadataState({ ...metadata, itemId: previewItem.id, openWith })} palette={palette} videoUrl={mediaUrl} />
+    ) : canEditText && editor.failed ? (
+      <PreviewStatusPane item={previewItem} palette={palette} title={t("preview.contentLoadFailed")} message={t("preview.contentLoadFailed")} />
     ) : canEditText ? (
       <TextPreviewEditor
-        content={textContent}
+        content={editor.content}
         isMarkdown={isMarkdown}
-        loading={textLoading}
-        onChange={(content) => setTextState({ content, itemId: previewItem.id })}
-        onSave={saveTextContent}
+        loading={editor.loading}
+        pending={editor.pending}
+        dirty={editor.dirty}
+        onChange={editor.change}
+        onSave={() => void editor.save()}
         palette={palette}
         t={t}
       />
@@ -815,6 +847,8 @@ function TextPreviewEditor({
   content,
   isMarkdown,
   loading,
+  pending,
+  dirty,
   onChange,
   onSave,
   palette,
@@ -823,6 +857,8 @@ function TextPreviewEditor({
   content: string;
   isMarkdown: boolean;
   loading: boolean;
+  pending: boolean;
+  dirty: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
   palette: Palette;
@@ -851,7 +887,7 @@ function TextPreviewEditor({
           <span className="icedr-preview-editor-title">
             {isMarkdown ? t("preview.editor") : t("preview.plainText")}
           </span>
-          <ToolButton label={t("preview.save")} palette={palette} onClick={onSave}>
+          <ToolButton disabled={loading || !dirty} isPending={pending} label={t("preview.save")} palette={palette} onClick={onSave}>
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </div>
@@ -859,6 +895,7 @@ function TextPreviewEditor({
           aria-label={t("preview.editor")}
           className="icedr-preview-editor-textarea"
           onChange={(event) => onChange(event.target.value)}
+          disabled={loading || pending}
           spellCheck={false}
           value={loading ? "" : content}
         />

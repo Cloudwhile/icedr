@@ -102,7 +102,7 @@ N10:  使用Playwright确认UI设计是否合格。
 ## 本会话：UI 分析报告修复（2026-10-16，已恢复）
 
 - 目标：阅读根目录 `UI-ANALYSIS-REPORT.md`，修复其中仍可复现的 UI/UX 问题，并避免为实现细节堆叠低价值测试。
-- 状态：用户曾在第一批改动尚未完成及尚未验证时要求停止，现已明确恢复任务并要求逐项处理；以下继续只记录已经落盘且实际完成的状态，不把未验收项视为完成。
+- 状态：用户曾在第一批改动尚未完成及尚未验证时要求停止，之后恢复并逐项处理；本轮在 P1-F8、P1-F9 及其浏览器验收收敛后，按用户要求结束任务。以下只记录已经落盘且实际完成的状态，不把未验收项视为完成。
 
 ### 已落盘的改动
 
@@ -119,6 +119,8 @@ N10:  使用Playwright确认UI设计是否合格。
 11. P1-F5 非上传操作的错误兜底已按语义拆分：中英文 locale 新增通用操作以及重命名、删除、复制、移动、归档、恢复、收藏和新建文件夹失败文案；头像更新／清除使用通用操作失败，传输恢复取消使用通用操作失败，删除传输记录使用删除失败。`app.uploadFailed` 在 TypeScript 调用中只保留于生成文件和上传任务的真实上传链路；重命名失败明确显示“重命名失败”。
 12. P1-F6 上传失败入口已与活跃进度拆分：`upload-progress.ts` 新增只统计真实 `failed`、不包含 `expired` 的 `failedCount`；上传 HUD 使用两个并列的真实按钮呈现活跃上传与危险色“{count} 个失败”，失败归零后入口自动消失，不再嵌套交互元素。失败入口会导航到传输页、一次性选择并聚焦“需要关注”页签；传输页不再渲染 HUD，避免遮挡实时速度区域。HUD portal 注入现有主题变量，并移除在当前组合下显示异常的 `MotionPresence`，改用保留 reduced-motion 处理的 CSS 入场动画。
 13. P1-F7 分享弹窗已迁移到基于 HeroUI Modal 的 `AppDialogShell`：Tab／Shift+Tab 焦点被限制在弹窗内，打开时焦点落到关闭图标按钮，ESC、遮罩和关闭按钮结束后由 React Aria 恢复至原分享触发按钮。`AppDialogShell` 新增可复用的 ARIA 标注、主题、遮罩关闭与键盘关闭参数；创建分享期间同时禁用 ESC、遮罩和关闭按钮，保持原有业务约束。弹窗沿用原视觉变量与布局，HeroUI 容器宽度覆盖保证桌面居中并在移动视口内完整显示。
+14. P1-F8 上传恢复已改为可感知的持久恢复：有效 descriptor 默认写入 `localStorage`，首次读取会把旧 `sessionStorage` 记录按 `sessionId` 合并并保留更新时间较新的版本，过期记录在读取时清理；既有成功、取消、删除批次和切换账号清理路径继续移除对应记录，记录总量仍限制为 128。选择 `localStorage` 是为了支持关闭标签页或浏览器后的恢复；持久内容继续使用严格白名单，只含文件元数据、进度和绑定的账号／工作区／会话标识，不保存上传令牌、对象键或 multipart 能力。多标签页可读取同一记录，每次写入会重新读取并按会话去重；由于 `localStorage` 没有跨标签页原子事务，极端同时写入仍以最后写入快照为准，恢复时继续由服务端会话状态校准。水合出可恢复任务后会显示持久信息通知，图标操作可直达传输页；恢复行在合并列表中置顶并使用主题色左边线和背景高亮。删除可恢复任务时会先取消服务端上传会话；一旦取消成功，即使随后删除传输记录失败，也不会把已经失效的 descriptor 和本地恢复行重新写回。
+15. P1-F9 永久删除确认现在接收完整 `DriveItem` 列表，列出前 5 项的现有类型图标和文件名，长名称使用省略并保留 `title`；6 至 20 项会继续列出剩余名称，确保中等批量也能逐项核对，超过 20 项时才以原生 `<details>` 默认折叠“等 N 项”，展开后可核对剩余项目。中英文名称、列表标签和剩余数量文案均已补齐。通用 `ConfirmationDialog` 现将可见标题和描述显式关联为模态框的可访问名称与描述。浏览器验收发现全局上传 HUD 的层级高于确认弹窗并会在移动端遮挡底部操作，现统一提高 `AppDialogShell` 遮罩层级，使 HUD 留在遮罩后方且不再与模态操作重叠。
 
 ### 核验后未照报告修改的项目
 
@@ -127,7 +129,7 @@ N10:  使用Playwright确认UI设计是否合格。
 
 ### 尚未完成
 
-- 报告中的 B1–B10、F8–F9、D1–D2、D4–D5、A1–A7、A9 等其余可复现项均尚未进入实现阶段。
+- 当时报告中的 B1–B10、D1–D2、D4–D5、A1–A7、A9 尚未完成；后续恢复后的实现与验收见下方 2026-10-19 记录，不能继续按此历史状态判断当前进度。
 - `UI-ANALYSIS-REPORT.md` 是本轮用户提供的未跟踪输入文件，本轮未修改其内容。
 
 ### 验证与测试状态
@@ -147,3 +149,45 @@ N10:  使用Playwright确认UI设计是否合格。
 - P1-F5 新增重命名失败 fallback 回归，前端全量 `pnpm --filter frontend test` 为 87 个测试文件、502 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。Playwright 使用构建产物模拟一次重命名接口失败，确认只发出 1 次请求、错误通知显示“重命名失败”且页面没有“上传失败”，通知位于 1440px 视口内并且页面无横向溢出。Vite preview 启动两次均被 Windows 对依赖文件的临时 `EPERM` 读取锁阻断，因此改用只读静态服务器承载同一份 `frontend/dist`，未启动 dev；专用浏览器与静态服务已关闭。截图与模拟脚本位于 `output/playwright/f5-rename-error-desktop.png` 和 `f5-rename-error-smoke.js`。控制台除刻意模拟的 418 外，仅记录已知的通用 Framer Motion `CSSStyleDeclaration` 错误。
 - P1-F6 的 3 个定向测试文件共 10 项通过；前端全量 `pnpm --filter frontend test` 为 87 个测试文件、505 项测试全部通过；`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error；`git diff --check` 通过。Playwright 使用构建产物确认失败入口计算色值为 `rgb(220, 38, 38)`，在 1440px 与 390px 视口中均无横向溢出，失败归零后入口消失；点击入口后“需要关注”页签选中并获得焦点，失败行可见、运行中行不在该分组中，且传输页没有 HUD 覆盖。Vite preview 仍因 `picomatch/lib/scan.js` 的 Windows `EPERM` 读取锁失败，因此改用只读静态服务器承载 `frontend/dist`，未启动 dev；专用浏览器与静态服务已关闭。截图位于 `output/playwright/f6-upload-failure-anchor-desktop.png`、`f6-upload-failure-anchor-mobile.png` 和 `f6-upload-failure-attention.png`。最终控制台仅记录已知的通用 Framer Motion `CSSStyleDeclaration` 错误。
 - P1-F7 完成后，前端全量测试为 87 个测试文件、505 项测试全部通过；沙箱内首次启动 Vitest 时因 `magic-string` 依赖文件遭遇 Windows `EPERM` 读取限制，按原命令在沙箱外重跑通过。`pnpm --filter frontend build` 与 `pnpm --filter frontend lint` 通过，lint 保持原有 23 项 warning，无 error。Playwright 使用构建产物确认初始焦点位于关闭按钮，连续 18 次 Tab 与一次 Shift+Tab 均未离开弹窗，ESC 和遮罩关闭后焦点都恢复到原分享按钮；1440px 弹窗居中，390px 视口边界为 `left=14`、`top=14`、`right=376`、`bottom=830`，无横向溢出。截图与模拟脚本位于 `output/playwright/f7-share-dialog-focus-desktop.png`、`f7-share-dialog-focus-mobile.png` 和 `f7-share-dialog-focus-smoke.js`；专用浏览器已关闭，未启动 dev。
+- P1-F8／F9 只增加 6 项直接覆盖验收行为的回归：旧存储迁移及过期清理、可恢复数量通知、恢复任务置顶、5 项名称完整列出、20 项全部可核对和 25 项折叠展开；没有增加快照测试或仅复述实现细节的低价值断言。继续收敛 F9 后，删除确认与通用确认弹窗两个定向测试文件共 6 项通过；最终前端全量 `pnpm --filter frontend test` 为 88 个测试文件、511 项测试全部通过。沙箱内首次启动定向 Vitest 时仍因 `magic-string` 遭遇 Windows `EPERM`，按相同命令在沙箱外重跑通过。
+- P1-F8／F9 的 `pnpm --filter frontend build` 和 `pnpm --filter frontend lint` 均通过，lint 保持原有 23 项 warning、无 error；最终重新构建确认类型检查与产物生成通过，保留既有大 chunk 提示。
+- Playwright CLI 直接加载构建产物完成 F8／F9 smoke：旧 descriptor 从 `sessionStorage` 迁入 `localStorage` 后不再重复注入，真实刷新后仍出现 1 个未完成上传通知；点击图标操作进入 `/transfers`，恢复行可见且高亮。放弃恢复时确认先发出 1 次上传会话取消请求，再模拟传输记录删除返回 503；descriptor 仍保持删除，未因第二步失败复活。5 项永久删除准确显示 5 个名称且没有多余汇总；20 项全部名称均可核对、不使用折叠，超长名称实际截断并保留完整 `title`，弹窗的可访问描述与可见描述一致；25 项首层准确显示前 5 个名称，“and 20 more”默认折叠且可用 Enter 展开至最后一项，最终发出的 25 个删除 ID 与确认目标逐项一致。1440px 和 390×844 弹窗均位于视口内、无横向溢出，修复层级后上传 HUD 位于模态遮罩后方。截图与脚本位于 `output/playwright/f8-recovery-entry-desktop.png`、`f9-delete-confirmation-20-desktop.png`、`f9-delete-confirmation-desktop.png`、`f9-delete-confirmation-mobile.png` 和 `f8-f9-recovery-delete-smoke.js`；隔离浏览器已关闭，未启动 dev。控制台包含验收脚本刻意模拟的 503，并保留此前已知的通用 Framer Motion `CSSStyleDeclaration` 错误。
+
+
+## 本会话：UI 报告续修（2026-10-19）
+
+- 用户恢复修复，并明确要求继续实现拖拽、文件快捷键和连续预览；全站字号、圆角及视觉体系重构（D5）暂缓。沿用现有未提交改动，没有创建提交、推送或部署。
+- 本节更新 B1–B10、D1/D2/D4、A1–A7/A9 的进展；报告原文作为输入保留，未改写。P2 项目未纳入本轮。
+
+### 已实现
+
+1. D1/D2：保留并验证本轮开始时的主题修复。主色按钮增加独立前景 token，登录页使用当前主题并提供切换；浅色和暗色按钮最低实测对比度分别为 4.70、4.69。
+2. D4：分享详情侧栏统一使用 `--ui-*` 主题变量；预览背景、文本、边框和状态色移除裸颜色，媒体背景及成功文字使用语义 token。
+3. 修复通用 motion 的 DOM 动画参数：把数组样式对象转换为属性关键帧，消除之前的 `CSSStyleDeclaration` 异常，并清理动画实例。
+4. B1/B2/B5/B9/B10：详情面板换选保留页签，版本请求依赖稳定 ID；移动端补排序及视图切换，桌面显示选择数量和清除入口；空目录提供真实上传、新建文件夹图标操作；视图偏好持久化，存储不可用时回退列表。
+5. B3：新增独立 `use-drive-drop`。系统文件拖入当前目录或文件夹复用上传队列、容量检查和冲突弹窗；目标目录在发起批次时固定。站内拖动支持列表、网格、目录树及可见面包屑目标，复用移动 API 和批量失败反馈；禁止自身、子目录和跨空间移动，拒绝目标有通知。目标显示主题色虚线和背景，并附拖放语义。搜索结果和非文件目录不启用拖放；没有加入递归上传系统文件夹或跨浏览器窗口拖动。
+6. B4：普通方向键只移动焦点，Shift+方向键继续扩展选择，虚拟窗口外的目标先滚动再聚焦；行使用 roving tabindex。Ctrl/Command+A、C、X、V 复用选择与剪贴板，F2 重命名焦点项，Delete 复用归档或回收站永久删除确认。输入框、菜单、弹窗、IME 和重复触发受保护；空目录可通过键盘聚焦后粘贴。
+7. B6/B7：独立文本编辑 hook 管理加载、草稿、保存和失败；加载失败不能覆盖内容，保存期间禁用重复提交和离开，失败保留草稿。关闭及上一个／下一个共用放弃确认，未保存草稿阻止浏览器卸载。连续预览按当前已加载排序结果过滤可预览文件，边界禁用，左右键避开编辑器和媒体控制；独立预览入口没有邻接列表时不显示切换。
+8. B8：搜索框增加 combobox/listbox 语义、上下方向键、Enter、Escape、活动选项及查看全部入口。
+9. A1：共享 PasswordField 为现有 AppInput/AuthInput 密码输入增加可访问的显示／隐藏图标操作，覆盖登录、初始化、再次验证及管理设置。
+10. A2/A3/A6：个人设置昵称草稿接入既有未保存保护；偏好保存期间禁用控件，失败回滚并提示；移除资料页重复的外观设置，补齐页签方向键、Home/End 和 ARIA 关联。
+11. A4/A5：登录和分享验证复用独立 AuthCodeInput；分享六位数字完成后直接提交该值并防重入，锁定期间禁用。删除分享侧栏不可操作的装饰邮箱和验证码表单。
+12. A7/A9：存储完整性全量运行和全部重试增加确认及任务／范围校验；审计表补齐标题、列头、单元格和行索引语义。
+
+### 验证结果
+
+- 最终 `pnpm --filter frontend build` 通过，保留既有大 chunk 提示；`pnpm --filter frontend lint` 通过，仅原有 23 项 warning；`pnpm --filter frontend test`：90 个文件、518 项测试全部通过。新增覆盖集中于草稿／保存失败、OTP 完成、防误拖放及键盘焦点；更新完整性操作确认回归。`git diff --check` 通过。
+- Playwright 使用实际 `frontend/dist`，通过浏览器请求拦截提供隔离数据和静态资源，没有启动 dev 或连接真实账号操作。上传验证使用 HTTPS 模拟域名以获得浏览器安全上下文，HTTP 模拟环境缺少 Web Crypto 的失败未算作上传通过项。
+- 桌面 1440px 与移动 390px 检查主题、密码可见性、移动排序、视图持久化、选择计数、详情页签、设置草稿保护、偏好失败回滚、设置页签键盘、搜索键盘、预览草稿确认与保存 pending、分享 OTP、完整性确认、分享详情及空状态；对应检查无横向溢出，预览图标按钮没有重叠。
+- 连续预览取消切换后保留原草稿，确认后切换，左右键可返回；移动预览操作行自动换行。文件方向键不改变选择，仅一个可见文件行为 Tab 入口；F2 内部 Ctrl+A/Delete 不发文件操作请求。剪切后粘贴的请求携带目标文件夹。Delete 归档只发一次请求，回收站 Delete 先显示名称确认，取消时永久删除请求为零。
+- 站内拖到文件夹和目录树均发出单次正确移动请求，自身目标不发移动请求；系统同名文件触发现有冲突弹窗。HTTPS 模拟中拖入文件夹发出的 upload-intent 携带该文件夹 `parentNodeId`，高亮计算样式为 2px dashed。该上传意图刻意返回隔离错误，不把真实对象存储上传成功作为本次验收结果。
+- 审计页面实测 7 个 columnheader、7 个 cell；暗色分享详情实测背景 `rgb(15, 16, 17)`、文字 `rgb(247, 248, 248)`、边框 `rgb(35, 37, 42)`，移动端无横向溢出。
+- 脚本、截图保留于忽略目录 `output/playwright/`，包括 `navigation-smoke.js`、`continuous-preview-mobile.png`、`drag-smoke.js`、`drag-tree-upload-smoke-secure.js`、`folder-drop-highlight.png`、`keyboard-actions-smoke.js`、`keyboard-delete-confirm.png`、`share-details-dark-mobile.png`、`audit-semantics-desktop.png`、`share-otp-mobile.png` 及本轮前续检查文件。不把这些流程记录放入公开页面。
+- 仍有部分既有弹窗缺少可访问标题的警告；本轮未扩大为全站弹窗重构。实际外部存储、实体设备和第三方认证未进行部署联调。D5 按用户要求暂缓。
+
+- 本轮专用 `continueui`、`dragui`、`dragsecure` 浏览器会话均已关闭，未启动需要遗留的服务。
+
+### 本轮本地提交授权
+
+- 用户明确要求按约定提交本轮修复。提交说明为 `fix(ui): 修复界面交互并完善拖拽快捷键和连续预览`，沿用现有 Git 签名和认证流程，不跳过签名或检查。
+- 提交包含本轮前端源码、回归测试及 AGENTS.md 记录；用户提供的未跟踪 `UI-ANALYSIS-REPORT.md` 和忽略目录中的浏览器验收产物不纳入提交。未授权推送或部署。

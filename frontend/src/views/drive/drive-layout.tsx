@@ -391,7 +391,7 @@ function DirectoryTreeRootRow({
       ) : (
         <span className="drive-directory-tree-toggle-placeholder" />
       )}
-      <button {...buttonTypeAttr} className="drive-directory-tree-button" onClick={onNavigate}>
+      <button {...buttonTypeAttr} className="drive-directory-tree-button" data-drive-drop-folder="" onClick={onNavigate}>
         <LocalIcon name="folder" size={16} />
         <span className="drive-directory-tree-label icedr-truncate">{label}</span>
       </button>
@@ -446,7 +446,7 @@ function DirectoryTreeItem({
         ) : (
           <span className="drive-directory-tree-toggle-placeholder" />
         )}
-        <button className="drive-directory-tree-button" {...buttonTypeAttr} onClick={() => onNavigate(node.item.id)}>
+        <button className="drive-directory-tree-button" data-drive-drop-folder={node.item.id} {...buttonTypeAttr} onClick={() => onNavigate(node.item.id)}>
           <LocalIcon name="folder" size={16} />
           <span className="icedr-truncate">{node.item.name}</span>
         </button>
@@ -755,6 +755,14 @@ export function WorkspaceBar({
       {hasWorkspaceTools ? (
         <>
           <div className="drive-toolbar drive-workspace-tools drive-workspace-tools-desktop" role="toolbar" aria-label={activeLabel}>
+            {hasSelection ? (
+              <div className="drive-toolbar-group">
+                <span aria-live="polite" role="status">{t("app.selected", { count: selectionCount })}</span>
+                <ToolButton label={t("actions.clearSelection")} palette={palette} onClick={onClearSelection}>
+                  <LocalIcon name="cross" size={17} />
+                </ToolButton>
+              </div>
+            ) : null}
             {isPathView ? (
               <div className="drive-toolbar-group drive-toolbar-primary-group">
                 <ActionButton className="drive-upload-trigger" icon={<LocalIcon name="upload" size={17} />} palette={palette} tone="primary" onClick={onTriggerUpload}>
@@ -920,9 +928,19 @@ export function WorkspaceBar({
                   </>
                 ) : null}
                 {isFileListView ? (
+                  <>
                   <ToolButton active={filtersActive} label={t("app.filter")} palette={palette} visual="surface" onClick={onToggleFilters}>
                     <LocalIcon name="slider" size={18} />
                   </ToolButton>
+                    <AppMenu ariaLabel={t("filters.sort")} items={sortMenuItems} palette={palette}>
+                      <button type="button" aria-label={t("filters.sort")} className="icedr-tool-button icedr-tool-button-md icedr-tool-button-surface" style={mobileMenuButtonStyle}>
+                        <LocalIcon name="sort" size={18} />
+                      </button>
+                    </AppMenu>
+                    <ToolButton label={t(viewMode === "list" ? "files.gridView" : "files.listView")} palette={palette} visual="surface" onClick={() => setViewMode(viewMode === "list" ? "grid" : "list")}>
+                      <LocalIcon name={viewMode === "list" ? "grid" : "menu7"} size={18} />
+                    </ToolButton>
+                  </>
                 ) : null}
               </div>
             )}

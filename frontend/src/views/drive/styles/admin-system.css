@@ -22,7 +22,7 @@
   border: 1px solid var(--ui-accent);
   border-radius: 8px;
   box-shadow: var(--ui-shadow-card);
-  color: var(--ui-text-inverse);
+  color: var(--ui-on-accent);
   display: inline-flex;
   gap: 8px;
   height: 36px;

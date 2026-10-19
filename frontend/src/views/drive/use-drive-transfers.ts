@@ -831,52 +831,7 @@ export function useDriveTransfers({
       uploadInputRef.current.click();
     }
   };
-  const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const selectedFiles = Array.from(event.target.files ?? []);
-    const recoveryDescriptor = uploadRecoverySelectionRef.current;
-    uploadRecoverySelectionRef.current = null;
-    input.value = "";
-    input.multiple = true;
-    if (recoveryDescriptor) {
-      if (selectedFiles.length === 0) return;
-      const file = selectedFiles[0];
-      if (
-        selectedFiles.length !== 1 ||
-        !file ||
-        !workspaceId ||
-        workspaceId !== recoveryDescriptor.workspaceId ||
-        uploadOwnerUserId !== recoveryDescriptor.ownerUserId ||
-        new Date(recoveryDescriptor.expiresAt).getTime() <= Date.now()
-      ) {
-        removeUploadRecovery(recoveryDescriptor);
-        removeUploadTelemetryRows(recoveryDescriptor.transferId);
-        showFeedback(t("upload.recoveryUnavailable"), "error");
-        return;
-      }
-      if (!(await matchesUploadRecoveryFile(recoveryDescriptor, file))) {
-        showFeedback(t("upload.recoveryFileMismatch"), "error");
-        return;
-      }
-      const latestUsage = await fetchLatestStorageUsage(
-        recoveryDescriptor.workspaceId,
-        recoveryDescriptor.spaceScope,
-      );
-      void startUploadFile(
-        file,
-        createDefaultUploadMeta(t, showFeedback, getApiFeedback),
-        "transfers",
-        latestUsage,
-        recoveryDescriptor.conflictStrategy,
-        recoveryDescriptor.spaceScope,
-        {
-          batchId: recoveryDescriptor.batchId,
-          parentNodeId: recoveryDescriptor.parentNodeId,
-          recoveryDescriptor,
-        },
-      );
-      return;
-    }
+  const uploadDroppedFiles = async (selectedFiles: File[], parentNodeId = currentFolderId, directoryItems = currentDirectoryItems) => {
     if (selectedFiles.length > 0 && workspaceId) {
       const invalidFile = selectedFiles.find((file) => !validateDriveFileName(file.name).ok);
       if (invalidFile) {
@@ -886,7 +841,7 @@ export function useDriveTransfers({
       }
       const conflictAnalysis = analyzeUploadConflicts(
         selectedFiles,
-        currentDirectoryItems.map((item) => item.name),
+        directoryItems.map((item) => item.name),
       );
       const targetSpaceScope = spaceScopeRef.current;
       const conflictingFiles = conflictAnalysis.conflictingFiles;
@@ -950,8 +905,58 @@ export function useDriveTransfers({
         batchId,
         draftId,
         prequeued: true,
+        parentNodeId,
       }), readUploadPreferences().concurrentUploadLimit);
     }
+  };
+
+  const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const selectedFiles = Array.from(event.target.files ?? []);
+    const recoveryDescriptor = uploadRecoverySelectionRef.current;
+    uploadRecoverySelectionRef.current = null;
+    input.value = "";
+    input.multiple = true;
+    if (recoveryDescriptor) {
+      if (selectedFiles.length === 0) return;
+      const file = selectedFiles[0];
+      if (
+        selectedFiles.length !== 1 ||
+        !file ||
+        !workspaceId ||
+        workspaceId !== recoveryDescriptor.workspaceId ||
+        uploadOwnerUserId !== recoveryDescriptor.ownerUserId ||
+        new Date(recoveryDescriptor.expiresAt).getTime() <= Date.now()
+      ) {
+        removeUploadRecovery(recoveryDescriptor);
+        removeUploadTelemetryRows(recoveryDescriptor.transferId);
+        showFeedback(t("upload.recoveryUnavailable"), "error");
+        return;
+      }
+      if (!(await matchesUploadRecoveryFile(recoveryDescriptor, file))) {
+        showFeedback(t("upload.recoveryFileMismatch"), "error");
+        return;
+      }
+      const latestUsage = await fetchLatestStorageUsage(
+        recoveryDescriptor.workspaceId,
+        recoveryDescriptor.spaceScope,
+      );
+      void startUploadFile(
+        file,
+        createDefaultUploadMeta(t, showFeedback, getApiFeedback),
+        "transfers",
+        latestUsage,
+        recoveryDescriptor.conflictStrategy,
+        recoveryDescriptor.spaceScope,
+        {
+          batchId: recoveryDescriptor.batchId,
+          parentNodeId: recoveryDescriptor.parentNodeId,
+          recoveryDescriptor,
+        },
+      );
+      return;
+    }
+    await uploadDroppedFiles(selectedFiles);
   };
 
   return {
@@ -964,6 +969,7 @@ export function useDriveTransfers({
     dismissUploadConflictPrompt,
     fetchLatestStorageUsage,
     handleUploadFiles,
+    uploadDroppedFiles,
     pauseUploadTransfer,
     refreshStorageUsage,
     refreshTransfers,

@@ -409,12 +409,14 @@ function ExternalSharePreview({
       }
     }).finally(() => setAuthBusy(false));
   };
-  const verifyCode = () => {
+  const verificationPendingRef = useRef(false);
+  const verifyCode = (value = code) => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!isValidEmailAddress(normalizedEmail) || code.length !== 6 || verifyCooldownSeconds > 0) return;
+    if (verificationPendingRef.current || authBusy || !isValidEmailAddress(normalizedEmail) || !/^\d{6}$/.test(value) || verifyCooldownSeconds > 0) return;
+    verificationPendingRef.current = true;
     setAuthBusy(true);
     setEmailStatus(null);
-    void verifyShareEmailCode(registeredShare.token, normalizedEmail, code).then(session => {
+    void verifyShareEmailCode(registeredShare.token, normalizedEmail, value).then(session => {
       setAccessSessionId(session.sessionId);
       setAccessSession(session);
       setVisitorLevel("email");
@@ -429,7 +431,7 @@ function ExternalSharePreview({
       } else {
         setEmailStatus({ message: result.message, tone: result.tone });
       }
-    }).finally(() => setAuthBusy(false));
+    }).finally(() => { verificationPendingRef.current = false; setAuthBusy(false); });
   };
   const changeEmail = () => {
     setCode("");
@@ -626,7 +628,6 @@ function ExternalSharePreview({
               ? () => requestVisitorAction(null, primaryAccessAction ?? "preview")
               : undefined}
           registeredShare={registeredShare}
-          selectedEmail={email || currentUser?.email || ""}
           totalItems={shareContentCount}
           totalSize={totalSize}
           verified={verified}

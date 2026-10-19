@@ -226,7 +226,9 @@ export function useMotionReveal<T extends HTMLElement>(preset: MotionPreset, dep
       void animate(scope.current, { opacity: 1 }, { duration: 0 });
       return;
     }
-    void animate(scope.current, [spec.initial, spec.enter], spec.transition);
+    const keyframes = Object.fromEntries(Object.entries(spec.enter).map(([property, value]) => [property, [spec.initial[property], value]]));
+    const animation = animate(scope.current, keyframes, spec.transition);
+    return () => animation.stop();
     // The caller owns the reveal trigger dependencies, mirroring the old animation hook API.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -246,7 +248,8 @@ export function useMotionMount<T extends HTMLElement>(preset: MotionPreset) {
         void animate(node, { opacity: 1 }, { duration: 0 });
         return;
       }
-      void animate(node, [spec.initial, spec.enter], spec.transition);
+      const keyframes = Object.fromEntries(Object.entries(spec.enter).map(([property, value]) => [property, [spec.initial[property], value]]));
+      void animate(node, keyframes, spec.transition);
     },
     [animate, preset, reduce],
   );

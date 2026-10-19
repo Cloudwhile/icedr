@@ -23,7 +23,7 @@ export function handleDriveItemKeyDown(
     openContextMenu(item, event.currentTarget as HTMLElement);
     return;
   }
-  if (event.shiftKey) {
+  if (!event.altKey && !event.ctrlKey && !event.metaKey) {
     const focusId = extendSelection(item.id, event.key);
     if (focusId) {
       event.preventDefault();
