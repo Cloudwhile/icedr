@@ -682,7 +682,8 @@
 
 .drive-empty-state-title {
   color: var(--drive-ui-ink);
-  font-weight: 760;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .drive-empty-state-actions {

@@ -26,7 +26,7 @@ export function DriveFileCollectionStateView({
   const t = useTranslations();
   const loading = kind === "search-loading";
   const icon = getStateIcon(kind);
-  const showIcon = kind !== "root-empty" && kind !== "folder-empty";
+  const primary = kind === "root-empty" || kind === "folder-empty";
   const title = kind === "error"
     ? error || t("files.loadFailed")
     : kind === "search-loading"
@@ -46,11 +46,11 @@ export function DriveFileCollectionStateView({
       className="drive-empty-state"
       data-state={kind}
     >
-      {showIcon ? (
+      {(
         <span className={loading ? "drive-empty-state-icon is-loading" : "drive-empty-state-icon"}>
-          <LocalIcon name={icon} size={28} color={kind === "error" ? palette.danger : palette.subtle} />
+          <LocalIcon name={icon} size={primary ? 44 : 28} color={kind === "error" ? palette.danger : primary ? palette.primary : palette.subtle} />
         </span>
-      ) : null}
+      )}
       <span
         aria-atomic="true"
         aria-busy={loading || undefined}
@@ -89,6 +89,6 @@ function getStateIcon(kind: Exclude<DriveFileCollectionState, "ready">): LocalIc
   if (kind === "search-empty") return "search";
   if (kind === "search-loading") return "refresh";
   if (kind === "trash-empty") return "trash";
-  if (kind === "folder-empty") return "folder";
+  if (kind === "folder-empty" || kind === "root-empty") return "folder";
   return "file";
 }
