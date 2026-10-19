@@ -233,7 +233,7 @@
   gap: 12px;
   grid-template-columns:
     minmax(116px, 0.9fr) minmax(108px, 0.82fr) minmax(190px, 1.45fr)
-    minmax(118px, 0.9fr) minmax(88px, 0.66fr) 148px;
+    minmax(118px, 0.9fr) minmax(88px, 0.66fr) 168px;
   min-width: 0;
 }
 
@@ -1085,3 +1085,7 @@
     padding-inline: 10px;
   }
 }
+
+.admin-shell .drive-oauth-table-row .drive-oauth-row-actions { gap: 8px; }
+.admin-shell .drive-oauth-action-group { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.admin-shell .drive-oauth-action-group-risk { border-left: 1px solid var(--ui-border-subtle); padding-left: 8px; }

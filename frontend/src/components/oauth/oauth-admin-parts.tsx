@@ -244,6 +244,7 @@ function OAuthProviderRow({
         data-label={t("admin.oauthActions")}
         role="cell"
       >
+        <span className="drive-oauth-action-group">
         <ToolButton
           disabled={busy}
           label={t("actions.edit")}
@@ -264,6 +265,8 @@ function OAuthProviderRow({
         >
           <LocalIcon name="copy" size={16} />
         </ToolButton>
+        </span>
+        <span className="drive-oauth-action-group drive-oauth-action-group-risk">
         {provider.enabled ? (
           <ToolButton
             disabled={protectedActive || busy}
@@ -311,6 +314,7 @@ function OAuthProviderRow({
         >
           <LocalIcon name="trash" size={16} />
         </ToolButton>
+        </span>
       </span>
     </div>
   );
