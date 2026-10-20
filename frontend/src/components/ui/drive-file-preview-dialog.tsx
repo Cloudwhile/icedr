@@ -511,7 +511,6 @@ function DriveFilePreviewContent({
             <PreviewZoomStage
               detailsOpen={showMetadata ? mediaDetailsOpen : undefined}
               key={`${previewItem.id}-${openWith}`}
-              mode={workspaceMode}
               onToggleDetails={showMetadata ? () => {
                 if (mediaDetailsOpen) onMediaDetailsClose();
                 else onMediaDetailsOpen();
@@ -565,13 +564,11 @@ function isWorkspacePreview(item: DriveItem | null | undefined, openWith: FileOp
 function PreviewZoomStage({
   children,
   detailsOpen,
-  mode,
   onToggleDetails,
   palette,
 }: {
   children: React.ReactNode;
   detailsOpen?: boolean;
-  mode: "document" | "media" | "status" | "text";
   onToggleDetails?: () => void;
   palette: Palette;
 }) {
@@ -584,13 +581,6 @@ function PreviewZoomStage({
   return (
     <div className="icedr-preview-zoom-stage">
       <div className="icedr-preview-media-toolbar" aria-label={t("preview.title")}>
-        {mode === "document" ? (
-          <span className="icedr-preview-page-meter" aria-label={t("preview.pages")}>
-            <LocalIcon name="document" size={14} />
-            <strong>1</strong>
-            <span>/ --</span>
-          </span>
-        ) : null}
         <ToolButton disabled={zoom <= 50} label={t("preview.zoomOut")} palette={palette} size="sm" onClick={decreaseZoom} visual="surface">
           <LocalIcon name="minus" size={15} />
         </ToolButton>

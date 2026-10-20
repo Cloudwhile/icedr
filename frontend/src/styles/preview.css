@@ -232,27 +232,6 @@
   z-index: 2;
 }
 
-.icedr-preview-page-meter {
-  align-items: center;
-  border-right: 1px solid var(--preview-border, var(--border));
-  color: var(--preview-muted, var(--muted));
-  display: inline-flex;
-  font-size: var(--text-ui-xs);
-  font-weight: var(--font-weight-bold);
-  gap: 7px;
-  height: 30px;
-  padding: 0 12px 0 8px;
-  white-space: nowrap;
-  line-height: 1.5;
-}
-
-.icedr-preview-page-meter strong {
-  color: var(--preview-text, var(--foreground));
-  font-size: var(--text-ui-sm);
-  font-weight: var(--font-weight-bold);
-  line-height: 1.5;
-}
-
 .icedr-preview-media-toolbar[data-visible="false"] {
   display: none;
 }
