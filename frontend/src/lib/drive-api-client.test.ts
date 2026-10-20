@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createShareAccountAccessSession } from "./drive-api-files";
 import {
   clearStoredAuthToken,
   getStoredAuthToken,
@@ -28,6 +29,28 @@ describe("drive api authentication policy", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("lets the share page handle expiry after clearing the stale token", async () => {
+    setStoredAuthToken("expired-share-token");
+    const listener = vi.fn();
+    const unsubscribe = subscribeDriveApiAuthExpired(listener);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(unauthorizedResponse()));
+    await expect(createShareAccountAccessSession("share-token")).rejects.toMatchObject({ status: 401 });
+    expect(getStoredAuthToken()).toBeNull();
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("keeps a newer login when share verification returns an old 401", async () => {
+    setStoredAuthToken("old-share-token");
+    let finish!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })));
+    const request = createShareAccountAccessSession("share-token");
+    setStoredAuthToken("new-login");
+    finish(unauthorizedResponse());
+    await expect(request).rejects.toMatchObject({ status: 401 });
+    expect(getStoredAuthToken()).toBe("new-login");
   });
 
   it("invalidates one protected session for concurrent 401 responses", async () => {

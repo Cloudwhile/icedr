@@ -275,6 +275,11 @@ export function createShareAccountAccessSession(token: string) {
     {
       method: "POST",
     },
+    {
+      // The public share page owns its login redirect and feedback.
+      auth: "optional",
+      unauthorized: "session",
+    },
   );
 }
 

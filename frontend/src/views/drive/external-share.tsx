@@ -6,6 +6,7 @@ import { useTimeZone, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionStagger } from "@/components/ui/motion";
 import { showAppToast } from "@/components/ui/app-toast-store";
+import { getStoredAuthToken } from "@/lib/drive-api-client";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, fetchPreviewIntentStatus, type PreviewIntentResponse } from "@/features/file/actions";
@@ -445,7 +446,7 @@ function ExternalSharePreview({
   };
   const goUp = () => setFolderId(getRegisteredShareParent(registeredShare, folderId, sourceItems));
   const redirectToLogin = () => {
-    router.push(`/login?next=${encodeURIComponent(`/share/s/${registeredShare.token}`)}`);
+    router.replace(`/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}${window.location.hash}`)}`);
   };
   const requestVisitorAction = (item: DriveItem | null, action: VisitorAccessAction) => {
     if (item && action === "download" && !registeredShare.allowDownload) {
@@ -496,7 +497,9 @@ function ExternalSharePreview({
       return;
     }
     setAuthBusy(true);
+    const requestToken = getStoredAuthToken();
     void createShareAccountAccessSession(registeredShare.token).then(session => {
+      if (getStoredAuthToken() !== requestToken) return;
       setAccessSessionId(session.sessionId);
       setAccessSession(session);
       setVisitorLevel("ica");
@@ -507,6 +510,14 @@ function ExternalSharePreview({
       setStage(session.waitSeconds > 0 ? "verified" : "download");
     }).catch((error) => {
       if (isAuthExpiredApiError(error)) {
+        const currentToken = getStoredAuthToken();
+        if (currentToken && currentToken !== requestToken) return;
+        showAppToast({
+          dedupeKey: "auth-session-expired",
+          title: t("share.sessionExpiredRelogin"),
+          tone: "warning",
+        });
+        redirectToLogin();
         return;
       }
       setFeedback({
