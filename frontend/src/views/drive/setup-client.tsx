@@ -39,7 +39,7 @@ import {
 import { AuthField, AuthInput, AuthPrimaryButton, AuthStatusNotice, type AuthNoticeStatus } from "./auth-form-primitives";
 import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
-import { TextArea } from "@heroui/react";
+import { AppTextarea } from "@/components/ui/app-input";
 import { AppImage } from "@/components/ui/app-image";
 import {
   SetupInfoTile as InfoTile,
@@ -858,7 +858,7 @@ function SetupPage({
               }))} palette={palette} />
                 </div>
                 <AuthField label={t("admin.specifiedDomains")} palette={palette}>
-                  <TextArea value={domainText} onChange={event => setDomainText(event.target.value)} style={{
+                  <AppTextarea palette={palette} value={domainText} onChange={event => setDomainText(event.target.value)} style={{
                 background: palette.surface2,
                 borderColor: palette.hairline,
                 color: palette.ink,

@@ -1,6 +1,6 @@
 "use client";
 
-import { TextArea } from "@heroui/react";
+import { AppTextarea } from "@/components/ui/app-input";
 import { useRouter } from "@/compat/navigation";
 import { useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -574,7 +574,7 @@ export function ExternalShareAdminSettingsPanel({
         </SettingItem>
         <MotionPresence show={emailRule === "domains"} preset="surface">
           <InlineConfigPanel palette={palette}>
-            <TextArea
+            <AppTextarea palette={palette}
               aria-label={t("admin.specifiedDomains")}
               className="icedr-has-focus"
               value={domains}

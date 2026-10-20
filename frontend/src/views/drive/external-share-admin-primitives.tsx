@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@heroui/react";
+import { AppInput } from "@/components/ui/app-input";
 import { useTranslations } from "@/i18n/react";
 import type { Palette, LocalIconName } from "@/features/file/model";
 import { AnimatedCheckMark, LocalIcon, Surface, ToolButton } from "./drive-primitives";
@@ -328,11 +328,11 @@ export function PolicyInput({
   align = "center",
   palette,
   ...props
-}: React.ComponentProps<typeof Input> & {
+}: React.ComponentProps<typeof AppInput> & {
   align?: "center" | "left";
   palette: Palette;
 }) {
-  return <Input {...props} className="icedr-r-width icedr-has-placeholder icedr-has-hover icedr-has-focus" style={{
+  return <AppInput palette={palette} {...props} className="icedr-r-width icedr-has-placeholder icedr-has-hover icedr-has-focus" style={{
     height: "38px",
     "--r-width-base": "100%",
     "--r-width-md": "168px",
