@@ -8,6 +8,7 @@ import {
   type SetStateAction,
 } from "react";
 import { AppInput } from "@/components/ui/app-input";
+import { UsageBreakdownList } from "@/components/admin/usage-breakdown-list";
 import { AppSelect } from "@/components/ui/app-select";
 import { EChart, type EChartOption } from "@/components/ui/e-chart";
 import { useTranslations } from "@/i18n/react";
@@ -452,34 +453,6 @@ export function SettingsSideRow({
       <span data-tone={tone} className="icedr-truncate">
         {value}
       </span>
-    </div>
-  );
-}
-
-function UsageBreakdownList({
-  items,
-  locale,
-  title,
-}: {
-  items: Array<{ bytes: number; count: number; id: string; label: string }>;
-  locale: Locale;
-  title: string;
-}) {
-  return (
-    <div className="drive-system-breakdown-panel">
-      <span>{title}</span>
-      {items.slice(0, 5).map((item) => (
-        <div key={item.id}>
-          <span className="icedr-truncate">{item.label}</span>
-          <span>{formatFileSize(item.bytes, locale)}</span>
-        </div>
-      ))}
-      {items.length === 0 ? (
-        <div>
-          <span>--</span>
-          <span>--</span>
-        </div>
-      ) : null}
     </div>
   );
 }
