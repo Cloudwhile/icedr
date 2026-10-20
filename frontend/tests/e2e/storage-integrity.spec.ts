@@ -95,6 +95,13 @@ test("runs a targeted task, cancels polling, acknowledges a finding, and retries
   await expect(page.getByRole("button", { name: /delete/i })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Retry mismatches and failures" }).click();
+  const retryDialog = page.getByRole("dialog", { name: "Retry mismatches and failures" });
+  await expect(retryDialog).toBeVisible();
+  expect(state.retrySourceTaskId).toBeNull();
+  await retryDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(state.retrySourceTaskId).toBeNull();
+  await page.getByRole("button", { name: "Retry mismatches and failures" }).click();
+  await retryDialog.getByRole("button", { name: "Confirm operation", exact: true }).click();
   await expect(page).toHaveURL(/task=task-retried/);
   expect(state.retrySourceTaskId).toBe("task-workspace");
 });

@@ -76,7 +76,7 @@ test("keeps the admin and OAuth layouts readable across breakpoints", async ({
   });
 });
 
-test("hides file actions and the decorative icon for an empty root", async ({
+test("offers an empty-root icon and creation actions without selection actions", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
@@ -87,8 +87,9 @@ test("hides file actions and the decorative icon for an empty root", async ({
   await expect(emptyState).toHaveCSS("opacity", "1");
   await expect(emptyState.locator(".drive-empty-state-title")).toBeVisible();
   await page.waitForTimeout(450);
-  await expect(emptyState.locator(".drive-empty-state-icon")).toHaveCount(0);
-  await expect(emptyState.locator(".drive-empty-state-actions")).toHaveCount(0);
+  await expect(emptyState.locator(".drive-empty-state-icon")).toBeVisible();
+  await expect(emptyState.getByRole("button", { name: "Upload", exact: true })).toBeEnabled();
+  await expect(emptyState.getByRole("button", { name: "New folder", exact: true })).toBeEnabled();
   await expect(page.locator(".drive-toolbar-action-group")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({

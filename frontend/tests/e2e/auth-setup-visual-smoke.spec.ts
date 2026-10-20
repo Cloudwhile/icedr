@@ -63,10 +63,10 @@ test("keeps authentication text readable when a dark theme preference is stored"
   await page.goto("/login");
   const authPage = page.locator(".icedr-auth-page");
   await expect(authPage).toBeVisible();
-  await expect(authPage).toHaveCSS("color-scheme", "light");
+  await expect(authPage).toHaveCSS("color-scheme", "dark");
 
   const emailInput = page.getByLabel("Email");
-  const passwordInput = page.getByLabel("Password");
+  const passwordInput = page.getByLabel("Password").and(page.locator("input"));
   const emailControl = page.locator(".icedr-auth-form-card .icedr-app-input").first();
   await expectColorContrast(emailControl, "borderTopColor", 3);
 
@@ -219,7 +219,7 @@ async function fillSensitiveSetupFields(page: Page) {
   await page.getByRole("button", { name: /Administrator account/ }).click();
   await page.getByLabel("Display name").fill("Admin");
   await page.getByLabel("Email").fill("admin@example.com");
-  await page.getByLabel("Password").fill("admin-password");
+  await page.getByLabel("Password").and(page.locator("input")).fill("admin-password");
 
   await page.getByRole("button", { name: /Authentication/ }).click();
   await page.getByRole("button", { name: "Allow OAuth login" }).click();
@@ -269,7 +269,7 @@ async function expectColorContrast(
   minimumRatio: number,
 ) {
   await expect(locator.first()).toBeVisible();
-  const ratios = await locator.evaluateAll((elements, property) => {
+  const readRatios = () => locator.evaluateAll((elements, property) => {
     type Rgba = { alpha: number; blue: number; green: number; red: number };
     const parseColor = (value: string): Rgba | null => {
       if (value.startsWith("color(srgb ")) {
@@ -347,8 +347,10 @@ async function expectColorContrast(
       });
   }, foregroundProperty);
 
-  expect(ratios.length).toBeGreaterThan(0);
-  for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(minimumRatio);
+  await expect.poll(async () => {
+    const ratios = await readRatios();
+    return ratios.length > 0 ? Math.min(...ratios) : 0;
+  }).toBeGreaterThanOrEqual(minimumRatio);
 }
 
 async function expectNoHorizontalOverflow(page: Page) {

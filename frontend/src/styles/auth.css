@@ -535,7 +535,7 @@
 
 .icedr-auth-form-card .icedr-app-input {
   background: var(--auth-surface);
-  border-color: var(--auth-border-strong);
+  border-color: color-mix(in srgb, var(--auth-ink) 42%, var(--auth-border-strong));
   min-height: 43px;
 }
 

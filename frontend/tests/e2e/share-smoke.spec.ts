@@ -34,13 +34,15 @@ test("smoke: creates a share, uses main auth for external access, downloads, and
   await page.goto(`/share/s/${shareToken}`);
   await expect(page.getByText("External share")).toBeVisible();
   await expect(page.getByText(fileName).first()).toBeVisible();
-  await expect(page.getByText("admin@example.com").first()).toBeVisible();
+  await expect(page.locator('.external-share-side-card input')).toHaveCount(0);
 
   await page.locator('button[aria-label="More"]').last().click();
   await page.getByRole("menuitem", { name: "Download" }).click();
   const useCurrentAccount = page.getByRole("button", { name: "Use current account" });
   await expect(useCurrentAccount).toBeVisible();
   await useCurrentAccount.click();
+  await expect.poll(() => state.accountSessionRequests).toBe(1);
+  expect(state.accountAuthorization).toBe("Bearer smoke-token");
   const downloadButton = page
     .getByRole("dialog")
     .getByRole("button", { name: "Download", exact: true });
@@ -93,8 +95,8 @@ test("smoke: verifies external share access with an email code", async ({ page }
   expect(state.emailCodeSentTo).toBe("visitor@example.com");
 
   await page.getByRole("textbox", { name: "Enter the 6-digit code" }).fill("123456");
-  await page.getByRole("button", { name: "Verify code" }).click();
   await expect(page.getByText("Email verified visitor verification succeeded")).toBeVisible();
+  expect(state.emailVerificationRequests).toBe(1);
   expect(state.emailVerifiedFor).toBe("visitor@example.com");
 
   await page.getByRole("button", { name: "Continue" }).click();
@@ -108,6 +110,9 @@ async function mockIcedrApi(
   options: { authenticated?: boolean } = {},
 ) {
   const state = {
+    accountAuthorization: "",
+    accountSessionRequests: 0,
+    emailVerificationRequests: 0,
     contentAccessSessionId: "",
     downloadIntentPurpose: "",
     downloaded: false,
@@ -224,6 +229,7 @@ async function mockIcedrApi(
     }
 
     if (method === "POST" && path === `/shares/${shareToken}/access-sessions/verify-email`) {
+      state.emailVerificationRequests += 1;
       const requestBody = request.postDataJSON() as { code: string; email: string };
       state.emailVerifiedFor = requestBody.email;
       await fulfillJson(route, {
@@ -253,6 +259,8 @@ async function mockIcedrApi(
     }
 
     if (method === "POST" && path === `/shares/${shareToken}/access-sessions/account`) {
+      state.accountSessionRequests += 1;
+      state.accountAuthorization = request.headers().authorization ?? "";
       await fulfillJson(route, {
         availableAt: now,
         downloadLimit: "No download limit",

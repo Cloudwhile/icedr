@@ -98,7 +98,7 @@ test.describe("responsive Drive workspace", () => {
     await expect(reportRow).toBeFocused();
   });
 
-  test("keeps root and folder empty states quiet while retaining recovery actions", async ({ page }) => {
+  test("offers creation and upload in empty folders while retaining recovery actions", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     const api = await mockDriveApi(page, { activeNodes: [] });
     await seedAuthenticatedDrive(page);
@@ -106,8 +106,8 @@ test.describe("responsive Drive workspace", () => {
     await page.goto("/");
     let emptyState = page.locator('.drive-empty-state[data-state="root-empty"]');
     await expect(emptyState).toContainText("This space is empty");
-    await expect(emptyState.locator(".drive-empty-state-icon")).toHaveCount(0);
-    await expect(emptyState.locator(".drive-empty-state-actions")).toHaveCount(0);
+    await expect(emptyState.locator(".drive-empty-state-icon")).toBeVisible();
+    await expectEmptyStateActions(emptyState, ["Upload", "New folder"]);
 
     const spaceIcon = page.locator(".drive-space-trigger-icon");
     await expect(spaceIcon).toHaveCSS("height", "34px");
@@ -120,13 +120,13 @@ test.describe("responsive Drive workspace", () => {
     await page.getByRole("button", { name: "Empty Folder", exact: true }).click();
     emptyState = page.locator('.drive-empty-state[data-state="folder-empty"]');
     await expect(emptyState).toContainText("This folder is empty");
-    await expect(emptyState.locator(".drive-empty-state-icon")).toHaveCount(0);
-    await expect(emptyState.locator(".drive-empty-state-actions")).toHaveCount(0);
+    await expect(emptyState.locator(".drive-empty-state-icon")).toBeVisible();
+    await expectEmptyStateActions(emptyState, ["Upload", "New folder"]);
 
     api.activeNodes = [reportFile()];
     api.searchItems = [];
     await page.goto("/");
-    await page.getByRole("textbox", { name: "Search files, folders, share links..." }).fill("missing document");
+    await page.getByRole("combobox", { name: "Search files, folders, share links..." }).fill("missing document");
     emptyState = page.locator('.drive-empty-state[data-state="search-empty"]');
     await expect(emptyState).toContainText("No matches");
     await page.keyboard.press("Escape");
@@ -202,7 +202,7 @@ test.describe("responsive Drive workspace", () => {
     await seedAuthenticatedDrive(page);
     await page.goto("/");
 
-    const search = page.getByRole("textbox", { name: "Search files, folders, share links..." });
+    const search = page.getByRole("combobox", { name: "Search files, folders, share links..." });
     await search.fill("Quarterly");
     await expect(driveItem(page, "file-report")).toBeVisible();
 
