@@ -330,6 +330,7 @@ export function FilesModule({
             error={error}
             kind={collectionState}
             palette={palette}
+            viewMode={viewMode}
           />
         ) : viewMode === "list" ? (
           <FileTable

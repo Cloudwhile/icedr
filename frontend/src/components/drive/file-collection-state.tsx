@@ -4,6 +4,7 @@ import type { LocalIconName, Palette } from "@/features/file/model";
 import { useTranslations } from "@/i18n/react";
 import { LocalIcon, ToolButton } from "@/views/drive/drive-primitives";
 import type { DriveFileCollectionState } from "./file-collection-state-model";
+import { DriveFileCollectionSkeleton } from "./file-collection-skeleton";
 
 export type DriveFileCollectionStateAction = {
   icon: LocalIconName;
@@ -17,21 +18,21 @@ export function DriveFileCollectionStateView({
   error,
   kind,
   palette,
+  viewMode,
 }: {
   actions: DriveFileCollectionStateAction[];
   error?: string | null;
   kind: Exclude<DriveFileCollectionState, "ready">;
   palette: Palette;
+  viewMode?: "list" | "grid";
 }) {
   const t = useTranslations();
-  const loading = kind === "search-loading";
+  if (kind === "search-loading") return <DriveFileCollectionSkeleton palette={palette} viewMode={viewMode} />;
   const icon = getStateIcon(kind);
   const primary = kind === "root-empty" || kind === "folder-empty";
   const title = kind === "error"
     ? error || t("files.loadFailed")
-    : kind === "search-loading"
-      ? t("app.syncing")
-      : kind === "search-empty"
+    : kind === "search-empty"
         ? t("files.emptySearchTitle")
         : kind === "trash-empty"
           ? t("files.emptyTrashTitle")
@@ -47,13 +48,12 @@ export function DriveFileCollectionStateView({
       data-state={kind}
     >
       {(
-        <span className={loading ? "drive-empty-state-icon is-loading" : "drive-empty-state-icon"}>
+        <span className="drive-empty-state-icon">
           <LocalIcon name={icon} size={primary ? 44 : 28} color={kind === "error" ? palette.danger : primary ? palette.primary : palette.subtle} />
         </span>
       )}
       <span
         aria-atomic="true"
-        aria-busy={loading || undefined}
         aria-live={kind === "error" ? "assertive" : "polite"}
         className="drive-empty-state-title"
         role={kind === "error" ? "alert" : "status"}

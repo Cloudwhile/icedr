@@ -20,6 +20,7 @@ import { DriveDestructiveDialogs } from "@/components/drive/drive-destructive-di
 import { UploadConflictDialogs } from "@/components/drive/upload-conflict-dialogs";
 import { WorkspaceRefreshStatus } from "@/components/drive/workspace-refresh-status";
 import { AppLoading, LdrsLoadingState, WorkspaceSkeleton } from "@/components/common/ui/loading-state";
+import { DriveFileCollectionSkeleton } from "@/components/drive/file-collection-skeleton";
 import { findDriveItem, getChildItems, getFolderPath, getItemKind, type DriveItem, type DriveUserNav, type LanguageOption, type Locale, type Palette, type ThemeMode, type ThemePreference } from "@/features/file/model";
 import { createDriveThemeVariables } from "@/features/file/theme-tokens";
 import { copyTextToClipboard, createShareUrl } from "@/features/file/actions";
@@ -959,7 +960,7 @@ export function DriveWorkbench({
 
             <div className="drive-workspace-content" data-details-open={showDetailsPanel ? "true" : undefined}>
               <MotionSurface key={`${activeModule}-${currentFolderId ?? "root"}`} preset="surface" aria-busy={workspaceBusy} className="drive-workspace-body">
-                {showSettingsSkeleton ? <WorkspaceSkeleton activeModule={activeModule} palette={palette} viewMode={viewMode} /> : showWorkspaceLoader ? <LdrsLoadingState label={t("app.syncing")} palette={palette} minHeight="min(420px, calc(100dvh - 180px))" size={30} /> : <>
+                {showSettingsSkeleton ? <WorkspaceSkeleton activeModule={activeModule} palette={palette} viewMode={viewMode} /> : showWorkspaceLoader ? activeModule === "drive" ? <DriveFileCollectionSkeleton palette={palette} viewMode={viewMode} /> : <LdrsLoadingState label={t("app.syncing")} palette={palette} minHeight="min(420px, calc(100dvh - 180px))" size={30} /> : <>
                     {activeModule === "drive" ? <FilesModule onKeyboardAction={(action, items) => { if (action === "copy") copyItems(items); else if (action === "cut") cutItems(items); else if (activeNavForView === "trash") deletePermanentlyItems(items); else archiveItems(items); }} activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
                 setSelected([item.id]);
                 setShareOpen(true);
