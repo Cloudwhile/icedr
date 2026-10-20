@@ -598,7 +598,7 @@ function ExternalSharePreview({
             <LocalIcon name="shield" size={16} />
             <span>{verified ? t("share.verifiedAccess") : t("share.title")}</span>
           </span>
-          <button className="external-share-topbar-home" type="button" onClick={() => router.push("/")}>
+          <button aria-label={t("share.returnHome")} className="external-share-topbar-home" type="button" onClick={() => router.push("/")}>
             <LocalIcon name="house" size={16} />
             <span>{t("share.returnHome")}</span>
           </button>

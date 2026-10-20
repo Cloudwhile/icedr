@@ -862,11 +862,21 @@
     gap: 10px;
   }
 
-  .external-share-topbar-status span,
   .external-share-topbar-home span,
   .external-share-topbar-actions::before,
   .external-share-topbar-actions::after {
     display: none;
+  }
+
+  .external-share-topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    height: auto;
+    min-height: 72px;
+  }
+
+  .external-share-topbar-status {
+    font-size: var(--text-ui-sm);
   }
 
   .external-share-hero-card {
