@@ -26,38 +26,6 @@
   padding: 12px 14px;
 }
 
-.drive-batch-toolbar {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 2px;
-  padding: 12px;
-}
-
-.drive-batch-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.drive-batch-summary span:first-child {
-  color: var(--drive-ui-ink);
-  font-weight: var(--font-weight-bold);
-}
-
-.drive-batch-summary span:last-child {
-  color: var(--drive-ui-muted);
-  font-size: var(--text-ui-xs);
-  line-height: 1.5;
-}
-
-.drive-batch-actions {
-  align-items: center;
-  display: flex;
-  gap: 6px;
-}
-
 .drive-table-shell {
   background: color-mix(in srgb, var(--drive-ui-surface) 86%, transparent);
   border: 1px solid var(--drive-ui-line);
@@ -743,11 +711,6 @@
     width: 44px;
   }
 
-  .drive-batch-actions {
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
   .drive-files-module .drive-table-shell {
     overflow-x: hidden;
   }
@@ -834,12 +797,6 @@
   }
 }
 
-@media (max-width: 760px) {
-  .drive-batch-toolbar {
-    display: none;
-  }
-}
-
 @media (max-width: 760px), (pointer: coarse) {
   .file-select-box {
     background: transparent;
@@ -887,8 +844,7 @@
   }
 
   .drive-action-trigger.icedr-tool-button,
-  .drive-card-actions .icedr-tool-button,
-  .drive-batch-actions .icedr-tool-button {
+  .drive-card-actions .icedr-tool-button {
     height: 44px;
     min-width: 44px;
     width: 44px;

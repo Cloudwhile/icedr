@@ -1,16 +1,9 @@
 "use client";
 
 import { AppMenu as ActionMenu, type AppMenuItem } from "@/components/ui/app-menu";
-import {
-  formatFileSize,
-  getItemKind,
-  sumDriveItemSizes,
-  type DriveItem,
-  type Locale,
-  type Palette,
-} from "@/features/file/model";
-import { useLocale, useTranslations } from "@/i18n/react";
-import { AnimatedCheckMark, LocalIcon, ToolButton } from "@/views/drive/drive-primitives";
+import type { Palette } from "@/features/file/model";
+import { useTranslations } from "@/i18n/react";
+import { AnimatedCheckMark, LocalIcon } from "@/views/drive/drive-primitives";
 
 const buttonTypeAttr: { type?: "button" } = {
   type: "button",
@@ -114,81 +107,5 @@ export function DriveTableSortHeader({
         <LocalIcon name={direction === "asc" ? "arrow_up" : "arrow_down"} size={12} />
       </button>
     </th>
-  );
-}
-
-export function DriveBatchToolbar({
-  activeNav,
-  items,
-  onArchive,
-  onClear,
-  onCopy,
-  onCut,
-  onDeletePermanently,
-  onDownload,
-  onRestore,
-  onShare,
-  palette,
-  sourceItems,
-}: {
-  activeNav: string;
-  items: DriveItem[];
-  onArchive: () => void;
-  onClear: () => void;
-  onCopy: () => void;
-  onCut: () => void;
-  onDeletePermanently: () => void;
-  onDownload: () => void;
-  onRestore: () => void;
-  onShare: () => void;
-  palette: Palette;
-  sourceItems: DriveItem[];
-}) {
-  const t = useTranslations();
-  const locale = useLocale() as Locale;
-  const folderCount = items.filter((item) => getItemKind(item) === "folder").length;
-  const sizeLabel = formatFileSize(sumDriveItemSizes(items, sourceItems), locale);
-  const inTrash = activeNav === "trash" || items.every((item) => item.archivedAt);
-
-  return (
-    <div className="drive-batch-toolbar" data-drive-entry>
-      <div className="drive-batch-summary">
-        <span>{t("app.selected", { count: items.length })}</span>
-        <span>{t("files.batchScope", { files: items.length - folderCount, folders: folderCount, size: sizeLabel })}</span>
-      </div>
-      <div className="drive-batch-actions">
-        {inTrash ? (
-          <>
-            <ToolButton label={t("actions.restore")} palette={palette} onClick={onRestore}>
-              <LocalIcon name="refresh" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.deletePermanently")} palette={palette} tone="danger" onClick={onDeletePermanently}>
-              <LocalIcon name="trash" size={16} />
-            </ToolButton>
-          </>
-        ) : (
-          <>
-            <ToolButton label={t("actions.download")} palette={palette} onClick={onDownload}>
-              <LocalIcon name="download" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.copy")} palette={palette} onClick={onCopy}>
-              <LocalIcon name="copy" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.move")} palette={palette} onClick={onCut}>
-              <LocalIcon name="cut" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.share")} palette={palette} onClick={onShare}>
-              <LocalIcon name="share2" size={16} />
-            </ToolButton>
-            <ToolButton label={t("actions.archive")} palette={palette} tone="danger" onClick={onArchive}>
-              <LocalIcon name="trash" size={16} />
-            </ToolButton>
-          </>
-        )}
-        <ToolButton label={t("actions.clearSelection")} palette={palette} onClick={onClear}>
-          <LocalIcon name="cross" size={16} />
-        </ToolButton>
-      </div>
-    </div>
   );
 }

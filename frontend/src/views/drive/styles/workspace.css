@@ -410,13 +410,6 @@
   width: 100%;
 }
 
-.drive-batch-toolbar {
-  background: transparent;
-  border: 1px solid var(--drive-ui-line);
-  border-radius: var(--drive-ui-radius);
-  box-shadow: var(--drive-ui-shadow-1);
-}
-
 @media (max-width: 760px) {
   .drive-address-bar-full {
     display: none;
