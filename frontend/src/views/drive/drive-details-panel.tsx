@@ -16,6 +16,7 @@ import {
 import { downloadWorkspaceFileVersion } from "@/features/file/actions";
 import { fetchFileVersions, restoreFileVersion, type FileVersionResponse } from "@/lib/drive-api";
 import { AppMenu, type AppMenuItem } from "@/components/ui/app-menu";
+import { AppTabs } from "@/components/ui/app-tabs";
 import { DriveItemPreview } from "@/components/ui/drive-item-preview";
 import { MotionList, MotionSurface } from "@/components/ui/motion";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
@@ -228,12 +229,12 @@ export function DetailsPanel({
         </div>
 
         <MotionList className="drive-details-body" preset="list">
-          <div className="drive-details-tabs" role="tablist" aria-label={displayName}>
-            <button type="button" role="tab" aria-selected={activeTab === "details"} data-active={activeTab === "details" ? "true" : undefined} onClick={() => setActiveTab("details")}>{t("app.details")}</button>
-            <button type="button" role="tab" aria-selected={activeTab === "share"} data-active={activeTab === "share" ? "true" : undefined} onClick={() => setActiveTab("share")}>{t("actions.share")}</button>
-            <button type="button" role="tab" aria-selected={activeTab === "versions"} data-active={activeTab === "versions" ? "true" : undefined} onClick={() => setActiveTab("versions")}>{t("files.versions")}</button>
-          </div>
-
+          <AppTabs id={headingId} className="drive-details-tabs" label={displayName} value={activeTab} onChange={setActiveTab} tabs={[
+            { value: "details", label: t("app.details") },
+            { value: "share", label: t("actions.share") },
+            { value: "versions", label: t("files.versions") },
+          ]} />
+          <div className="drive-details-tab-content" role="tabpanel" id={`${headingId}-panel-${activeTab}`} aria-labelledby={`${headingId}-tab-${activeTab}`} tabIndex={0}>
           {activeTab === "details" ? (
             <>
               <div data-motion-row className="drive-details-preview">
@@ -359,6 +360,7 @@ export function DetailsPanel({
               <span className="drive-version-empty">{t("files.noVersions")}</span>
             </div>
           ) : null}
+          </div>
         </MotionList>
       </div>
     </MotionSurface>

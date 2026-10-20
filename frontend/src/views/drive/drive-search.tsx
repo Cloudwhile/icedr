@@ -166,9 +166,9 @@ export function DriveSearchBox({
               )}
             </div>
             {resultCount > visibleResults.length ? (
-              <ToolButton label={t("search.viewAll")} palette={palette} onClick={() => {
+              <ToolButton label={t("search.viewAll", { count: resultCount })} palette={palette} onClick={() => {
                 setOpen(false);
-                document.querySelector<HTMLElement>("[data-drive-item-id]")?.focus();
+                (document.querySelector<HTMLElement>("[data-drive-item-id]") ?? document.querySelector<HTMLElement>(".drive-files-module"))?.focus();
               }}><LocalIcon name="arrow_right" size={17} /></ToolButton>
             ) : null}
           </div>

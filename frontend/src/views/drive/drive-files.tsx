@@ -733,7 +733,7 @@ function FileTable({
   return (
     <>
       <MotionList key={resetKey} className="drive-table-shell" containerRef={virtualRange.hostRef}>
-        <table className="drive-table icedr-select-parent">
+        <table className="drive-table icedr-select-parent" aria-label={t("app.refreshTarget.files")}>
           <colgroup>
             <col className="drive-col-select" />
             <col className="drive-col-name" />

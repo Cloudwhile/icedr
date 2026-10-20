@@ -91,6 +91,13 @@
   width: 100%;
 }
 
+.drive-details-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  min-width: 0;
+}
+
 .drive-details-tabs {
   align-items: center;
   box-sizing: border-box;

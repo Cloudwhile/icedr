@@ -1685,7 +1685,7 @@ language: "中文-简体"
 
 "audit.tableLabel": "审计记录"
 
-"search.viewAll": "查看全部搜索结果"
+"search.viewAll": "查看全部 {count} 个搜索结果"
 
 "preview.contentLoadFailed": "文件内容加载失败，请重新打开预览。"
 

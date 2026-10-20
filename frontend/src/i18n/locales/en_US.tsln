@@ -1685,7 +1685,7 @@ language: "ENGLISH"
 
 "audit.tableLabel": "Audit records"
 
-"search.viewAll": "View all search results"
+"search.viewAll": "View all {count} search results"
 
 "preview.contentLoadFailed": "Could not load file content. Reopen the preview to try again."
 
