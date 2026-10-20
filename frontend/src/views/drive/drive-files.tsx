@@ -752,26 +752,26 @@ function FileTable({
                 active={sortBy === "name"}
                 direction={sortDirection}
                 label={t("files.name")}
-                onSort={() => onSortChange("name", "asc")}
+                onSort={() => onSortChange("name", sortBy === "name" && sortDirection === "asc" ? "desc" : "asc")}
               />
               <th>{t("files.owner")}</th>
               <DriveTableSortHeader
                 active={sortBy === "sizeBytes"}
                 direction={sortDirection}
                 label={t("files.size")}
-                onSort={() => onSortChange("sizeBytes", "desc")}
+                onSort={() => onSortChange("sizeBytes", sortBy === "sizeBytes" && sortDirection === "desc" ? "asc" : "desc")}
               />
               <DriveTableSortHeader
                 active={sortBy === "createdAt"}
                 direction={sortDirection}
                 label={t("filters.created")}
-                onSort={() => onSortChange("createdAt", "desc")}
+                onSort={() => onSortChange("createdAt", sortBy === "createdAt" && sortDirection === "desc" ? "asc" : "desc")}
               />
               <DriveTableSortHeader
                 active={sortBy === "updatedAt"}
                 direction={sortDirection}
                 label={t("files.modified")}
-                onSort={() => onSortChange("updatedAt", "desc")}
+                onSort={() => onSortChange("updatedAt", sortBy === "updatedAt" && sortDirection === "desc" ? "asc" : "desc")}
               />
               <th aria-label={t("actions.more")} />
             </tr>

@@ -868,9 +868,13 @@ export function DriveWorkbench({
   ];
   const sortMenuItems: AppMenuItem[] = [
     { icon: <LocalIcon name="clock" size={15} />, label: t("filters.sortUpdatedDesc"), onClick: () => applyDriveSort("updatedAt", "desc"), value: "updatedAt:desc" },
+    { icon: <LocalIcon name="clock" size={15} />, label: t("filters.sortUpdatedAsc"), onClick: () => applyDriveSort("updatedAt", "asc"), value: "updatedAt:asc" },
     { icon: <LocalIcon name="abc" size={15} />, label: t("filters.sortNameAsc"), onClick: () => applyDriveSort("name", "asc"), value: "name:asc" },
+    { icon: <LocalIcon name="abc" size={15} />, label: t("filters.sortNameDesc"), onClick: () => applyDriveSort("name", "desc"), value: "name:desc" },
     { icon: <LocalIcon name="file" size={15} />, label: t("filters.sortSizeDesc"), onClick: () => applyDriveSort("sizeBytes", "desc"), value: "sizeBytes:desc" },
+    { icon: <LocalIcon name="file" size={15} />, label: t("filters.sortSizeAsc"), onClick: () => applyDriveSort("sizeBytes", "asc"), value: "sizeBytes:asc" },
     { icon: <LocalIcon name="calendar" size={15} />, label: t("filters.sortCreatedDesc"), onClick: () => applyDriveSort("createdAt", "desc"), value: "createdAt:desc" },
+    { icon: <LocalIcon name="calendar" size={15} />, label: t("filters.sortCreatedAsc"), onClick: () => applyDriveSort("createdAt", "asc"), value: "createdAt:asc" },
   ];
   const openSettings = () => {
     activateNav("settings");

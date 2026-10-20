@@ -170,9 +170,7 @@ export function useDriveSearch({
     setSearchFilters((filters) => ({
       ...filters,
       sortBy,
-      sortDirection: filters.sortBy === sortBy
-        ? filters.sortDirection === "asc" ? "desc" : "asc"
-        : sortDirection,
+      sortDirection,
     }));
   };
   const clearSearchFilters = () => {

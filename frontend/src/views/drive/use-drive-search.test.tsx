@@ -21,6 +21,19 @@ describe("useDriveSearch", () => {
     vi.useRealTimers();
   });
 
+  it("keeps explicitly selected sort directions stable on repeated menu selection", () => {
+    const { result } = renderHook(() => useDriveSearch({
+      activeNav: "drive", allKnownItems: [], archivedItems: [], currentFolderId: null,
+      currentSpaceRootLabel: "工作区", driveItems: [], getApiFeedback: () => "搜索失败",
+      registeredSharesRef: { current: [] }, searchEnabled: false, spaceScope: "workspace", workspaceId: "workspace-1",
+    }));
+    act(() => result.current.applyDriveSort("sizeBytes", "asc"));
+    act(() => result.current.applyDriveSort("sizeBytes", "asc"));
+    expect(result.current.searchFilters).toMatchObject({ sortBy: "sizeBytes", sortDirection: "asc" });
+    act(() => result.current.applyDriveSort("sizeBytes", "desc"));
+    expect(result.current.searchFilters).toMatchObject({ sortBy: "sizeBytes", sortDirection: "desc" });
+  });
+
   it("保留失败前的结果，并在重试成功后用当前查询结果替换", async () => {
     vi.mocked(searchFileNodes)
       .mockResolvedValueOnce(searchResult("old", "旧结果"))
