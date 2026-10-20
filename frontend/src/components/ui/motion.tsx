@@ -17,7 +17,7 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
     enter: { opacity: 1, scale: 1, y: 0 },
     exit: { opacity: 0, scale: 0.972, y: 14 },
     initial: { opacity: 0, scale: 0.96, y: 22 },
-    transition: { duration: 0.46, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
   },
   fade: {
     enter: { opacity: 1 },
@@ -29,7 +29,7 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
     enter: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: -28 },
     initial: { opacity: 0, x: -40 },
-    transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
   },
   list: {
     enter: { opacity: 1, scale: 1, y: 0 },
@@ -53,13 +53,13 @@ const motionSpecs: Record<MotionPreset, MotionSpec> = {
     enter: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: -36 },
     initial: { opacity: 0, x: -48 },
-    transition: { duration: 0.52, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
   },
   "panel-right": {
     enter: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: 42 },
     initial: { opacity: 0, x: 56 },
-    transition: { duration: 0.54, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
   },
   pressable: {
     enter: { opacity: 1, scale: 1 },
