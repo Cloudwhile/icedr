@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type ComponentProps,
 } from "react";
+import { UnsavedSettingsBanner } from "@/components/admin/unsaved-settings-banner";
 import { AppImage } from "@/components/ui/app-image";
 import {
   SettingsFact,
@@ -592,6 +593,15 @@ export function DriveSystemPlatformSettings({
           </button>
         ))}
       </nav>
+      <UnsavedSettingsBanner
+        dirty={hasUnsavedChanges}
+        sections={platformSettingsSections}
+        dirtySections={dirtySections}
+        onDiscard={discardPlatformSettings}
+        onSave={savePlatformSettings}
+        palette={palette}
+        pending={savingKey !== null}
+      />
       {activeSection === "general" ? (
         <>
           <SystemConfigBlock

@@ -435,3 +435,40 @@ describe("DriveSystemPlatformSettings", () => {
     expect(screen.getByTestId("mail-host")).toHaveTextContent("smtp.example.com");
   });
 });
+
+describe("platform unsaved banner", () => {
+  it("discards drafts from the banner and clears the navigation marker", async () => {
+    renderSettings();
+    await waitForInitialSettings();
+    const name = screen.getByLabelText("admin.siteName");
+    fireEvent.change(name, { target: { value: "Draft name" } });
+    expect(screen.getByRole("status")).toHaveTextContent("admin.unsavedChangesHint");
+    expect(screen.getByRole("button", { name: "admin.platformGeneral" })).toHaveAttribute("data-dirty", "true");
+    fireEvent.click(screen.getByRole("button", { name: "admin.discardAllChanges" }));
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(name).toHaveValue("ICEDR");
+    expect(apiMocks.updateSiteSettings).not.toHaveBeenCalled();
+  });
+
+  it("saves through the existing operation and removes the banner on success", async () => {
+    apiMocks.updateSiteSettings.mockResolvedValue({ authLogoDataUrl: null, siteName: "Saved name" });
+    renderSettings();
+    await waitForInitialSettings();
+    fireEvent.change(screen.getByLabelText("admin.siteName"), { target: { value: "Saved name" } });
+    fireEvent.click(screen.getByRole("button", { name: "admin.saveAllChanges" }));
+    await waitFor(() => expect(apiMocks.updateSiteSettings).toHaveBeenCalledOnce());
+    expect(apiMocks.updateSiteSettings).toHaveBeenCalledWith({ authLogoDataUrl: null, siteName: "Saved name" });
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+  });
+
+  it("keeps failed drafts visible for retry", async () => {
+    apiMocks.updateSiteSettings.mockRejectedValue(new Error("offline"));
+    renderSettings();
+    await waitForInitialSettings();
+    fireEvent.change(screen.getByLabelText("admin.siteName"), { target: { value: "Unsaved name" } });
+    fireEvent.click(screen.getByRole("button", { name: "admin.saveAllChanges" }));
+    await waitFor(() => expect(toastMocks.showAppToast).toHaveBeenCalledWith(expect.objectContaining({ tone: "error" })));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByLabelText("admin.siteName")).toHaveValue("Unsaved name");
+  });
+});

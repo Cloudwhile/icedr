@@ -543,3 +543,64 @@
   display: grid;
   gap: 18px;
 }
+
+.admin-shell .drive-platform-unsaved {
+  align-items: center;
+  animation: drive-platform-unsaved-enter 160ms var(--drive-ui-ease) both;
+  background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-surface));
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 45%, var(--ui-border-default));
+  color: var(--ui-text-secondary);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 12px 22px 0;
+  padding: 8px 12px;
+}
+
+.admin-shell .drive-platform-unsaved[data-exiting="true"] {
+  animation-name: drive-platform-unsaved-exit;
+  pointer-events: none;
+}
+
+.drive-platform-unsaved-copy {
+  align-items: center;
+  display: flex;
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-semibold);
+  gap: 8px;
+  line-height: var(--text-ui-xs-line-height);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.drive-platform-unsaved-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+@keyframes drive-platform-unsaved-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes drive-platform-unsaved-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (max-width: 560px) {
+  .admin-shell .drive-platform-unsaved {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    margin-inline: 12px;
+  }
+
+  .drive-platform-unsaved-actions { justify-content: flex-end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell .drive-platform-unsaved { animation: none; }
+  .admin-shell .drive-platform-unsaved[data-exiting="true"] { opacity: 0; }
+}

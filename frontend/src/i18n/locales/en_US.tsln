@@ -1701,3 +1701,7 @@ language: "ENGLISH"
 "admin.publicAccessConfirmTitle": "Allow public access?"
 "admin.publicAccessConfirmDescription": "Visitors will be able to access shares in this workspace without verifying their identity. Confirm that this content is suitable for public access."
 "admin.publicAccessConfirmAction": "Allow public access"
+
+"admin.unsavedChangesHint": "Unsaved changes: {sections}"
+"admin.discardAllChanges": "Discard all changes"
+"admin.saveAllChanges": "Save all changes"

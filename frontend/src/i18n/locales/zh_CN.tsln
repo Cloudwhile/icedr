@@ -1701,3 +1701,7 @@ language: "中文-简体"
 "admin.publicAccessConfirmTitle": "允许公开访问？"
 "admin.publicAccessConfirmDescription": "此工作区的分享将允许访客无需验证身份即可访问。请确认内容适合公开。"
 "admin.publicAccessConfirmAction": "允许公开访问"
+
+"admin.unsavedChangesHint": "未保存的修改：{sections}"
+"admin.discardAllChanges": "放弃全部修改"
+"admin.saveAllChanges": "保存全部修改"
