@@ -12,14 +12,12 @@
 }
 
 .icedr-app-toast {
-  --icedr-toast-accent: #5e6ad2;
+  --icedr-toast-accent: var(--ui-accent);
   background: var(--surface, #ffffff);
   border: 1px solid var(--border, #d9dce3);
   border-left: 3px solid var(--icedr-toast-accent);
   border-radius: 8px;
-  box-shadow:
-    0 14px 34px rgba(15, 23, 42, 0.14),
-    0 2px 8px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--ui-shadow-popover);
   box-sizing: border-box;
   color: var(--foreground, #111827);
   min-height: 54px;
@@ -43,15 +41,15 @@
 }
 
 .icedr-app-toast[data-variant="success"] {
-  --icedr-toast-accent: #168a34;
+  --icedr-toast-accent: var(--ui-success);
 }
 
 .icedr-app-toast[data-variant="warning"] {
-  --icedr-toast-accent: #d97706;
+  --icedr-toast-accent: var(--ui-warning);
 }
 
 .icedr-app-toast[data-variant="danger"] {
-  --icedr-toast-accent: #dc2626;
+  --icedr-toast-accent: var(--ui-danger);
 }
 
 .icedr-app-toast[data-variant="accent"] {

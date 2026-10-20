@@ -107,9 +107,9 @@
 }
 
 .icedr-recovery-codes-warning {
-  background: color-mix(in srgb, #d97706 7%, transparent);
-  border-color: color-mix(in srgb, #d97706 30%, var(--drive-ui-line, #e2e8f0));
-  color: #a45305;
+  background: color-mix(in srgb, var(--ui-warning) 7%, transparent);
+  border-color: color-mix(in srgb, var(--ui-warning) 30%, var(--ui-border-default));
+  color: var(--ui-warning-text);
 }
 
 .icedr-recovery-codes-list {

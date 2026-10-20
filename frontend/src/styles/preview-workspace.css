@@ -284,7 +284,7 @@
 .icedr-file-preview-dialog-media
   .icedr-preview-metadata-tabs
   button[data-active="true"]::after {
-  background: #6ea8ff;
+  background: var(--ui-accent);
   height: 2px;
 }
 

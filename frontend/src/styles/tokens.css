@@ -23,6 +23,7 @@
 
   --ui-media-canvas: #080a0f;
   --ui-success-text: #147a2e;
+  --ui-warning-text: #9a4c04;
   --ui-canvas: #f5f6f6;
   --ui-surface: #ffffff;
   --ui-surface-subtle: #f6f7f7;
@@ -110,6 +111,7 @@
   --ui-on-danger: #2b0808;
   --ui-danger-ring: rgba(248, 113, 113, 0.34);
   --ui-warning: #fbbf24;
+  --ui-warning-text: #fbbf24;
   --ui-on-warning: #211400;
   --ui-success: #27a644;
   --ui-success-text: #4ade80;

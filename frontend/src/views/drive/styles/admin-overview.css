@@ -397,7 +397,7 @@
 .admin-overview-module-state[data-stale="true"] {
   background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-surface));
   border-bottom-color: color-mix(in srgb, var(--ui-warning) 28%, var(--ui-border-default));
-  color: var(--ui-warning);
+  color: var(--ui-warning-text);
 }
 
 .admin-system-row {
@@ -443,7 +443,7 @@
 .admin-system-row strong[data-tone="warning"] {
   background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
   border-color: color-mix(in srgb, var(--ui-warning) 28%, var(--ui-border-default));
-  color: var(--ui-warning);
+  color: var(--ui-warning-text);
 }
 
 .admin-recent-activity-list {

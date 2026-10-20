@@ -65,7 +65,7 @@
 
 .admin-health-overall[data-status="ok"],
 .admin-health-status[data-status="ok"] {
-  color: var(--ui-success);
+  color: var(--ui-success-text);
 }
 
 .admin-health-overall[data-status="error"],
@@ -75,7 +75,7 @@
 
 .admin-health-overall[data-status="warning"],
 .admin-health-status[data-status="warning"] {
-  color: var(--ui-warning);
+  color: var(--ui-warning-text);
 }
 
 .admin-health-header strong[data-status] {
@@ -85,11 +85,11 @@
 }
 
 .admin-health-header strong[data-status="ok"] {
-  color: var(--ui-success);
+  color: var(--ui-success-text);
 }
 
 .admin-health-header strong[data-status="warning"] {
-  color: var(--ui-warning);
+  color: var(--ui-warning-text);
 }
 
 .admin-health-header strong[data-status="error"] {
@@ -98,7 +98,7 @@
 
 .admin-health-stale,
 .admin-health-error {
-  color: var(--ui-warning) !important;
+  color: var(--ui-warning-text) !important;
 }
 
 .admin-health-error {

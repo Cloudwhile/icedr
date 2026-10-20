@@ -78,10 +78,10 @@ export function DriveUploadHud({
 
             <ProgressMeter
               ariaLabel={t("transfers.title")}
-              color="#4f80ff"
+              color={palette.primary}
               className="drive-upload-hud-meter"
               palette={palette}
-              style={{ "--progress-track": "rgba(148, 163, 184, 0.24)" } as CSSProperties}
+              style={{ "--progress-track": palette.hairlineStrong } as CSSProperties}
               value={overallProgress}
             />
           </button>

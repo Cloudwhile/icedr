@@ -30,7 +30,7 @@ function getStatusPillColors(tone: StatusPillTone, palette: Palette) {
       accent: palette.success,
       bg: `color-mix(in srgb, ${palette.success} 9%, ${palette.surface1})`,
       borderColor: `color-mix(in srgb, ${palette.success} 30%, ${palette.hairline})`,
-      color: palette.success,
+      color: "var(--ui-success-text)",
       shadow: `inset 0 1px 0 color-mix(in srgb, ${palette.success} 8%, #ffffff)`,
     };
   }
