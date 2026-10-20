@@ -50,6 +50,7 @@ export function PlatformDeliverySection({
             disabled={
               !mail.enabled || !(mailTestEmail || mail.fromEmail).trim()
             }
+            disabledReason={t(!mail.enabled ? "admin.testMailEnableFirst" : "admin.testMailRecipientRequired")}
             isPending={savingKey === "mail-test"}
             label={t("admin.testMail")}
             palette={palette}
@@ -210,6 +211,7 @@ export function PlatformStorageSection({
         <SystemBlockActions>
           <ToolButton
             disabled={!canTestStorage}
+            disabledReason={t("admin.testStorageEnableFirst")}
             isPending={savingKey === "storage-test"}
             label={t("admin.testObjectStorage")}
             palette={palette}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { AppTooltip, type AppTooltipPlacement } from "./app-tooltip";
 import { cn } from "./cn";
 import type { Palette } from "@/features/file/model";
@@ -11,6 +11,7 @@ export type ToolButtonProps = {
   children: ReactNode;
   className?: string;
   disabled?: boolean;
+  disabledReason?: string;
   isDisabled?: boolean;
   isPending?: boolean;
   label: string;
@@ -29,6 +30,7 @@ export function ToolButton({
   children,
   className,
   disabled,
+  disabledReason,
   isDisabled,
   isPending,
   label,
@@ -44,10 +46,13 @@ export function ToolButton({
   const toneColor = tone === "danger" ? palette.danger : tone === "success" ? palette.success : palette.primaryHover;
   const activeColor = tone === "neutral" ? palette.ink : toneColor;
   const surfaceBg = palette.controlSurface;
+  const descriptionId = useId();
+  const unavailableReason = (disabled || isDisabled) ? disabledReason : undefined;
 
   return (
-    <AppTooltip content={label} palette={palette} placement={tooltipPlacement}>
+    <AppTooltip content={unavailableReason ? `${label}: ${unavailableReason}` : label} palette={palette} placement={tooltipPlacement}>
       <Button
+        aria-describedby={unavailableReason ? descriptionId : undefined}
         aria-label={label}
         className={cn("icedr-tool-button", `icedr-tool-button-${size}`, `icedr-tool-button-${visual}`, active && "is-active", className)}
         data-active={active ? "true" : undefined}
@@ -74,6 +79,7 @@ export function ToolButton({
       >
         {children}
       </Button>
+      {unavailableReason ? <span className="icedr-sr-only" id={descriptionId}>{unavailableReason}</span> : null}
     </AppTooltip>
   );
 }
