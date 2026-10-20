@@ -60,7 +60,7 @@ export function RecoveryCodesDialog({
       new Blob([content], { type: "text/plain;charset=utf-8" }),
     );
     const anchor = document.createElement("a");
-    anchor.download = `icedr-recovery-codes-${new Date(codeSet.generatedAt).toISOString().slice(0, 10)}.txt`;
+    anchor.download = `recovery-codes-${new Date(codeSet.generatedAt).toISOString().slice(0, 10)}.txt`;
     anchor.href = url;
     document.body.appendChild(anchor);
     anchor.click();
