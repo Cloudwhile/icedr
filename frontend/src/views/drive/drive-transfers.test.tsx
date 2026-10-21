@@ -129,7 +129,10 @@ describe("TransfersModule upload recovery", () => {
       name: "transfers.autoClearCompleted",
     });
     expect(concurrency).toHaveValue("3");
+    expect(concurrency).toHaveAccessibleDescription("transfers.newUploadsOnly");
     expect(autoClear).not.toBeChecked();
+    expect(autoClear).toHaveAccessibleDescription("transfers.newUploadsOnly");
+    expect(screen.getByRole("group", { name: "transfers.uploadSettings" })).toHaveAttribute("title", "transfers.newUploadsOnly");
     expect(screen.queryByText("transfers.uploadSpeedLimit")).not.toBeInTheDocument();
 
     fireEvent.change(concurrency, { target: { value: "1" } });
