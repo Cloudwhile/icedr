@@ -22,6 +22,7 @@ type UseDriveVirtualRangeOptions = {
   contentOffset?: number;
   estimateRowSize: number;
   getColumnCount?: (host: HTMLElement) => number;
+  getScrollElement?: (host: HTMLElement) => HTMLElement | null;
   itemCount: number;
   leadingItemCount?: number;
   measureRowSize?: (host: HTMLElement) => number;
@@ -73,6 +74,7 @@ export function useDriveVirtualRange({
   contentOffset = 0,
   estimateRowSize,
   getColumnCount,
+  getScrollElement = findDriveScrollElement,
   itemCount,
   leadingItemCount = 0,
   measureRowSize,
@@ -107,7 +109,7 @@ export function useDriveVirtualRange({
     if (!host) return;
 
     let frame = 0;
-    const scrollElement = findDriveScrollElement(host);
+    const scrollElement = getScrollElement(host);
     const scheduleUpdate = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(update);
@@ -172,19 +174,25 @@ export function useDriveVirtualRange({
       window.removeEventListener("resize", scheduleUpdate);
       resizeObserver?.disconnect();
     };
-  }, [contentOffset, estimateRowSize, getColumnCount, host, measureRowSize, overscanRows, resetKey, totalItemCount, virtualized]);
+  }, [contentOffset, estimateRowSize, getColumnCount, getScrollElement, host, measureRowSize, overscanRows, resetKey, totalItemCount, virtualized]);
 
-  const scrollToIndex = useCallback((itemIndex: number) => {
+  const scrollToIndex = useCallback((itemIndex: number, align: "end" | "nearest" = "end") => {
     const layout = latestLayoutRef.current;
-    if (!layout) return;
+    if (!layout) return false;
     const { columnCount, rowSize } = layout.range;
     const rowIndex = Math.floor((itemIndex + leadingItemCount) / columnCount);
     const rowTop = layout.hostStart + rowIndex * rowSize;
     const rowBottom = rowTop + rowSize;
+    const viewportTop = layout.scrollElement.scrollTop;
+    const viewportBottom = viewportTop + layout.scrollElement.clientHeight;
+    const top = align === "nearest"
+      ? rowTop < viewportTop ? rowTop : rowBottom > viewportBottom ? rowBottom - layout.scrollElement.clientHeight : viewportTop
+      : rowBottom - layout.scrollElement.clientHeight;
     layout.scrollElement.scrollTo({
-      top: Math.max(0, rowBottom - layout.scrollElement.clientHeight),
+      top: Math.max(0, top),
       behavior: "auto",
     });
+    return true;
   }, [leadingItemCount]);
 
   const totalRows = Math.ceil(totalItemCount / range.columnCount);
