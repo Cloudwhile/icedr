@@ -99,7 +99,7 @@ test("retains last successful overview data and marks it stale after refresh fai
     .click();
 
   await expect.poll(() => state.overviewRequests.length).toBeGreaterThan(1);
-  await expect(page.getByRole("status")).toHaveText("Stale data");
+  await expect(page.locator(".admin-data-freshness").getByRole("status")).toHaveText("Stale data");
   await expect(page.getByRole("alert")).toContainText(
     "Unable to load administration settings",
   );
