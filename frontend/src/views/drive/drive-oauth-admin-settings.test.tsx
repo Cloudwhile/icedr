@@ -4,7 +4,7 @@ import type {
   ReactNode,
   SelectHTMLAttributes,
 } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUnsavedChangesProvider } from "@/components/admin/unsaved-changes-provider";
 import { useRouter } from "@/compat/navigation";
@@ -33,11 +33,15 @@ vi.mock("@/components/common/ui/loading-state", () => ({
 vi.mock("@/components/oauth/oauth-admin-parts", () => ({
   OAuthProviderGroup: ({
     onActivate,
+    onCreate,
     onEdit,
+    onResetFilters,
     providers,
   }: {
     onActivate: (provider: OAuthSettings) => void;
+    onCreate: () => void;
     onEdit: (provider: OAuthSettings) => void;
+    onResetFilters?: () => void;
     providers: OAuthSettings[];
   }) =>
     providers[0] ? (
@@ -47,7 +51,7 @@ vi.mock("@/components/oauth/oauth-admin-parts", () => ({
           activate-provider
         </button>
       </>
-    ) : null,
+    ) : <button onClick={onResetFilters ?? onCreate}>empty-provider-action</button>,
   OAuthSummary: () => null,
 }));
 
@@ -65,7 +69,7 @@ vi.mock("@/components/oauth/oauth-provider-dialog", () => ({
     onSecretChange: (secret: string) => void;
     secret: string;
   }) => (
-    <div aria-label="oauth-editor" role="dialog">
+    <div aria-label="oauth-editor" data-provider={draft.providerKey} role="dialog">
       <button onClick={onClose}>close-editor</button>
       <input
         aria-label="oauth-draft"
@@ -255,6 +259,43 @@ afterEach(() => {
 });
 
 describe("OAuthAdminSettingsPage unsaved editor", () => {
+  it("opens the create editor from a genuinely empty provider list", async () => {
+    driveApi.fetchOAuthProviders.mockResolvedValue({ activeProvider: null, configured: false, providers: [] });
+    renderPage();
+    const emptyState = (await screen.findByText("admin.oauthProviderEmpty")).closest(".drive-oauth-empty");
+
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "admin.oauthAddProvider" }));
+
+    expect(screen.getByRole("dialog", { name: "oauth-editor" })).toBeInTheDocument();
+    expect(driveApi.createOAuthProvider).not.toHaveBeenCalled();
+  });
+
+  it("clears unmatched query and status filters instead of opening a create editor", async () => {
+    renderPage();
+    await screen.findByText("edit-provider");
+    fireEvent.change(screen.getByRole("textbox", { name: "admin.oauthSearch" }), { target: { value: "missing" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "admin.oauthStatus" }), { target: { value: "active" } });
+    const emptyState = screen.getByText("admin.oauthProviderEmpty").closest(".drive-oauth-empty");
+
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "audit.resetFilters" }));
+
+    expect(screen.getByRole("textbox", { name: "admin.oauthSearch" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "admin.oauthStatus" })).toHaveValue("all");
+    expect(screen.getByText("edit-provider")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "oauth-editor" })).not.toBeInTheDocument();
+  });
+
+  it("creates a configuration for the selected empty provider group", async () => {
+    renderPage();
+    await screen.findByText("edit-provider");
+    fireEvent.change(screen.getByRole("combobox", { name: "admin.oauthProvider" }), { target: { value: "google" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "empty-provider-action" }));
+
+    expect(screen.getByRole("dialog", { name: "oauth-editor" })).toHaveAttribute("data-provider", "google");
+    expect(driveApi.createOAuthProvider).not.toHaveBeenCalled();
+  });
+
   it("keeps provider data visible when the auth-settings request fails", async () => {
     driveApi.fetchAuthSettings.mockRejectedValue(new Error("auth unavailable"));
 

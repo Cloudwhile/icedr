@@ -196,6 +196,12 @@ export function OAuthAdminSettingsPage({
       }))
       .filter((group) => group.rows.length > 0 || providerFilter !== "all");
   }, [providerFilter, providers, query, statusFilter]);
+  const hasResultFilters = statusFilter !== "all" || query.trim().length > 0;
+  const resetProviderFilters = () => {
+    setProviderFilter("all");
+    setStatusFilter("all");
+    setQuery("");
+  };
 
   const summary = useMemo(
     () => ({
@@ -670,6 +676,16 @@ export function OAuthAdminSettingsPage({
             <div className="drive-oauth-empty">
               <LocalIcon name="key" size={18} />
               <span>{t("admin.oauthProviderEmpty")}</span>
+              <ToolButton
+                disabled={savingKey !== null}
+                label={t(hasResultFilters ? "audit.resetFilters" : "admin.oauthAddProvider")}
+                onClick={hasResultFilters ? resetProviderFilters : () => openCreate()}
+                palette={palette}
+                tone={hasResultFilters ? "neutral" : "accent"}
+                visual="surface"
+              >
+                <LocalIcon name={hasResultFilters ? "cross" : "plus"} size={16} />
+              </ToolButton>
             </div>
           ) : (
             filteredGroups.map(({ rows, template }) => (
@@ -679,10 +695,12 @@ export function OAuthAdminSettingsPage({
                 locale={locale}
                 onActivate={(provider) => setProviderActive(provider, true)}
                 onCopy={copyOAuthValue}
+                onCreate={() => openCreate(template.key)}
                 onDeactivate={(provider) => setProviderActive(provider, false)}
                 onDelete={removeProvider}
                 onDuplicate={openDuplicate}
                 onEdit={openEdit}
+                onResetFilters={hasResultFilters ? resetProviderFilters : undefined}
                 onToggle={() =>
                   setCollapsedGroups((current) => {
                     const next = new Set(current);

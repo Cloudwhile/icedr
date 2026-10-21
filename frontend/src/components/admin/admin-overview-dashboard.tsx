@@ -210,7 +210,15 @@ export function AdminOverviewDashboard({
               option={trendOption}
             />
           ) : (
-            <OverviewEmpty icon="clock" label={t("admin.activityTrendEmpty")} />
+            <OverviewEmpty
+              actionIcon="refresh"
+              actionLabel={t("actions.refresh")}
+              icon="clock"
+              isPending={refreshing}
+              label={t("admin.activityTrendEmpty")}
+              onAction={onRefresh}
+              palette={palette}
+            />
           )}
         </div>
       </section>
@@ -299,9 +307,9 @@ export function AdminOverviewDashboard({
       <section className="admin-overview-card admin-overview-activity">
         <OverviewHeader
           icon="shield"
-          onAction={() =>
+          onAction={data?.audit.recentRiskEvents.length ? () =>
             onOpenAudit({ ...auditWindowFilters, result: "failed" })
-          }
+          : undefined}
           palette={palette}
           title={t("admin.recentRiskActivity")}
         />
@@ -329,7 +337,14 @@ export function AdminOverviewDashboard({
               </button>
             ))
           ) : (
-            <OverviewEmpty icon="shield" label={t("audit.emptyTitle")} />
+            <OverviewEmpty
+              actionIcon="arrow_right"
+              actionLabel={t("audit.title")}
+              icon="shield"
+              label={t("audit.emptyTitle")}
+              onAction={() => onOpenAudit(auditWindowFilters)}
+              palette={palette}
+            />
           )}
         </div>
       </section>
@@ -414,8 +429,32 @@ function OverviewHeader({ icon, onAction, palette, title }: { icon: LocalIconNam
   );
 }
 
-function OverviewEmpty({ icon, label }: { icon: LocalIconName; label: string }) {
-  return <div className="admin-overview-empty"><LocalIcon name={icon} size={18} /><span>{label}</span></div>;
+function OverviewEmpty({
+  actionIcon,
+  actionLabel,
+  icon,
+  isPending,
+  label,
+  onAction,
+  palette,
+}: {
+  actionIcon: LocalIconName;
+  actionLabel: string;
+  icon: LocalIconName;
+  isPending?: boolean;
+  label: string;
+  onAction: () => void;
+  palette: Palette;
+}) {
+  return (
+    <div className="admin-overview-empty">
+      <LocalIcon name={icon} size={18} />
+      <span>{label}</span>
+      <ToolButton disabled={isPending} isPending={isPending} label={actionLabel} onClick={onAction} palette={palette} visual="surface">
+        <LocalIcon name={actionIcon} size={16} />
+      </ToolButton>
+    </div>
+  );
 }
 
 function buildTrend(data: AdminOverviewResponse | null, locale: Locale) {

@@ -489,7 +489,11 @@ export function AdminAuditPanel({
                 activeFilterCount={activeFilterCount}
                 data={data}
                 locale={locale}
+                onFirstPage={() => onFiltersChange({ ...filters, offset: 0 })}
+                onRefresh={onRefresh}
+                onResetFilters={resetFilters}
                 palette={palette}
+                refreshing={Boolean(refreshing)}
                 timeZone={timeZone}
                 t={t}
               />
@@ -555,14 +559,22 @@ function AuditTable({
   activeFilterCount,
   data,
   locale,
+  onFirstPage,
+  onRefresh,
+  onResetFilters,
   palette,
+  refreshing,
   timeZone,
   t,
 }: {
   activeFilterCount: number;
   data: AdminAuditEventsResponse | null;
   locale: Locale;
+  onFirstPage: () => void;
+  onRefresh: () => void;
+  onResetFilters: () => void;
   palette: Palette;
+  refreshing: boolean;
   timeZone?: string;
   t: ReturnType<typeof useTranslations>;
 }) {
@@ -586,6 +598,16 @@ function AuditTable({
         </span>
         <span>{title}</span>
         <span>{hint}</span>
+        <ToolButton
+          disabled={refreshing}
+          isPending={refreshing}
+          label={t(hasMoreRecords ? "pagination.first" : activeFilterCount > 0 ? "audit.resetFilters" : "actions.refresh")}
+          onClick={hasMoreRecords ? onFirstPage : activeFilterCount > 0 ? onResetFilters : onRefresh}
+          palette={palette}
+          visual="surface"
+        >
+          <LocalIcon name={hasMoreRecords ? "arrow_left" : activeFilterCount > 0 ? "cross" : "refresh"} size={16} />
+        </ToolButton>
       </div>
     );
   }

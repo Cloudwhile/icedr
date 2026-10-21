@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { palettes } from "@/features/file/model";
 import type { AdminOverviewResponse } from "@/lib/drive-api";
@@ -28,14 +28,18 @@ vi.mock("@/components/ui/app-icon", () => ({
 vi.mock("@/components/ui/tool-button", () => ({
   ToolButton: ({
     children,
+    disabled,
+    isPending,
     label,
     onClick,
   }: {
     children: ReactNode;
+    disabled?: boolean;
+    isPending?: boolean;
     label: string;
     onClick?: () => void;
   }) => (
-    <button aria-label={label} onClick={onClick} type="button">
+    <button aria-label={label} disabled={disabled || isPending} onClick={onClick} type="button">
       {children}
     </button>
   ),
@@ -139,6 +143,39 @@ function renderDashboard(
 }
 
 describe("AdminOverviewDashboard", () => {
+  it("refreshes empty trends and opens all audit results for an empty risk list", () => {
+    const onRefresh = vi.fn();
+    const onOpenAudit = vi.fn();
+    renderDashboard({
+      data: { ...overview, audit: { ...overview.audit, dailyTrend: [], recentRiskEvents: [] } },
+      onOpenAudit,
+      onRefresh,
+    });
+    const trendEmpty = screen.getByText("admin.activityTrendEmpty").closest(".admin-overview-empty");
+    const riskEmpty = screen.getByText("audit.emptyTitle").closest(".admin-overview-empty");
+
+    fireEvent.click(within(trendEmpty as HTMLElement).getByRole("button", { name: "actions.refresh" }));
+    fireEvent.click(within(riskEmpty as HTMLElement).getByRole("button", { name: "audit.title" }));
+
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(onOpenAudit).toHaveBeenCalledWith({ createdFrom: overview.window.from, createdTo: overview.window.to });
+  });
+
+  it("disables the empty trend refresh while a refresh is pending", () => {
+    const onRefresh = vi.fn();
+    renderDashboard({
+      data: { ...overview, audit: { ...overview.audit, dailyTrend: [] } },
+      onRefresh,
+      refreshing: true,
+    });
+    const emptyState = screen.getByText("admin.activityTrendEmpty").closest(".admin-overview-empty");
+    const button = within(emptyState as HTMLElement).getByRole("button", { name: "actions.refresh" });
+
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
   it("renders server scope metadata and fixed total/failed trend series", () => {
     renderDashboard();
 

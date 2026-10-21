@@ -53,10 +53,12 @@ export function OAuthProviderGroup({
   locale,
   onActivate,
   onCopy,
+  onCreate,
   onDeactivate,
   onDelete,
   onDuplicate,
   onEdit,
+  onResetFilters,
   onToggle,
   palette,
   providers,
@@ -69,10 +71,12 @@ export function OAuthProviderGroup({
   locale?: string;
   onActivate: (provider: OAuthSettings) => void;
   onCopy: (value: string) => void;
+  onCreate: () => void;
   onDeactivate: (provider: OAuthSettings) => void;
   onDelete: (provider: OAuthSettings) => void;
   onDuplicate: (provider: OAuthSettings) => void;
   onEdit: (provider: OAuthSettings) => void;
+  onResetFilters?: () => void;
   onToggle: () => void;
   palette: Palette;
   providers: OAuthSettings[];
@@ -125,7 +129,19 @@ export function OAuthProviderGroup({
           </div>
           {providers.length === 0 ? (
             <div className="drive-oauth-table-empty" role="row">
-              <span role="cell">{t("admin.oauthProviderEmpty")}</span>
+              <div role="cell" style={{ alignItems: "center", display: "flex", gap: "8px" }}>
+                <span>{t("admin.oauthProviderEmpty")}</span>
+                <ToolButton
+                  disabled={savingKey !== null}
+                  label={t(onResetFilters ? "audit.resetFilters" : "admin.oauthAddProvider")}
+                  onClick={onResetFilters ?? onCreate}
+                  palette={palette}
+                  tone={onResetFilters ? "neutral" : "accent"}
+                  visual="surface"
+                >
+                  <LocalIcon name={onResetFilters ? "cross" : "plus"} size={16} />
+                </ToolButton>
+              </div>
             </div>
           ) : (
             providers.map((provider) => (

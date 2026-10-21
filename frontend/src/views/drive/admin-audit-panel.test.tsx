@@ -3,7 +3,7 @@ import type {
   ReactNode,
   SelectHTMLAttributes,
 } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ADMIN_AUDIT_FILTERS } from "@/features/admin/admin-scope";
 import { palettes } from "@/features/file/model";
@@ -123,13 +123,14 @@ function renderPanel(
   filters: AdminAuditFilters = DEFAULT_ADMIN_AUDIT_FILTERS,
   onFiltersChange = vi.fn(),
   panelData: AdminAuditEventsResponse = data,
+  onRefresh = vi.fn(),
 ) {
   render(
     <AdminAuditPanel
       data={panelData}
       filters={filters}
       onFiltersChange={onFiltersChange}
-      onRefresh={vi.fn()}
+      onRefresh={onRefresh}
       palette={palettes.light}
       scope={{ kind: "all" }}
     />,
@@ -138,6 +139,39 @@ function renderPanel(
 }
 
 describe("AdminAuditPanel server-driven filtering", () => {
+  it("clears unmatched filters from the empty state and keeps the page size", () => {
+    const onFiltersChange = renderPanel(
+      { ...DEFAULT_ADMIN_AUDIT_FILTERS, limit: 100, query: "missing" },
+      vi.fn(),
+      { ...data, items: [], total: 0 },
+    );
+    const emptyState = screen.getByText("audit.noMatchesTitle").closest(".drive-module-empty");
+
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "audit.resetFilters" }));
+
+    expect(onFiltersChange).toHaveBeenCalledWith({ ...DEFAULT_ADMIN_AUDIT_FILTERS, limit: 100 });
+  });
+
+  it("returns an empty page to the first page without changing the filters", () => {
+    const filters = { ...DEFAULT_ADMIN_AUDIT_FILTERS, actor: "system" as const, offset: 150 };
+    const onFiltersChange = renderPanel(filters, vi.fn(), { ...data, items: [], offset: 150, total: 120 });
+
+    fireEvent.click(screen.getByRole("button", { name: "pagination.first" }));
+
+    expect(onFiltersChange).toHaveBeenCalledWith({ ...filters, offset: 0 });
+  });
+
+  it("refreshes genuinely empty audit history without resetting filters", () => {
+    const onRefresh = vi.fn();
+    const onFiltersChange = renderPanel(DEFAULT_ADMIN_AUDIT_FILTERS, vi.fn(), { ...data, items: [], total: 0 }, onRefresh);
+    const emptyState = screen.getByText("audit.emptyTitle").closest(".drive-module-empty");
+
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "actions.refresh" }));
+
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(onFiltersChange).not.toHaveBeenCalled();
+  });
+
   it("uses server facets and resets offset when a select filter changes", () => {
     const onFiltersChange = renderPanel(
       { ...DEFAULT_ADMIN_AUDIT_FILTERS, offset: 150 },
