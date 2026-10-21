@@ -51,6 +51,7 @@ import {
 } from "@/lib/drive-api";
 import type { TransferRow, UploadTelemetry } from "./drive-types";
 import {
+  captureUploadTaskMeta,
   createDefaultUploadMeta,
   createLocalUploadLifecycle,
   createLocalUploadTransferId,
@@ -67,6 +68,7 @@ import {
   type UploadTaskMeta,
 } from "./drive-transfer-helpers";
 import { useUploadRecoveryHydration } from "./use-upload-recovery-hydration";
+import { createUploadBatchFeedback } from "./upload-batch-feedback";
 import {
   analyzeUploadConflicts,
   planUploadConflictResolution,
@@ -544,7 +546,7 @@ export function useDriveTransfers({
         meta.onCompleted(createdNode);
         void autoClearCompletedUpload({
           deleteTransfer,
-          enabled: readUploadPreferences().autoClearCompleted,
+          enabled: meta.autoClearCompleted === true,
           onRemoveLocal: () => {
             removeUploadTelemetryRows(draftId, transferId);
             setTransferRows((current) => current.filter((row) => row.id !== transferId));
@@ -565,7 +567,8 @@ export function useDriveTransfers({
           if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
           removeUploadTelemetryRows(draftId, state.transferId);
           void refreshTransfers();
-          showFeedback(t("upload.conflictSkipped", { count: 1 }), "neutral");
+          if (meta.onSettled) meta.onSettled("skipped");
+          else showFeedback(t("upload.conflictSkipped", { count: 1 }), "neutral");
           return;
         }
         if (isUploadDriveFileControlError(error)) {
@@ -576,6 +579,7 @@ export function useDriveTransfers({
             ? uploadRecoveryDescriptorsRef.current.get(state.transferId)
             : null;
           if (canceled) {
+            meta.onSettled?.("canceled");
             unregisterUploadTask(controlledId);
             removeUploadRecovery(recovery);
             if (recovery) clearSettledUploadRecoveryBatch(recovery.batchId);
@@ -598,6 +602,7 @@ export function useDriveTransfers({
           removeUploadRecovery(recovery);
           removeUploadTelemetryRows(draftId, state.transferId);
           void refreshTransfers();
+          void refreshStorageUsage();
           meta.onFailed?.(error);
           return;
         }
@@ -631,6 +636,7 @@ export function useDriveTransfers({
     targetSpaceScope: DriveSpaceScope = spaceScopeRef.current,
     options: StartUploadFileOptions = {},
   ) => {
+    const taskMeta = captureUploadTaskMeta(meta);
     if (!workspaceId) {
       showFeedback(t("app.uploadFailed"), "error");
       return Promise.resolve();
@@ -691,7 +697,9 @@ export function useDriveTransfers({
       file,
       onProgress: (progress) => {
         if (task) {
-          registerUploadTask(progress.transferId, task, meta);
+          registerUploadTask(progress.transferId, task,
+            uploadTaskMetaRef.current.get(progress.transferId)
+            ?? uploadTaskMetaRef.current.get(draftId) ?? taskMeta);
           if (draftId !== progress.transferId) unregisterUploadTask(draftId);
         }
         if (progress.recovery) {
@@ -711,8 +719,8 @@ export function useDriveTransfers({
       workspaceActor: uploadActor,
       workspaceId: targetWorkspaceId,
     });
-    registerUploadTask(draftId, task, meta);
-    return attachUploadPromise(task.start(), task, meta, draftId);
+    registerUploadTask(draftId, task, taskMeta);
+    return attachUploadPromise(task.start(), task, taskMeta, draftId);
   };
   const pauseUploadTransfer = (id: string) => uploadTasksRef.current.get(id)?.pause();
   const requestUploadRecoveryFile = (descriptor: UploadRecoveryDescriptor) => {
@@ -741,7 +749,9 @@ export function useDriveTransfers({
       return;
     }
     if (task.getState().status === "running") return;
-    const meta = uploadTaskMetaRef.current.get(id) ?? createDefaultUploadMeta(t, showFeedback, getApiFeedback);
+    const previousMeta = uploadTaskMetaRef.current.get(id);
+    const meta = previousMeta?.retryMeta ?? previousMeta ?? createDefaultUploadMeta(t, showFeedback, getApiFeedback);
+    uploadTaskMetaRef.current.set(id, meta);
     markUploadTelemetryStatus(id, "pending");
     attachUploadPromise(task.start(), task, meta);
   };
@@ -767,6 +777,8 @@ export function useDriveTransfers({
       return;
     }
     task.cancel();
+    if (task.getState().status !== "canceled") return;
+    uploadTaskMetaRef.current.get(id)?.onSettled?.("canceled");
     const recovery = uploadRecoveryDescriptorsRef.current.get(id);
     unregisterUploadTask(id);
     removeUploadRecovery(recovery);
@@ -781,6 +793,7 @@ export function useDriveTransfers({
     const telemetrySnapshot = uploadTelemetry[id];
     if (task) {
       task.cancel();
+      if (task.getState().status === "canceled") uploadTaskMetaRef.current.get(id)?.onSettled?.("canceled");
       unregisterUploadTask(id);
     }
     removeUploadRecovery(recovery);
@@ -878,6 +891,7 @@ export function useDriveTransfers({
         return;
       }
       const batchId = createUploadBatchId(++uploadBatchCounterRef.current);
+      const preferences = readUploadPreferences();
       const queuedGroups = prepareUploadQueueGroups(
         uploadPlan.uploadGroups,
         () => createLocalUploadTransferId(++uploadDraftCounterRef.current),
@@ -891,22 +905,21 @@ export function useDriveTransfers({
           batchId,
         );
       });
-      void runUploadGroups(queuedGroups, ({ draftId, item: file }) => startUploadFile(file, {
-        onCompleted: () => showFeedback(t("app.uploaded"), "success"),
-        onFailed: (error) => {
-          if (isStorageCapacityError(error)) {
-            showStorageInsufficient();
-            void refreshStorageUsage();
-            return;
-          }
-          showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error");
-        },
-      }, "transfers", latestUsage, conflictStrategy, targetSpaceScope, {
+      const batchMeta = createUploadBatchFeedback({
+        autoClearCompleted: preferences.autoClearCompleted,
+        batchId,
+        getApiFeedback,
+        members: queuedGroups.flat().map(({ draftId, item }) => ({ id: draftId, name: item.name })),
+        retryMeta: createDefaultUploadMeta(t, showFeedback, getApiFeedback, preferences.autoClearCompleted),
+        t,
+      });
+      void runUploadGroups(queuedGroups, ({ draftId, item: file }) => startUploadFile(file,
+        batchMeta(draftId), "transfers", latestUsage, conflictStrategy, targetSpaceScope, {
         batchId,
         draftId,
         prequeued: true,
         parentNodeId,
-      }), readUploadPreferences().concurrentUploadLimit);
+      }), preferences.concurrentUploadLimit);
     }
   };
 

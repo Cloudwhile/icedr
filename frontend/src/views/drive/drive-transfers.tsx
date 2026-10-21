@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { EChart, type EChartOption } from "@/components/ui/e-chart";
 import { MotionList } from "@/components/ui/motion";
 import { ProgressMeter } from "@/components/ui/progress-meter";
@@ -62,6 +62,7 @@ export function TransfersModule({
   const [statusFilter, setStatusFilter] = useState<TransferFilter>("all");
   const attentionTabRef = useRef<HTMLButtonElement | null>(null);
   const [uploadPreferences, setUploadPreferences] = useState(readUploadPreferences);
+  const uploadSettingsDescriptionId = useId();
   const controllableTransferIdSet = useMemo(() => new Set(controllableTransferIds), [controllableTransferIds]);
   const uploadingRows = rows.filter((row) => getTaskLifecycleGroup(row) === "active");
   const completedRows = rows.filter((row) => getTaskLifecycleGroup(row) === "completed");
@@ -204,8 +205,10 @@ export function TransfersModule({
         <aside className="drive-module-side-stack">
           <section className="drive-module-side-card drive-transfer-settings-card">
             <ModulePanelHeader icon="settings" title={t("transfers.uploadSettings")} compact />
-            <div className="drive-transfer-settings">
+            <div aria-describedby={uploadSettingsDescriptionId} aria-label={t("transfers.uploadSettings")} className="drive-transfer-settings" role="group" title={t("transfers.newUploadsOnly")}>
+              <span className="icedr-sr-only" id={uploadSettingsDescriptionId}>{t("transfers.newUploadsOnly")}</span>
               <UploadSettingSelect
+                descriptionId={uploadSettingsDescriptionId}
                 label={t("transfers.concurrentUploads")}
                 onChange={(value) => {
                   const next = {
@@ -225,6 +228,7 @@ export function TransfersModule({
               />
               <UploadSettingSwitch
                 checked={uploadPreferences.autoClearCompleted}
+                descriptionId={uploadSettingsDescriptionId}
                 label={t("transfers.autoClearCompleted")}
                 onChange={(autoClearCompleted) => {
                   const next = { ...uploadPreferences, autoClearCompleted };
@@ -523,11 +527,13 @@ function ModulePanelHeader({
 }
 
 function UploadSettingSelect({
+  descriptionId,
   label,
   onChange,
   options,
   value,
 }: {
+  descriptionId?: string;
   label: string;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
@@ -537,7 +543,7 @@ function UploadSettingSelect({
     <label className="drive-transfer-setting-row">
       <span className="icedr-truncate">{label}</span>
       <span className="drive-transfer-setting-select">
-        <select value={value} onChange={(event) => onChange(event.currentTarget.value)}>
+        <select aria-describedby={descriptionId} value={value} onChange={(event) => onChange(event.currentTarget.value)}>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -552,10 +558,12 @@ function UploadSettingSelect({
 
 function UploadSettingSwitch({
   checked,
+  descriptionId,
   label,
   onChange,
 }: {
   checked: boolean;
+  descriptionId?: string;
   label: string;
   onChange: (checked: boolean) => void;
 }) {
@@ -563,7 +571,7 @@ function UploadSettingSwitch({
     <label className="drive-transfer-setting-row drive-transfer-setting-switch-row">
       <span className="icedr-truncate">{label}</span>
       <span className="drive-transfer-setting-switch" data-checked={checked ? "true" : undefined}>
-        <input checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} type="checkbox" />
+        <input aria-describedby={descriptionId} checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} type="checkbox" />
         <span aria-hidden="true" />
       </span>
     </label>

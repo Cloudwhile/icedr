@@ -1,5 +1,6 @@
 import { getTaskLifecycleGroup } from "@/features/file/task-lifecycle";
 import type { UploadRecoveryDescriptor } from "@/features/file/upload-recovery";
+import { readUploadPreferences } from "@/features/file/upload-preferences";
 import type { useTranslations } from "@/i18n/react";
 import {
   DriveApiError,
@@ -16,9 +17,19 @@ import type { TransferRow, UploadTelemetry } from "./drive-types";
 type DriveTranslator = ReturnType<typeof useTranslations>;
 
 export type UploadTaskMeta = {
+  autoClearCompleted?: boolean;
   onCompleted: (node: FileNodeResponse) => void;
   onFailed?: (error: unknown) => void;
+  onSettled?: (outcome: "canceled" | "skipped") => void;
+  retryMeta?: UploadTaskMeta;
 };
+
+export function captureUploadTaskMeta(meta: UploadTaskMeta): UploadTaskMeta {
+  return {
+    ...meta,
+    autoClearCompleted: meta.autoClearCompleted ?? readUploadPreferences().autoClearCompleted,
+  };
+}
 
 export type UploadRecoveryPersistenceContext = {
   generation: number;
@@ -194,8 +205,10 @@ export function createDefaultUploadMeta(
   t: DriveTranslator,
   showFeedback: (message: string, tone: "neutral" | "success" | "warning" | "error") => void,
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string,
+  autoClearCompleted = readUploadPreferences().autoClearCompleted,
 ): UploadTaskMeta {
   return {
+    autoClearCompleted,
     onCompleted: () => showFeedback(t("app.uploaded"), "success"),
     onFailed: (error) => showFeedback(getApiFeedback(error, "app.uploadFailed", "form"), "error"),
   };
