@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { searchFileNodes, type FileNodeSearchResponse } from "@/lib/drive-api";
 import { useDriveSearch } from "./use-drive-search";
+import { mapFileNodeToDriveItem } from "@/features/file/mappers";
 
 vi.mock("@/i18n/react", () => ({
   useTranslations: () => (key: string) => key,
@@ -19,6 +20,61 @@ describe("useDriveSearch", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("stays busy throughout debounce and resolves an empty result only after the response", async () => {
+    vi.mocked(searchFileNodes).mockResolvedValue({ ...searchResult("unused", "unused"), items: [], total: 0 });
+    const options = createSearchOptions();
+    const { result } = renderHook(() => useDriveSearch(options));
+    expect(result.current.searchLoading).toBe(false);
+    act(() => result.current.setQuery("missing"));
+    expect(result.current.searchLoading).toBe(true);
+    expect(searchFileNodes).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(179); });
+    expect(result.current.searchLoading).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(result.current.searchLoading).toBe(false);
+    expect(result.current.filteredFiles).toEqual([]);
+  });
+
+  it("cancels a cleared debounce and ignores an in-flight response after returning to the directory", async () => {
+    let resolveSearch!: (value: ReturnType<typeof searchResult>) => void;
+    vi.mocked(searchFileNodes).mockImplementation(() => new Promise(resolve => { resolveSearch = resolve; }));
+    const options = createSearchOptions();
+    const { result } = renderHook(() => useDriveSearch(options));
+    act(() => result.current.setQuery("debounced"));
+    act(() => result.current.setQuery(""));
+    expect(result.current.searchLoading).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(180); });
+    expect(searchFileNodes).not.toHaveBeenCalled();
+
+    act(() => result.current.setQuery("in-flight"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(180); });
+    expect(result.current.searchLoading).toBe(true);
+    act(() => result.current.setQuery(""));
+    expect(result.current.searchLoading).toBe(false);
+    expect(result.current.filteredFiles.map(item => item.id)).toEqual(["directory-file"]);
+    await act(async () => { resolveSearch(searchResult("late", "late result")); });
+    expect(result.current.filteredFiles.map(item => item.id)).toEqual(["directory-file"]);
+    expect(result.current.searchLoading).toBe(false);
+  });
+
+  it("marks a same-query retry as busy immediately and stops waiting after either outcome", async () => {
+    vi.mocked(searchFileNodes)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(searchResult("retried", "retried result"));
+    const options = createSearchOptions();
+    const { result } = renderHook(() => useDriveSearch(options));
+    act(() => result.current.setQuery("query"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(180); });
+    expect(result.current.searchLoading).toBe(false);
+    expect(result.current.searchError).toBe("Search failed");
+    act(() => result.current.retrySearch());
+    expect(result.current.searchLoading).toBe(true);
+    expect(result.current.searchError).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(180); });
+    expect(result.current.searchLoading).toBe(false);
+    expect(result.current.filteredFiles.map(item => item.id)).toEqual(["retried"]);
   });
 
   it("keeps explicitly selected sort directions stable on repeated menu selection", () => {
@@ -147,6 +203,15 @@ describe("useDriveSearch", () => {
     expect(result.current.filteredFiles.map((item) => item.name)).toEqual(["A 返回结果"]);
   });
 });
+
+function createSearchOptions() {
+  const driveItems = [mapFileNodeToDriveItem(createSearchItem("directory-file", "directory.txt"))];
+  return {
+    activeNav: "drive" as const, allKnownItems: driveItems, archivedItems: [], currentFolderId: null,
+    currentSpaceRootLabel: "Workspace", driveItems, getApiFeedback: () => "Search failed",
+    registeredSharesRef: { current: [] }, searchEnabled: true, spaceScope: "workspace" as const, workspaceId: "workspace-1",
+  };
+}
 
 function searchResult(
   id: string,

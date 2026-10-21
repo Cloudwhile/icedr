@@ -53,7 +53,7 @@ export function useDriveSearch({
   const [searchItems, setSearchItems] = useState<DriveItem[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResultKey, setSearchResultKey] = useState("");
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [settledSearchKey, setSettledSearchKey] = useState("");
   const [searchRetryVersion, setSearchRetryVersion] = useState(0);
   const [searchTotal, setSearchTotal] = useState(0);
   const [query, setQuery] = useState("");
@@ -76,6 +76,8 @@ export function useDriveSearch({
     setSearchCursor({ key: searchRequestKey, offset: 0 });
   }
   const searchOffset = searchCursor.key === searchRequestKey ? searchCursor.offset : 0;
+  const searchExecutionKey = JSON.stringify([searchRequestKey, searchOffset, searchRetryVersion]);
+  const searchLoading = serverSearchActive && settledSearchKey !== searchExecutionKey;
   const searchCanLoadMore = serverSearchActive && searchResultKey === searchRequestKey && !searchLoading && searchItems.length < searchTotal;
   const searchLoadingMore = searchLoading && searchOffset > 0;
   const fileModuleSourceItems = useMemo(() => {
@@ -109,7 +111,7 @@ export function useDriveSearch({
         setSearchError(null);
         setSearchResultKey("");
         setSearchTotal(0);
-        setSearchLoading(false);
+        setSettledSearchKey("");
       }, 0);
       return () => window.clearTimeout(clearTimer);
     }
@@ -124,7 +126,6 @@ export function useDriveSearch({
       const updatedFrom = getUpdatedFromFilter(searchFilters.updated);
       const sizeRange = getSizeRangeFilter(searchFilters.size);
 
-      setSearchLoading(true);
       setSearchError(null);
       void searchFileNodes({
         workspaceId,
@@ -156,7 +157,7 @@ export function useDriveSearch({
         if (cancelled) return;
         setSearchError(getApiFeedback(error, "files.loadFailed"));
       }).finally(() => {
-        if (!cancelled) setSearchLoading(false);
+        if (!cancelled) setSettledSearchKey(searchExecutionKey);
       });
     }, 180);
 
@@ -164,7 +165,7 @@ export function useDriveSearch({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeNav, getApiFeedback, query, registeredSharesRef, searchContextParentNodeId, searchFilters, searchOffset, searchRequestKey, searchRetryVersion, serverSearchActive, spaceScope, workspaceId]);
+  }, [activeNav, getApiFeedback, query, registeredSharesRef, searchContextParentNodeId, searchExecutionKey, searchFilters, searchOffset, searchRequestKey, serverSearchActive, spaceScope, workspaceId]);
 
   const applyDriveSort = (sortBy: DriveSortBy, sortDirection: DriveSortDirection) => {
     setSearchFilters((filters) => ({
@@ -186,6 +187,7 @@ export function useDriveSearch({
   const resetSearchResults = () => {
     setSearchItems([]);
     setSearchResultKey("");
+    setSettledSearchKey("");
     setSearchTotal(0);
     setSearchCursor({ key: "", offset: 0 });
   };
@@ -203,7 +205,7 @@ export function useDriveSearch({
     resetSearchResults,
     retrySearch,
     searchCanLoadMore,
-    searchError,
+    searchError: searchLoading ? null : searchError,
     searchFilters,
     searchLoading,
     searchLoadingMore,
