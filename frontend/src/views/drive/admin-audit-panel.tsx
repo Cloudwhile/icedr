@@ -315,7 +315,7 @@ export function AdminAuditPanel({
               }
             />
           </AuditFilter>
-          <AuditFilter label={t("filters.sort")}>
+          <AuditFilter label={t("filters.sort")} wide>
             <AppSelect
               aria-label={t("filters.sort")}
               disabled={disabled}
