@@ -61,7 +61,7 @@
   align-items: center;
   background: #f4f7fb;
   border: 1px solid #e5ebf3;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-subtle);
   display: inline-flex;
   height: 30px;

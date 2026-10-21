@@ -13,7 +13,7 @@
   align-items: center;
   background: var(--action-bg, var(--surface));
   border: 1px solid var(--action-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--action-shadow, none);
   color: var(--action-color, var(--foreground));
   display: inline-flex;
@@ -112,7 +112,7 @@
   align-items: center;
   background: var(--segmented-bg, var(--surface));
   border: 1px solid var(--segmented-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   gap: 2px;
   overflow: hidden;
@@ -120,7 +120,7 @@
 }
 
 .icedr-segmented-tool {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--segmented-tool-color, var(--muted));
   height: 34px;
   min-width: 40px;
@@ -141,7 +141,7 @@
 .icedr-surface-panel {
   background: var(--surface-bg, var(--surface));
   border: 1px solid var(--surface-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--surface-shadow);
   min-width: 0;
   transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
@@ -176,7 +176,7 @@ button.icedr-surface-panel[data-hovered="true"] {
 .icedr-tooltip-content {
   background: var(--tooltip-bg, var(--surface-tertiary));
   border: 1px solid var(--tooltip-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--tooltip-shadow, var(--ui-shadow-popover));
   color: var(--tooltip-color, var(--foreground));
   font-size: var(--text-ui-xs);
@@ -209,7 +209,7 @@ button.icedr-surface-panel[data-hovered="true"] {
 .icedr-menu {
   background: var(--menu-bg, var(--surface));
   border: 1px solid var(--menu-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--menu-shadow, var(--ui-shadow-popover));
   color: var(--menu-color, var(--foreground));
   display: flex;
@@ -223,7 +223,7 @@ button.icedr-surface-panel[data-hovered="true"] {
 .icedr-context-menu-button {
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: inherit;
   min-height: 34px;
   padding: 0 8px;
@@ -282,7 +282,7 @@ button.icedr-surface-panel[data-hovered="true"] {
   appearance: none;
   background: var(--app-field-bg, var(--surface));
   border: 1px solid var(--app-field-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--app-field-color, var(--foreground));
   display: block;
   font-size: var(--text-ui-sm);
@@ -325,7 +325,7 @@ button.icedr-surface-panel[data-hovered="true"] {
   align-items: center;
   background: var(--app-field-bg, var(--surface));
   border: 1px solid var(--app-field-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 38px;
@@ -423,7 +423,7 @@ button.icedr-surface-panel[data-hovered="true"] {
 .icedr-progress-meter .progress-bar__track,
 .icedr-progress-meter [data-slot="track"] {
   background: var(--progress-track, var(--surface-tertiary));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   height: 6px;
   overflow: hidden;
 }
@@ -444,7 +444,7 @@ button.icedr-surface-panel[data-hovered="true"] {
 .icedr-status-pill {
   align-items: center;
   border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   display: inline-flex;
   flex: 0 0 auto;
   font-size: var(--text-ui-xs);

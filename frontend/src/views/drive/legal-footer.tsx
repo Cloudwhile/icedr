@@ -21,7 +21,7 @@ export function LegalFooter({
   const linkStyle: CSSProperties = {
     color: palette.subtle,
     fontSize: "var(--text-ui-xs)",
-    fontWeight: 600,
+    fontWeight: "var(--font-weight-semibold)",
     lineHeight: 1.5,
     transition: "color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)"
   };

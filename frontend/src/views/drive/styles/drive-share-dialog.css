@@ -15,7 +15,7 @@
   animation: drive-share-dialog-in 360ms var(--motion-ease-emphasized) both;
   background: var(--share-dialog-bg);
   border: 1px solid var(--share-dialog-border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--share-dialog-shadow);
   color: var(--share-dialog-text);
   display: flex;
@@ -114,7 +114,7 @@
   align-items: center;
   background: linear-gradient(180deg, var(--share-dialog-surface) 0%, var(--share-dialog-bg) 100%);
   border: 1px solid var(--share-dialog-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   gap: 12px;
   grid-template-columns: auto minmax(0, 1fr);
@@ -223,7 +223,7 @@
   appearance: none;
   background: var(--share-dialog-bg);
   border: 1px solid var(--share-dialog-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--share-dialog-muted);
   cursor: pointer;
   display: grid;
@@ -288,7 +288,7 @@
 .drive-share-expiry-control {
   align-items: center;
   border: 1px solid var(--share-dialog-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   height: 38px;
@@ -339,7 +339,7 @@
 
 .drive-share-textarea {
   border: 1px solid var(--share-dialog-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   min-height: 65px;
   padding: 10px 12px;
   resize: none;
@@ -433,7 +433,7 @@
   align-items: center;
   background: var(--share-dialog-selected);
   border: 1px solid color-mix(in srgb, var(--share-dialog-accent) 28%, var(--share-dialog-border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--share-dialog-accent-hover);
   display: inline-flex;
   height: 48px;
@@ -466,7 +466,7 @@
   align-items: center;
   background: var(--share-dialog-surface);
   border: 1px solid var(--share-dialog-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -664,7 +664,7 @@ function ExternalSharePreview({
       minHeight: "40px",
       maxWidth: "min(360px, calc(100vw - 24px))",
       paddingInline: "12px",
-      borderRadius: "8px",
+      borderRadius: "var(--radius-md)",
       background: "transparent",
       color: palette.ink,
       borderWidth: "1px",
@@ -673,7 +673,7 @@ function ExternalSharePreview({
     } as React.CSSProperties}>
           <span className="icedr-truncate" style={{
         fontSize: "var(--text-ui-sm)",
-        fontWeight: "600"
+        fontWeight: "var(--font-weight-semibold)"
       }}>
             {feedback.message}
           </span>
@@ -764,7 +764,7 @@ function SharePreviewDialog({
           color: palette.ink,
           borderWidth: "1px",
           borderColor: palette.hairlineStrong,
-          borderRadius: "8px",
+          borderRadius: "var(--radius-md)",
           maxWidth: "980px",
           width: "min(980px, calc(100vw - 24px))",
           overflow: "hidden",
@@ -794,7 +794,7 @@ function SharePreviewDialog({
                   minWidth: "0px"
                 }}>
                     <Modal.Heading className="icedr-truncate" style={{
-                      fontWeight: "600"
+                      fontWeight: "var(--font-weight-semibold)"
                     }}>
                         {item?.name ?? t("preview.title")}
                     </Modal.Heading>

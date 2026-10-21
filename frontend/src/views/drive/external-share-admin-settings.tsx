@@ -154,7 +154,7 @@ export function ExternalShareAdminSettingsPage({
           <div style={{ minWidth: "0px" }}>
             <span
               className="icedr-truncate"
-              style={{ color: palette.ink, fontWeight: "600" }}
+              style={{ color: palette.ink, fontWeight: "var(--font-weight-semibold)" }}
             >
               {t("admin.externalLinkPolicy")}
             </span>

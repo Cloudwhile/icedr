@@ -147,7 +147,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-ink);
   display: flex;
   gap: 9px;
@@ -227,7 +227,7 @@
 
 .drive-directory-tree-row[aria-selected="true"]::before {
   background: var(--drive-ui-blue-600);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   content: "";
   height: 16px;
   left: calc(var(--directory-tree-depth, 0px) - 8px);
@@ -257,7 +257,7 @@
 .drive-directory-tree-toggle {
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--drive-ui-subtle);
   padding: 0;
   transition: background-color 140ms var(--drive-ui-ease), color 140ms var(--drive-ui-ease), transform 140ms var(--drive-ui-ease);
@@ -332,7 +332,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-muted);
   display: flex;
   gap: 11px;

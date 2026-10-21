@@ -39,7 +39,7 @@ export function AdminSection({
         display: "flex",
         gap: "8px",
         color: palette.muted,
-        fontWeight: "700"
+        fontWeight: "var(--font-weight-bold)"
       }}>
           <span style={{
           display: "inline-flex",
@@ -57,7 +57,7 @@ export function AdminSection({
             {description ? <small style={{
             color: palette.subtle,
             fontSize: "var(--text-ui-xs)",
-            fontWeight: "600",
+            fontWeight: "var(--font-weight-semibold)",
             lineHeight: "1.5"
           }}>{description}</small> : null}
           </span>
@@ -244,14 +244,14 @@ export function IdentityPolicyRow({
     gap: "8px",
     alignItems: "center",
     padding: "12px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     borderWidth: "1px",
     borderColor: palette.hairline
   } as React.CSSProperties}>
       <span style={{
       color: palette.ink,
-      fontWeight: "600"
+      fontWeight: "var(--font-weight-semibold)"
     }}>{experience.label}</span>
       <span style={{
       color: palette.subtle
@@ -281,7 +281,7 @@ export function PolicyCheck({
     textAlign: "left",
     width: "100%",
     color: palette.ink,
-    borderRadius: "8px",
+    borderRadius: "var(--radius-md)",
     paddingInline: "8px",
     paddingBlock: "6px",
     transition: "background-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)",
@@ -303,7 +303,7 @@ export function PolicyCheck({
         justifyContent: "center",
         width: "20px",
         height: "20px",
-        borderRadius: "6px",
+        borderRadius: "var(--radius-sm)",
         borderWidth: "1px",
         borderColor: checked ? palette.primary : palette.hairlineStrong,
         background: "transparent",
@@ -338,12 +338,12 @@ export function PolicyInput({
     "--r-width-md": "168px",
     textAlign: align,
     paddingInline: "16px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     borderWidth: "1px",
     borderColor: palette.hairline,
     color: palette.ink,
-    fontWeight: "600",
+    fontWeight: "var(--font-weight-semibold)",
     "--placeholder-color": palette.tertiary,
     transition: "background-color var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease)",
     "--hover-border-color": palette.hairlineStrong,

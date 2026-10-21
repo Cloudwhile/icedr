@@ -78,7 +78,7 @@ export function LdrsLoadingState({
           alignItems: "center",
           background: framed ? palette.surface1 : "transparent",
           borderColor: palette.hairline,
-          borderRadius: "8px",
+          borderRadius: "var(--radius-md)",
           borderWidth: framed ? "1px" : "0px",
           display: "flex",
           gap: compact ? "10px" : "12px",
@@ -93,7 +93,7 @@ export function LdrsLoadingState({
           style={{
             color: palette.muted,
             fontSize: "var(--text-ui-xs)",
-            fontWeight: "600",
+            fontWeight: "var(--font-weight-semibold)",
             lineHeight: 1.5,
             whiteSpace: "nowrap",
           }}
@@ -131,7 +131,7 @@ export function LoadingCurtain({
         alignItems: "center",
         background: palette.surface1,
         borderColor: palette.hairlineStrong,
-        borderRadius: "8px",
+        borderRadius: "var(--radius-md)",
         borderWidth: "1px",
         boxShadow: "0 16px 44px rgba(0, 0, 0, 0.28)",
         color: palette.ink,
@@ -150,7 +150,7 @@ export function LoadingCurtain({
         style={{
           color: palette.muted,
           fontSize: "var(--text-ui-xs)",
-          fontWeight: "600",
+          fontWeight: "var(--font-weight-semibold)",
           whiteSpace: "nowrap",
         }}
       >

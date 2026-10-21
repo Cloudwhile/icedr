@@ -59,7 +59,7 @@
 }
 
 .drive-details-heading:focus-visible {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: 2px solid var(--drive-focus);
   outline-offset: 4px;
 }
@@ -68,7 +68,7 @@
   align-items: center;
   background: color-mix(in srgb, var(--drive-ui-blue-600) 8%, var(--drive-ui-surface));
   border: 1px solid color-mix(in srgb, var(--drive-ui-blue-600) 20%, var(--drive-ui-line));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   height: 28px;
@@ -133,7 +133,7 @@
 
 .drive-details-tabs button[data-active="true"]::after {
   background: linear-gradient(90deg, var(--drive-ui-blue-600), var(--drive-ui-purple));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   bottom: -1px;
   content: "";
   height: 2px;
@@ -355,7 +355,7 @@
 .drive-details-quick-actions .icedr-tool-button {
   background: var(--drive-ui-surface);
   border-color: var(--drive-ui-line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--drive-ui-shadow-tight);
   height: 42px;
   min-width: 0;

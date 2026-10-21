@@ -29,8 +29,8 @@
   --drive-ui-header-height: 80px;
   --drive-ui-sidebar-width: 266px;
   --drive-ui-details-width: 374px;
-  --drive-ui-radius: 8px;
-  --drive-ui-radius-lg: 12px;
+  --drive-ui-radius: var(--radius-md);
+  --drive-ui-radius-lg: var(--radius-lg);
   --drive-ui-content-pad-x: 36px;
   --drive-ui-content-pad-y: 22px;
 }

@@ -76,7 +76,7 @@ export function LegalConsentDialog({
           color: palette.ink,
           maxHeight: "calc(100dvh - 28px)",
           overflow: "hidden",
-          borderRadius: "8px",
+          borderRadius: "var(--radius-md)",
           width: "min(980px, calc(100vw - 24px))"
         }}>
             <Modal.Header className="icedr-r-padding-inline" style={{
@@ -103,7 +103,7 @@ export function LegalConsentDialog({
                   minWidth: "0px"
                 }}>
                     <Modal.Heading className="icedr-truncate" style={{
-                      fontWeight: "700"
+                      fontWeight: "var(--font-weight-bold)"
                     }}>
                     {t("legal.consent.title")}
                     </Modal.Heading>
@@ -146,7 +146,7 @@ export function LegalConsentDialog({
                 minWidth: "0px"
               }}>
                   <span className="icedr-truncate" style={{
-                  fontWeight: "700"
+                  fontWeight: "var(--font-weight-bold)"
                 }}>
                     {activePageLabel}
                   </span>

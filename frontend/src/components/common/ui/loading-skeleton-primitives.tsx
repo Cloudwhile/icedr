@@ -30,7 +30,7 @@ export function SkeletonBlock({
       className={className ? `icedr-skeleton ${className}` : "icedr-skeleton"}
       style={{
         ...skeletonVars(palette),
-        borderRadius: "6px",
+        borderRadius: "var(--radius-sm)",
         ...style,
       }}
       {...rest}

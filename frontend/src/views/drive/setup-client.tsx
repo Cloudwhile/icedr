@@ -863,7 +863,7 @@ function SetupPage({
                 borderColor: palette.hairline,
                 color: palette.ink,
                 minHeight: "80px",
-                borderRadius: "8px"
+                borderRadius: "var(--radius-md)"
               }} />
                 </AuthField>
               </SetupSection> : null}

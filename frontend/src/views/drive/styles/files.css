@@ -127,7 +127,7 @@
   min-width: 0;
   padding: 0;
   text-align: left;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   margin-left: -4px;
   padding: 3px 4px;
   transition: background-color 150ms var(--drive-ui-ease), color 150ms var(--drive-ui-ease), transform 150ms var(--drive-ui-ease);
@@ -241,7 +241,7 @@
 }
 
 .drive-file-open-button:focus-visible {
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   outline: 2px solid var(--drive-focus);
   outline-offset: 2px;
 }
@@ -265,7 +265,7 @@
 .drive-row-preview {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   height: 36px;
   overflow: hidden;
   width: 36px;
@@ -394,7 +394,7 @@
   align-items: center;
   background: var(--select-bg, transparent);
   border: 1px solid var(--select-border, var(--drive-ui-line-strong));
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--select-color, var(--drive-ui-blue-600));
   display: inline-flex;
   height: 18px;
@@ -423,7 +423,7 @@
 
 .file-select-box-indicator {
   background: currentColor;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   display: block;
   height: 2px;
   width: 9px;
@@ -811,7 +811,7 @@
   .file-select-box::before {
     background: var(--select-bg, transparent);
     border: 1px solid var(--select-border, var(--drive-ui-line-strong));
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     content: "";
     height: 20px;
     left: 50%;

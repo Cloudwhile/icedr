@@ -104,7 +104,7 @@ export function ShareAuthDialog({
             color: palette.ink,
             borderWidth: "1px",
             borderColor: palette.hairlineStrong,
-            borderRadius: "8px",
+            borderRadius: "var(--radius-md)",
             maxWidth: "420px",
             overflow: "hidden",
             boxShadow: palette.shadowDialog,
@@ -141,7 +141,7 @@ export function ShareAuthDialog({
                   <LocalIcon name={action === "download" ? "download" : "visible"} size={18} color={palette.primaryHover} />
                 )}
                 <div style={{ minWidth: "0px" }}>
-                  <Modal.Heading className="icedr-truncate" style={{ fontWeight: "600" }}>
+                  <Modal.Heading className="icedr-truncate" style={{ fontWeight: "var(--font-weight-semibold)" }}>
                     {accessItem?.name ?? actionLabel}
                   </Modal.Heading>
                   <span style={{ color: palette.subtle, fontSize: "var(--text-ui-xs)", marginTop: "4px" }}>
@@ -158,7 +158,7 @@ export function ShareAuthDialog({
           <Modal.Body style={{ padding: "16px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <span style={{ color: palette.ink, fontWeight: "600" }}>{t("share.visitorAccessTitle")}</span>
+                <span style={{ color: palette.ink, fontWeight: "var(--font-weight-semibold)" }}>{t("share.visitorAccessTitle")}</span>
                 <AuthStatusNotice
                   palette={palette}
                   status={{

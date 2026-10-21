@@ -20,7 +20,7 @@
   align-items: center;
   background: linear-gradient(180deg, var(--ui-accent) 0%, var(--ui-accent-hover) 100%);
   border: 1px solid var(--ui-accent);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   color: var(--ui-on-accent);
   display: inline-flex;
@@ -68,7 +68,7 @@
 }
 
 .admin-shell .drive-system-settings-nav a {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--ui-text-secondary);
   font-size: var(--text-ui-sm);
   font-weight: var(--font-weight-bold);
@@ -125,7 +125,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--ui-text-secondary);
   display: inline-flex;
   font-size: var(--text-ui-xs);
@@ -159,7 +159,7 @@
 .admin-shell .drive-platform-section-nav button[data-dirty="true"]::after {
   background: var(--drive-ui-warning);
   border: 2px solid var(--ui-surface);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   content: "";
   height: 8px;
   position: absolute;
@@ -282,7 +282,7 @@
 .admin-shell .drive-settings-fact {
   background: var(--ui-surface-subtle);
   border-color: var(--ui-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: none;
   min-height: 50px;
   padding: 9px 12px;
@@ -301,7 +301,7 @@
 .admin-shell .drive-system-breakdown-panel {
   background: var(--ui-surface-subtle);
   border-color: var(--ui-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: none;
   padding: 13px;
 }
@@ -388,7 +388,7 @@
 
 .admin-shell .drive-system-side-row span[data-tone="secure"]::before {
   background: var(--drive-ui-success);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-success) 12%, transparent);
   content: "";
   flex: 0 0 auto;
@@ -397,7 +397,7 @@
 }
 
 .admin-shell .drive-system-side-action {
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   min-height: 36px;
   padding-inline: 5px;
 }

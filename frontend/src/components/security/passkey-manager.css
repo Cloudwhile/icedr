@@ -131,7 +131,7 @@
   align-items: center;
   background: var(--drive-ui-surface-soft);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-muted);
   display: inline-flex;
   height: 32px;

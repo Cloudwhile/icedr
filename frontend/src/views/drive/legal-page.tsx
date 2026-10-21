@@ -90,7 +90,7 @@ function LegalPage({
                 <LocalIcon name={documentKey === "terms" ? "document" : "shield"} size={18} />
                 <span style={{
                 fontSize: "var(--text-ui-xs)",
-                fontWeight: "700",
+                fontWeight: "var(--font-weight-bold)",
                 textTransform: "uppercase"
               }}>
                   {t("legal.sectionLabel")}
@@ -98,7 +98,7 @@ function LegalPage({
               </div>
               <h1 style={{
               fontSize: "var(--text-ui-2xl)",
-              fontWeight: "700",
+              fontWeight: "var(--font-weight-bold)",
               lineHeight: 1.5,
               letterSpacing: "0px",
               maxWidth: "820px"
@@ -152,15 +152,16 @@ export function LegalDocumentColumns({
               <span style={{
             color: palette.tertiary,
             fontSize: "var(--text-ui-xs)",
-            fontWeight: "700",
+            fontWeight: "var(--font-weight-bold)",
             textTransform: "uppercase"
           }}>
                 {t(`legal.language.${language}`)}
               </span>
               <h2 style={{
             marginTop: "4px",
-            fontSize: "22px",
-            fontWeight: "700",
+            // Preserve the legal document heading's existing line breaks.
+            fontSize: "calc(var(--text-ui-xl) - 2px)",
+            fontWeight: "var(--font-weight-bold)",
             lineHeight: 1.5
           }}>
                 {readLegalMessage(language, getLegalDocumentTitleKey(documentKey, language))}
@@ -194,7 +195,7 @@ export function LegalDocumentColumns({
         }}>
                 <h3 style={{
             fontSize: "var(--text-ui-md)",
-            fontWeight: "700",
+            fontWeight: "var(--font-weight-bold)",
             lineHeight: 1.5
           }}>
                   {readLegalMessage(language, getLegalDocumentSectionTitleKey(documentKey, language, section.index))}

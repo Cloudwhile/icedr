@@ -62,7 +62,7 @@ function NotFoundContent({
           color: palette.ink,
           "--r-font-size-base": "72px",
           "--r-font-size-md": "72px",
-          fontWeight: "700",
+          fontWeight: "var(--font-weight-bold)",
           lineHeight: "1",
           letterSpacing: "0px"
         } as React.CSSProperties}>
@@ -110,7 +110,7 @@ function ActionButton({
     gap: "8px",
     minHeight: "40px",
     paddingInline: "12px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: palette.subtle,
     borderWidth: "1px",
@@ -126,7 +126,7 @@ function ActionButton({
       <LocalIcon name={icon} size={17} />
       <span style={{
       fontSize: "var(--text-ui-xs)",
-      fontWeight: "600",
+      fontWeight: "var(--font-weight-semibold)",
       lineHeight: 1.5
     }}>
         {label}

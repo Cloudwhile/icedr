@@ -645,7 +645,8 @@ function PreviewStatusPane({
     >
       {item ? <ItemIcon item={item} palette={palette} size={40} /> : <LocalIcon name={icon} size={42} color={palette.primaryHover} />}
       <div>
-        <span style={{ color: palette.ink, fontSize: "18px", fontWeight: 600, lineHeight: 1.5 }}>{title}</span>
+        {/* Preserve the compact preview title's existing line breaks. */}
+        <span style={{ color: palette.ink, fontSize: "calc(var(--text-ui-lg) - 2px)", fontWeight: "var(--font-weight-semibold)", lineHeight: 1.5 }}>{title}</span>
         <span style={{ color: palette.subtle, lineHeight: 1.55, marginTop: "8px" }}>{message}</span>
       </div>
       {metrics?.length ? (
@@ -663,7 +664,7 @@ function PreviewMetric({ label, palette, value }: { label: string; palette: Pale
   return (
     <div>
       <span style={{ color: palette.subtle, fontSize: "var(--text-ui-xs)" }}>{label}</span>
-      <span style={{ color: palette.ink, fontWeight: 600, marginTop: "4px" }}>{value}</span>
+      <span style={{ color: palette.ink, fontWeight: "var(--font-weight-semibold)", marginTop: "4px" }}>{value}</span>
     </div>
   );
 }

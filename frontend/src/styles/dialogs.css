@@ -10,7 +10,7 @@
 .icedr-dialog {
   background: var(--dialog-bg, var(--surface));
   border: 1px solid var(--dialog-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--dialog-shadow, var(--ui-shadow-dialog));
   color: var(--dialog-color, var(--foreground));
   overflow: hidden;
@@ -44,7 +44,7 @@
   align-items: center;
   background: color-mix(in srgb, var(--confirmation-accent) 10%, var(--dialog-bg, var(--surface)));
   border: 1px solid color-mix(in srgb, var(--confirmation-accent) 28%, var(--dialog-border, var(--border)));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--confirmation-accent);
   display: inline-flex;
   height: 38px;
@@ -158,7 +158,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid var(--dialog-border);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: inherit;
   display: inline-flex;
   font-size: var(--text-ui-xs);

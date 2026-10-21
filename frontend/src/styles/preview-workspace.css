@@ -38,7 +38,7 @@
   align-items: center;
   background: rgba(18, 22, 30, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
   pointer-events: auto;
 }
@@ -58,7 +58,7 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-back {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: #a8b3c4;
   height: 32px;
   margin: 0;
@@ -108,7 +108,7 @@
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   height: 34px;
   min-width: 34px;
   width: 34px;
@@ -207,7 +207,7 @@
 .icedr-file-preview-dialog-media .icedr-preview-media-viewer {
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
   max-height: calc(100dvh - 142px);
   max-width: 100%;
@@ -216,7 +216,7 @@
 
 .icedr-file-preview-dialog-media .icedr-preview-media-object {
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   max-height: calc(100dvh - 142px);
   max-width: 100%;
   object-fit: contain;
@@ -237,7 +237,7 @@
 .icedr-file-preview-dialog-media .icedr-preview-document-shell {
   background: #ffffff;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
   min-height: calc(100dvh - 142px);
 }
@@ -250,7 +250,7 @@
   align-self: stretch;
   background: #11151c;
   border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
   gap: 10px;
   margin: 74px 16px 16px 0;

@@ -139,7 +139,7 @@ export function VisitorShareBrowser({
           }}
         >
           <LocalIcon name="folder" size={28} />
-          <span style={{ fontWeight: "600" }}>{t("files.emptyTitle")}</span>
+          <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{t("files.emptyTitle")}</span>
         </div>
       ) : (
         <div
@@ -177,7 +177,7 @@ export function VisitorShareBrowser({
                     className="icedr-truncate"
                     style={{
                       color: "inherit",
-                      fontWeight: "500",
+                      fontWeight: "var(--font-weight-medium)",
                     }}
                   >
                     {item.name}

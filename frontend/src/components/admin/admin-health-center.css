@@ -1,7 +1,7 @@
 .admin-health-center {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   display: grid;
   gap: 14px;
@@ -54,7 +54,7 @@
   align-items: center;
   background: var(--ui-surface-subtle);
   border: 1px solid var(--ui-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--ui-text-secondary);
   display: inline-flex;
   flex: 0 0 auto;
@@ -104,7 +104,7 @@
 .admin-health-error {
   background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-surface));
   border: 1px solid color-mix(in srgb, var(--ui-warning) 38%, var(--ui-border-default));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: var(--text-ui-xs);
   padding: 9px 11px;
   line-height: 1.5;

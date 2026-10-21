@@ -10,7 +10,7 @@
   animation: drive-popover-enter 180ms var(--drive-ui-ease) both;
   background: var(--drive-ui-surface);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--drive-ui-shadow-2);
   display: grid;
   gap: 8px;
@@ -37,7 +37,7 @@
   align-items: center;
   background: color-mix(in srgb, var(--drive-ui-blue-600) 9%, var(--drive-ui-surface));
   border: 1px solid color-mix(in srgb, var(--drive-ui-blue-600) 22%, var(--drive-ui-line));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   height: 30px;
@@ -68,7 +68,7 @@
 .drive-search-count {
   background: color-mix(in srgb, var(--drive-ui-surface-soft) 86%, transparent);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--drive-ui-muted);
   font-size: var(--text-ui-xs);
   font-weight: var(--font-weight-bold);
@@ -142,7 +142,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-ink);
   display: grid;
   gap: 10px;
@@ -169,7 +169,7 @@
 .drive-search-result-preview {
   align-items: center;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   height: 36px;
   justify-content: center;
@@ -226,7 +226,7 @@
   align-items: center;
   background: var(--drive-ui-surface);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--drive-ui-muted);
   display: inline-flex;
   font-size: var(--text-ui-xs);
@@ -261,7 +261,7 @@
   animation: drive-filter-enter 230ms var(--drive-ui-ease) both;
   background: var(--drive-ui-surface);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--drive-ui-shadow-2);
   display: grid;
   gap: 8px;
@@ -325,7 +325,7 @@
 .drive-filter-field:focus-within {
   background: var(--drive-ui-surface-soft);
   border-bottom-color: var(--drive-ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   box-shadow: none;
 }
 

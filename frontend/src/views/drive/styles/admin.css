@@ -82,7 +82,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: calc(var(--radius-md) + 2px);
   color: var(--drive-ui-muted);
   display: inline-flex;
   font-size: var(--text-ui-base);
@@ -135,7 +135,7 @@
 }
 
 .admin-panel-subnav button {
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-subtle);
   font-size: var(--text-ui-xs);
   font-weight: var(--font-weight-semibold);
@@ -161,7 +161,7 @@
   align-items: center;
   border: 1px solid var(--drive-ui-line);
   background: var(--ui-surface-subtle);
-  border-radius: 10px;
+  border-radius: calc(var(--radius-md) + 2px);
   display: flex;
   gap: 10px;
   margin-top: 18px;
@@ -172,7 +172,7 @@
   align-items: center;
   background: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface));
   border: 1px solid color-mix(in srgb, var(--ui-accent) 22%, var(--ui-border-default));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   flex: 0 0 auto;
@@ -600,7 +600,7 @@
 
 .admin-distribution-dot {
   background: var(--drive-ui-blue-600);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   height: 8px;
   width: 8px;
 }
@@ -825,7 +825,7 @@
 
 .admin-storage-track {
   background: var(--ui-surface-raised);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   height: 9px;
   overflow: hidden;
 }

@@ -41,7 +41,7 @@ export function PublicPageNav({
         display: "flex",
         gap: "10px",
         minWidth: "0px",
-        borderRadius: "8px",
+        borderRadius: "var(--radius-md)",
         transition: "opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease)",
         "--hover-opacity": "0.82",
         "--hover-transform": "translateY(-1px)",
@@ -56,7 +56,7 @@ export function PublicPageNav({
             <span className="icedr-truncate" style={{
           color: palette.ink,
           fontSize: "var(--text-ui-base)",
-          fontWeight: "600",
+          fontWeight: "var(--font-weight-semibold)",
           lineHeight: 1.5
         }}>
               {siteName}

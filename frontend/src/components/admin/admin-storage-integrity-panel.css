@@ -175,7 +175,7 @@
   align-items: center;
   background: var(--ui-selection);
   border: 1px solid color-mix(in srgb, var(--ui-accent) 24%, var(--drive-ui-line));
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   height: 28px;
@@ -303,7 +303,7 @@
 .admin-integrity-task-line time,
 .admin-integrity-result {
   border: 1px solid var(--drive-ui-line);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   color: var(--drive-ui-muted);
   /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
@@ -593,7 +593,7 @@
   align-items: center;
   background: var(--drive-ui-surface-soft);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   display: inline-flex;
   height: 26px;
   justify-content: center;
@@ -753,7 +753,7 @@
 .admin-integrity-submit[data-scope="global"] {
   background: color-mix(in srgb, var(--ui-danger) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--ui-danger) 30%, var(--drive-ui-line));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
 }
 

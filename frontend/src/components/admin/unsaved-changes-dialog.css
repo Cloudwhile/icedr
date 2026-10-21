@@ -16,7 +16,7 @@
   align-items: center;
   background: var(--admin-unsaved-warning-bg);
   border: 1px solid color-mix(in srgb, var(--admin-unsaved-warning) 36%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--admin-unsaved-warning);
   display: inline-flex;
   height: 36px;

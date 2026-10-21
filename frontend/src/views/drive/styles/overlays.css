@@ -11,7 +11,7 @@
   animation: drive-upload-hud-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
   background: linear-gradient(180deg, var(--drive-ui-surface) 0%, var(--drive-ui-surface-soft) 100%);
   border: 1px solid var(--drive-ui-line-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--drive-ui-shadow-2), 0 0 0 1px color-mix(in srgb, var(--drive-ui-blue-600) 8%, transparent);
   color: var(--drive-ui-ink);
   overflow: hidden;
@@ -97,7 +97,7 @@
   align-items: center;
   background: var(--drive-ui-blue-50);
   border: 1px solid color-mix(in srgb, var(--drive-ui-blue-600) 18%, var(--drive-ui-line));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--drive-ui-blue-600);
   display: inline-flex;
   height: 34px;
@@ -198,7 +198,7 @@
   animation: workspace-notification-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
   background: linear-gradient(180deg, var(--drive-ui-surface) 0%, var(--drive-ui-surface-soft) 100%);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--drive-ui-shadow-2);
   box-sizing: border-box;
   color: var(--drive-ui-ink);
@@ -250,7 +250,7 @@
   align-items: center;
   background: color-mix(in srgb, var(--workspace-notification-accent) 10%, var(--drive-ui-surface));
   border: 1px solid color-mix(in srgb, var(--workspace-notification-accent) 18%, var(--drive-ui-line));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--workspace-notification-accent);
   display: inline-flex;
   height: 34px;

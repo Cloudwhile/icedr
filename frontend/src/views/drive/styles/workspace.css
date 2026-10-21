@@ -241,7 +241,7 @@
 .drive-toolbar-view-group {
   background: color-mix(in srgb, var(--drive-ui-surface) 70%, transparent);
   border: 1px solid var(--drive-ui-line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--drive-ui-shadow-tight);
   min-height: 38px;
   padding: 3px;
@@ -279,7 +279,7 @@
 }
 
 .drive-workspace-tools .icedr-tool-button {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   box-shadow: none;
 }
 
@@ -303,7 +303,7 @@
 }
 
 .drive-workspace-tools .icedr-segmented-tool {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   height: 30px;
   min-width: 30px;
   transition: background-color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease), color 160ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
@@ -334,7 +334,7 @@
 
 .drive-more-trigger,
 .drive-sort-trigger {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .drive-toolbar-filter-group .icedr-tool-button[data-active="true"],
@@ -366,7 +366,7 @@
 }
 
 .drive-toolbar-primary-group .icedr-action-button {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   height: 38px;
   min-width: 102px;
 }
@@ -480,7 +480,7 @@
 
   .drive-mobile-workspace-tools .icedr-tool-button,
   .drive-mobile-menu-trigger {
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     height: 44px;
     min-height: 44px;
     min-width: 44px;

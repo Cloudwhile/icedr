@@ -166,7 +166,7 @@
 .icedr-auth-scene-grid span {
   background: color-mix(in srgb, var(--auth-surface) 76%, transparent);
   border: 1px solid color-mix(in srgb, var(--auth-accent) 18%, var(--auth-border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--auth-shadow-card);
   height: 68px;
 }
@@ -183,7 +183,7 @@
 .icedr-auth-scene-card {
   background: linear-gradient(180deg, color-mix(in srgb, var(--auth-surface) 94%, var(--auth-accent)), color-mix(in srgb, var(--auth-accent) 10%, var(--auth-surface-2)));
   border: 1px solid color-mix(in srgb, var(--auth-accent) 34%, var(--auth-border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--auth-shadow-popover), inset 0 -14px 24px color-mix(in srgb, var(--auth-accent) 13%, transparent);
   position: absolute;
   transform: rotateX(60deg) rotateZ(-27deg);
@@ -201,7 +201,7 @@
 
 .icedr-auth-scene-card-back span {
   background: color-mix(in srgb, var(--auth-accent) 14%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   display: block;
   height: 12px;
 }
@@ -239,7 +239,7 @@
 
 .icedr-auth-scene-card-front span {
   background: color-mix(in srgb, var(--auth-accent) 16%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   display: block;
   height: 10px;
   width: 58%;
@@ -353,7 +353,7 @@
 .icedr-auth-form-card {
   background: var(--auth-surface);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: none;
   padding: 0;
 }
@@ -417,7 +417,7 @@
   appearance: none;
   background: var(--auth-primary-bg);
   border: 1px solid var(--auth-primary-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--auth-shadow-card);
   box-sizing: border-box;
   color: var(--auth-primary-text);
@@ -566,7 +566,7 @@
 .icedr-auth-current-user,
 .icedr-auth-code-panel,
 .icedr-auth-password-meter {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .icedr-auth-current-user {

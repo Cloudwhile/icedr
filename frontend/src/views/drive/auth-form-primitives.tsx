@@ -104,7 +104,7 @@ export function AuthStatusNotice({
     display: "flex",
     alignItems: "flex-start",
     padding: "12px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-md)",
     background: tone.bg,
     borderWidth: "1px",
     borderColor: tone.borderColor,

@@ -13,7 +13,7 @@
 .share-scope-picker-modes {
   background: var(--share-scope-surface-2);
   border: 1px solid var(--share-scope-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   gap: 3px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -24,7 +24,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   display: inline-flex;
   font-size: var(--text-ui-xs);
@@ -63,7 +63,7 @@
 .share-scope-picker-root-context {
   background: var(--share-scope-surface-1);
   border: 1px solid var(--share-scope-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   font-size: var(--text-ui-sm);
   gap: 8px;
@@ -75,7 +75,7 @@
 .share-scope-picker-tree {
   background: var(--share-scope-surface-1);
   border: 1px solid var(--share-scope-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   max-height: 320px;
   min-height: 88px;
   overflow: auto;
@@ -133,7 +133,7 @@
 .share-scope-picker-toggle {
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .share-scope-picker-toggle:hover {
@@ -144,7 +144,7 @@
   align-self: center;
   background: var(--share-scope-canvas);
   border: 1px solid var(--share-scope-hairline-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   height: 17px;
   justify-self: center;
   transition:

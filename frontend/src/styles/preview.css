@@ -66,7 +66,7 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   height: 40px;
   justify-content: center;
@@ -220,7 +220,7 @@
   animation: icedr-preview-rise var(--motion-base) var(--motion-ease-emphasized) both;
   background: var(--ui-surface);
   border: 1px solid var(--preview-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   display: flex;
   gap: 4px;
@@ -268,7 +268,7 @@
   animation: icedr-preview-rise var(--motion-base) var(--motion-ease-emphasized) both;
   background: transparent;
   border: 1px solid var(--preview-media-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   display: flex;
   justify-content: center;
@@ -350,7 +350,7 @@ video.icedr-preview-media-object {
 
 .icedr-preview-metadata-tabs button[data-active="true"]::after {
   background: var(--ui-accent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   bottom: -1px;
   content: "";
   height: 2px;
@@ -363,7 +363,7 @@ video.icedr-preview-media-object {
 .icedr-preview-version-card {
   background: var(--ui-surface);
   border: 1px solid var(--preview-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   box-sizing: border-box;
   min-width: 0;
@@ -476,7 +476,7 @@ video.icedr-preview-media-object {
 .icedr-preview-tags-card {
   background: var(--ui-surface);
   border: 1px solid var(--preview-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   display: flex;
   flex-direction: column;
@@ -505,7 +505,7 @@ video.icedr-preview-media-object {
 .icedr-preview-tags-list span {
   background: linear-gradient(180deg, color-mix(in srgb, var(--preview-surface, var(--ui-surface)) 94%, var(--preview-muted, var(--ui-text-tertiary))) 0%, var(--ui-surface) 100%);
   border: 1px solid color-mix(in srgb, var(--preview-muted, var(--ui-text-tertiary)) 18%, var(--preview-border, var(--ui-border-default)));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 76%, transparent);
   color: color-mix(in srgb, var(--preview-text, var(--foreground)) 82%, var(--preview-muted, var(--ui-text-tertiary)));
   font-size: var(--text-ui-xs);
@@ -585,7 +585,7 @@ video.icedr-preview-media-object {
 
 .icedr-preview-version-dot {
   background: var(--ui-accent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   height: 7px;
   margin-top: 7px;
   width: 7px;
@@ -670,7 +670,7 @@ video.icedr-preview-media-object {
   animation: icedr-preview-rise var(--motion-base) var(--motion-ease-emphasized) both;
   background: var(--ui-surface);
   border: 1px solid var(--preview-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--ui-shadow-card);
   flex: 1 1 auto;
   height: min(650px, calc(100dvh - 250px));
@@ -710,7 +710,7 @@ video.icedr-preview-media-object {
 .icedr-preview-editor-grid {
   background: transparent;
   border: 1px solid var(--preview-editor-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   flex: 1 1 auto;
   grid-template-columns: var(--preview-editor-columns, minmax(0, 1fr));
@@ -818,7 +818,7 @@ video.icedr-preview-media-object {
   align-items: center;
   background: transparent;
   border: 1px solid var(--open-with-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--open-with-text, var(--foreground));
   display: grid;
   gap: 10px;
@@ -852,7 +852,7 @@ video.icedr-preview-media-object {
   align-items: center;
   background: transparent;
   border: 1px solid var(--open-with-border, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--open-with-text, var(--foreground));
   display: inline-flex;
   font-size: var(--text-ui-sm);

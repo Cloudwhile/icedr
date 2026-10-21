@@ -72,7 +72,7 @@
 .icedr-setup-access-icon {
   align-items: center;
   border: 1px solid;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   height: 38px;
   justify-content: center;
@@ -168,7 +168,7 @@
   align-items: center;
   background: var(--setup-step-surface);
   border: 1px solid var(--setup-step-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--setup-step-color);
   display: grid;
   gap: 10px;
@@ -241,7 +241,7 @@
 .icedr-setup-step-status {
   align-self: start;
   border: 1px solid color-mix(in srgb, var(--setup-step-active-border) 14%, var(--setup-step-border));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--setup-step-muted);
   /* Preserve this fixed display/counter size to avoid changing its layout. */
   font-size: 10px;
@@ -270,7 +270,7 @@
   align-items: center;
   background: var(--setup-step-surface);
   border: 1px solid var(--setup-step-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   box-shadow: 0 2px 8px rgba(51, 84, 142, 0.08);
   color: var(--setup-step-muted);
   display: inline-flex;
@@ -377,7 +377,7 @@
 .icedr-setup-step-head {
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 7%, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -439,7 +439,7 @@
   align-items: center;
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--accent-hover);
   display: inline-flex;
   height: 28px;
@@ -486,7 +486,7 @@
 .icedr-setup-info-tile {
   background: var(--setup-info-bg);
   border: 1px solid color-mix(in srgb, var(--accent) 7%, var(--setup-info-border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -512,7 +512,7 @@
 .icedr-setup-select-card {
   background: var(--setup-toggle-bg, var(--setup-select-bg));
   border: 1px solid var(--setup-toggle-border, var(--setup-select-border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--setup-toggle-color, var(--setup-select-color));
   min-width: 0;
   transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
@@ -583,7 +583,7 @@
   align-items: center;
   background: var(--surface-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   height: 116px;
   justify-content: center;
@@ -663,7 +663,7 @@
   .icedr-setup-step-button[data-compact="true"] {
     background: var(--setup-step-surface);
     border: 1px solid var(--setup-step-border);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     grid-template-columns: auto minmax(0, 1fr);
     justify-items: start;
     min-height: 44px;

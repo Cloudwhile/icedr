@@ -36,7 +36,7 @@ export function WorkspaceSkeleton({
           style={{
             background: palette.surface1,
             borderColor: palette.hairline,
-            borderRadius: "8px",
+            borderRadius: "var(--radius-md)",
             borderWidth: "1px",
             display: "flex",
             flexDirection: "column",
@@ -54,7 +54,7 @@ export function WorkspaceSkeleton({
             <SkeletonBlock
               palette={palette}
               style={{
-                borderRadius: "8px",
+                borderRadius: "var(--radius-md)",
                 height: "28px",
                 width: "28px",
               }}

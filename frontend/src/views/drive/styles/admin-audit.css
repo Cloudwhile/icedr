@@ -47,7 +47,7 @@
 .admin-shell .drive-audit-filter-title small {
   background: var(--ui-surface-subtle);
   border: 1px solid var(--ui-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--ui-text-secondary);
   flex: 0 0 auto;
   font-size: var(--text-ui-xs);
@@ -404,7 +404,7 @@
   align-items: center;
   background: var(--ui-surface-subtle);
   border: 1px solid var(--ui-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--ui-text-primary);
   display: inline-flex;
   font-size: var(--text-ui-xs);
@@ -435,7 +435,7 @@
   align-items: center;
   background: var(--ui-surface-subtle);
   border: 1px solid var(--ui-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--ui-text-secondary);
   display: inline-flex;
   font-size: var(--text-ui-xs);
