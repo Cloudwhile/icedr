@@ -10,6 +10,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RootI18nProvider } from "@/components/i18n/root-i18n-provider";
 import { palettes } from "@/features/file/model";
+import * as driveApi from "@/lib/drive-api";
+import { DriveApiError } from "@/lib/drive-api-errors";
 import {
   clearStoredAuthToken,
   getStoredAuthToken,
@@ -46,12 +48,13 @@ describe("AuthGate session expiry coordination", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
   });
 
-  it.each([true, false])("handles expiry with or without a coordinator (%s) and preserves the return location", async (withCoordinator) => {
-    setStoredAuthToken("token-a");
+  it.each([[true, "token-a"], [false, "token-a"], [false, null]] as const)("handles expiry with coordinator=%s and token=%s while preserving the return location", async (withCoordinator, token) => {
+    if (token) setStoredAuthToken(token);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(Response.json({ needsSetup: false }))
@@ -82,6 +85,19 @@ describe("AuthGate session expiry coordination", () => {
     expect(replaceRoute).toHaveBeenCalledWith(
       "/login?next=%2Fadmin%2Faudit%3Fcursor%3Dnext%23events",
     );
+    expect(getStoredAuthToken()).toBeNull();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
+
+  it("clears a retained expired token before redirecting even when the API caller leaves it stored", async () => {
+    setStoredAuthToken("retained-expired-token");
+    vi.spyOn(driveApi, "fetchSetupStatus").mockResolvedValue({ needsSetup: false } as Awaited<ReturnType<typeof driveApi.fetchSetupStatus>>);
+    vi.spyOn(driveApi, "fetchCurrentUser").mockRejectedValue(new DriveApiError("Session expired", 401, "AUTH_SESSION_EXPIRED"));
+    replaceRoute.mockImplementation(() => expect(getStoredAuthToken()).toBeNull());
+
+    render(<RootI18nProvider><AuthGate palette={palettes.light}><p>Protected content</p></AuthGate></RootI18nProvider>);
+
+    await waitFor(() => expect(replaceRoute).toHaveBeenCalledWith("/login?next=%2Fadmin%2Faudit%3Fcursor%3Dnext%23events"));
     expect(getStoredAuthToken()).toBeNull();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
   });

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { LdrsLoadingState } from "@/components/common/ui/loading-state";
 import { showAppToast } from "@/components/ui/app-toast-store";
-import { getStoredAuthToken } from "@/lib/drive-api-client";
+import { clearStoredAuthToken, getStoredAuthToken } from "@/lib/drive-api-client";
 import { createLoginRedirect } from "./auth-session-navigation";
 import { ApiErrorState } from "@/components/ui/app-error-boundary";
 import { usePathname, useRouter } from "@/compat/navigation";
@@ -71,6 +71,7 @@ export function AuthGate({
             setRetryRevision((revision) => revision + 1);
             return;
           }
+          clearStoredAuthToken();
           if (requestToken) showAppToast({ dedupeKey: "auth-session-expired", duration: 3600, title: t("errors.authExpired"), tone: "warning" });
           router.replace(createLoginRedirect(nextPath));
           return;

@@ -105,6 +105,56 @@ test("smoke: verifies external share access with an email code", async ({ page }
   expect(state.contentAccessSessionId).toBe("share-session-email");
 });
 
+test("share account expiry clears the token and preserves the login return location", async ({ page }) => {
+  await mockIcedrApi(page);
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("expiry-fixture-seeded")) {
+      localStorage.setItem("icedr.auth.token", "expired-share-token");
+      sessionStorage.setItem("expiry-fixture-seeded", "true");
+    }
+  });
+  await page.route(`**/shares/${shareToken}/access-sessions/account`, route =>
+    fulfillJson(route, { code: "AUTH_SESSION_EXPIRED", message: "Session expired" }, 401));
+  const returnPath = `/share/s/${shareToken}?from=keyboard#files`;
+  await page.goto(returnPath);
+  await page.locator('button[aria-label="More"]').last().click();
+  await page.getByRole("menuitem", { name: "Download" }).click();
+  await page.getByRole("button", { name: "Use current account" }).click();
+
+  await expect(page).toHaveURL(`/login?next=${encodeURIComponent(returnPath)}`);
+  expect(await page.evaluate(() => localStorage.getItem("icedr.auth.token"))).toBeNull();
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(`/login?next=${encodeURIComponent(returnPath)}`);
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+});
+
+test("an old share account request cannot clear a newer login token", async ({ page }) => {
+  await mockIcedrApi(page);
+  await page.addInitScript(() => localStorage.setItem("icedr.auth.token", "old-share-token"));
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route(`**/shares/${shareToken}/access-sessions/account`, async route => {
+    await held;
+    await fulfillJson(route, { code: "AUTH_SESSION_EXPIRED", message: "Old session expired" }, 401);
+  });
+  await page.goto(`/share/s/${shareToken}`);
+  await page.locator('button[aria-label="More"]').last().click();
+  await page.getByRole("menuitem", { name: "Download" }).click();
+  const pending = page.waitForRequest(request => request.url().endsWith(`/shares/${shareToken}/access-sessions/account`));
+  const useAccount = page.getByRole("button", { name: "Use current account" });
+  await useAccount.click();
+  await pending;
+  await page.evaluate(() => localStorage.setItem("icedr.auth.token", "new-share-token"));
+  const expiredResponse = page.waitForResponse(response =>
+    response.url().endsWith(`/shares/${shareToken}/access-sessions/account`) && response.status() === 401);
+  release();
+  await expiredResponse;
+  await expect(useAccount).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem("icedr.auth.token"))).toBe("new-share-token");
+  await expect(page).toHaveURL(`/share/s/${shareToken}`);
+});
+
 async function mockIcedrApi(
   page: Page,
   options: { authenticated?: boolean } = {},
@@ -143,7 +193,7 @@ async function mockIcedrApi(
     }
 
     if (method === "GET" && path === "/auth/me") {
-      if (options.authenticated === false) {
+      if (options.authenticated === false || !request.headers().authorization) {
         await fulfillJson(route, { message: "Unauthorized" }, 401);
         return;
       }

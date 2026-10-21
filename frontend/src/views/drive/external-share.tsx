@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionStagger } from "@/components/ui/motion";
 import { showAppToast } from "@/components/ui/app-toast-store";
 import { createDownloadPreparationKey, prepareDownload } from "@/components/ui/download-preparation-store";
-import { getStoredAuthToken } from "@/lib/drive-api-client";
+import { clearStoredAuthToken, getStoredAuthToken } from "@/lib/drive-api-client";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
 import { createSharedDriveItemBlobUrl, createSharedPreviewIntent, downloadSharedDriveItem, fetchPreviewIntentStatus, type PreviewIntentResponse } from "@/features/file/actions";
@@ -513,6 +513,7 @@ function ExternalSharePreview({
       if (isAuthExpiredApiError(error)) {
         const currentToken = getStoredAuthToken();
         if (currentToken && currentToken !== requestToken) return;
+        clearStoredAuthToken();
         showAppToast({
           dedupeKey: "auth-session-expired",
           title: t("share.sessionExpiredRelogin"),
