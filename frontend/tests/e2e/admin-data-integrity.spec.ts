@@ -104,6 +104,10 @@ test("retains last successful overview data and marks it stale after refresh fai
     "Unable to load administration settings",
   );
   await expect(workspaceMetric).toContainText("2");
+  await page.locator(".admin-header-actions").getByRole("button", { name: "Refresh", exact: true }).click();
+  const refreshToast = page.locator(".icedr-app-toast", { hasText: "Some workspace content could not be refreshed" });
+  await expect(refreshToast).toBeVisible();
+  await expect(refreshToast).toHaveAttribute("data-variant", "warning");
 });
 
 test("pulls authoritative quota state after an atomic save fails", async ({

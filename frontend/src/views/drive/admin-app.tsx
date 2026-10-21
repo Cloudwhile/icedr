@@ -392,7 +392,7 @@ function AdminPanelGate({
           : successful > 0
             ? t("app.refreshPartial")
             : t("app.refreshFailed"),
-      tone: successful === results.length ? "success" : "error",
+      tone: successful === results.length ? "success" : successful > 0 ? "warning" : "error",
     });
   }, [
     activePanel,
