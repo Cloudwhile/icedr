@@ -8,6 +8,7 @@ import { DrivePreviewMetadataPanel, type PreviewMediaMetadata } from "./drive-pr
 import { AppDialogShell } from "./app-dialog-shell";
 import { PreviewLifecycleBoundary } from "./preview-lifecycle-boundary";
 import { showAppToast } from "./app-toast-store";
+import { createDownloadPreparationKey, prepareDownload } from "./download-preparation-store";
 import { cn } from "./cn";
 import { ItemIcon, LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
@@ -162,7 +163,12 @@ export function DriveFilePreviewDialog({
   const sizeLabel = activeItem ? formatFileSize(sumDriveItemSizes([activeItem], [activeItem]), locale) : "--";
   const downloadActiveItem = () => {
     if (!activeItem) return;
-    void downloadWorkspaceDriveItem(activeItem, effectiveWorkspaceId ?? undefined)
+    const pending = prepareDownload({
+      key: createDownloadPreparationKey("workspace", [activeItem.id]),
+      label: t("app.preparingDownload", { name: activeItem.name }),
+    }, () => downloadWorkspaceDriveItem(activeItem, effectiveWorkspaceId ?? undefined));
+    if (!pending) return;
+    void pending
       .then(() => showAppToast({ title: t("app.downloaded"), tone: "success" }))
       .catch(() => showAppToast({ title: t("share.downloadFailed"), tone: "error" }));
   };

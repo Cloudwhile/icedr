@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { LocalIcon } from "./app-icon";
+import { DownloadPreparationStatus } from "./download-preparation-status";
 import {
   closeAppToast,
   getAppToastSnapshot,
@@ -20,6 +21,7 @@ export function AppToastProvider() {
   return (
     <div className="icedr-toast-region">
       {toast ? <AppToast key={toast.id} toast={toast} /> : null}
+      <DownloadPreparationStatus />
     </div>
   );
 }

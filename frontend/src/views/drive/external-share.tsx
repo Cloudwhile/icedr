@@ -6,6 +6,7 @@ import { useTimeZone, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMotionStagger } from "@/components/ui/motion";
 import { showAppToast } from "@/components/ui/app-toast-store";
+import { createDownloadPreparationKey, prepareDownload } from "@/components/ui/download-preparation-store";
 import { getStoredAuthToken } from "@/lib/drive-api-client";
 import { ExternalSharePageLoading } from "@/components/common/ui/loading-state";
 import { findDriveItem, formatDriveItemModified, formatFileSize, getItemKind, sumDriveItemSizes, palettes, type DriveItem, type Locale, type Palette, type ThemeMode } from "@/features/file/model";
@@ -556,7 +557,10 @@ function ExternalSharePreview({
       setAuthOpen(false);
       return;
     }
-    const actionPromise = accessAction === "download" ? downloadSharedDriveItem(registeredShare.token, accessItem, accessSessionId ?? undefined).then(() => {
+    const actionPromise = accessAction === "download" ? prepareDownload({
+      key: createDownloadPreparationKey(JSON.stringify(["share", registeredShare.token, accessSessionId ?? null]), [accessItem.id]),
+      label: t("app.preparingDownload", { name: accessItem.name }),
+    }, () => downloadSharedDriveItem(registeredShare.token, accessItem, accessSessionId ?? undefined))?.then(() => {
       setFeedback({ message: t("app.downloaded"), tone: "success" });
     }) : createSharedPreviewIntent(registeredShare.token, accessItem.id, accessSessionId ?? undefined).then(intent => {
       setPreview({
@@ -564,6 +568,7 @@ function ExternalSharePreview({
         intent
       });
     });
+    if (!actionPromise) return;
     void actionPromise.then(() => setAuthOpen(false)).catch((error) => {
       setFeedback({
         message: getDriveApiErrorMessage(error, t, {

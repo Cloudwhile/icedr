@@ -17,6 +17,8 @@ import { downloadWorkspaceFileVersion } from "@/features/file/actions";
 import { fetchFileVersions, restoreFileVersion, type FileVersionResponse } from "@/lib/drive-api";
 import { AppMenu, type AppMenuItem } from "@/components/ui/app-menu";
 import { AppTabs } from "@/components/ui/app-tabs";
+import { showAppToast } from "@/components/ui/app-toast-store";
+import { createDownloadPreparationKey, prepareDownload } from "@/components/ui/download-preparation-store";
 import { DriveItemPreview } from "@/components/ui/drive-item-preview";
 import { MotionList, MotionSurface } from "@/components/ui/motion";
 import { AnimatedCheckMark, ItemIcon, LocalIcon, ToolButton } from "./drive-primitives";
@@ -172,7 +174,15 @@ export function DetailsPanel({
 
   const downloadVersion = (version: FileVersionResponse) => {
     if (!versionItem) return;
-    void downloadWorkspaceFileVersion(versionItem, version.id).catch(() => setVersionError(t("share.downloadFailed")));
+    const pending = prepareDownload({
+      key: createDownloadPreparationKey(`version:${versionItem.id}`, [version.id]),
+      label: t("app.preparingDownload", { name: versionItem.name }),
+    }, () => downloadWorkspaceFileVersion(versionItem, version.id));
+    if (!pending) return;
+    setVersionError(null);
+    void pending
+      .then(() => showAppToast({ title: t("app.downloaded"), tone: "success" }))
+      .catch(() => setVersionError(t("share.downloadFailed")));
   };
 
   const restoreVersion = (version: FileVersionResponse) => {

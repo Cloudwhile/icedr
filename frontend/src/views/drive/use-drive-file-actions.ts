@@ -2,6 +2,7 @@ import { createElement, useCallback, useMemo, useRef, useState, type Dispatch, t
 import { BatchOperationFailureDescription } from "@/components/drive/batch-operation-feedback";
 import { getBatchOperationTone } from "@/components/drive/batch-operation-feedback-model";
 import { showWorkspaceNotification, type WorkspaceNotificationTone } from "@/components/ui/workspace-notification-store";
+import { createDownloadPreparationKey, prepareDownload } from "@/components/ui/download-preparation-store";
 import {
   copyTextToClipboard,
   createPreviewUrl,
@@ -100,13 +101,26 @@ export function useDriveFileActions({
       showFeedback(t("app.noSelection"), "warning");
       return;
     }
+    const preparation = {
+      key: createDownloadPreparationKey("workspace", actionItems.map((item) => item.id)),
+      label: actionItems.length > 1
+        ? t("app.preparingDownloads", { count: actionItems.length })
+        : t("app.preparingDownload", { name: actionItems[0].name }),
+    };
     if (actionItems.length > 1) {
-      void downloadWorkspaceDriveItems(actionItems)
+      const pending = prepareDownload({
+        ...preparation,
+        lockKeys: actionItems.map((item) => createDownloadPreparationKey("workspace", [item.id])),
+      }, () => downloadWorkspaceDriveItems(actionItems));
+      if (!pending) return;
+      void pending
         .then((result) => showBatchResult(result.summary, result.failed, actionItems))
         .catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
       return;
     }
-    void downloadWorkspaceDriveItem(actionItems[0], workspaceId ?? undefined)
+    const pending = prepareDownload(preparation, () => downloadWorkspaceDriveItem(actionItems[0], workspaceId ?? undefined));
+    if (!pending) return;
+    void pending
       .then(() => showFeedback(t("app.downloaded"), "success"))
       .catch((error) => showFeedback(getApiFeedback(error, "share.downloadFailed"), "error"));
   };

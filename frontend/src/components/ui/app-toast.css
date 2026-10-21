@@ -1,14 +1,40 @@
 .icedr-toast-region {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: flex-start;
   left: auto;
+  max-height: calc(100dvh - 104px);
   max-width: calc(100vw - 40px);
+  overflow-y: auto;
   pointer-events: none;
   position: fixed;
   right: 20px;
   top: 84px;
   width: min(380px, calc(100vw - 40px));
-  z-index: 180;
+  z-index: 240;
+}
+
+body:has(.icedr-file-preview-dialog) .icedr-toast-region {
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  max-height: min(240px, calc(100dvh - 48px));
+  right: auto;
+  top: auto;
+  transform: translateX(-50%);
+  width: min(380px, calc(100vw - 24px));
+}
+
+.icedr-download-preparation .icedr-app-toast-content {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.icedr-download-preparation-progress {
+  accent-color: var(--icedr-toast-accent);
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  width: 100%;
 }
 
 .icedr-app-toast {
@@ -20,6 +46,7 @@
   box-shadow: var(--ui-shadow-popover);
   box-sizing: border-box;
   color: var(--foreground, #111827);
+  flex-shrink: 0;
   min-height: 54px;
   opacity: 1;
   overflow: hidden;
@@ -167,6 +194,7 @@
 @media (max-width: 640px) {
   .icedr-toast-region {
     left: 12px;
+    max-height: calc(100dvh - 24px);
     max-width: none;
     right: 12px;
     top: 12px;
