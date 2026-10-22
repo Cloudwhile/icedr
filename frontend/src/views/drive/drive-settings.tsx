@@ -275,7 +275,7 @@ function UserProfileSettings({
         <div className="drive-settings-main-stack">
           <section className="drive-settings-main-column drive-settings-profile-card" aria-label={t("settings.personalInfo")}>
             <SettingsSectionHeader icon="user_avatar" title={t("settings.personalInfo")} trailing={(
-              <ToolButton showLabel disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="surface">
+              <ToolButton showLabel disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="solid" tone="accent">
                 <LocalIcon name="save" size={16} />
               </ToolButton>
             )} />

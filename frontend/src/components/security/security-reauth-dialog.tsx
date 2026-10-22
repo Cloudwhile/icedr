@@ -280,7 +280,7 @@ export function SecurityReauthDialog({
           palette={palette}
           tone="accent"
           label={selectedMethod === "passkey" ? t("settings.reauthUsePasskey") : selectedMethod === "oauth" ? t("settings.reauthUseOAuth") : t("settings.reauthContinue")}
-        >
+         visual="solid">
           <LocalIcon name="arrow_right" size={16} />
         </ToolButton>
       </AppDialogFooter>

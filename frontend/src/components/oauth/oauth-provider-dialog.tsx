@@ -644,8 +644,8 @@ function ToolAction({
       onClick={onClick}
       palette={palette}
       size="sm"
-      tone={tone}
-      visual="surface"
+      tone={tone ? "accent" : "neutral"}
+      visual={tone ? "solid" : "surface"}
     >
       <LocalIcon name={icon} size={16} />
     </ToolButton>

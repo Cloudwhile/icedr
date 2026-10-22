@@ -41,7 +41,7 @@ export function UnsavedSettingsBanner({ dirty, sections, dirtySections, onDiscar
         <ToolButton showLabel disabled={pending || !dirty} label={t("admin.discardAllChanges")} onClick={onDiscard} palette={palette}>
           <LocalIcon name="undo" size={17} />
         </ToolButton>
-        <ToolButton showLabel disabled={pending || !dirty} isPending={pending} label={t("admin.saveAllChanges")} onClick={() => void onSave().catch(() => undefined)} palette={palette}>
+        <ToolButton showLabel disabled={pending || !dirty} isPending={pending} label={t("admin.saveAllChanges")} onClick={() => void onSave().catch(() => undefined)} palette={palette} tone="accent" visual="solid">
           <LocalIcon name="save" size={17} />
         </ToolButton>
       </div>

@@ -111,7 +111,7 @@ export function SetupAccessGate({
                 size="lg"
                 tone="accent"
                 type="submit"
-                visual="surface"
+                visual="solid"
               >
                 <LocalIcon name="key" size={18} />
               </ToolButton>

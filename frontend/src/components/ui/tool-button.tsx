@@ -23,7 +23,7 @@ export type ToolButtonProps = {
   tone?: "neutral" | "accent" | "danger" | "success";
   tooltipPlacement?: AppTooltipPlacement;
   type?: "button" | "submit" | "reset";
-  visual?: "quiet" | "surface";
+  visual?: "quiet" | "surface" | "solid";
 };
 
 export function ToolButton({
@@ -50,9 +50,12 @@ export function ToolButton({
   const surfaceBg = palette.controlSurface;
   const descriptionId = useId();
   const unavailableReason = (disabled || isDisabled) ? disabledReason : undefined;
+  const solid = visual === "solid";
+  const solidColor = tone === "danger" ? palette.danger : tone === "success" ? palette.success : palette.primary;
+  const solidInk = tone === "danger" ? "var(--ui-on-danger)" : palette.onPrimary;
 
   return (
-    <AppTooltip content={unavailableReason ? `${label}: ${unavailableReason}` : label} palette={palette} placement={tooltipPlacement}>
+    <AppTooltip content={unavailableReason ? `${label}: ${unavailableReason}` : label} isDisabled={showLabel && !unavailableReason} palette={palette} placement={tooltipPlacement}>
       <Button
         aria-describedby={unavailableReason ? descriptionId : undefined}
         aria-label={label}
@@ -65,17 +68,17 @@ export function ToolButton({
         isIconOnly={!showLabel}
         onPress={onClick ?? onPress}
         style={{
-          "--tool-bg": visual === "surface" ? surfaceBg : "transparent",
-          "--tool-border": visual === "surface" ? palette.hairline : "transparent",
+          "--tool-bg": solid ? solidColor : visual === "surface" ? surfaceBg : "transparent",
+          "--tool-border": solid ? solidColor : visual === "surface" ? palette.hairline : "transparent",
           "--tool-active-bg": tone === "neutral" ? palette.surface3 : `color-mix(in srgb, ${toneColor} 15%, ${palette.surface2})`,
           "--tool-active-border": palette.hairlineStrong,
           "--tool-active-color": activeColor,
           "--tool-active-shadow": `inset 0 0 0 1px ${palette.hairline}`,
-          "--tool-color": tone !== "neutral" ? toneColor : active ? palette.ink : palette.subtle,
+          "--tool-color": solid ? solidInk : tone !== "neutral" ? toneColor : active ? palette.ink : palette.subtle,
           "--tool-focus": palette.focusRing,
-          "--tool-hover-bg": palette.surface2,
-          "--tool-hover-border": visual === "surface" ? palette.hairlineStrong : palette.hairline,
-          "--tool-hover-color": tone !== "neutral" ? toneColor : palette.ink,
+          "--tool-hover-bg": solid ? `color-mix(in srgb, ${solidColor} 90%, black)` : palette.surface2,
+          "--tool-hover-border": solid ? solidColor : visual === "surface" ? palette.hairlineStrong : palette.hairline,
+          "--tool-hover-color": solid ? solidInk : tone !== "neutral" ? toneColor : palette.ink,
         } as React.CSSProperties}
         type={type}
         variant="ghost"

@@ -920,7 +920,7 @@ function SetupPage({
                 <LocalIcon name="arrow_left" size={17} />
               </ToolButton>
               <div className="icedr-setup-primary-action">
-                <ToolButton showLabel disabled={!canContinue || busy} isPending={busy} label={stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")} onClick={goNext} palette={palette} size="lg" tone="accent" visual="surface">
+                <ToolButton showLabel disabled={!canContinue || busy} isPending={busy} label={stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")} onClick={goNext} palette={palette} size="lg" tone="accent" visual="solid">
                   <LocalIcon name={stepIndex === setupSteps.length - 1 ? "tick" : "arrow_right"} size={18} />
                 </ToolButton>
               </div>

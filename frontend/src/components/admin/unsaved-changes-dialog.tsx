@@ -118,7 +118,7 @@ export function UnsavedChangesDialog({
               onClick={onSave}
               palette={palette}
               tone="accent"
-              visual="surface"
+              visual="solid"
             >
               <LocalIcon name="save" size={17} />
             </ToolButton>

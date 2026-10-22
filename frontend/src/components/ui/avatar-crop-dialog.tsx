@@ -181,7 +181,7 @@ export function AvatarCropDialog({ imageSrc, onClose, onConfirm, open, palette }
           <ToolButton showLabel label={t("share.cancel")} palette={palette} onClick={onClose} visual="surface">
             <LocalIcon name="cross" size={17} />
           </ToolButton>
-          <ToolButton showLabel disabled={!imageInfo} label={t("settings.avatarApply")} palette={palette} onClick={confirmCrop} tone="success" visual="surface">
+          <ToolButton showLabel disabled={!imageInfo} label={t("settings.avatarApply")} palette={palette} onClick={confirmCrop} tone="accent" visual="solid">
             <LocalIcon name="tick" size={17} />
           </ToolButton>
         </footer>

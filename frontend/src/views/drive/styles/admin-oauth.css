@@ -1004,18 +1004,6 @@
   padding: 9px 12px;
 }
 
-.drive-oauth-dialog-actions .drive-oauth-dialog-action-activate {
-  background: var(--drive-ui-success);
-  border-color: var(--drive-ui-success);
-  color: var(--ui-text-inverse);
-}
-
-.drive-oauth-dialog-actions .drive-oauth-dialog-action-activate:hover {
-  background: color-mix(in srgb, var(--drive-ui-success) 86%, var(--ui-text-primary));
-  border-color: color-mix(in srgb, var(--drive-ui-success) 86%, var(--ui-text-primary));
-  color: var(--ui-text-inverse);
-}
-
 .icedr-dialog.drive-oauth-global-dialog {
   --drive-ui-ink: var(--ui-text-primary);
   --drive-ui-line: var(--ui-border-default);

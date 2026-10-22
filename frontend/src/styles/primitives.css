@@ -2,6 +2,7 @@
   align-items: center;
   background: var(--tool-bg, transparent);
   border: 1px solid var(--tool-border, transparent);
+  border-radius: var(--radius-md);
   color: var(--tool-color, currentColor);
   display: inline-flex;
   flex: 0 0 auto;

@@ -885,7 +885,7 @@ function TextPreviewEditor({
           <span className="icedr-preview-editor-title">
             {isMarkdown ? t("preview.editor") : t("preview.plainText")}
           </span>
-          <ToolButton showLabel disabled={loading || !dirty} isPending={pending} label={t("preview.save")} palette={palette} onClick={onSave}>
+          <ToolButton showLabel disabled={loading || !dirty} isPending={pending} label={t("preview.save")} palette={palette} onClick={onSave} tone="accent" visual="solid">
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </div>
