@@ -399,7 +399,7 @@ export function ExternalShareAdminSettingsPanel({
       className="external-share-admin-settings-panel"
       style={{ display: "flex", flexDirection: "column", gap: "16px" }}
     >
-      <ConfirmationDialog open={confirmPublic} palette={palette} tone="danger"
+      <ConfirmationDialog open={confirmPublic} palette={palette} tone="danger" icon="earth"
         title={t("admin.publicAccessConfirmTitle")} description={t("admin.publicAccessConfirmDescription")}
         confirmLabel={t("admin.publicAccessConfirmAction")} isPending={saving}
         onClose={() => setConfirmPublic(false)}

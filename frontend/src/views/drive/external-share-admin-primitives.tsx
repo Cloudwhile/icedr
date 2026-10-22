@@ -140,10 +140,10 @@ export function SettingActionBar({
     gap: "8px",
     justifyContent: "flex-end"
   }}>
-      <ToolButton label={resetLabel} palette={palette} disabled={saving || !canReset || !onReset} onClick={onReset}>
-        <LocalIcon name="refresh" size={16} />
+      <ToolButton showLabel label={resetLabel} palette={palette} disabled={saving || !canReset || !onReset} onClick={onReset}>
+        <LocalIcon name="undo" size={16} />
       </ToolButton>
-      <ToolButton label={saveLabel} palette={palette} disabled={saving || !canSave} onClick={onSave}>
+      <ToolButton showLabel label={saveLabel} palette={palette} disabled={saving || !canSave} onClick={onSave}>
         <LocalIcon name="save" size={16} />
       </ToolButton>
     </div>;
@@ -181,7 +181,7 @@ export function UndoSettingButton({
 }) {
   const t = useTranslations();
   return <ToolButton label={t("admin.undo")} palette={palette} onClick={onClick}>
-      <LocalIcon name="refresh" size={16} />
+      <LocalIcon name="undo" size={16} />
     </ToolButton>;
 }
 export function RadioRow({

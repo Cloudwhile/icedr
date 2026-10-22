@@ -37,12 +37,10 @@ type OAuthProviderDialogProps = {
   onSave: (enabled: boolean) => void;
   onSecretChange: (value: string) => void;
   onSelectTemplate: (template: OAuthProviderTemplate) => void;
-  onShowSecretChange: (value: boolean) => void;
   onTest: () => void;
   palette: Palette;
   savingKey: string | null;
   secret: string;
-  showSecret: boolean;
   testResult: OAuthConnectionTestResult | null;
   validationErrorKey: string | null;
 };
@@ -66,12 +64,10 @@ export function OAuthProviderDialog({
   onSave,
   onSecretChange,
   onSelectTemplate,
-  onShowSecretChange,
   onTest,
   palette,
   savingKey,
   secret,
-  showSecret,
   testResult,
   validationErrorKey,
 }: OAuthProviderDialogProps) {
@@ -262,25 +258,9 @@ export function OAuthProviderDialog({
                           ? t("admin.secretConfigured")
                           : ""
                       }
-                      type={showSecret ? "text" : "password"}
+                      type="password"
                       value={secret}
                     />
-                    <ToolButton
-                      disabled={busy}
-                      label={
-                        showSecret
-                          ? t("admin.oauthHideSecret")
-                          : t("admin.oauthShowSecret")
-                      }
-                      onClick={() => onShowSecretChange(!showSecret)}
-                      palette={palette}
-                      size="sm"
-                    >
-                      <LocalIcon
-                        name={showSecret ? "lock" : "visible"}
-                        size={16}
-                      />
-                    </ToolButton>
                     {draft.clientSecretConfigured ? (
                       <ToolButton
                         disabled={busy}
@@ -520,7 +500,7 @@ export function OAuthProviderDialog({
         <div className="drive-oauth-dialog-actions-primary">
           <ToolAction
             disabled={busy}
-            icon="refresh"
+            icon="connection"
             isPending={savingKey === "test"}
             label={t("admin.oauthTestConnection")}
             onClick={onTest}
@@ -541,7 +521,7 @@ export function OAuthProviderDialog({
           <ToolAction
             className="drive-oauth-dialog-action-activate"
             disabled={busy}
-            icon="tick"
+            icon="power"
             isPending={savingKey === "activate"}
             label={t("admin.oauthSaveAndActivate")}
             onClick={() => onSave(true)}
@@ -657,6 +637,7 @@ function ToolAction({
   return (
     <ToolButton
       className={className}
+      showLabel
       disabled={disabled && !isPending}
       isPending={isPending}
       label={label}

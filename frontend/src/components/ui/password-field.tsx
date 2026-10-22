@@ -17,7 +17,7 @@ export function PasswordField({ children, disabled }: { children: (visible: bool
         onClick={() => setVisible((value) => !value)}
         type="button"
       >
-        <LocalIcon name={visible ? "lock" : "visible"} size={17} />
+        <LocalIcon name={visible ? "eye_off" : "visible"} size={17} />
       </button>
     </span>
   );

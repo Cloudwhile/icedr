@@ -367,7 +367,7 @@ export function PasskeyManager({
           title={t("settings.passkeyDevices")}
           trailing={
             <div className="drive-passkey-manager-actions">
-              <ToolButton
+              <ToolButton showLabel
                 disabled={!authSettings?.passkeyConfigured || !authSettings.passkeyEnabled || loading || Boolean(savingKey)}
                 label={
                   authSettings?.passkeyConfigured
@@ -515,7 +515,7 @@ export function PasskeyManager({
           icon="shield"
           title={t("settings.recoveryCodesTitle")}
           trailing={
-            <ToolButton
+            <ToolButton showLabel
               disabled={loading || !methodStatus || Boolean(savingKey)}
               label={
                 (methodStatus?.methods.recoveryCodes ?? 0) > 0
@@ -670,6 +670,7 @@ export function PasskeyManager({
 
       <ConfirmationDialog
         confirmLabel={t("settings.recoveryCodesRegenerate")}
+        icon="key"
         description={t("settings.recoveryCodesRegenerateConfirm")}
         onClose={() => setRecoveryConfirmOpen(false)}
         onConfirm={() => {

@@ -47,7 +47,7 @@ export function UserAccountMenu({
       value: "settings",
     },
     {
-      icon: <LocalIcon name="arrow_left" size={15} />,
+      icon: <LocalIcon name="logout" size={15} />,
       label: t("auth.logout"),
       onClick: onLogout,
       separatorBefore: true,

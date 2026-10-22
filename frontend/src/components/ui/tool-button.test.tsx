@@ -26,3 +26,24 @@ it("exposes the disabled reason through the rendered button and clears it when e
   fireEvent.click(button);
   expect(onClick).toHaveBeenCalledOnce();
 });
+
+it("shows the action label on request while preserving its accessible name and click behavior", () => {
+  const onClick = vi.fn();
+  const { rerender } = render(
+    <ToolButton label="Save and activate" palette={palettes.light} onClick={onClick} showLabel>
+      <span aria-hidden="true">✓</span>
+    </ToolButton>,
+  );
+  const button = screen.getByRole("button", { name: "Save and activate" });
+  expect(screen.getByText("Save and activate")).toBeVisible();
+  fireEvent.click(button);
+  expect(onClick).toHaveBeenCalledOnce();
+
+  rerender(<ToolButton label="Save and activate" palette={palettes.light} active disabled showLabel><span /></ToolButton>);
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute("aria-pressed", "true");
+
+  rerender(<ToolButton label="Save and activate" palette={palettes.light}><span /></ToolButton>);
+  expect(screen.queryByText("Save and activate")).not.toBeInTheDocument();
+  expect(button).toHaveAccessibleName("Save and activate");
+});

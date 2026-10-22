@@ -98,7 +98,7 @@
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
 }
 
@@ -106,7 +106,7 @@
   height: 44px;
   min-height: 44px;
   min-width: 44px;
-  width: 44px;
+  width: auto;
 }
 
 .icedr-setup-access-state {

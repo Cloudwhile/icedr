@@ -269,7 +269,7 @@ function OAuthProviderRow({
           size="sm"
           visual="surface"
         >
-          <LocalIcon name="settings" size={16} />
+          <LocalIcon name="pencil" size={16} />
         </ToolButton>
         <ToolButton
           disabled={busy}
@@ -298,7 +298,7 @@ function OAuthProviderRow({
             tone="danger"
             visual="surface"
           >
-            <LocalIcon name="pause" size={16} />
+            <LocalIcon name="ban" size={16} />
           </ToolButton>
         ) : (
           <ToolButton
@@ -311,7 +311,7 @@ function OAuthProviderRow({
             tone="success"
             visual="surface"
           >
-            <LocalIcon name="tick" size={16} />
+            <LocalIcon name="power" size={16} />
           </ToolButton>
         )}
         <ToolButton

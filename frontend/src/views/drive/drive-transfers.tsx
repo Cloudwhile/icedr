@@ -430,7 +430,7 @@ function TransferTableRow({
             size="sm"
             onClick={() => onRetryTransfer?.(row.id)}
           >
-            <LocalIcon name={status === "failed" || status === "expired" ? "refresh" : "upload"} size={15} />
+            <LocalIcon name={status === "failed" || status === "expired" ? "refresh" : "play"} size={15} />
           </ToolButton>
         ) : null}
         {canPause ? (

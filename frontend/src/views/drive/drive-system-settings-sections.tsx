@@ -90,23 +90,23 @@ export function StoragePolicySection({
           >
             <LocalIcon name="refresh" size={17} />
           </ToolButton>
-          <ToolButton
+          <ToolButton showLabel
             isPending={savingKey === "user-quota"}
-            label={t("settings.userQuota")}
+            label={t("settings.saveUserQuota")}
             palette={palette}
             onClick={onSaveUserQuota}
             visual="surface"
           >
             <LocalIcon name="user_check" size={17} />
           </ToolButton>
-          <ToolButton
+          <ToolButton showLabel
             isPending={savingKey === "quota"}
             label={t("admin.save")}
             palette={palette}
             onClick={onSaveQuota}
             visual="surface"
           >
-            <LocalIcon name="tick" size={17} />
+            <LocalIcon name="save" size={17} />
           </ToolButton>
         </BlockActions>
       }
@@ -214,14 +214,14 @@ export function LifecyclePolicySection({
     <SettingsBlock
       actions={
         <BlockActions>
-          <ToolButton
+          <ToolButton showLabel
             isPending={savingKey === "policy"}
             label={t("admin.save")}
             palette={palette}
             onClick={onSavePolicy}
             visual="surface"
           >
-            <LocalIcon name="tick" size={17} />
+            <LocalIcon name="save" size={17} />
           </ToolButton>
         </BlockActions>
       }

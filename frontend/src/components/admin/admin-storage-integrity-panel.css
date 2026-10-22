@@ -435,12 +435,12 @@
   border-bottom: 0;
 }
 
-.admin-integrity-table th:nth-child(1) { width: 23%; }
+.admin-integrity-table th:nth-child(1) { width: 21%; }
 .admin-integrity-table th:nth-child(2) { width: 14%; }
 .admin-integrity-table th:nth-child(3),
 .admin-integrity-table th:nth-child(4) { width: 18%; }
-.admin-integrity-table th:nth-child(5) { width: 19%; }
-.admin-integrity-table th:nth-child(6) { width: 8%; }
+.admin-integrity-table th:nth-child(5) { width: 17%; }
+.admin-integrity-table th:nth-child(6) { width: 12%; }
 
 .admin-integrity-table td > code,
 .admin-integrity-table td > small,

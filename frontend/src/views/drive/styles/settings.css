@@ -782,6 +782,7 @@
 .drive-settings-avatar-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: center;
   margin-top: 18px;

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RootI18nProvider } from "@/components/i18n/root-i18n-provider";
 import { createOAuthDraft, getOAuthProviderTemplate } from "@/extensions/oauth/provider-catalog";
@@ -13,13 +13,25 @@ function renderError(validationErrorKey: string) {
     draft={createOAuthDraft(getOAuthProviderTemplate("oidc"), "https://app.example")}
     mode="create" onClearSecret={vi.fn()} onClose={vi.fn()} onCopy={vi.fn()}
     onDraftChange={vi.fn()} onSave={vi.fn()} onSecretChange={vi.fn()}
-    onSelectTemplate={vi.fn()} onShowSecretChange={vi.fn()} onTest={vi.fn()}
-    palette={palettes.light} savingKey={null} secret="" showSecret={false}
+    onSelectTemplate={vi.fn()} onTest={vi.fn()}
+    palette={palettes.light} savingKey={null} secret=""
     testResult={null} validationErrorKey={validationErrorKey}
   /></RootI18nProvider>);
 }
 
 describe("OAuth field error presentation", () => {
+  it("uses a single visibility control for the client secret", () => {
+    renderError("admin.oauthSecretRequired");
+    const input = screen.getByLabelText("OAuth client secret");
+    const toggle = screen.getByRole("button", { name: "Show password" });
+    expect(input).toHaveAttribute("type", "password");
+    expect(screen.getAllByRole("button", { name: /show.*(password|secret)/i })).toHaveLength(1);
+    fireEvent.click(toggle);
+    expect(input).toHaveAttribute("type", "text");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(input).toHaveAttribute("type", "password");
+  });
+
   it("associates a client ID error with the input and preserves the summary", () => {
     renderError("admin.oauthClientIdRequired");
     const input = screen.getByRole("textbox", { name: "OAuth client ID" });

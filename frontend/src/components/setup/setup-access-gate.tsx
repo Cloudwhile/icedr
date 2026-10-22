@@ -70,7 +70,7 @@ export function SetupAccessGate({
       ) : phase === "unavailable" ? (
         <div className="icedr-setup-access-state" role="status">
           <span>{noticeMessage || t("setup.accessUnavailable")}</span>
-          <ToolButton
+          <ToolButton showLabel
             disabled={busy}
             isPending={busy}
             label={t("setup.accessRetry")}
@@ -103,7 +103,7 @@ export function SetupAccessGate({
                 type="password"
                 value={credential}
               />
-              <ToolButton
+              <ToolButton showLabel
                 disabled={busy || !credential.trim()}
                 isPending={busy}
                 label={t("setup.accessContinue")}

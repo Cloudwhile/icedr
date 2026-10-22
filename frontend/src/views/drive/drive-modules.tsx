@@ -332,8 +332,8 @@ export function AuditModule({
           </div>
           <div className="drive-audit-filter-actions">
             <StatusPill palette={palette}>{pageRecordsLabel}</StatusPill>
-            <ToolButton label={t("audit.resetFilters")} palette={palette} onClick={resetFilters} tooltipPlacement="bottom">
-              <LocalIcon name="cross" size={16} />
+            <ToolButton showLabel label={t("audit.resetFilters")} palette={palette} onClick={resetFilters} tooltipPlacement="bottom">
+              <LocalIcon name="undo" size={16} />
             </ToolButton>
           </div>
         </div>

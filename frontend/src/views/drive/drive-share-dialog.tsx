@@ -330,7 +330,7 @@ function DriveShareDialogContent({
               </>
             ) : (
               <>
-                <ToolButton
+                <ToolButton showLabel
                   disabled={creating}
                   label={t("share.cancel")}
                   onClick={() => {

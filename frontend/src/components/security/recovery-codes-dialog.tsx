@@ -93,7 +93,7 @@ export function RecoveryCodesDialog({
           </div>
         </div>
         <div className="icedr-recovery-code-tools">
-          <ToolButton
+          <ToolButton showLabel
             isPending={busyAction === "copy"}
             label={t("settings.recoveryCodesCopyAll")}
             onClick={copyCodes}
@@ -102,7 +102,7 @@ export function RecoveryCodesDialog({
           >
             <LocalIcon name="copy" size={16} />
           </ToolButton>
-          <ToolButton
+          <ToolButton showLabel
             isPending={busyAction === "download"}
             label={t("settings.recoveryCodesDownload")}
             onClick={downloadCodes}

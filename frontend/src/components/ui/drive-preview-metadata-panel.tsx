@@ -217,8 +217,8 @@ export function DrivePreviewMetadataPanel({
                 <ToolButton label={t("actions.download")} palette={palette} size="sm" onClick={() => downloadVersion(version)}>
                   <LocalIcon name="download" size={15} />
                 </ToolButton>
-                <ToolButton label={t("actions.restore")} palette={palette} size="sm" onClick={() => restoreVersion(version)}>
-                  <LocalIcon name="refresh" size={15} />
+                <ToolButton showLabel label={t("actions.restore")} palette={palette} size="sm" onClick={() => restoreVersion(version)}>
+                  <LocalIcon name="restore" size={15} />
                 </ToolButton>
               </div>
             </div>

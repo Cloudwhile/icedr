@@ -189,7 +189,7 @@ export function FilesModule({
     ...blankCreateItems,
     ...(blankPasteItem ? [blankPasteItem] : []),
     { icon: <LocalIcon name="refresh" size={15} />, label: t("app.refresh"), onClick: onBlankRefresh, value: "refresh" },
-    { icon: <LocalIcon name="menu7" size={15} />, label: t("actions.listView"), onClick: () => onSetViewMode("list"), separatorBefore: true, disabled: viewMode === "list", value: "view-list" },
+    { icon: <LocalIcon name="list" size={15} />, label: t("actions.listView"), onClick: () => onSetViewMode("list"), separatorBefore: true, disabled: viewMode === "list", value: "view-list" },
     { icon: <LocalIcon name="grid" size={15} />, label: t("actions.gridView"), onClick: () => onSetViewMode("grid"), disabled: viewMode === "grid", value: "view-grid" },
   ];
 
@@ -313,7 +313,7 @@ export function FilesModule({
             <StatusPill palette={palette} tone="risk">
               {error}
             </StatusPill>
-            <ToolButton
+            <ToolButton showLabel
               label={t("app.errorBoundary.retry")}
               onClick={retryActiveCollection}
               palette={palette}
@@ -406,7 +406,7 @@ export function FilesModule({
         )}
         {canLoadMore && onLoadMore ? (
           <div className="drive-load-more-tools">
-            <ToolButton
+            <ToolButton showLabel
               disabled={loadingMore}
               isPending={loadingMore}
               label={t("files.loadMoreResults")}
@@ -496,7 +496,7 @@ function buildFileActionItems({
   if (item.archivedAt) {
     return [
       { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), value: "details" },
-      { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), disabled: destructivePending?.restore, separatorBefore: true, value: "restore" },
+      { icon: <LocalIcon name="restore" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), disabled: destructivePending?.restore, separatorBefore: true, value: "restore" },
       { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), disabled: destructivePending?.delete, tone: "danger" as const, value: "delete-permanently" },
     ];
   }
@@ -517,7 +517,7 @@ function buildFileActionItems({
     },
     { icon: <LocalIcon name="shield" size={15} />, label: t("actions.security"), onClick: () => onSecurity(item), value: "security" },
     item.archivedAt
-      ? { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), value: "restore" }
+      ? { icon: <LocalIcon name="restore" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), value: "restore" }
       : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), disabled: destructivePending?.archive, separatorBefore: true, tone: "danger", value: "archive" },
   ].filter(Boolean) as AppMenuItem[];
 

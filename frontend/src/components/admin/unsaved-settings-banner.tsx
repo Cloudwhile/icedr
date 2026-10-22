@@ -38,10 +38,10 @@ export function UnsavedSettingsBanner({ dirty, sections, dirtySections, onDiscar
         <span>{dirty ? message : presence.message}</span>
       </div>
       <div className="drive-platform-unsaved-actions">
-        <ToolButton disabled={pending || !dirty} label={t("admin.discardAllChanges")} onClick={onDiscard} palette={palette}>
-          <LocalIcon name="cross" size={17} />
+        <ToolButton showLabel disabled={pending || !dirty} label={t("admin.discardAllChanges")} onClick={onDiscard} palette={palette}>
+          <LocalIcon name="undo" size={17} />
         </ToolButton>
-        <ToolButton disabled={pending || !dirty} isPending={pending} label={t("admin.saveAllChanges")} onClick={() => void onSave().catch(() => undefined)} palette={palette}>
+        <ToolButton showLabel disabled={pending || !dirty} isPending={pending} label={t("admin.saveAllChanges")} onClick={() => void onSave().catch(() => undefined)} palette={palette}>
           <LocalIcon name="save" size={17} />
         </ToolButton>
       </div>

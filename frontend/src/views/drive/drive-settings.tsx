@@ -275,7 +275,7 @@ function UserProfileSettings({
         <div className="drive-settings-main-stack">
           <section className="drive-settings-main-column drive-settings-profile-card" aria-label={t("settings.personalInfo")}>
             <SettingsSectionHeader icon="user_avatar" title={t("settings.personalInfo")} trailing={(
-              <ToolButton disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="surface">
+              <ToolButton showLabel disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="surface">
                 <LocalIcon name="save" size={16} />
               </ToolButton>
             )} />
@@ -347,10 +347,10 @@ function UserProfileSettings({
                 </ToolButton>
               </div>
               <div className="drive-settings-avatar-actions">
-                <ToolButton disabled={!currentUser} isPending={avatarSaving} label={t("settings.avatarChoose")} palette={palette} onClick={() => avatarInputRef.current?.click()} visual="surface">
+                <ToolButton showLabel disabled={!currentUser} isPending={avatarSaving} label={t("settings.avatarChoose")} palette={palette} onClick={() => avatarInputRef.current?.click()} visual="surface">
                   <LocalIcon name="upload" size={17} />
                 </ToolButton>
-                <ToolButton disabled={!currentUser?.avatarUrl || avatarSaving} label={t("settings.avatarRemove")} palette={palette} onClick={clearAvatar} tone="danger" visual="surface">
+                <ToolButton showLabel disabled={!currentUser?.avatarUrl || avatarSaving} label={t("settings.avatarRemove")} palette={palette} onClick={clearAvatar} tone="danger" visual="surface">
                   <LocalIcon name="trash" size={16} />
                 </ToolButton>
               </div>
@@ -369,8 +369,8 @@ function UserProfileSettings({
           <section className="drive-settings-side-panel drive-settings-account-panel">
             <SettingsPanelHeader icon="user_avatar" title={t("settings.accountOperations")} />
             <div className="drive-settings-account-actions">
-              <ToolButton label={t("auth.logout")} palette={palette} onClick={onLogout} tone="danger" visual="surface">
-                <LocalIcon name="arrow_left" size={17} />
+              <ToolButton showLabel label={t("auth.logout")} palette={palette} onClick={onLogout} tone="danger" visual="surface">
+                <LocalIcon name="logout" size={17} />
               </ToolButton>
               <span>{t("settings.accountActionHint")}</span>
             </div>

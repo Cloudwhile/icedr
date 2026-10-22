@@ -87,6 +87,33 @@
   width: 48px;
 }
 
+.icedr-tool-button.icedr-tool-button-labeled {
+  gap: 8px;
+  height: auto;
+  max-width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  width: auto;
+}
+
+.icedr-tool-button-labeled.icedr-tool-button-sm {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.icedr-tool-button-labeled.icedr-tool-button-lg {
+  min-height: 48px;
+}
+
+.icedr-tool-button-label {
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .icedr-tool-button:hover,
 .icedr-tool-button[data-hovered="true"] {
   background: var(--tool-hover-bg, var(--tool-bg, transparent));

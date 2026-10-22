@@ -19,6 +19,7 @@ export type ToolButtonProps = {
   onPress?: () => void;
   palette: Palette;
   size?: "sm" | "md" | "lg";
+  showLabel?: boolean;
   tone?: "neutral" | "accent" | "danger" | "success";
   tooltipPlacement?: AppTooltipPlacement;
   type?: "button" | "submit" | "reset";
@@ -38,6 +39,7 @@ export function ToolButton({
   onPress,
   palette,
   size = "md",
+  showLabel = false,
   tone = "neutral",
   tooltipPlacement,
   type = "button",
@@ -54,12 +56,13 @@ export function ToolButton({
       <Button
         aria-describedby={unavailableReason ? descriptionId : undefined}
         aria-label={label}
-        className={cn("icedr-tool-button", `icedr-tool-button-${size}`, `icedr-tool-button-${visual}`, active && "is-active", className)}
+        aria-pressed={active}
+        className={cn("icedr-tool-button", `icedr-tool-button-${size}`, `icedr-tool-button-${visual}`, showLabel && "icedr-tool-button-labeled", active && "is-active", className)}
         data-active={active ? "true" : undefined}
         data-visual={visual}
         isDisabled={disabled || isDisabled}
         isPending={isPending}
-        isIconOnly
+        isIconOnly={!showLabel}
         onPress={onClick ?? onPress}
         style={{
           "--tool-bg": visual === "surface" ? surfaceBg : "transparent",
@@ -68,16 +71,17 @@ export function ToolButton({
           "--tool-active-border": palette.hairlineStrong,
           "--tool-active-color": activeColor,
           "--tool-active-shadow": `inset 0 0 0 1px ${palette.hairline}`,
-          "--tool-color": active ? palette.ink : palette.subtle,
+          "--tool-color": tone !== "neutral" ? toneColor : active ? palette.ink : palette.subtle,
           "--tool-focus": palette.focusRing,
           "--tool-hover-bg": palette.surface2,
           "--tool-hover-border": visual === "surface" ? palette.hairlineStrong : palette.hairline,
-          "--tool-hover-color": palette.ink,
+          "--tool-hover-color": tone !== "neutral" ? toneColor : palette.ink,
         } as React.CSSProperties}
         type={type}
         variant="ghost"
       >
         {children}
+        {showLabel ? <span className="icedr-tool-button-label">{label}</span> : null}
       </Button>
       {unavailableReason ? <span className="icedr-sr-only" id={descriptionId}>{unavailableReason}</span> : null}
     </AppTooltip>

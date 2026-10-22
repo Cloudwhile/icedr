@@ -255,8 +255,8 @@ export function ShareAuthDialog({
                       onComplete={(value) => { if (!busy && verifyCooldownSeconds <= 0) onVerifyCode(value); }}
                     />
                   </AuthField>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                    <ToolButton
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "8px" }}>
+                    <ToolButton showLabel
                       label={t("auth.changeResetEmail")}
                       palette={palette}
                       disabled={busy}
@@ -266,7 +266,7 @@ export function ShareAuthDialog({
                     >
                       <LocalIcon name="arrow_left" size={15} />
                     </ToolButton>
-                    <ToolButton
+                    <ToolButton showLabel
                       label={t("auth.resendCode")}
                       palette={palette}
                       disabled={busy || sendCooldownSeconds > 0}
@@ -274,7 +274,7 @@ export function ShareAuthDialog({
                       size="sm"
                       visual="surface"
                     >
-                      <LocalIcon name="refresh" size={15} />
+                      <LocalIcon name="send" size={15} />
                     </ToolButton>
                   </div>
                   <AuthPrimaryButton

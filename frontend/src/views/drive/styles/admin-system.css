@@ -323,12 +323,13 @@
 
 .admin-shell .drive-system-settings-actions {
   border-top: 0;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding-top: 0;
 }
 
-.admin-shell .drive-system-settings-actions .icedr-tool-button {
+.admin-shell .drive-system-settings-actions .icedr-tool-button:not(.icedr-tool-button-labeled) {
   height: 34px;
   min-width: 34px;
   width: 34px;
@@ -576,6 +577,7 @@
 .drive-platform-unsaved-actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 4px;
 }
 

@@ -128,7 +128,7 @@ export function useDriveDestructiveActions({
 
       const undoNotification = succeededIds.length > 0
         ? {
-          actionIcon: "refresh" as const,
+          actionIcon: "undo" as const,
           actionLabel: t("actions.undo"),
           dedupeKey: `drive-archive-${++archiveNotificationSequenceRef.current}-${[...succeededIds].sort().join("|")}`,
           onAction: () => restoreItemsByIdentity(

@@ -745,7 +745,7 @@
   align-items: center;
   display: grid;
   gap: 5px;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
 }
 
@@ -957,6 +957,7 @@
   border-top: 1px solid var(--drive-ui-line);
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: space-between;
   margin: 0;
@@ -966,14 +967,27 @@
 .drive-oauth-dialog-actions-primary {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
 }
 
-.drive-oauth-dialog-actions .icedr-tool-button {
+.drive-oauth-dialog-actions .icedr-tool-button:not(.icedr-tool-button-labeled) {
   height: 38px;
   min-width: 38px;
   width: 38px;
+}
+
+@media (max-width: 560px) {
+  .drive-oauth-dialog-actions-primary {
+    display: grid;
+    flex: 1 1 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-oauth-dialog-action-activate {
+    grid-column: 1 / -1;
+  }
 }
 
 .drive-oauth-validation-message {
@@ -1088,7 +1102,7 @@
   }
 
   .drive-oauth-copy-field {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .drive-oauth-dialog > .drive-oauth-dialog-actions {

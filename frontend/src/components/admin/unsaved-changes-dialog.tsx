@@ -90,7 +90,7 @@ export function UnsavedChangesDialog({
         </AppDialogBody>
 
         <AppDialogFooter className="admin-unsaved-changes-actions">
-          <ToolButton
+          <ToolButton showLabel
             disabled={isPending}
             label={labels.cancel}
             onClick={onCancel}
@@ -100,7 +100,7 @@ export function UnsavedChangesDialog({
             <LocalIcon name="cross" size={17} />
           </ToolButton>
           <span className="admin-unsaved-changes-primary-actions">
-            <ToolButton
+            <ToolButton showLabel
               disabled={isPending}
               isPending={pendingAction === "discard"}
               label={labels.discard}
@@ -109,9 +109,9 @@ export function UnsavedChangesDialog({
               tone="danger"
               visual="surface"
             >
-              <LocalIcon name="trash" size={17} />
+              <LocalIcon name="undo" size={17} />
             </ToolButton>
-            <ToolButton
+            <ToolButton showLabel
               disabled={isPending}
               isPending={pendingAction === "save"}
               label={labels.save}

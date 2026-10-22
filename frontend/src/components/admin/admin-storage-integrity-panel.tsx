@@ -320,7 +320,7 @@ export function AdminStorageIntegrityPanel({
                 {t("storageIntegrity.workspaceRun")}
               </span>
             )}
-            <ToolButton
+            <ToolButton showLabel
               disabled={startDisabled}
               isPending={controller.operationPending}
               label={t("storageIntegrity.start")}
@@ -343,7 +343,7 @@ export function AdminStorageIntegrityPanel({
             <p>{t("storageIntegrity.currentTaskHint")}</p>
           </div>
           {controller.task && canRetry(controller.task) ? (
-            <ToolButton
+            <ToolButton showLabel
               disabled={controller.operationPending}
               isPending={controller.operationPending}
               label={t("storageIntegrity.retryAll")}
@@ -455,6 +455,7 @@ export function AdminStorageIntegrityPanel({
       title={t(pendingConfirmation?.kind === "retry" ? "storageIntegrity.retryAll" : "storageIntegrity.start")}
       description={t(pendingConfirmation?.kind === "retry" ? "storageIntegrity.retryConfirmDescription" : "storageIntegrity.startConfirmDescription")}
       confirmLabel={t("storageIntegrity.confirmOperation")}
+      icon={pendingConfirmation?.kind === "retry" ? "refresh" : "play"}
       isPending={controller.operationPending}
       onClose={() => setPendingConfirmation(null)}
       onConfirm={() => {
@@ -729,7 +730,7 @@ function IntegrityResults({
               <td>
                 <div className="admin-integrity-result-actions">
                   {canAcknowledge(item) ? (
-                    <ToolButton
+                    <ToolButton showLabel
                       disabled={operationPending}
                       isPending={pendingAcknowledgementId === item.id}
                       label={t("storageIntegrity.acknowledgeFinding")}

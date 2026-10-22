@@ -861,7 +861,7 @@ export function DriveWorkbench({
     { icon: <LocalIcon name="cut" size={15} />, label: t("actions.move"), onClick: () => cutItems(toolbarActionTargets), disabled: !toolbarCanUseClipboard, value: "move" },
     ...toolbarPasteMenuItems,
     activeNavForView === "trash"
-      ? { icon: <LocalIcon name="refresh" size={15} />, label: t("actions.restore"), onClick: () => restoreItems(toolbarActionTargets), disabled: !toolbarHasActionTarget || restorePending, value: "restore" }
+      ? { icon: <LocalIcon name="restore" size={15} />, label: t("actions.restore"), onClick: () => restoreItems(toolbarActionTargets), disabled: !toolbarHasActionTarget || restorePending, value: "restore" }
       : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => archiveItems(toolbarActionTargets), disabled: !toolbarHasActionTarget || archivePending, tone: "danger", value: "archive" },
     activeNavForView === "trash"
       ? { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => deletePermanentlyItems(toolbarActionTargets), disabled: !toolbarHasActionTarget || permanentDeletePending, separatorBefore: true, tone: "danger", value: "delete" }

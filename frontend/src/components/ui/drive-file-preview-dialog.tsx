@@ -255,7 +255,7 @@ export function DriveFilePreviewDialog({
               <LocalIcon name="download" size={17} />
             </ToolButton>
             <ToolButton disabled={!activeItem} label={t("actions.copyLink")} palette={palette} onClick={copyActivePreviewLink} visual="surface">
-              <LocalIcon name="share2" size={17} />
+              <LocalIcon name="copy" size={17} />
             </ToolButton>
             <ToolButton label={t("app.close")} palette={palette} onClick={requestClose} visual="surface">
               <LocalIcon name="cross" size={17} />
@@ -309,6 +309,7 @@ export function DriveFilePreviewDialog({
       title={t("preview.unsavedTitle")}
       description={t("preview.unsavedDescription")}
       confirmLabel={t("admin.unsavedDiscard")}
+      icon="undo"
       tone="warning"
       onClose={() => setConfirmClose(false)}
       onConfirm={() => { setConfirmClose(false); pendingLeave.current(); }}
@@ -884,7 +885,7 @@ function TextPreviewEditor({
           <span className="icedr-preview-editor-title">
             {isMarkdown ? t("preview.editor") : t("preview.plainText")}
           </span>
-          <ToolButton disabled={loading || !dirty} isPending={pending} label={t("preview.save")} palette={palette} onClick={onSave}>
+          <ToolButton showLabel disabled={loading || !dirty} isPending={pending} label={t("preview.save")} palette={palette} onClick={onSave}>
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </div>

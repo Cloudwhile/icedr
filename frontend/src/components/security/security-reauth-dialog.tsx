@@ -189,7 +189,7 @@ export function SecurityReauthDialog({
               role="group"
             >
               {availableMethods.map((method) => (
-                <ToolButton
+                <ToolButton showLabel
                   active={selectedMethod === method}
                   disabled={busy}
                   key={method}
@@ -273,7 +273,7 @@ export function SecurityReauthDialog({
         ) : null}
       </AppDialogBody>
       <AppDialogFooter>
-        <ToolButton
+        <ToolButton showLabel
           disabled={submitDisabled}
           isPending={busy}
           onClick={submit}

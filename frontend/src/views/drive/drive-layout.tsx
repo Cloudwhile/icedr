@@ -549,10 +549,10 @@ export function WorkspaceBar({
                   <div className="drive-toolbar-group drive-toolbar-action-group">
                     {activeNav === "trash" ? (
                       <>
-                        <ToolButton disabled={trashRestoreAction?.disabled} label={t("actions.restore")} palette={palette} visual="surface" onClick={trashRestoreAction?.onClick}>
-                          <LocalIcon name="refresh" size={17} />
+                        <ToolButton showLabel disabled={trashRestoreAction?.disabled} label={t("actions.restore")} palette={palette} visual="surface" onClick={trashRestoreAction?.onClick}>
+                          <LocalIcon name="restore" size={17} />
                         </ToolButton>
-                        <ToolButton disabled={trashDeleteAction?.disabled} label={t("actions.deletePermanently")} palette={palette} tone="danger" visual="surface" onClick={trashDeleteAction?.onClick}>
+                        <ToolButton showLabel disabled={trashDeleteAction?.disabled} label={t("actions.deletePermanently")} palette={palette} tone="danger" visual="surface" onClick={trashDeleteAction?.onClick}>
                           <LocalIcon name="trash" size={17} />
                         </ToolButton>
                       </>
@@ -616,7 +616,7 @@ export function WorkspaceBar({
                       ariaLabel={`${t("files.listView")} / ${t("files.gridView")}`}
                       onChange={setViewMode}
                       options={[
-                        { icon: <LocalIcon name="menu7" size={17} />, label: t("files.listView"), value: "list" },
+                        { icon: <LocalIcon name="list" size={17} />, label: t("files.listView"), value: "list" },
                         { icon: <LocalIcon name="grid" size={17} />, label: t("files.gridView"), value: "grid" },
                       ]}
                       palette={palette}
@@ -641,10 +641,10 @@ export function WorkspaceBar({
                 <div className="drive-mobile-toolbar-actions">
                   {activeNav === "trash" ? (
                     <>
-                      <ToolButton disabled={trashRestoreAction?.disabled} label={t("actions.restore")} palette={palette} visual="surface" onClick={trashRestoreAction?.onClick}>
-                        <LocalIcon name="refresh" size={18} />
+                      <ToolButton showLabel disabled={trashRestoreAction?.disabled} label={t("actions.restore")} palette={palette} visual="surface" onClick={trashRestoreAction?.onClick}>
+                        <LocalIcon name="restore" size={18} />
                       </ToolButton>
-                      <ToolButton disabled={trashDeleteAction?.disabled} label={t("actions.deletePermanently")} palette={palette} tone="danger" visual="surface" onClick={trashDeleteAction?.onClick}>
+                      <ToolButton showLabel disabled={trashDeleteAction?.disabled} label={t("actions.deletePermanently")} palette={palette} tone="danger" visual="surface" onClick={trashDeleteAction?.onClick}>
                         <LocalIcon name="trash" size={18} />
                       </ToolButton>
                     </>
@@ -706,7 +706,7 @@ export function WorkspaceBar({
                       </button>
                     </AppMenu>
                     <ToolButton label={t(viewMode === "list" ? "files.gridView" : "files.listView")} palette={palette} visual="surface" onClick={() => setViewMode(viewMode === "list" ? "grid" : "list")}>
-                      <LocalIcon name={viewMode === "list" ? "grid" : "menu7"} size={18} />
+                      <LocalIcon name={viewMode === "list" ? "grid" : "list"} size={18} />
                     </ToolButton>
                   </>
                 ) : null}

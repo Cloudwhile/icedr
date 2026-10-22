@@ -106,7 +106,6 @@ export function OAuthAdminSettingsPage({
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [secret, setSecret] = useState("");
   const [secretCleared, setSecretCleared] = useState(false);
-  const [showSecret, setShowSecret] = useState(false);
   const [statusFilter, setStatusFilter] = useState<OAuthStatusFilter>("all");
   const [testResult, setTestResult] = useState<OAuthConnectionTestResult | null>(
     null,
@@ -223,7 +222,6 @@ export function OAuthAdminSettingsPage({
     setDraft(null);
     setSecret("");
     setSecretCleared(false);
-    setShowSecret(false);
     setTestResult(null);
     setValidationErrorKey(null);
     setEditorCloseError(null);
@@ -378,7 +376,6 @@ export function OAuthAdminSettingsPage({
     setDraft(cloneOAuthDraft(baseline.draft));
     setSecret(baseline.secret);
     setSecretCleared(baseline.secretCleared);
-    setShowSecret(false);
     setTestResult(null);
     setValidationErrorKey(null);
   };
@@ -566,7 +563,7 @@ export function OAuthAdminSettingsPage({
         <div className="drive-oauth-toolbar">
           <div className="drive-oauth-admin-overview">
             <div className="drive-oauth-overview-actions">
-              <ToolButton
+              <ToolButton showLabel
                 disabled={savingKey !== null}
                 label={t("admin.addOAuth")}
                 palette={palette}
@@ -597,7 +594,7 @@ export function OAuthAdminSettingsPage({
               {authSettings &&
               !authSettings.oauthEnabled &&
               summary.active > 0 ? (
-                <ToolButton
+                <ToolButton showLabel
                   disabled={savingKey !== null}
                   label={t("admin.oauthEnableGlobalTitle")}
                   onClick={() => setEnablePromptOpen(true)}
@@ -606,7 +603,7 @@ export function OAuthAdminSettingsPage({
                   tone="success"
                   visual="surface"
                 >
-                  <LocalIcon name="tick" size={16} />
+                  <LocalIcon name="power" size={16} />
                 </ToolButton>
               ) : null}
             </div>
@@ -676,7 +673,7 @@ export function OAuthAdminSettingsPage({
             <div className="drive-oauth-empty">
               <LocalIcon name="key" size={18} />
               <span>{t("admin.oauthProviderEmpty")}</span>
-              <ToolButton
+              <ToolButton showLabel
                 disabled={savingKey !== null}
                 label={t(hasResultFilters ? "audit.resetFilters" : "admin.oauthAddProvider")}
                 onClick={hasResultFilters ? resetProviderFilters : () => openCreate()}
@@ -741,12 +738,10 @@ export function OAuthAdminSettingsPage({
             setValidationErrorKey(null);
           }}
           onSelectTemplate={selectTemplate}
-          onShowSecretChange={setShowSecret}
           onTest={testDraft}
           palette={palette}
           savingKey={savingKey}
           secret={secret}
-          showSecret={showSecret}
           testResult={testResult}
           validationErrorKey={validationErrorKey}
         />
@@ -846,7 +841,7 @@ function GlobalOAuthPrompt({
       <AppDialogBody>
         <p>{t("admin.oauthEnableGlobalDescription")}</p>
         <footer>
-          <ToolButton
+          <ToolButton showLabel
             label={t("actions.cancel")}
             onClick={onClose}
             palette={palette}
@@ -854,7 +849,7 @@ function GlobalOAuthPrompt({
           >
             <LocalIcon name="cross" size={17} />
           </ToolButton>
-          <ToolButton
+          <ToolButton showLabel
             isPending={loading}
             label={t("admin.oauthEnableGlobalTitle")}
             onClick={onEnable}
@@ -862,7 +857,7 @@ function GlobalOAuthPrompt({
             tone="success"
             visual="surface"
           >
-            <LocalIcon name="tick" size={17} />
+            <LocalIcon name="power" size={17} />
           </ToolButton>
         </footer>
       </AppDialogBody>

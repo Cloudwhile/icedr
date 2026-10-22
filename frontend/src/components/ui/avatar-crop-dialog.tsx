@@ -178,10 +178,10 @@ export function AvatarCropDialog({ imageSrc, onClose, onConfirm, open, palette }
         </label>
 
         <footer className="icedr-avatar-crop-actions">
-          <ToolButton label={t("share.cancel")} palette={palette} onClick={onClose} visual="surface">
+          <ToolButton showLabel label={t("share.cancel")} palette={palette} onClick={onClose} visual="surface">
             <LocalIcon name="cross" size={17} />
           </ToolButton>
-          <ToolButton disabled={!imageInfo} label={t("settings.avatarApply")} palette={palette} onClick={confirmCrop} tone="success" visual="surface">
+          <ToolButton showLabel disabled={!imageInfo} label={t("settings.avatarApply")} palette={palette} onClick={confirmCrop} tone="success" visual="surface">
             <LocalIcon name="tick" size={17} />
           </ToolButton>
         </footer>

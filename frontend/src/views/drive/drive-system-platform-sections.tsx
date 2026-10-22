@@ -46,7 +46,7 @@ export function PlatformDeliverySection({
     <SystemConfigBlock
       actions={
         <SystemBlockActions>
-          <ToolButton
+          <ToolButton showLabel
             disabled={
               !mail.enabled || !(mailTestEmail || mail.fromEmail).trim()
             }
@@ -57,9 +57,9 @@ export function PlatformDeliverySection({
             onClick={onTest}
             visual="surface"
           >
-            <LocalIcon name="mail" size={17} />
+            <LocalIcon name="send" size={17} />
           </ToolButton>
-          <ToolButton
+          <ToolButton showLabel
             disabled={!mailDirty}
             isPending={savingKey === "mail"}
             label={t("admin.save")}
@@ -209,7 +209,7 @@ export function PlatformStorageSection({
     <SystemConfigBlock
       actions={
         <SystemBlockActions>
-          <ToolButton
+          <ToolButton showLabel
             disabled={!canTestStorage}
             disabledReason={t("admin.testStorageEnableFirst")}
             isPending={savingKey === "storage-test"}
@@ -218,9 +218,9 @@ export function PlatformStorageSection({
             onClick={onTest}
             visual="surface"
           >
-            <LocalIcon name="shield" size={17} />
+            <LocalIcon name="connection" size={17} />
           </ToolButton>
-          <ToolButton
+          <ToolButton showLabel
             disabled={!storageDirty}
             isPending={savingKey === "storage-backend"}
             label={t("admin.save")}

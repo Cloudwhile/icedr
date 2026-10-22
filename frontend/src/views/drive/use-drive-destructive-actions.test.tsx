@@ -147,7 +147,7 @@ describe("useDriveDestructiveActions", () => {
     expect(screen.getByTitle("b.txt")).toBeInTheDocument();
     expect(screen.queryByText("b")).not.toBeInTheDocument();
     expect(archiveNotification.actionLabel).toBe("actions.undo");
-    expect(archiveNotification.actionIcon).toBe("refresh");
+    expect(archiveNotification.actionIcon).toBe("undo");
     expect(archiveNotification.dedupeKey).toContain("a|c");
     expect(archiveNotification.dedupeKey).not.toContain("b");
 

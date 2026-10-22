@@ -46,6 +46,7 @@ export function WorkspaceNotificationStack({
             {notification.actionLabel && notification.onAction ? (
               notification.actionIcon ? (
                 <ToolButton
+                  showLabel
                   className="workspace-notification-action"
                   label={notification.actionLabel}
                   palette={palette}

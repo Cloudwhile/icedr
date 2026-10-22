@@ -119,7 +119,7 @@ export function ShareDetailsPanel({
             )}
             {remainingMemberCount > 0 ? (
               <div className="share-details-members-more">
-                <ToolButton
+                <ToolButton showLabel
                   label={t("share.showMoreItems", {
                     count: remainingMemberCount,
                   })}

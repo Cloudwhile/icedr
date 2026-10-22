@@ -246,14 +246,14 @@ export function AdminAuditPanel({
             <StatusPill palette={palette} tone="accent">
               {t("audit.scopeValue", { scope: scopeLabel })}
             </StatusPill>
-            <ToolButton
+            <ToolButton showLabel
               disabled={disabled || activeFilterCount === 0}
               label={t("audit.resetFilters")}
               palette={palette}
               tooltipPlacement="bottom"
               onClick={resetFilters}
             >
-              <LocalIcon name="cross" size={16} />
+              <LocalIcon name="undo" size={16} />
             </ToolButton>
           </div>
         </div>
@@ -598,7 +598,7 @@ function AuditTable({
         </span>
         <span>{title}</span>
         <span>{hint}</span>
-        <ToolButton
+        <ToolButton showLabel
           disabled={refreshing}
           isPending={refreshing}
           label={t(hasMoreRecords ? "pagination.first" : activeFilterCount > 0 ? "audit.resetFilters" : "actions.refresh")}

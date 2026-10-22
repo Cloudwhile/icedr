@@ -885,14 +885,14 @@ function SetupPage({
                   }))} />
                     </AuthField>
                     <div className="icedr-setup-brand-actions">
-                      <ToolButton label={t("setup.chooseLogo")} palette={palette} onClick={pickLogo}>
+                      <ToolButton showLabel label={t("setup.chooseLogo")} palette={palette} onClick={pickLogo}>
                         <LocalIcon name="upload" size={17} />
                       </ToolButton>
-                      <ToolButton label={t("setup.removeLogo")} palette={palette} onClick={() => setSite(value => ({
+                      <ToolButton showLabel label={t("setup.removeLogo")} palette={palette} onClick={() => setSite(value => ({
                     ...value,
                     authLogoDataUrl: null
                   }))}>
-                        <LocalIcon name="cross" size={17} />
+                        <LocalIcon name="trash" size={17} />
                       </ToolButton>
                     </div>
                   </div>
@@ -916,11 +916,11 @@ function SetupPage({
             </div>
 
             <div className="icedr-setup-sticky-actions">
-              <ToolButton label={t("app.up")} palette={palette} disabled={stepIndex === 0 || busy} onClick={goBack}>
+              <ToolButton showLabel label={t("setup.previous")} palette={palette} disabled={stepIndex === 0 || busy} onClick={goBack}>
                 <LocalIcon name="arrow_left" size={17} />
               </ToolButton>
               <div className="icedr-setup-primary-action">
-                <ToolButton disabled={!canContinue || busy} isPending={busy} label={stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")} onClick={goNext} palette={palette} size="lg" tone="accent" visual="surface">
+                <ToolButton showLabel disabled={!canContinue || busy} isPending={busy} label={stepIndex === setupSteps.length - 1 ? t("setup.complete") : t("share.continue")} onClick={goNext} palette={palette} size="lg" tone="accent" visual="surface">
                   <LocalIcon name={stepIndex === setupSteps.length - 1 ? "tick" : "arrow_right"} size={18} />
                 </ToolButton>
               </div>

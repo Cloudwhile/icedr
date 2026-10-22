@@ -607,7 +607,7 @@ export function DriveSystemPlatformSettings({
           <SystemConfigBlock
             actions={
               <SystemBlockActions>
-                <ToolButton
+                <ToolButton showLabel
                   label={t("admin.chooseLogo")}
                   palette={palette}
                   onClick={pickLogo}
@@ -615,7 +615,7 @@ export function DriveSystemPlatformSettings({
                 >
                   <LocalIcon name="upload" size={17} />
                 </ToolButton>
-                <ToolButton
+                <ToolButton showLabel
                   label={t("admin.removeLogo")}
                   palette={palette}
                   onClick={() =>
@@ -626,9 +626,9 @@ export function DriveSystemPlatformSettings({
                   }
                   visual="surface"
                 >
-                  <LocalIcon name="cross" size={17} />
+                  <LocalIcon name="trash" size={17} />
                 </ToolButton>
-                <ToolButton
+                <ToolButton showLabel
                   disabled={!siteDirty}
                   isPending={savingKey === "site"}
                   label={t("admin.save")}
@@ -695,7 +695,7 @@ export function DriveSystemPlatformSettings({
 
           <SystemConfigBlock
             actions={
-              <ToolButton
+              <ToolButton showLabel
                 isPending={savingKey === "translation"}
                 label={t("admin.translationUpload")}
                 palette={palette}
@@ -743,7 +743,7 @@ export function DriveSystemPlatformSettings({
         <>
           <SystemConfigBlock
             actions={
-              <ToolButton
+              <ToolButton showLabel
                 disabled={!authDirty}
                 isPending={savingKey === "auth"}
                 label={t("admin.save")}
@@ -857,7 +857,7 @@ export function DriveSystemPlatformSettings({
 
           <SystemConfigBlock
             actions={
-              <ToolButton
+              <ToolButton showLabel
                 disabled={!passkeyDirty}
                 isPending={savingKey === "auth"}
                 label={t("admin.save")}
