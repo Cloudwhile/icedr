@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FocusEvent } from "react";
 import type { DriveItem } from "@/features/file/model";
 
 export function useDriveRovingFocus(visibleItems: DriveItem[]) {
@@ -6,6 +6,8 @@ export function useDriveRovingFocus(visibleItems: DriveItem[]) {
   const entryId = visibleItems.some((item) => item.id === focusedId) ? focusedId : visibleItems[0]?.id;
   return (itemId: string) => ({
     tabIndex: itemId === entryId ? 0 : -1,
-    onFocus: () => setFocusedId(itemId),
+    onFocus: (event: FocusEvent<HTMLElement>) => {
+      if (event.target === event.currentTarget) setFocusedId(itemId);
+    },
   });
 }

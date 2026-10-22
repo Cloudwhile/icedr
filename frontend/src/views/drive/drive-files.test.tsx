@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { palettes, type DriveItem } from "@/features/file/model";
-import { FilesModule } from "./drive-files";
+import { FilesModule, type FilesModuleProps } from "./drive-files";
 
 vi.mock("@/i18n/react", () => ({
   useLocale: () => "en_US",
@@ -32,6 +32,19 @@ const items: DriveItem[] = ["report.txt", "notes.txt", "brief.txt"].map((name, i
 const gridItems = [...items, ...items.map((item, index) => ({ ...item, id: `file-${index + 4}`, name: `copy-${item.name}` }))];
 
 describe("FilesModule", () => {
+  it.each(["list", "grid"] as const)("keeps the %s Tab entry stable when row controls receive focus", (viewMode) => {
+    const { container } = render(<KeyboardFilesHarness viewMode={viewMode} />);
+    const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-drive-item-id]"));
+
+    fireEvent.focus(rows[0]);
+    const control = rows[1].querySelector("button")!;
+    fireEvent.focus(control);
+
+    expect(rows.map(row => row.tabIndex)).toEqual([0, -1, -1]);
+    fireEvent.focus(rows[1]);
+    expect(rows.map(row => row.tabIndex)).toEqual([-1, 0, -1]);
+  });
+
   it.each([
     [null, "files.emptyRootTitle"],
     ["folder-empty", "files.emptyFolderTitle"],
@@ -159,13 +172,95 @@ describe("FilesModule", () => {
   });
 });
 
+describe("FilesModule operation shortcuts", () => {
+  it.each(["ctrlKey", "metaKey"] as const)("supports select all, copy, cut and paste with %s", (modifier) => {
+    const action = vi.fn();
+    const paste = vi.fn();
+    const { container } = render(<KeyboardFilesHarness viewMode="list" overrides={{ canPaste: true, onKeyboardAction: action, onBlankPaste: paste }} />);
+    const row = container.querySelector<HTMLElement>("[data-drive-item-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "a", [modifier]: true });
+    expect(container.querySelectorAll('[data-drive-item-id][aria-selected="true"]')).toHaveLength(items.length);
+    fireEvent.keyDown(row, { key: "c", [modifier]: true });
+    expect(action).toHaveBeenLastCalledWith("copy", items);
+    fireEvent.keyDown(row, { key: "x", [modifier]: true });
+    expect(action).toHaveBeenLastCalledWith("cut", items);
+    fireEvent.keyDown(row, { key: "v", [modifier]: true });
+    expect(paste).toHaveBeenCalledOnce();
+  });
+
+  it("selects all loaded items even when most virtual rows are not mounted", () => {
+    const loadedItems = Array.from({ length: 1000 }, (_, index) => ({ ...items[0], id: `loaded-${index}`, name: `File ${index}` }));
+    const action = vi.fn();
+    const { container } = render(<KeyboardFilesHarness viewMode="list" fileItems={loadedItems} overrides={{ onKeyboardAction: action }} />);
+    expect(container.querySelectorAll("[data-drive-item-id]").length).toBeLessThan(1000);
+    const row = container.querySelector<HTMLElement>("[data-drive-item-id]")!;
+    fireEvent.keyDown(row, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(row, { key: "c", ctrlKey: true });
+    expect(action).toHaveBeenCalledWith("copy", loadedItems);
+  });
+
+  it.each(["drive", "trash"])("routes Delete through the existing action handler in %s", (activeNav) => {
+    const action = vi.fn();
+    const { container } = render(<KeyboardFilesHarness viewMode="list" overrides={{ activeNav, onKeyboardAction: action }} />);
+    const row = container.querySelector<HTMLElement>("[data-drive-item-id]")!;
+    fireEvent.keyDown(row, { key: " " });
+    fireEvent.keyDown(row, { key: "Delete" });
+    expect(action).toHaveBeenCalledWith("delete", [items[0]]);
+  });
+
+  it("renames the focused file rather than a different selected file", () => {
+    const rename = vi.fn();
+    const { container } = render(<KeyboardFilesHarness viewMode="list" overrides={{ onRenameItem: rename }} />);
+    const rows = container.querySelectorAll<HTMLElement>("[data-drive-item-id]");
+    fireEvent.keyDown(rows[0], { key: " " });
+    rows[1].focus();
+    fireEvent.keyDown(rows[1], { key: "F2" });
+    expect(rename).toHaveBeenCalledWith(items[1]);
+  });
+
+  it("does not paste when the clipboard is unavailable or duplicate a pending deletion", () => {
+    const action = vi.fn();
+    const paste = vi.fn();
+    const { container } = render(<KeyboardFilesHarness viewMode="list" overrides={{ canPaste: false, onBlankPaste: paste, onKeyboardAction: action, destructivePending: { archive: false, delete: true, restore: false } }} />);
+    const row = container.querySelector<HTMLElement>("[data-drive-item-id]")!;
+    fireEvent.keyDown(row, { key: " " });
+    fireEvent.keyDown(row, { key: "Delete" });
+    fireEvent.keyDown(row, { key: "v", ctrlKey: true });
+    expect(action).not.toHaveBeenCalled();
+    expect(paste).not.toHaveBeenCalled();
+  });
+
+  it("leaves shortcuts inside a rename input and IME composition to the editor", () => {
+    const action = vi.fn();
+    const paste = vi.fn();
+    const rename = vi.fn();
+    const { container, rerender } = render(<KeyboardFilesHarness viewMode="list" overrides={{ canPaste: true, onBlankPaste: paste, onKeyboardAction: action, onRenameItem: rename }} />);
+    const row = container.querySelector<HTMLElement>("[data-drive-item-id]")!;
+    fireEvent.keyDown(row, { key: " ", isComposing: true });
+    fireEvent.keyDown(row, { key: "a", ctrlKey: true, isComposing: true });
+    fireEvent.keyDown(row, { key: "Delete", isComposing: true });
+    fireEvent.keyDown(row, { key: "F2", isComposing: true });
+    expect(container.querySelectorAll('[data-drive-item-id][aria-selected="true"]')).toHaveLength(0);
+    rerender(<KeyboardFilesHarness viewMode="list" overrides={{ renamingItemId: items[0].id, canPaste: true, onBlankPaste: paste, onKeyboardAction: action, onRenameItem: rename }} />);
+    const input = screen.getByRole("textbox");
+    for (const key of ["a", "c", "x", "v"]) fireEvent.keyDown(input, { key, ctrlKey: true });
+    for (const key of ["Delete", "F2"]) fireEvent.keyDown(input, { key });
+    expect(action).not.toHaveBeenCalled();
+    expect(rename).not.toHaveBeenCalled();
+    expect(paste).not.toHaveBeenCalled();
+  });
+});
+
 function KeyboardFilesHarness({
   currentFolderId = null,
   fileItems = items,
+  overrides,
   viewMode,
 }: {
   currentFolderId?: string | null;
   fileItems?: DriveItem[];
+  overrides?: Partial<FilesModuleProps>;
   viewMode: "grid" | "list";
 }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -215,6 +310,7 @@ function KeyboardFilesHarness({
       }}
       toggleStar={noop}
       viewMode={viewMode}
+      {...overrides}
     />
   );
 }
