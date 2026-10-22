@@ -38,7 +38,7 @@ import {
   type Locale,
   type Palette,
 } from "@/features/file/model";
-import { isTextEditableFile } from "@/features/file/open-with";
+import { buildFileActionItems } from "@/components/drive/file-action-items";
 import { preventDriveEntryTextSelection } from "@/features/file/drive-entry-events";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 import { formatDriveItemDate, getFilePathHint } from "./drive-files-helpers";
@@ -88,10 +88,9 @@ export type FilesModuleProps = {
   onEditItem: FileAction;
   onDeletePermanentlyItem: FileAction;
   onLoadMore?: () => void;
-  onMoveItem: FileAction;
+  onCutItem: FileAction;
   onRenameItem: FileAction;
   onRestoreItem: FileAction;
-  onSecurityItem: FileAction;
   onSetViewMode: (mode: "list" | "grid") => void;
   onShareItem: FileAction;
   onShowDetailsItem: FileAction;
@@ -139,10 +138,9 @@ export function FilesModule({
   onEditItem,
   onDeletePermanentlyItem,
   onLoadMore,
-  onMoveItem,
+  onCutItem,
   onRenameItem,
   onRestoreItem,
-  onSecurityItem,
   onSetViewMode,
   onShareItem,
   onShowDetailsItem,
@@ -347,10 +345,9 @@ export function FilesModule({
             onEditItem={onEditItem}
             onDeletePermanentlyItem={onDeletePermanentlyItem}
             destructivePending={destructivePending}
-            onMoveItem={onMoveItem}
+            onCutItem={onCutItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
-            onSecurityItem={onSecurityItem}
             onShareItem={onShareItem}
             onShowDetailsItem={onShowDetailsItem}
             onSortChange={onSortChange}
@@ -384,10 +381,9 @@ export function FilesModule({
             onEditItem={onEditItem}
             onDeletePermanentlyItem={onDeletePermanentlyItem}
             destructivePending={destructivePending}
-            onMoveItem={onMoveItem}
+            onCutItem={onCutItem}
             onRenameItem={onRenameItem}
             onRestoreItem={onRestoreItem}
-            onSecurityItem={onSecurityItem}
             onShareItem={onShareItem}
             onShowDetailsItem={onShowDetailsItem}
             openFolder={openFolder}
@@ -454,76 +450,6 @@ function isDriveBlankMenuIgnored(target: HTMLElement) {
   );
 }
 
-function buildFileActionItems({
-  destructivePending,
-  item,
-  onArchive,
-  onCopy,
-  onCopyNode,
-  onDeletePermanently,
-  onDownload,
-  onEdit,
-  onMove,
-  onRename,
-  onRestore,
-  onShare,
-  onShowDetails,
-  onSecurity,
-  onToggleStar,
-  palette,
-  t,
-}: {
-  destructivePending?: FilesModuleProps["destructivePending"];
-  item: DriveItem;
-  onArchive: FileAction;
-  onCopy: FileAction;
-  onCopyNode: FileAction;
-  onDeletePermanently: FileAction;
-  onDownload: FileAction;
-  onEdit: FileAction;
-  onMove: FileAction;
-  onRename: FileAction;
-  onRestore: FileAction;
-  onShare: FileAction;
-  onShowDetails: FileAction;
-  onSecurity: FileAction;
-  onToggleStar: () => void;
-  palette: Palette;
-  t: ReturnType<typeof useTranslations>;
-}): AppMenuItem[] {
-  const isFolder = getItemKind(item) === "folder";
-  const editable = isTextEditableFile(item);
-  if (item.archivedAt) {
-    return [
-      { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), value: "details" },
-      { icon: <LocalIcon name="restore" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), disabled: destructivePending?.restore, separatorBefore: true, value: "restore" },
-      { icon: <LocalIcon name="trash" size={15} />, label: t("actions.deletePermanently"), onClick: () => onDeletePermanently(item), disabled: destructivePending?.delete, tone: "danger" as const, value: "delete-permanently" },
-    ];
-  }
-  const actionItems: AppMenuItem[] = [
-    { icon: <LocalIcon name="share2" size={15} />, label: t("actions.share"), onClick: () => onShare(item), value: "share" },
-    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyLink"), onClick: () => onCopy(item), value: "copy-link" },
-    !isFolder ? { icon: <LocalIcon name="download" size={15} />, label: t("actions.download"), onClick: () => onDownload(item), value: "download" } : null,
-    { icon: <LocalIcon name="document" size={15} />, label: t("actions.rename"), onClick: () => onRename(item), separatorBefore: true, value: "rename" },
-    editable ? { icon: <LocalIcon name="visible" size={15} />, label: t("actions.edit"), onClick: () => onEdit(item), value: "edit" } : null,
-    { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copy"), onClick: () => onCopyNode(item), value: "copy-node" },
-    { icon: <LocalIcon name="cut" size={15} />, label: t("actions.move"), onClick: () => onMove(item), value: "move-node" },
-    { icon: <LocalIcon name="info" size={15} />, label: t("app.details"), onClick: () => onShowDetails(item), separatorBefore: true, value: "details" },
-    {
-      icon: <LocalIcon name="star" size={15} color={item.starred ? palette.primaryHover : "currentColor"} />,
-      label: item.starred ? t("actions.unstar") : t("actions.star"),
-      onClick: onToggleStar,
-      value: "star",
-    },
-    { icon: <LocalIcon name="shield" size={15} />, label: t("actions.security"), onClick: () => onSecurity(item), value: "security" },
-    item.archivedAt
-      ? { icon: <LocalIcon name="restore" size={15} />, label: t("actions.restore"), onClick: () => onRestore(item), value: "restore" }
-      : { icon: <LocalIcon name="trash" size={15} />, label: t("actions.archive"), onClick: () => onArchive(item), disabled: destructivePending?.archive, separatorBefore: true, tone: "danger", value: "archive" },
-  ].filter(Boolean) as AppMenuItem[];
-
-  return actionItems;
-}
-
 function openItemSurface(item: DriveItem, openFolder: (id: string) => void, openPreview: (id: string) => void) {
   if (getItemKind(item) === "folder") openFolder(item.id);
   else openPreview(item.id);
@@ -550,10 +476,9 @@ function FileTable({
   onDownloadItem,
   onEditItem,
   onDeletePermanentlyItem,
-  onMoveItem,
+  onCutItem,
   onRenameItem,
   onRestoreItem,
-  onSecurityItem,
   onShareItem,
   onShowDetailsItem,
   onSortChange,
@@ -611,10 +536,10 @@ function FileTable({
     onDeletePermanently: onDeletePermanentlyItem,
     onDownload: onDownloadItem,
     onEdit: onEditItem,
-    onMove: onMoveItem,
+    onOpen: (item) => openItemSurface(item, openFolder, openPreview),
+    onCut: onCutItem,
     onRename: onRenameItem,
     onRestore: onRestoreItem,
-    onSecurity: onSecurityItem,
     onShare: onShareItem,
     onShowDetails: onShowDetailsItem,
     onToggleStar: () => toggleStar(item.id),
@@ -845,10 +770,9 @@ function FileGrid({
   onDownloadItem,
   onEditItem,
   onDeletePermanentlyItem,
-  onMoveItem,
+  onCutItem,
   onRenameItem,
   onRestoreItem,
-  onSecurityItem,
   onShareItem,
   onShowDetailsItem,
   openFolder,
@@ -907,10 +831,10 @@ function FileGrid({
     onDeletePermanently: onDeletePermanentlyItem,
     onDownload: onDownloadItem,
     onEdit: onEditItem,
-    onMove: onMoveItem,
+    onOpen: (item) => openItemSurface(item, openFolder, openPreview),
+    onCut: onCutItem,
     onRename: onRenameItem,
     onRestore: onRestoreItem,
-    onSecurity: onSecurityItem,
     onShare: onShareItem,
     onShowDetails: onShowDetailsItem,
     onToggleStar: () => toggleStar(item.id),

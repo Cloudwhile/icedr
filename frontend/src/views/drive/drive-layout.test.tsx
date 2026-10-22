@@ -42,6 +42,15 @@ function renderWorkspaceBar(overrides: Partial<WorkspaceBarProps> = {}) {
 }
 
 describe("WorkspaceBar", () => {
+  it("distinguishes the page heading from the workspace path", () => {
+    const { getAllByRole, getByRole, rerender } = renderWorkspaceBar();
+    expect(getByRole("heading", { level: 1, name: "nav.drive" })).toBeVisible();
+    expect(getAllByRole("navigation", { name: "app.directoryStructure" })[0]).toHaveTextContent("Drive");
+    rerender(<div />);
+    const nested = renderWorkspaceBar({ folderPath: [{ id: "folder", name: "Project", kind: "folder", parentId: null, owner: "Mina", modifiedAt: null, sizeBytes: 0, shared: false, starred: false, colorKey: "primary" }] });
+    expect(nested.getByRole("heading", { level: 1, name: "Project" })).toBeVisible();
+  });
+
   it("does not render the three file actions without an action target", () => {
     const { container } = renderWorkspaceBar();
 

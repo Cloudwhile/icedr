@@ -32,6 +32,21 @@ const items: DriveItem[] = ["report.txt", "notes.txt", "brief.txt"].map((name, i
 const gridItems = [...items, ...items.map((item, index) => ({ ...item, id: `file-${index + 4}`, name: `copy-${item.name}` }))];
 
 describe("FilesModule", () => {
+  it.each(["list", "grid"] as const)("labels clipboard actions honestly and opens files from the %s menu", async (viewMode) => {
+    const cut = vi.fn();
+    const openPreview = vi.fn();
+    const { container } = render(<KeyboardFilesHarness viewMode={viewMode} overrides={{ onCutItem: cut, openPreview }} />);
+    const row = container.querySelector<HTMLElement>("[data-drive-item-id]")!;
+    fireEvent.contextMenu(row);
+    expect(screen.queryByRole("menuitem", { name: "actions.security" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "actions.move" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "actions.cut" }));
+    expect(cut).toHaveBeenCalledWith(items[0]);
+    fireEvent.contextMenu(row);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "actions.open" }));
+    expect(openPreview).toHaveBeenCalledWith(items[0].id);
+  });
+
   it.each(["list", "grid"] as const)("keeps the %s Tab entry stable when row controls receive focus", (viewMode) => {
     const { container } = render(<KeyboardFilesHarness viewMode={viewMode} />);
     const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-drive-item-id]"));
@@ -82,10 +97,9 @@ describe("FilesModule", () => {
         onDeletePermanentlyItem={noop}
         onDownloadItem={noop}
         onEditItem={noop}
-        onMoveItem={noop}
+        onCutItem={noop}
         onRenameItem={noop}
         onRestoreItem={noop}
-        onSecurityItem={noop}
         onSetViewMode={noop}
         onShareItem={noop}
         onShowDetailsItem={noop}
@@ -287,10 +301,9 @@ function KeyboardFilesHarness({
       onDeletePermanentlyItem={noop}
       onDownloadItem={noop}
       onEditItem={noop}
-      onMoveItem={noop}
+      onCutItem={noop}
       onRenameItem={noop}
       onRestoreItem={noop}
-      onSecurityItem={noop}
       onSetViewMode={noop}
       onShareItem={noop}
       onShowDetailsItem={noop}

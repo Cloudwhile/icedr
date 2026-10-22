@@ -465,7 +465,7 @@ export function WorkspaceBar({
   const isPathView = activeNav === "drive";
   const isFileListView = !["links", "transfers", "settings"].includes(activeNav);
   const activeLabel = activeNav === "drive"
-    ? rootLabel
+    ? folderPath.at(-1)?.name ?? t("nav.drive")
     : activeNav === "links"
       ? t("links.pageTitle")
       : activeNav === "settings"
@@ -495,7 +495,7 @@ export function WorkspaceBar({
       <div className="drive-workspace-context">
         {isPathView ? (
           <div className="drive-workspace-heading-stack">
-            <span className="drive-page-title icedr-truncate">{activeLabel}</span>
+            <h1 className="drive-page-title icedr-truncate">{activeLabel}</h1>
             <ResponsiveBreadcrumbs
               ancestorMenuLabel={`${directoryLabel}: ${t("actions.more")}`}
               ariaLabel={directoryLabel}
@@ -512,10 +512,10 @@ export function WorkspaceBar({
             <span className="drive-module-heading-icon" aria-hidden="true">
               <LocalIcon name={activeNavIcon} size={18} />
             </span>
-            <span className="drive-module-heading-copy">
-              <span className="drive-page-title icedr-truncate">{activeLabel}</span>
+            <div className="drive-module-heading-copy">
+              <h1 className="drive-page-title icedr-truncate">{activeLabel}</h1>
               {moduleSubtitleKey ? <span className="drive-module-subtitle icedr-truncate">{t(moduleSubtitleKey)}</span> : null}
-            </span>
+            </div>
           </div>
         )}
       </div>

@@ -823,12 +823,6 @@ export function DriveWorkbench({
     setFocusedItemId(item.id);
     openDetailsPanel(item.id);
   };
-  const openItemSecurity = (item: DriveItem) => {
-    setSelected([item.id]);
-    setFocusedItemId(null);
-    setDetailsOpen(false);
-    setShareOpen(true);
-  };
   const shareItems = (items: DriveItem[]) => {
     const actionItems = getActionItems(items);
     if (actionItems.length === 0) {
@@ -858,7 +852,7 @@ export function DriveWorkbench({
   const toolbarSelectionMenuItems: AppMenuItem[] = [
     { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copyLink"), onClick: () => copyItemsLink(toolbarActionTargets), disabled: !toolbarHasActionTarget, value: "copy-link" },
     { icon: <LocalIcon name="copy" size={15} />, label: t("actions.copy"), onClick: () => copyItems(toolbarActionTargets), disabled: !toolbarCanUseClipboard, value: "copy" },
-    { icon: <LocalIcon name="cut" size={15} />, label: t("actions.move"), onClick: () => cutItems(toolbarActionTargets), disabled: !toolbarCanUseClipboard, value: "move" },
+    { icon: <LocalIcon name="cut" size={15} />, label: t("actions.cut"), onClick: () => cutItems(toolbarActionTargets), disabled: !toolbarCanUseClipboard, value: "move" },
     ...toolbarPasteMenuItems,
     activeNavForView === "trash"
       ? { icon: <LocalIcon name="restore" size={15} />, label: t("actions.restore"), onClick: () => restoreItems(toolbarActionTargets), disabled: !toolbarHasActionTarget || restorePending, value: "restore" }
@@ -961,10 +955,10 @@ export function DriveWorkbench({
             <div className="drive-workspace-content" data-details-open={showDetailsPanel ? "true" : undefined}>
               <MotionSurface key={`${activeModule}-${currentFolderId ?? "root"}`} preset="surface" aria-busy={workspaceBusy} className="drive-workspace-body">
                 {showSettingsSkeleton ? <WorkspaceSkeleton activeModule={activeModule} palette={palette} viewMode={viewMode} /> : showWorkspaceLoader ? activeModule === "drive" ? <DriveFileCollectionSkeleton palette={palette} viewMode={viewMode} /> : <LdrsLoadingState label={t("app.syncing")} palette={palette} minHeight="min(420px, calc(100dvh - 180px))" size={30} /> : <>
-                    {activeModule === "drive" ? <FilesModule onKeyboardAction={(action, items) => { if (action === "copy") copyItems(items); else if (action === "cut") cutItems(items); else if (activeNavForView === "trash") deletePermanentlyItems(items); else archiveItems(items); }} activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onMoveItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
+                    {activeModule === "drive" ? <FilesModule onKeyboardAction={(action, items) => { if (action === "copy") copyItems(items); else if (action === "cut") cutItems(items); else if (activeNavForView === "trash") deletePermanentlyItems(items); else archiveItems(items); }} activeNav={activeNavForView} canLoadMore={searchCanLoadMore} canPaste={canPasteClipboard} createMenuItems={createMenuItems} destructivePending={{ archive: archivePending, delete: permanentDeletePending, restore: restorePending }} currentFolderId={currentFolderId} error={serverSearchActive ? searchError : filesError} hasQuery={query.trim().length > 0 || hasSearchFilters} items={filteredFiles} loadingMore={searchLoadingMore} onArchiveItem={item => archiveItems([item])} onBlankGoRoot={openRoot} onBlankGoUp={goUp} onBlankPaste={pasteClipboard} onBlankRefresh={refreshWorkspace} onBlankSelect={clearSelection} onCancelRenameItem={cancelRenameItem} onClearSearch={clearSearchContext} onCommitRenameItem={commitRenameItem} onDeletePermanentlyItem={item => deletePermanentlyItems([item])} onLoadMore={loadMoreSearchResults} onRestoreItem={item => restoreItems([item])} onCopyItem={item => copyItemsLink([item])} onCopyNodeItem={copyItem} onDownloadItem={item => downloadItems([item])} onEditItem={editItem} onCutItem={moveItem} onRenameItem={requestRenameItem} onRetrySearch={retrySearch} onSetViewMode={setDirectoryViewMode} onShareItem={item => {
                 setSelected([item.id]);
                 setShareOpen(true);
-              }} onShowDetailsItem={showItemDetails} onSecurityItem={openItemSecurity} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} searchLoading={searchLoading} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} sortBy={searchFilters.sortBy} sortDirection={searchFilters.sortDirection} onSortChange={applyDriveSort} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}
+              }} onShowDetailsItem={showItemDetails} goUp={goUp} openPreview={openPreview} palette={palette} renamingItemId={renamingItemId} searchLoading={searchLoading} selected={selected} sourceItems={fileModuleSourceItems} openFolder={openFolder} sortBy={searchFilters.sortBy} sortDirection={searchFilters.sortDirection} onSortChange={applyDriveSort} toggleSelected={toggleSelected} toggleStar={toggleStar} viewMode={viewMode} /> : null}
                     {activeModule === "links" ? <LinksModule error={linksError} links={linkRows} onCloseLink={closeShareLink} onCopyLink={copyShareLink} palette={palette} sourceItems={allKnownItems} /> : null}
                     {activeModule === "transfers" ? <TransfersModule attentionRequestKey={transfersAttentionRequestKey} controllableTransferIds={controllableTransferIds} onAttentionRequestHandled={clearTransfersAttentionRequest} onCancelTransfer={cancelUploadTransfer} onDeleteTransfer={deleteTransferRow} onPauseTransfer={pauseUploadTransfer} onResumeTransfer={resumeUploadTransfer} onRetryTransfer={retryUploadTransfer} palette={palette} rows={visibleTransferRows} /> : null}
                     {activeModule === "settings" ? (
@@ -1036,7 +1030,7 @@ export function DriveWorkbench({
         options={openWithOptions}
         palette={palette}
       />
-      {activeModule !== "transfers" ? (
+      {activeModule !== "transfers" && activeNav !== "settings" ? (
         <DriveUploadHud
           locale={locale}
           onOpenFailedTransfers={openFailedTransfers}
