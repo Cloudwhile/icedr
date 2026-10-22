@@ -317,7 +317,7 @@ function ExternalSharePreview({
   const contentLocked = isShareContentLocked(registeredShare);
   const primaryAccessItem = getPrimaryShareAccessItem(visibleItems, sourceItems, registeredShare);
   const primaryAccessAction: VisitorAccessAction | null = registeredShare.allowDownload ? "download" : registeredShare.allowPreview ? "preview" : null;
-  const visibleListRef = useMotionStagger<HTMLDivElement>([folderId, visibleItems.map(item => item.id).join("|")]);
+  const visibleListRef = useMotionStagger<HTMLDivElement>([folderId]);
   useEffect(() => {
     if (stage !== "waiting") return;
     const id = window.setInterval(() => {

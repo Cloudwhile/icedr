@@ -494,7 +494,7 @@ function ShareCollectionList({
   sourceItems: DriveItem[];
 }) {
   const t = useTranslations();
-  const listRef = useMotionStagger<HTMLDivElement>([collection.rootItems.map((item) => item.id).join("|"), collection.mode]);
+  const listRef = useMotionStagger<HTMLDivElement>([collection.mode]);
   const visibleItems = collection.rootItems.slice(0, 4);
   const extraCount = collection.rootItems.length - visibleItems.length;
   return (

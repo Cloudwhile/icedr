@@ -191,7 +191,8 @@ export function MotionList({
       targets,
       { opacity: [0, 1], y: [8, 0] },
       {
-        delay: stagger(Math.min(0.0225, 0.15 / targets.length)),
+        // Keep the final row within the same 300 ms entrance budget.
+        delay: stagger(0.02 / Math.max(1, targets.length - 1)),
         duration: 0.28,
         ease: [0.16, 1, 0.3, 1],
       },
@@ -263,7 +264,12 @@ export function useMotionStagger<T extends HTMLElement>(deps: DependencyList, se
       void animate(targets, { opacity: 1 }, { duration: 0 });
       return;
     }
-    void animate(targets, { opacity: [0, 1], scale: [0.992, 1], y: [12, 0] }, { delay: stagger(Math.min(0.038, 0.24 / targets.length)), duration: 0.34, ease: [0.16, 1, 0.3, 1] });
+    const animation = animate(targets, { opacity: [0, 1], y: [8, 0] }, {
+      delay: stagger(0.02 / Math.max(1, targets.length - 1)),
+      duration: 0.28,
+      ease: [0.16, 1, 0.3, 1],
+    });
+    return () => animation.stop();
     // The caller owns the stagger trigger dependencies, mirroring the old animation hook API.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
