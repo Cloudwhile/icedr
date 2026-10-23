@@ -1,4 +1,8 @@
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-press-scale: 1;
+  }
+
   html:focus-within {
     scroll-behavior: auto;
   }

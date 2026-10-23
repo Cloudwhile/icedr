@@ -78,7 +78,7 @@ function AuthPage({
   const queryResetCode = normalizeAuthCodeValue(searchParams.get("code") || searchParams.get("token") || "", passwordResetCodeLength);
   const authRedirectKey = `${mode}:${next}`;
   const pageRef = useMotionReveal<HTMLDivElement>("fade", []);
-  const formRef = useMotionReveal<HTMLDivElement>("surface", [mode, themeMode, locale]);
+  const formRef = useMotionReveal<HTMLDivElement>("surface", [mode]);
   const [email, setEmail] = useState(queryEmail);
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
