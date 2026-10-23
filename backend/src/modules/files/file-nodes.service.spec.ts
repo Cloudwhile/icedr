@@ -130,6 +130,23 @@ describe('FileNodesService facade', () => {
     ).toBe(2);
   });
 
+  it('copies a nested node to root when the destination is explicitly null', async () => {
+    const source = nodes.find((node) => node.id === 'roadmap')!;
+    const folder = createNode({
+      ...source,
+      id: 'parent-folder',
+      kind: 'folder',
+      name: 'Parent',
+      objectKey: null,
+    });
+    nodes.push(folder);
+    source.parentNodeId = folder.id;
+    const copy = await service.copyFileNode(source.id, { parentNodeId: null });
+    expect(copy.parentNodeId).toBeNull();
+    const siblingCopy = await service.copyFileNode(source.id, {});
+    expect(siblingCopy.parentNodeId).toBe(source.parentNodeId);
+  });
+
   it('prevents member IDOR across personal spaces', async () => {
     const memberAccess = { actorRole: 'member', actorUserId: 'user-a' };
 

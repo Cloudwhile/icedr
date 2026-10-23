@@ -319,7 +319,8 @@ export class FileNodesService {
     options: FileAuditOptions = {},
   ) {
     const source = await this.requireActiveNode(id, options);
-    const parentNodeId = dto.parentNodeId ?? source.parentNodeId;
+    const parentNodeId =
+      dto.parentNodeId === undefined ? source.parentNodeId : dto.parentNodeId;
     await this.assertValidParent(
       source.workspaceId,
       parentNodeId,
