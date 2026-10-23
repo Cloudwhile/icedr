@@ -1,6 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "@/i18n/react";
+import { FileOperationStatus } from "@/components/drive/file-operation-status";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { UserAccountMenu } from "@/components/ui/user-account-menu";
 import { ActionButton } from "@/components/ui/action-button";
@@ -415,6 +416,7 @@ function SidebarNavButton({
 }
 
 export type WorkspaceBarProps = {
+  operationPending?: boolean;
   activeNav: DriveUserNav;
   createMenuItems: AppMenuItem[];
   filtersActive: boolean;
@@ -439,6 +441,7 @@ export type WorkspaceBarProps = {
 };
 
 export function WorkspaceBar({
+  operationPending = false,
   activeNav,
   createMenuItems,
   filtersActive,
@@ -495,7 +498,10 @@ export function WorkspaceBar({
       <div className="drive-workspace-context">
         {isPathView ? (
           <div className="drive-workspace-heading-stack">
-            <h1 className="drive-page-title icedr-truncate">{activeLabel}</h1>
+            <div className="drive-workspace-title-row">
+              <h1 className="drive-page-title icedr-truncate">{activeLabel}</h1>
+              {operationPending ? <FileOperationStatus palette={palette} /> : null}
+            </div>
             <ResponsiveBreadcrumbs
               ancestorMenuLabel={`${directoryLabel}: ${t("actions.more")}`}
               ariaLabel={directoryLabel}

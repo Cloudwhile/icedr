@@ -126,6 +126,7 @@ export function DriveWorkbench({
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>(defaultPublicSiteSettings);
   const [transfersAttentionRequestKey, setTransfersAttentionRequestKey] = useState(0);
   const workspaceTimerRef = useRef<number | null>(null);
+  const spaceSwitchRequestRef = useRef(0);
   const bootLoadingStartedRef = useRef(0);
   const initialPreviewOpenedRef = useRef(false);
   const workspaceIdRef = useRef<string | null>(null);
@@ -491,6 +492,7 @@ export function DriveWorkbench({
     cutItems,
     deletePermanentlyItems,
     downloadItems,
+    fileMutationPending,
     getActionItems,
     moveItem, moveItemsToFolder,
     pasteClipboard,
@@ -502,18 +504,16 @@ export function DriveWorkbench({
   } = useDriveFileActions({
     activeItem,
     activeNav: activeNavForView,
+    contextKey: selectionSearchContextKey,
     currentFolderId,
     driveItems,
     getApiFeedback,
-    queueWorkspaceLoading,
     refreshDriveItems,
     refreshStorageUsage,
     setSelected,
-    setWorkspaceLoading,
     showFeedback,
     spaceScope,
     workspaceId,
-    workspaceTimerRef,
   });
   const {
     cancelExtensionRename,
@@ -543,11 +543,12 @@ export function DriveWorkbench({
     refreshing: workspaceRefreshing,
     refreshWorkspace,
   } = useDriveWorkspaceRefresh({
+    contextKey: JSON.stringify([workspaceId, spaceScope]),
     disabled: bootLoading,
     onComplete: handleWorkspaceRefreshComplete,
     tasks: refreshTasks,
   });
-  const workspaceBusy = workspaceBlocking || workspaceRefreshing;
+  const workspaceBusy = workspaceBlocking || workspaceRefreshing || fileMutationPending;
   useEffect(() => {
     let cancelled = false;
     const progressTimer = window.setTimeout(() => {
@@ -586,6 +587,8 @@ export function DriveWorkbench({
   }, [getApiFeedback, refreshDriveItems, refreshShareSettings, refreshShares, refreshStorageUsage, refreshTransfers, refreshWorkspaceList, showFeedback]);
   const selectSpaceScope = (nextSpaceScope: DriveSpaceScope) => {
     if (nextSpaceScope === spaceScopeRef.current) return;
+    const switchRequest = ++spaceSwitchRequestRef.current;
+    if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
     spaceScopeRef.current = nextSpaceScope;
     setSpaceScope(nextSpaceScope);
     activateNav("drive");
@@ -595,6 +598,10 @@ export function DriveWorkbench({
     setFocusedItemId(null);
     setDetailsOpen(false);
     setSidebarOpen(false);
+    setDriveItems([]);
+    setArchivedItems([]);
+    setFilesError(null);
+    driveItemsContextRef.current = "";
     resetSearchResults();
     clearStorageUsage();
     setWorkspaceLoading(true);
@@ -602,7 +609,7 @@ export function DriveWorkbench({
       refreshDriveItems(workspaceIdRef.current, nextSpaceScope),
       refreshStorageUsage(workspaceIdRef.current, nextSpaceScope),
     ]).finally(() => {
-      setWorkspaceLoading(false);
+      if (spaceSwitchRequestRef.current === switchRequest) setWorkspaceLoading(false);
     });
   };
   const openSearchResult = (item: DriveItem) => {
@@ -886,7 +893,7 @@ export function DriveWorkbench({
       router.replace("/login");
     });
   };
-  const dropHandlers = useDriveDrop({ enabled: activeModule === "drive" && activeNavForView === "drive" && !query.trim() && !hasSearchFilters,
+  const dropHandlers = useDriveDrop({ enabled: !workspaceBlocking && activeModule === "drive" && activeNavForView === "drive" && !query.trim() && !hasSearchFilters,
     items: driveItems, selected, currentFolderId,
     onMove: (items, folderId) => void moveItemsToFolder(items, folderId),
     onUpload: (files, folderId) => void uploadDroppedFiles(files, folderId, driveItems.filter((item) => item.parentId === folderId)).catch((error) => showFeedback(getApiFeedback(error, "app.uploadFailed"), "error")),
@@ -927,6 +934,7 @@ export function DriveWorkbench({
                   onShareSelection={() => shareItems(toolbarActionTargets)}
                   onToggleFilters={toggleFilters}
                   onTriggerUpload={triggerUpload}
+                  operationPending={fileMutationPending}
                   palette={palette}
                   refreshing={workspaceRefreshing}
                   rootLabel={currentSpaceRootLabel}

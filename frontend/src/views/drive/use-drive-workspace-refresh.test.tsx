@@ -52,6 +52,32 @@ describe("useDriveWorkspaceRefresh", () => {
     await expect(result.current.refreshWorkspace()).resolves.toBeNull();
     Object.values(tasks).forEach((task) => expect(task).not.toHaveBeenCalled());
   });
+
+  it("does not merge refreshes or show completion feedback across spaces", async () => {
+    const firstFiles = deferred<ReturnType<typeof driveRefreshSucceeded>>();
+    const secondFiles = deferred<ReturnType<typeof driveRefreshSucceeded>>();
+    const firstTasks = createTasks({ files: vi.fn(() => firstFiles.promise) });
+    const secondTasks = createTasks({ files: vi.fn(() => secondFiles.promise) });
+    const onComplete = vi.fn();
+    const { result, rerender } = renderHook(({ contextKey, tasks }) => useDriveWorkspaceRefresh({ disabled: false, contextKey, onComplete, tasks }), {
+      initialProps: { contextKey: "workspace", tasks: firstTasks },
+    });
+    let first!: ReturnType<typeof result.current.refreshWorkspace>;
+    let second!: ReturnType<typeof result.current.refreshWorkspace>;
+    act(() => { first = result.current.refreshWorkspace(); });
+    rerender({ contextKey: "personal", tasks: secondTasks });
+    act(() => { second = result.current.refreshWorkspace(); });
+    expect(first).not.toBe(second);
+    expect(secondTasks.files).toHaveBeenCalledOnce();
+    await act(async () => { firstFiles.resolve(driveRefreshSucceeded("files")); await first; });
+    expect(result.current.refreshing).toBe(true);
+    expect(onComplete).not.toHaveBeenCalled();
+    await act(async () => { secondFiles.resolve(driveRefreshSucceeded("files")); await second; });
+    expect(result.current.refreshing).toBe(false);
+    expect(onComplete).toHaveBeenCalledOnce();
+    rerender({ contextKey: "workspace", tasks: firstTasks });
+    expect(result.current.lastSummary).toBeNull();
+  });
 });
 
 describe("runDriveRefreshTasks", () => {

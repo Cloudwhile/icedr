@@ -1,0 +1,22 @@
+.drive-workspace-title-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.drive-workspace-title-row > .drive-page-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.drive-operation-status {
+  align-items: center;
+  color: var(--drive-ui-muted);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--text-ui-xs);
+  gap: 4px;
+  line-height: 1.5;
+  white-space: nowrap;
+}

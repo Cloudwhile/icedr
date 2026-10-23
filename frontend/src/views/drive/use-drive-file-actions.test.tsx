@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   downloadItem: vi.fn(),
   downloadItems: vi.fn(),
   notify: vi.fn(),
+  copyNode: vi.fn(),
+  moveNode: vi.fn(),
 }));
 
 vi.mock("@/features/file/actions", async (importOriginal) => ({
@@ -17,6 +19,11 @@ vi.mock("@/features/file/actions", async (importOriginal) => ({
 }));
 vi.mock("@/components/ui/workspace-notification-store", () => ({
   showWorkspaceNotification: mocks.notify,
+}));
+vi.mock("@/lib/drive-api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/drive-api")>(),
+  copyFileNode: mocks.copyNode,
+  moveFileNode: mocks.moveNode,
 }));
 vi.mock("@/i18n/react", () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) => (
@@ -113,24 +120,74 @@ describe("file download preparation", () => {
   });
 });
 
-function renderActions() {
+describe("workspace clipboard operations", () => {
+  it("submits paste once and keeps the file list mounted while the request is pending", async () => {
+    const pending = deferred<{ id: string }>();
+    mocks.copyNode.mockReturnValue(pending.promise);
+    const { result } = renderActions();
+    act(() => result.current.copyItem(item("source")));
+    act(() => { result.current.pasteClipboard(); result.current.pasteClipboard(); });
+    expect(mocks.copyNode).toHaveBeenCalledTimes(1);
+    expect(result.current.fileMutationPending).toBe(true);
+    expect(result.current.canPasteClipboard).toBe(false);
+    await act(async () => pending.resolve({ id: "copy" }));
+    await waitFor(() => expect(result.current.canPasteClipboard).toBe(true));
+  });
+
+  it("does not select an old paste result after navigating to another folder", async () => {
+    const pending = deferred<{ id: string }>();
+    mocks.copyNode.mockReturnValue(pending.promise);
+    const { result, rerender, options } = renderActions();
+    act(() => result.current.copyItem(item("source")));
+    act(() => result.current.pasteClipboard());
+    rerender({ currentFolderId: "other-folder" });
+    await act(async () => pending.resolve({ id: "copy" }));
+    expect(options.setSelected).not.toHaveBeenCalled();
+  });
+
+  it("retries only failed copies and releases the paste lock after failure", async () => {
+    mocks.copyNode.mockImplementation((id) => id === "broken" ? Promise.reject(new Error("offline")) : Promise.resolve({ id: "copied" }));
+    const { result } = renderActions();
+    act(() => result.current.copyItems([item("first"), item("broken")]));
+    act(() => result.current.pasteClipboard());
+    await waitFor(() => expect(result.current.fileMutationPending).toBe(false));
+    expect(mocks.notify).toHaveBeenCalledTimes(1);
+    mocks.copyNode.mockResolvedValue({ id: "retry" });
+    act(() => result.current.pasteClipboard());
+    await waitFor(() => expect(result.current.fileMutationPending).toBe(false));
+    expect(mocks.copyNode.mock.calls.map(([id]) => id)).toEqual(["first", "broken", "broken"]);
+  });
+
+  it("preserves a newer cut selection when an earlier move finishes", async () => {
+    const pending = deferred<{ id: string }>();
+    mocks.moveNode.mockReturnValue(pending.promise);
+    const { result } = renderActions({ currentFolderId: "destination" });
+    act(() => result.current.cutItems([item("first")]));
+    act(() => result.current.pasteClipboard());
+    act(() => result.current.cutItems([item("newer")]));
+    await act(async () => pending.resolve({ id: "first" }));
+    act(() => result.current.pasteClipboard());
+    expect(mocks.moveNode).toHaveBeenLastCalledWith("newer", "destination");
+    await act(async () => pending.resolve({ id: "newer" }));
+  });
+});
+
+function renderActions(overrides: Partial<Parameters<typeof useDriveFileActions>[0]> = {}) {
   const showFeedback = vi.fn();
-  const hook = renderHook(() => useDriveFileActions({
-    activeNav: "drive",
-    currentFolderId: null,
+  const options = {
+    activeNav: "drive" as const,
+    currentFolderId: null as string | null,
     driveItems: [],
-    getApiFeedback: (error) => error instanceof Error ? error.message : String(error),
-    queueWorkspaceLoading: vi.fn(),
-    refreshDriveItems: vi.fn(),
-    refreshStorageUsage: vi.fn(),
+    getApiFeedback: (error: unknown) => error instanceof Error ? error.message : String(error),
+    refreshDriveItems: vi.fn(async () => undefined),
+    refreshStorageUsage: vi.fn(async () => undefined),
     setSelected: vi.fn(),
-    setWorkspaceLoading: vi.fn(),
     showFeedback,
-    spaceScope: "workspace",
+    spaceScope: "workspace" as const,
     workspaceId: "workspace-1",
-    workspaceTimerRef: { current: null },
-  }));
-  return { ...hook, showFeedback };
+  };
+  const hook = renderHook((props) => useDriveFileActions({ ...options, ...props }), { initialProps: overrides });
+  return { ...hook, options, showFeedback };
 }
 
 function item(id: string): DriveItem {

@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useOperationContext } from "@/components/drive/use-operation-context";
 import {
   driveRefreshFailed,
   driveRefreshTargets,
@@ -14,41 +15,51 @@ export type DriveRefreshTasks = Record<
 >;
 
 type UseDriveWorkspaceRefreshOptions = {
+  contextKey?: string;
   disabled: boolean;
   onComplete: (summary: DriveRefreshSummary) => void;
   tasks: DriveRefreshTasks;
 };
 
 export function useDriveWorkspaceRefresh({
+  contextKey = "",
   disabled,
   onComplete,
   tasks,
 }: UseDriveWorkspaceRefreshOptions) {
-  const [lastSummary, setLastSummary] = useState<DriveRefreshSummary | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const pendingPromiseRef = useRef<Promise<DriveRefreshSummary> | null>(null);
+  const context = useMemo(() => ({ key: contextKey }), [contextKey]);
+  const isCurrentContext = useOperationContext(contextKey);
+  const [lastResult, setLastResult] = useState<{ context: object; summary: DriveRefreshSummary } | null>(null);
+  const [refreshingContext, setRefreshingContext] = useState<object | null>(null);
+  const pendingPromiseRef = useRef<{ context: object; promise: Promise<DriveRefreshSummary> } | null>(null);
 
   const refreshWorkspace = useCallback(() => {
     if (disabled) return Promise.resolve(null);
-    if (pendingPromiseRef.current) return pendingPromiseRef.current;
+    if (pendingPromiseRef.current?.context === context) return pendingPromiseRef.current.promise;
 
-    setRefreshing(true);
+    setRefreshingContext(context);
     const promise = runDriveRefreshTasks(tasks)
       .then((summary) => {
-        setLastSummary(summary);
-        onComplete(summary);
+        if (isCurrentContext()) {
+          setLastResult({ context, summary });
+          onComplete(summary);
+        }
         return summary;
       })
       .finally(() => {
-        if (pendingPromiseRef.current !== promise) return;
+        if (pendingPromiseRef.current?.promise !== promise) return;
         pendingPromiseRef.current = null;
-        setRefreshing(false);
+        if (isCurrentContext()) setRefreshingContext(null);
       });
-    pendingPromiseRef.current = promise;
+    pendingPromiseRef.current = { context, promise };
     return promise;
-  }, [disabled, onComplete, tasks]);
+  }, [context, disabled, isCurrentContext, onComplete, tasks]);
 
-  return { lastSummary, refreshing, refreshWorkspace };
+  return {
+    lastSummary: lastResult?.context === context ? lastResult.summary : null,
+    refreshing: refreshingContext === context,
+    refreshWorkspace,
+  };
 }
 
 export async function runDriveRefreshTasks(tasks: DriveRefreshTasks) {

@@ -327,6 +327,76 @@ test.describe("responsive Drive workspace", () => {
     await expect(driveItem(page, "file-report")).toBeVisible();
   });
 
+  test("keeps the newest space switch loading until its own request settles", async ({ page }) => {
+    await mockDriveApi(page);
+    const held: Array<{ release: () => void; scope: string }> = [];
+    let hold = false;
+    await page.route("**/api/file-nodes?**", async (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      if (!hold || query.get("state") !== "active") return route.fallback();
+      const scope = query.get("spaceScope") ?? "workspace";
+      await new Promise<void>((release) => held.push({ release, scope }));
+      await fulfillJson(route, [{ ...reportFile(), id: `${scope}-file`, name: `${scope}.txt`, spaceScope: scope }]);
+    });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    await expect(driveItem(page, "file-report")).toBeVisible();
+    hold = true;
+    const switchSpace = async (name: string, count: number) => {
+      await page.locator(".drive-space-trigger").click();
+      await page.getByRole("menuitemradio", { name: new RegExp(`^${name}`) }).click();
+      await expect.poll(() => held.length).toBe(count);
+    };
+    await switchSpace("Personal space", 1);
+    await switchSpace("Workspace", 2);
+    await switchSpace("Personal space", 3);
+    const oldResponse = page.waitForResponse((response) => response.url().includes("/file-nodes?") && response.url().includes("spaceScope=personal"));
+    held[0].release();
+    await oldResponse;
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator(".drive-file-skeleton")).toBeVisible();
+    await expect(driveItem(page, "file-report")).toHaveCount(0);
+    held[2].release();
+    await expect(driveItem(page, "personal-file")).toBeVisible();
+    held[1].release();
+    await expect(driveItem(page, "personal-file")).toBeVisible();
+    await expect(driveItem(page, "workspace-file")).toHaveCount(0);
+  });
+
+  test("keeps paste stable, prevents duplicate requests, and ignores late selection in another folder", async ({ page }) => {
+    const api = await mockDriveApi(page, { activeNodes: [reportFile(), folderNode("target", "Target", null)] });
+    let copyRequests = 0;
+    let release!: () => void;
+    await page.route("**/api/file-nodes/file-report/copy", async (route) => {
+      copyRequests += 1;
+      await new Promise<void>((resolve) => { release = resolve; });
+      const copied = { ...reportFile(), id: "copied-report", name: "Report copy.txt" };
+      api.activeNodes.push(copied);
+      await fulfillJson(route, copied);
+    });
+    await seedAuthenticatedDrive(page);
+    await page.goto("/");
+    const row = driveItem(page, "file-report");
+    await row.focus();
+    await page.keyboard.press("Space");
+    await page.keyboard.press("Control+c");
+    const before = await row.boundingBox();
+    await page.keyboard.press("Control+v");
+    await expect.poll(() => copyRequests).toBe(1);
+    await expect(page.locator(".drive-operation-status")).toHaveText("Processing files…");
+    await expect(row).toBeVisible();
+    await expect(row).toBeFocused();
+    await expect.poll(async () => Math.abs(((await row.boundingBox())?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(1);
+    await page.keyboard.press("Control+v");
+    expect(copyRequests).toBe(1);
+    await driveItem(page, "target").getByRole("button", { name: "Target", exact: true }).click();
+    release();
+    await expect(page.locator(".drive-operation-status")).toHaveCount(0);
+    await expect(page.locator('.drive-empty-state[data-state="folder-empty"]')).toBeVisible();
+    await expect(page.locator(".drive-toolbar-action-group")).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+  });
+
   test("confirms extension changes before sending a rename request", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const api = await mockDriveApi(page, {

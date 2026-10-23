@@ -1,5 +1,6 @@
-import { createElement, useCallback, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { createElement, useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { BatchOperationFailureDescription } from "@/components/drive/batch-operation-feedback";
+import { useOperationContext } from "@/components/drive/use-operation-context";
 import { getBatchOperationTone } from "@/components/drive/batch-operation-feedback-model";
 import { showWorkspaceNotification, type WorkspaceNotificationTone } from "@/components/ui/workspace-notification-store";
 import { createDownloadPreparationKey, prepareDownload } from "@/components/ui/download-preparation-store";
@@ -24,45 +25,45 @@ import { useDriveDestructiveActions } from "./use-drive-destructive-actions";
 type UseDriveFileActionsOptions = {
   activeItem?: DriveItem;
   activeNav: DriveUserNav;
+  contextKey?: string;
   currentFolderId: string | null;
   driveItems: DriveItem[];
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
-  queueWorkspaceLoading: () => void;
   refreshDriveItems: () => Promise<unknown>;
   refreshStorageUsage: () => Promise<unknown>;
   setSelected: Dispatch<SetStateAction<string[]>>;
-  setWorkspaceLoading: Dispatch<SetStateAction<boolean>>;
   showFeedback: (message: string, tone: WorkspaceNotificationTone) => void;
   spaceScope: DriveSpaceScope;
   workspaceId: string | null;
-  workspaceTimerRef: MutableRefObject<number | null>;
 };
 
 export function useDriveFileActions({
   activeItem,
   activeNav,
+  contextKey = "",
   currentFolderId,
   driveItems,
   getApiFeedback,
-  queueWorkspaceLoading,
   refreshDriveItems,
   refreshStorageUsage,
   setSelected,
-  setWorkspaceLoading,
   showFeedback,
   spaceScope,
   workspaceId,
-  workspaceTimerRef,
 }: UseDriveFileActionsOptions) {
   const t = useTranslations();
   const [driveClipboard, setDriveClipboard] = useState<DriveClipboardState | null>(null);
+  const [mutationPending, setMutationPending] = useState(false);
+  const fileMutationLock = useRef(false);
+  const operationContextKey = JSON.stringify([workspaceId, spaceScope, activeNav, currentFolderId, contextKey]);
+  const isCurrentContext = useOperationContext(operationContextKey);
   const canPasteClipboard = useMemo(() => {
-    if (!driveClipboard || activeNav !== "drive") return false;
+    if (mutationPending || !driveClipboard || activeNav !== "drive") return false;
     if (driveClipboard.workspaceId !== workspaceId || driveClipboard.spaceScope !== spaceScope) return false;
     if (currentFolderId && isFolderWithinItems(currentFolderId, driveClipboard.items, driveItems)) return false;
     if (driveClipboard.mode === "move" && driveClipboard.items.every((item) => item.parentId === currentFolderId)) return false;
     return driveClipboard.items.length > 0;
-  }, [activeNav, currentFolderId, driveClipboard, driveItems, spaceScope, workspaceId]);
+  }, [activeNav, currentFolderId, driveClipboard, driveItems, mutationPending, spaceScope, workspaceId]);
 
   const showBatchResult = useCallback((
     summary: { failed: number; requested: number; succeeded: number },
@@ -79,6 +80,7 @@ export function useDriveFileActions({
   }, [t]);
   const getActionItems = (items: DriveItem[]) => items.length > 0 ? items : activeItem ? [activeItem] : [];
   const destructiveActions = useDriveDestructiveActions({
+    contextKey: operationContextKey,
     activeItem,
     getApiFeedback,
     refreshDriveItems,
@@ -134,13 +136,15 @@ export function useDriveFileActions({
     showFeedback(mode === "copy" ? t("app.copied") : t("app.cut"), "success");
   };
   const pasteClipboard = () => {
+    if (fileMutationLock.current) return;
     if (!driveClipboard || !canPasteClipboard) {
       showFeedback(t("app.pasteUnavailable"), "neutral");
       return;
     }
     const targetFolderId = currentFolderId;
     const { items, mode } = driveClipboard;
-    queueWorkspaceLoading();
+    fileMutationLock.current = true;
+    setMutationPending(true);
     const action = mode === "copy"
       ? Promise.allSettled(items.map((item) => copyFileNode(item.id, { parentNodeId: targetFolderId }))).then((results) => {
         const succeeded = results
@@ -153,8 +157,14 @@ export function useDriveFileActions({
             id: item.id,
             message: result.reason instanceof Error ? result.reason.message : t("app.copyFailed"),
           }));
-        return Promise.all([refreshDriveItems(), refreshStorageUsage()]).then(() => {
-          if (succeeded.length > 0) setSelected(succeeded.map((node) => node.id));
+        return Promise.allSettled([refreshDriveItems(), refreshStorageUsage()]).then(() => {
+          if (failed.length > 0) {
+            const failedIds = new Set(failed.map((item) => item.id));
+            setDriveClipboard((current) => current === driveClipboard
+              ? { ...current, items: current.items.filter((item) => failedIds.has(item.id)) }
+              : current);
+          }
+          if (isCurrentContext() && succeeded.length > 0) setSelected(succeeded.map((node) => node.id));
           return {
             failed,
             succeeded,
@@ -164,8 +174,8 @@ export function useDriveFileActions({
       })
       : items.length === 1
         ? moveFileNode(items[0].id, targetFolderId).then((node) => refreshDriveItems().then(() => {
-          setSelected((current) => current.filter((id) => id !== items[0].id));
-          setDriveClipboard(null);
+          if (isCurrentContext()) setSelected((current) => current.filter((id) => id !== items[0].id));
+          setDriveClipboard((current) => current === driveClipboard ? null : current);
           return {
             failed: [],
             succeeded: [node],
@@ -174,11 +184,11 @@ export function useDriveFileActions({
         }))
         : batchMoveFileNodes(items.map((item) => item.id), targetFolderId).then((result) => refreshDriveItems().then(() => {
           const movedIds = new Set(result.succeeded.map((item) => item.id));
-          setSelected((current) => current.filter((id) => !movedIds.has(id)));
-          if (result.summary.failed === 0) setDriveClipboard(null);
+          if (isCurrentContext()) setSelected((current) => current.filter((id) => !movedIds.has(id)));
+          if (result.summary.failed === 0) setDriveClipboard((current) => current === driveClipboard ? null : current);
           else {
             const failedIds = new Set(result.failed.map((item) => item.id));
-            setDriveClipboard((current) => current?.mode === "move"
+            setDriveClipboard((current) => current === driveClipboard
               ? { ...current, items: current.items.filter((item) => failedIds.has(item.id)) }
               : current);
           }
@@ -198,27 +208,27 @@ export function useDriveFileActions({
         "error",
       ))
       .finally(() => {
-        if (workspaceTimerRef.current) window.clearTimeout(workspaceTimerRef.current);
-        workspaceTimerRef.current = window.setTimeout(() => setWorkspaceLoading(false), 180);
+        fileMutationLock.current = false;
+        setMutationPending(false);
       });
   };
 
-  const dropPending = useRef(false);
   const moveItemsToFolder = async (items: DriveItem[], folderId: string | null) => {
-    if (dropPending.current || activeNav !== "drive" || !items.length) return;
+    if (fileMutationLock.current || activeNav !== "drive" || !items.length) return;
     if (items.some((item) => item.workspaceId !== workspaceId || item.spaceScope !== spaceScope)) return;
     if (items.some((item) => item.archivedAt) || (folderId && isFolderWithinItems(folderId, items, driveItems))) { showFeedback(t("files.invalidMoveTarget"), "warning"); return; }
     const movable = items.filter((item) => item.parentId !== folderId);
     if (!movable.length) return;
-    dropPending.current = true;
+    fileMutationLock.current = true;
+    setMutationPending(true);
     try {
       const result = await batchMoveFileNodes(movable.map((item) => item.id), folderId);
       await refreshDriveItems();
       const moved = new Set(result.succeeded.map((item) => item.id));
-      setSelected((current) => current.filter((id) => !moved.has(id)));
+      if (isCurrentContext()) setSelected((current) => current.filter((id) => !moved.has(id)));
       showBatchResult(result.summary, result.failed, movable);
     } catch (error) { showFeedback(getApiFeedback(error, "app.moveFailed", "form"), "error"); }
-    finally { dropPending.current = false; }
+    finally { fileMutationLock.current = false; setMutationPending(false); }
   };
 
   return {
@@ -232,6 +242,7 @@ export function useDriveFileActions({
     getActionItems,
     moveItem: (item: DriveItem) => setClipboardItems([item], "move"),
     pasteClipboard,
+    fileMutationPending: mutationPending,
     ...destructiveActions,
   };
 }

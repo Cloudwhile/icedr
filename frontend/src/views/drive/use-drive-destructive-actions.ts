@@ -7,6 +7,7 @@ import {
   type WorkspaceNotificationTone,
 } from "@/components/ui/workspace-notification-store";
 import type { DriveItem } from "@/features/file/model";
+import { useOperationContext } from "@/components/drive/use-operation-context";
 import { useTranslations } from "@/i18n/react";
 import {
   batchArchiveFileNodes,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/drive-api";
 
 type UseDriveDestructiveActionsOptions = {
+  contextKey?: string;
   activeItem?: DriveItem;
   getApiFeedback: (error: unknown, fallbackKey?: string, scope?: "form" | "global" | "share") => string;
   refreshDriveItems: () => Promise<unknown>;
@@ -29,6 +31,7 @@ type UseDriveDestructiveActionsOptions = {
 type FileOperationResult = BatchFileNodeOperationResponse;
 
 export function useDriveDestructiveActions({
+  contextKey = "",
   activeItem,
   getApiFeedback,
   refreshDriveItems,
@@ -37,6 +40,7 @@ export function useDriveDestructiveActions({
   showFeedback,
 }: UseDriveDestructiveActionsOptions) {
   const t = useTranslations();
+  const isCurrentContext = useOperationContext(contextKey);
   const archiveLockRef = useRef(false);
   const restoreLockRef = useRef(false);
   const permanentDeleteLockRef = useRef(false);
@@ -92,7 +96,7 @@ export function useDriveDestructiveActions({
         : await batchRestoreFileNodes(ids);
       await refreshAfterMutation();
       const succeededIds = result.succeeded.map((item) => item.id);
-      setSelected((current) => current.filter((id) => !succeededIds.includes(id)));
+      if (isCurrentContext()) setSelected((current) => current.filter((id) => !succeededIds.includes(id)));
       if (ids.length === 1 && result.summary.failed === 0) {
         showFeedback(t("app.restored", { count: result.summary.succeeded }), "success");
       } else {
@@ -105,7 +109,7 @@ export function useDriveDestructiveActions({
       setRestorePending(false);
     }
     return true;
-  }, [getApiFeedback, refreshAfterMutation, setSelected, showBatchResult, showFeedback, t]);
+  }, [getApiFeedback, isCurrentContext, refreshAfterMutation, setSelected, showBatchResult, showFeedback, t]);
 
   const archiveItems = useCallback(async (items: DriveItem[]) => {
     const actionItems = resolveActionItems(items);
@@ -124,7 +128,7 @@ export function useDriveDestructiveActions({
         : await batchArchiveFileNodes(actionItems.map((item) => item.id));
       await refreshAfterMutation();
       const succeededIds = result.succeeded.map((item) => item.id);
-      setSelected((current) => current.filter((id) => !succeededIds.includes(id)));
+      if (isCurrentContext()) setSelected((current) => current.filter((id) => !succeededIds.includes(id)));
 
       const undoNotification = succeededIds.length > 0
         ? {
@@ -153,7 +157,7 @@ export function useDriveDestructiveActions({
       archiveLockRef.current = false;
       setArchivePending(false);
     }
-  }, [getApiFeedback, refreshAfterMutation, resolveActionItems, restoreItemsByIdentity, setSelected, showBatchResult, showFeedback, t]);
+  }, [getApiFeedback, isCurrentContext, refreshAfterMutation, resolveActionItems, restoreItemsByIdentity, setSelected, showBatchResult, showFeedback, t]);
 
   const restoreItems = useCallback(async (items: DriveItem[]) => {
     const actionItems = resolveActionItems(items);
@@ -205,7 +209,7 @@ export function useDriveDestructiveActions({
           message: result.reason instanceof Error ? result.reason.message : t("app.deleteFailed"),
         }));
       await refreshAfterMutation();
-      setSelected((current) => current.filter((id) => !succeededIds.includes(id)));
+      if (isCurrentContext()) setSelected((current) => current.filter((id) => !succeededIds.includes(id)));
       showBatchResult({
         failed,
         succeeded: [],
@@ -223,7 +227,7 @@ export function useDriveDestructiveActions({
       setPermanentDeleteItems([]);
       setPermanentDeletePending(false);
     }
-  }, [getApiFeedback, refreshAfterMutation, setSelected, showBatchResult, showFeedback, t]);
+  }, [getApiFeedback, isCurrentContext, refreshAfterMutation, setSelected, showBatchResult, showFeedback, t]);
 
   return {
     archiveItems,
