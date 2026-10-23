@@ -154,6 +154,15 @@
   min-width: 40px;
 }
 
+.icedr-segmented-tool.icedr-segmented-tool-labeled {
+  flex: 1 1 0;
+  gap: 8px;
+  height: auto;
+  min-height: 42px;
+  padding: 8px 12px;
+  width: auto;
+}
+
 .icedr-segmented-tool:hover,
 .icedr-segmented-tool[data-hovered="true"] {
   background: var(--segmented-tool-hover-bg, var(--surface-secondary));
@@ -259,9 +268,18 @@ button.icedr-surface-panel[data-hovered="true"] {
 }
 
 .icedr-context-menu-button[data-separator="true"] {
+  margin-top: 12px;
+  position: relative;
+}
+
+.icedr-context-menu-button[data-separator="true"]::before {
   border-top: 1px solid var(--menu-border, var(--border));
-  margin-top: 6px;
-  padding-top: 6px;
+  content: "";
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: -6px;
 }
 
 .icedr-context-menu-button:hover,

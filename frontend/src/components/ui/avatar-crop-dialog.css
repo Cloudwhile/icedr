@@ -1,0 +1,67 @@
+.icedr-dialog.icedr-avatar-crop-dialog {
+  padding: 0;
+}
+
+.icedr-avatar-crop-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px;
+}
+
+.icedr-avatar-crop-header,
+.icedr-avatar-crop-actions,
+.icedr-avatar-crop-zoom {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.icedr-avatar-crop-header {
+  font-weight: var(--font-weight-semibold);
+  justify-content: space-between;
+}
+
+.icedr-avatar-crop-stage {
+  background: var(--avatar-crop-bg);
+  border: 1px solid var(--avatar-crop-border);
+  border-radius: var(--radius-md);
+  cursor: grab;
+  height: 256px;
+  margin-inline: auto;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  width: 256px;
+}
+
+.icedr-avatar-crop-stage:active {
+  cursor: grabbing;
+}
+
+.icedr-avatar-crop-image {
+  max-width: none;
+  pointer-events: none;
+  position: absolute;
+  user-select: none;
+}
+
+.icedr-avatar-crop-mask {
+  border: 1px solid var(--avatar-crop-ring);
+  border-radius: 50%;
+  box-shadow: 0 0 0 80px rgba(0, 0, 0, 0.45);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.icedr-avatar-crop-zoom input {
+  accent-color: var(--ui-accent);
+  flex: 1;
+  min-width: 0;
+}
+
+.icedr-avatar-crop-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

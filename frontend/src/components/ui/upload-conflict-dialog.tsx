@@ -50,6 +50,7 @@ export function UploadConflictDialog({
 
   return (
     <AppDialogShell
+      aria-label={discardConfirmation?.title ?? t("upload.conflictTitle", { count: conflictCount })}
       className="icedr-upload-conflict-dialog"
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {

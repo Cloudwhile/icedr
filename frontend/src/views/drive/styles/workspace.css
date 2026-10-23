@@ -475,8 +475,14 @@
   }
 
   .drive-workspace-bar .drive-mobile-workspace-tools[data-selection-mode="true"] {
+    flex-wrap: wrap;
     gap: 10px;
     justify-content: space-between;
+  }
+
+  .drive-mobile-toolbar-actions {
+    flex-wrap: wrap;
+    max-width: 100%;
   }
 
   .drive-mobile-workspace-tools .icedr-tool-button,
@@ -486,5 +492,12 @@
     min-height: 44px;
     min-width: 44px;
     width: 44px;
+  }
+
+  .drive-mobile-workspace-tools .icedr-tool-button-labeled {
+    height: auto;
+    min-width: 0;
+    padding: 8px 12px;
+    width: auto;
   }
 }

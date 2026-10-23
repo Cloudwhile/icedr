@@ -6,8 +6,9 @@ import { LocalIcon } from "./app-icon";
 import { ToolButton } from "./tool-button";
 import { useTranslations } from "@/i18n/react";
 import type { Palette } from "@/features/file/model";
+import "./avatar-crop-dialog.css";
 
-const stageSize = 280;
+const stageSize = 256;
 const outputSize = 256;
 
 type CropOffset = {
@@ -108,6 +109,7 @@ export function AvatarCropDialog({ imageSrc, onClose, onConfirm, open, palette }
 
   return (
     <AppDialogShell
+      aria-label={t("settings.avatar")}
       className="icedr-avatar-crop-dialog"
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose();

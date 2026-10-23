@@ -20,6 +20,7 @@ export type SegmentedToolGroupProps<T extends string> = {
   options: Array<SegmentedToolOption<T>>;
   palette: Palette;
   size?: "sm" | "md" | "lg";
+  showLabels?: boolean;
   value: T;
 };
 
@@ -31,6 +32,7 @@ export function SegmentedToolGroup<T extends string>({
   options,
   palette,
   size = "sm",
+  showLabels = false,
   value,
 }: SegmentedToolGroupProps<T>) {
   return (
@@ -56,10 +58,10 @@ export function SegmentedToolGroup<T extends string>({
       {options.map((option, index) => (
         <ToggleButton
           aria-label={option.label}
-          className="icedr-segmented-tool"
+          className={cn("icedr-segmented-tool", showLabels && "icedr-segmented-tool-labeled")}
           id={option.value}
           isDisabled={option.disabled}
-          isIconOnly
+          isIconOnly={!showLabels}
           key={option.value}
           style={{
             "--segmented-tool-active-bg": palette.selected,
@@ -72,6 +74,7 @@ export function SegmentedToolGroup<T extends string>({
         >
           {index > 0 ? <ToggleButtonGroup.Separator /> : null}
           {option.icon}
+          {showLabels ? <span>{option.label}</span> : null}
         </ToggleButton>
       ))}
     </ToggleButtonGroup>

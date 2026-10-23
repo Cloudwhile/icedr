@@ -25,8 +25,14 @@
   min-width: 0;
 }
 
+.icedr-recovery-codes-dialog .icedr-recovery-code-tools {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
 .icedr-security-dialog-heading > svg {
-  color: var(--drive-ui-blue-600, #4263eb);
+  color: var(--ui-accent);
   flex: 0 0 auto;
 }
 
@@ -37,7 +43,7 @@
 }
 
 .icedr-security-dialog-heading > div > span {
-  color: var(--drive-ui-muted, #64748b);
+  color: var(--ui-text-secondary);
   font-size: var(--text-ui-xs);
   font-weight: var(--font-weight-semibold);
   line-height: max(1.5em, 17px);
@@ -45,9 +51,9 @@
 }
 
 .icedr-reauth-methods {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
 }
 
@@ -57,14 +63,14 @@
 }
 
 .icedr-security-dialog-field > span:first-child {
-  color: var(--drive-ui-ink, #172033);
+  color: var(--ui-text-primary);
   font-size: var(--text-ui-xs);
   font-weight: var(--font-weight-bold);
   line-height: 1.5;
 }
 
 .icedr-security-dialog-field > span:last-child {
-  color: var(--drive-ui-muted, #64748b);
+  color: var(--ui-text-secondary);
   font-size: var(--text-ui-xs);
   line-height: max(1.5em, 18px);
 }
@@ -74,7 +80,7 @@
 .icedr-security-dialog-error,
 .icedr-recovery-codes-warning {
   align-items: flex-start;
-  border: 1px solid var(--drive-ui-line, #e2e8f0);
+  border: 1px solid var(--ui-border-default);
   border-radius: var(--radius-md);
   display: flex;
   font-size: var(--text-ui-xs);
@@ -85,19 +91,19 @@
 }
 
 .icedr-security-dialog-method-copy {
-  background: color-mix(in srgb, var(--drive-ui-blue-600, #4263eb) 5%, transparent);
-  color: var(--drive-ui-muted, #64748b);
+  background: color-mix(in srgb, var(--ui-accent) 5%, transparent);
+  color: var(--ui-text-secondary);
 }
 
 .icedr-security-dialog-unavailable,
 .icedr-security-dialog-error {
-  background: color-mix(in srgb, var(--drive-ui-danger, #dc2626) 6%, transparent);
-  border-color: color-mix(in srgb, var(--drive-ui-danger, #dc2626) 28%, var(--drive-ui-line, #e2e8f0));
-  color: var(--drive-ui-danger, #dc2626);
+  background: color-mix(in srgb, var(--ui-danger) 6%, transparent);
+  border-color: color-mix(in srgb, var(--ui-danger) 28%, var(--ui-border-default));
+  color: var(--ui-danger);
 }
 
-.icedr-security-reauth-dialog footer,
-.icedr-recovery-codes-dialog footer {
+.icedr-security-reauth-dialog [data-slot="modal-footer"],
+.icedr-recovery-codes-dialog [data-slot="modal-footer"] {
   justify-content: flex-end;
 }
 
@@ -113,7 +119,7 @@
 }
 
 .icedr-recovery-codes-list {
-  border: 1px solid var(--drive-ui-line, #e2e8f0);
+  border: 1px solid var(--ui-border-default);
   border-radius: var(--radius-md);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -125,7 +131,7 @@
 
 .icedr-recovery-codes-list li {
   align-items: center;
-  border-bottom: 1px solid var(--drive-ui-line, #e2e8f0);
+  border-bottom: 1px solid var(--ui-border-default);
   display: grid;
   gap: 9px;
   grid-template-columns: 24px minmax(0, 1fr);
@@ -134,7 +140,7 @@
 }
 
 .icedr-recovery-codes-list li:nth-child(odd) {
-  border-right: 1px solid var(--drive-ui-line, #e2e8f0);
+  border-right: 1px solid var(--ui-border-default);
 }
 
 .icedr-recovery-codes-list li:nth-last-child(-n + 2) {
@@ -142,14 +148,14 @@
 }
 
 .icedr-recovery-codes-list li > span {
-  color: var(--drive-ui-muted, #64748b);
+  color: var(--ui-text-secondary);
   font-size: var(--text-ui-xs);
   font-weight: var(--font-weight-bold);
   line-height: 1.5;
 }
 
 .icedr-recovery-codes-list code {
-  color: var(--drive-ui-ink, #172033);
+  color: var(--ui-text-primary);
   font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: var(--text-ui-sm);
   font-weight: var(--font-weight-bold);
@@ -159,20 +165,16 @@
 }
 
 @media (max-width: 520px) {
-  .icedr-reauth-methods,
   .icedr-recovery-codes-list {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .icedr-reauth-methods button,
-  .icedr-reauth-methods button:nth-child(odd),
   .icedr-recovery-codes-list li,
   .icedr-recovery-codes-list li:nth-child(odd) {
-    border-bottom: 1px solid var(--drive-ui-line, #e2e8f0);
+    border-bottom: 1px solid var(--ui-border-default);
     border-right: 0;
   }
 
-  .icedr-reauth-methods button:last-child,
   .icedr-recovery-codes-list li:last-child {
     border-bottom: 0;
   }

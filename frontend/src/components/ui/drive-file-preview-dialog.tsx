@@ -184,6 +184,7 @@ export function DriveFilePreviewDialog({
   return (
     <>
     <AppDialogShell
+      aria-label={activeItem?.name ?? t("preview.title")}
       className={cn("icedr-file-preview-dialog", workspacePreview && "icedr-file-preview-dialog-media")}
       containerClassName={workspacePreview ? "icedr-dialog-container-media" : undefined}
       onOpenChange={(nextOpen) => {

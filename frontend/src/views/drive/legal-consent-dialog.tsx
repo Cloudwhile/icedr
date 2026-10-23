@@ -1,6 +1,7 @@
 "use client";
 
 import { Modal } from "@heroui/react";
+import { AppDialogShell } from "@/components/ui/app-dialog-shell";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Locale, Palette } from "@/features/file/model";
 import { getLegalDocumentLabelKey, getLegalTextLocale, type LegalDocumentKey } from "@/features/legal/content";
@@ -9,6 +10,7 @@ import { ProgressMeter } from "@/components/ui/progress-meter";
 import { AuthPrimaryButton } from "./auth-form-primitives";
 import { LocalIcon, ToolButton } from "./drive-primitives";
 import { LegalDocumentColumns } from "./legal-page";
+import "./styles/legal-consent.css";
 const legalPages: LegalDocumentKey[] = ["terms", "privacy"];
 export function LegalConsentDialog({
   locale,
@@ -64,155 +66,49 @@ export function LegalConsentDialog({
   const movePage = (direction: -1 | 1) => {
     setPageIndex(value => (value + direction + legalPages.length) % legalPages.length);
   };
-  return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && closeDialog()} style={{
-        background: palette.backdrop
-      }}>
-        <Modal.Container placement="center">
-          <Modal.Dialog style={{
-          background: palette.overlay,
-          borderColor: palette.hairlineStrong,
-          borderWidth: "1px",
-          boxShadow: palette.shadowDialog,
-          color: palette.ink,
-          maxHeight: "calc(100dvh - 28px)",
-          overflow: "hidden",
-          borderRadius: "var(--radius-md)",
-          width: "min(980px, calc(100vw - 24px))"
-        }}>
-            <Modal.Header className="icedr-r-padding-inline" style={{
-            borderBottomWidth: "1px",
-            borderColor: palette.hairline,
-            "--r-padding-inline-base": "12px",
-            "--r-padding-inline-md": "16px",
-            paddingBlock: "12px"
-          } as React.CSSProperties}>
-              <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              justifyContent: "space-between"
-            }}>
-                <div style={{
-                alignItems: "center",
-                display: "flex",
-                gap: "12px",
-                minWidth: "0px"
-              }}>
-                  <LocalIcon name="document" size={18} color={palette.primaryHover} />
-                  <div style={{
-                  minWidth: "0px"
-                }}>
-                    <Modal.Heading className="icedr-truncate" style={{
-                      fontWeight: "var(--font-weight-bold)"
-                    }}>
-                    {t("legal.consent.title")}
-                    </Modal.Heading>
-                    <span className="icedr-truncate" style={{
-                    color: palette.subtle,
-                    fontSize: "var(--text-ui-xs)"
-                  }}>
-                      {t("legal.consent.subtitle")}
-                    </span>
-                  </div>
-                </div>
-                <ToolButton label={t("app.close")} palette={palette} onClick={closeDialog}>
-                  <LocalIcon name="cross" size={17} />
-                </ToolButton>
-              </div>
-            </Modal.Header>
-
-            <Modal.Body style={{
-            padding: "0px"
-          }}>
-              <div className="icedr-r-padding-inline" style={{
-              display: "grid",
-              alignItems: "center",
-              borderBottomWidth: "1px",
-              borderColor: palette.hairline,
-              gap: "8px",
-              gridTemplateColumns: "40px minmax(0, 1fr) 40px",
-              "--r-padding-inline-base": "12px",
-              "--r-padding-inline-md": "16px",
-              paddingBlock: "12px"
-            } as React.CSSProperties}>
-                <ToolButton label={t("legal.consent.previous")} palette={palette} onClick={() => movePage(-1)}>
-                  <LocalIcon name="arrow_left" size={17} />
-                </ToolButton>
-                <div style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "6px",
-                minWidth: "0px"
-              }}>
-                  <span className="icedr-truncate" style={{
-                  fontWeight: "var(--font-weight-bold)"
-                }}>
-                    {activePageLabel}
-                  </span>
-                  <span style={{
-                  color: readState[activePage] ? palette.success : palette.subtle,
-                  fontSize: "var(--text-ui-xs)"
-                }}>
-                    {readState[activePage] ? t("legal.consent.read") : t("legal.consent.readToBottom")}
-                  </span>
-                  <div style={{
-                  width: "min(280px, 100%)"
-                }}>
-                    <ProgressMeter ariaLabel={activePageLabel} color={readState[activePage] ? palette.success : palette.primaryHover} palette={palette} value={completionValue} />
-                  </div>
-                </div>
-                <ToolButton label={t("legal.consent.next")} palette={palette} onClick={() => movePage(1)}>
-                  <LocalIcon name="arrow_right" size={17} />
-                </ToolButton>
-              </div>
-
-              <div ref={scrollRef} style={{
-              WebkitOverflowScrolling: "touch",
-              maxHeight: "min(58dvh, 560px)",
-              overflowY: "auto",
-              "--r-padding-inline-base": "16px",
-              "--r-padding-inline-md": "20px",
-              paddingBlock: "20px"
-            } as React.CSSProperties} onScroll={markReadIfAtBottom} className="icedr-r-padding-inline">
-                <LegalDocumentColumns documentKey={activePage} palette={palette} />
-              </div>
-
-              <div className="icedr-r-align-items icedr-r-flex-direction icedr-r-padding-inline" style={{
-              display: "flex",
-              "--r-align-items-base": "stretch",
-              "--r-align-items-md": "center",
-              borderColor: palette.hairline,
-              borderTopWidth: "1px",
-              "--r-flex-direction-base": "column",
-              "--r-flex-direction-md": "row",
-              gap: "12px",
-              justifyContent: "space-between",
-              "--r-padding-inline-base": "12px",
-              "--r-padding-inline-md": "16px",
-              paddingBlock: "12px"
-            } as React.CSSProperties}>
-                <div style={{
-                alignItems: "center",
-                display: "flex",
-                color: allRead ? palette.success : palette.subtle,
-                fontSize: "var(--text-ui-xs)",
-                gap: "8px"
-              }}>
-                  <LocalIcon name={allRead ? "tick" : "info"} size={15} />
-                  <span>{allRead ? t("legal.consent.ready") : t("legal.consent.pending")}</span>
-                </div>
-                <div className="icedr-r-width" style={{
-                "--r-width-base": "100%",
-                "--r-width-md": "220px"
-              } as React.CSSProperties}>
-                  <AuthPrimaryButton disabled={!allRead} icon="tick" palette={palette} onClick={onAccept}>
-                    {t("legal.consent.accept")}
-                  </AuthPrimaryButton>
-                </div>
-              </div>
-            </Modal.Body>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>;
+  return (
+    <AppDialogShell className="icedr-legal-consent-dialog" open={open} onOpenChange={nextOpen => !nextOpen && closeDialog()} palette={palette} size="lg">
+      <Modal.Header>
+        <div className="icedr-legal-consent-heading">
+          <LocalIcon name="document" size={18} color={palette.primaryHover} />
+          <div>
+            <Modal.Heading>{t("legal.consent.title")}</Modal.Heading>
+            <p>{t("legal.consent.subtitle")}</p>
+          </div>
+        </div>
+        <ToolButton label={t("app.close")} palette={palette} onClick={closeDialog}>
+          <LocalIcon name="cross" size={17} />
+        </ToolButton>
+      </Modal.Header>
+      <Modal.Body>
+        <div className="icedr-legal-consent-navigation">
+          <ToolButton label={t("legal.consent.previous")} palette={palette} onClick={() => movePage(-1)}>
+            <LocalIcon name="arrow_left" size={17} />
+          </ToolButton>
+          <div className="icedr-legal-consent-progress">
+            <strong>{activePageLabel}</strong>
+            <span style={{ color: readState[activePage] ? palette.success : palette.subtle }}>
+              {readState[activePage] ? t("legal.consent.read") : t("legal.consent.readToBottom")}
+            </span>
+            <ProgressMeter ariaLabel={activePageLabel} color={readState[activePage] ? palette.success : palette.primaryHover} palette={palette} value={completionValue} />
+          </div>
+          <ToolButton label={t("legal.consent.next")} palette={palette} onClick={() => movePage(1)}>
+            <LocalIcon name="arrow_right" size={17} />
+          </ToolButton>
+        </div>
+        <div className="icedr-legal-consent-document" onScroll={markReadIfAtBottom} ref={scrollRef}>
+          <LegalDocumentColumns documentKey={activePage} palette={palette} />
+        </div>
+      </Modal.Body>
+      <Modal.Footer>
+        <div className="icedr-legal-consent-status" style={{ color: allRead ? palette.success : palette.subtle }}>
+          <LocalIcon name={allRead ? "tick" : "info"} size={15} />
+          <span>{allRead ? t("legal.consent.ready") : t("legal.consent.pending")}</span>
+        </div>
+        <AuthPrimaryButton disabled={!allRead} icon="tick" palette={palette} onClick={onAccept}>
+          {t("legal.consent.accept")}
+        </AuthPrimaryButton>
+      </Modal.Footer>
+    </AppDialogShell>
+  );
 }

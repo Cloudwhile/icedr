@@ -866,8 +866,15 @@ video.icedr-preview-media-object {
 }
 
 .icedr-open-with-action[data-primary="true"] {
-  border-color: var(--open-with-focus, var(--focus));
-  color: var(--accent-hover, var(--foreground));
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: var(--ui-on-accent);
+}
+
+@media (max-width: 520px) {
+  .icedr-open-with-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .icedr-upload-conflict-dialog {

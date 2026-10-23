@@ -2,6 +2,7 @@
 @import "@heroui/styles";
 @import "./tokens.css";
 @import "./base.css";
+@import "./responsive-utilities.css";
 @import "./primitives.css";
 @import "./dialogs.css";
 @import "./preview.css";

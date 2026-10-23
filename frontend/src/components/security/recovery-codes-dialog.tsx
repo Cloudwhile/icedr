@@ -92,6 +92,16 @@ export function RecoveryCodesDialog({
             </span>
           </div>
         </div>
+        <ToolButton
+          disabled={Boolean(busyAction)}
+          label={t("actions.close")}
+          onClick={onClose}
+          palette={palette}
+        >
+          <LocalIcon name="cross" size={16} />
+        </ToolButton>
+      </AppDialogHeader>
+      <AppDialogBody>
         <div className="icedr-recovery-code-tools">
           <ToolButton showLabel
             isPending={busyAction === "copy"}
@@ -111,17 +121,7 @@ export function RecoveryCodesDialog({
           >
             <LocalIcon name="download" size={16} />
           </ToolButton>
-          <ToolButton
-            disabled={Boolean(busyAction)}
-            label={t("actions.close")}
-            onClick={onClose}
-            palette={palette}
-          >
-            <LocalIcon name="cross" size={16} />
-          </ToolButton>
         </div>
-      </AppDialogHeader>
-      <AppDialogBody>
         <div className="icedr-recovery-codes-warning">
           <LocalIcon name="exclamation" size={17} />
           <span>{t("settings.recoveryCodesOneTimeWarning")}</span>

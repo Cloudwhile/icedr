@@ -454,6 +454,27 @@ test.describe("responsive Drive workspace", () => {
         { surface: ".drive-passkey-table-header", text: ".drive-passkey-table-header [role=\"columnheader\"]" },
       ]);
       await captureThemeShot(page, testInfo, theme, "settings-passkey");
+
+      await page.route("**/api/auth/security/reauth/password", route => route.fulfill({
+        json: { token: "review-step-up", expiresAt: "2099-01-01T00:00:00.000Z", method: "password" },
+      }));
+      await page.route("**/api/auth/security/recovery-codes", route => route.fulfill({
+        json: { codes: ["ABCD-EFGH-IJKL-MNOP", "QRST-UVWX-2345-6789"], count: 2, generatedAt: now },
+      }));
+      await page.getByRole("button", { name: "Generate recovery codes", exact: true }).click();
+      const reauth = page.locator(".icedr-security-reauth-dialog");
+      await expect(reauth).toBeVisible();
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".icedr-security-reauth-dialog", text: ".icedr-security-dialog-field > span:first-child" },
+      ]);
+      await captureThemeShot(page, testInfo, theme, "reauth-dialog");
+      await reauth.getByRole("textbox", { name: /^Password/ }).fill("correct-horse-review");
+      await reauth.getByRole("button", { name: "Verify and continue", exact: true }).click();
+      await expect(page.locator(".icedr-recovery-codes-dialog")).toBeVisible();
+      await expectThemeSurfaces(page, theme, [
+        { surface: ".icedr-recovery-codes-dialog", text: ".icedr-recovery-codes-list code" },
+      ]);
+      await captureThemeShot(page, testInfo, theme, "recovery-dialog");
     });
   }
 });
@@ -489,7 +510,7 @@ async function expectSelectionActions(toolbar: Locator) {
 async function expectSelectionMoreMenu(page: Page, toolbar: Locator) {
   await toolbar.getByRole("button", { name: "More", exact: true }).click();
   const menu = page.getByRole("menu", { name: "More" });
-  await expect(menu.getByRole("menuitem", { name: "Move", exact: true })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Cut", exact: true })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Move to trash", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

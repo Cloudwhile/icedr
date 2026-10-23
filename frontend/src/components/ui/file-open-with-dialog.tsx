@@ -44,6 +44,7 @@ export function FileOpenWithDialog({
 
   return (
     <AppDialogShell
+      aria-label={t("preview.openWith")}
       className="icedr-open-with-dialog"
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose();

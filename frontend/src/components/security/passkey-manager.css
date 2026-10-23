@@ -312,22 +312,26 @@
   padding: 10px 15px;
 }
 
-.drive-passkey-dialog header,
+.drive-passkey-dialog [data-slot="modal-header"],
 .drive-passkey-dialog-heading {
   align-items: center;
   display: flex;
 }
 
-.drive-passkey-dialog header {
+.drive-passkey-dialog [data-slot="modal-header"] {
+  flex-direction: row;
+  gap: 12px;
   justify-content: space-between;
 }
 
 .drive-passkey-dialog-heading {
   gap: 9px;
+  min-width: 0;
 }
 
 .drive-passkey-dialog-heading svg {
   color: var(--ui-accent);
+  flex: 0 0 auto;
 }
 
 .drive-passkey-name-field {
@@ -342,7 +346,7 @@
   line-height: 1.5;
 }
 
-.drive-passkey-dialog footer {
+.drive-passkey-dialog [data-slot="modal-footer"] {
   justify-content: flex-end;
 }
 

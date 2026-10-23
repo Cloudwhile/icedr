@@ -117,6 +117,28 @@ test("visual smoke: renders auth and gated setup surfaces", async ({ page }, tes
   await expect(page.locator(".icedr-auth-form-card")).toBeVisible();
   await capture(page, "auth-register.png", testInfo);
 
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.locator('input[name="displayName"]').fill("Review User");
+  await page.locator('input[name="email"]').fill("review@example.com");
+  await page.locator('input[name="password"]').fill("Review-password-2026!");
+  await page.locator('input[name="confirmPassword"]').fill("Review-password-2026!");
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  const consent = page.getByRole("dialog", { name: "Review and accept legal documents" });
+  const accept = consent.getByRole("button", { name: "Accept and register", exact: true });
+  await expect(accept).toBeDisabled();
+  await expect(accept).toBeInViewport({ ratio: 1 });
+  const legalDocument = consent.locator(".icedr-legal-consent-document");
+  await legalDocument.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await expect(consent.getByText("This page has been read", { exact: true })).toBeVisible();
+  await expect(accept).toBeDisabled();
+  await consent.getByRole("button", { name: "Next page", exact: true }).click();
+  await legalDocument.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await expect(accept).toBeEnabled();
+  await expect(accept).toBeInViewport({ ratio: 1 });
+  await capture(page, "auth-legal-consent-mobile.png", testInfo);
+  await consent.getByRole("button", { name: "Close", exact: true }).click();
+  await page.setViewportSize({ width: 1536, height: 1024 });
+
   await page.goto("/forgot-password");
   await expect(page.locator(".icedr-auth-shell")).toBeVisible();
   await expect(page.locator(".icedr-auth-form-card")).toBeVisible();
