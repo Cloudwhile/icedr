@@ -80,7 +80,6 @@
 .drive-search:focus-within {
   border-color: var(--drive-ui-line-strong);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--drive-ui-blue-600) 8%, transparent), var(--drive-ui-shadow-hover);
-  transform: translateY(-1px);
 }
 
 .drive-search-input,
@@ -193,14 +192,13 @@
   transition: background-color 150ms var(--drive-ui-ease), border-color 150ms var(--drive-ui-ease), box-shadow 180ms var(--drive-ui-ease), color 150ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
 }
 
-.drive-shell .icedr-tool-button:hover,
-.drive-shell .icedr-tool-button[data-hovered="true"] {
+.drive-shell .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.drive-shell .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   box-shadow: var(--drive-ui-shadow-hover);
-  transform: translateY(-1px);
 }
 
-.drive-shell .icedr-tool-button:active,
-.drive-shell .icedr-tool-button[data-pressed="true"] {
+.drive-shell .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):active,
+.drive-shell .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-pressed="true"] {
   box-shadow: var(--drive-ui-shadow-tight);
-  transform: scale(0.96);
+  transform: scale(var(--motion-press-scale, 0.98));
 }

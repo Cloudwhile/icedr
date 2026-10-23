@@ -145,6 +145,7 @@
 }
 
 .drive-table-sort-header:hover svg,
+.drive-table-sort-header:focus-visible svg,
 .drive-table-sort-header[data-active="true"] svg {
   opacity: 1;
 }
@@ -162,12 +163,6 @@
 .drive-table tbody tr:hover {
   background: color-mix(in srgb, var(--drive-ui-blue-600) 4%, var(--drive-ui-surface));
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--drive-ui-blue-600) 18%, transparent), var(--drive-ui-shadow-tight);
-  transform: translateY(-1px);
-}
-
-.drive-table tbody tr:active {
-  filter: saturate(1.04);
-  transform: scale(0.998);
 }
 
 .drive-table tbody tr[data-selected] {
@@ -385,7 +380,7 @@
   box-shadow: none;
 }
 
-.drive-action-trigger.icedr-tool-button:hover {
+.drive-action-trigger.icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover {
   background: color-mix(in srgb, var(--drive-ui-blue-600) 10%, var(--drive-ui-surface)) !important;
   border-color: transparent !important;
 }
@@ -418,7 +413,7 @@
   background: color-mix(in srgb, var(--drive-ui-blue-600) 10%, var(--drive-ui-surface));
   border-color: var(--select-hover-border, var(--drive-ui-blue-500));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--drive-ui-blue-600) 12%, transparent);
-  transform: scale(1.04);
+  transform: none;
 }
 
 .file-select-box-indicator {
@@ -825,8 +820,8 @@
     background: transparent;
     border: 0;
     box-shadow: none;
-    transform: none;
-  }
+  transform: none;
+}
 
   .file-select-box > svg,
   .file-select-box-indicator {

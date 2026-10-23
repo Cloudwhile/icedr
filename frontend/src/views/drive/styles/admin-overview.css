@@ -22,7 +22,6 @@
 .admin-header-search:hover {
   background: var(--ui-surface);
   border-color: var(--ui-border-strong);
-  transform: translateY(-1px);
 }
 
 .admin-header-search input {
@@ -50,7 +49,6 @@
     var(--drive-ui-line)
   );
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-focus-ring) 28%, transparent);
-  transform: translateY(-1px);
 }
 
 .admin-header-search kbd {
@@ -98,11 +96,9 @@
   position: absolute;
 }
 
-.admin-overview-stat-card:hover,
-.admin-overview-card:hover {
+button.admin-overview-stat-card:hover {
   border-color: var(--ui-border-strong);
   box-shadow: var(--ui-shadow-card);
-  transform: translateY(-1px);
 }
 
 .admin-overview-stat-card {
@@ -313,7 +309,6 @@
 
 .admin-overview-card-header button:hover {
   color: var(--drive-ui-blue-700);
-  transform: translateX(2px);
 }
 
 .admin-activity-line-chart {
@@ -465,7 +460,6 @@
 .admin-recent-activity-row:hover {
   background: var(--ui-surface-subtle);
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-accent) 40%, transparent);
-  transform: translateX(1px);
 }
 
 .admin-recent-activity-avatar {

@@ -7,6 +7,41 @@
   padding: 16px;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .icedr-dialog-container[data-entering="true"] {
+    animation: icedr-dialog-enter 180ms var(--motion-ease-emphasized) both;
+  }
+
+  .icedr-dialog-container[data-exiting="true"] {
+    animation: icedr-dialog-exit 100ms var(--motion-ease) both;
+  }
+}
+
+.icedr-dialog-container[data-placement="top"] {
+  --dialog-enter-offset: -6px;
+}
+
+.icedr-dialog-container-media,
+.icedr-dialog-container.modal__container--full {
+  --dialog-enter-offset: 0px;
+}
+
+@keyframes icedr-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--dialog-enter-offset, 6px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes icedr-dialog-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 .icedr-dialog {
   background: var(--dialog-bg, var(--surface));
   border: 1px solid var(--dialog-border, var(--border));

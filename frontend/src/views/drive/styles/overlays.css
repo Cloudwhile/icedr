@@ -56,7 +56,6 @@
 .drive-upload-hud:hover {
   border-color: var(--drive-ui-blue-500);
   box-shadow: var(--drive-ui-shadow-2);
-  transform: translateY(-1px);
 }
 
 .drive-upload-hud[data-active-upload-count="0"]:hover {
@@ -64,7 +63,7 @@
 }
 
 .drive-upload-hud:active {
-  transform: scale(0.99);
+  transform: scale(var(--motion-press-scale, 0.99));
 }
 
 .drive-upload-hud-main {

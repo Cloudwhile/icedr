@@ -395,7 +395,7 @@
 
 .admin-overview-stat-card,
 .admin-overview-card {
-  animation: admin-card-in 420ms var(--drive-ui-ease) both;
+  animation: admin-card-in 200ms var(--drive-ui-ease) both;
   background: var(--drive-ui-surface);
   border: 1px solid var(--drive-ui-line);
   border-radius: var(--drive-ui-radius);
@@ -408,11 +408,9 @@
     transform 160ms var(--drive-ui-ease);
 }
 
-.admin-overview-stat-card:hover,
-.admin-overview-card:hover {
+button.admin-overview-stat-card:hover {
   border-color: var(--drive-ui-line-strong);
   box-shadow: var(--drive-ui-shadow-hover);
-  transform: translateY(-2px);
 }
 
 .admin-overview-stat-card {
@@ -558,7 +556,6 @@
 
 .admin-overview-card-header button:hover {
   color: var(--drive-ui-blue-700);
-  transform: translateX(2px);
 }
 
 .admin-activity-chart {
@@ -942,7 +939,7 @@
 @keyframes admin-card-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.985);
+    transform: translateY(6px);
   }
 
   to {

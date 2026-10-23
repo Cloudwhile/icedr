@@ -215,7 +215,6 @@
 .icedr-auth-primary-button:hover:not([data-disabled="true"]) {
   background: var(--auth-primary-hover);
   box-shadow: var(--auth-shadow-popover);
-  transform: translateY(-1px);
 }
 
 .icedr-auth-primary-button:focus-visible {
@@ -237,7 +236,7 @@
 }
 
 .icedr-auth-primary-button:active:not([data-disabled="true"]) {
-  transform: translateY(0) scale(0.995);
+  transform: translateY(0) scale(var(--motion-press-scale, 0.995));
 }
 
 .icedr-auth-primary-button[data-disabled="true"] {
@@ -440,12 +439,10 @@
 @keyframes icedr-auth-shell-in {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.99);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 

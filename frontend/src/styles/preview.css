@@ -52,7 +52,6 @@
 
 .icedr-file-preview-back:hover {
   color: var(--preview-text, var(--foreground));
-  transform: translateX(-1px);
 }
 
 .icedr-file-preview-identity {
@@ -260,7 +259,7 @@
 }
 
 .icedr-preview-zoom-value:active {
-  transform: scale(0.97);
+  transform: scale(var(--motion-press-scale, 0.97));
 }
 
 .icedr-preview-media-viewer {
@@ -575,7 +574,6 @@ video.icedr-preview-media-object {
 
 .icedr-preview-version-row:hover {
   box-shadow: inset 2px 0 0 var(--ui-accent);
-  transform: translateX(1px);
 }
 
 .icedr-preview-version-row[data-current="true"] .icedr-preview-version-dot {
@@ -832,7 +830,6 @@ video.icedr-preview-media-object {
 
 .icedr-open-with-choice:hover {
   border-color: var(--open-with-focus, var(--focus));
-  transform: translateY(-1px);
 }
 
 .icedr-open-with-choice[data-selected="true"] {

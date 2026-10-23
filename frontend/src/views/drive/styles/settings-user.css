@@ -50,16 +50,14 @@
   border-color: var(--drive-ui-line-strong);
   box-shadow: var(--drive-ui-shadow-hover);
   color: var(--drive-ui-ink);
-  transform: translateX(2px);
 }
 
 .drive-settings-tab:active:not(:disabled) {
-  transform: translateX(2px) scale(0.986);
+  transform: translateX(2px) scale(var(--motion-press-scale, 0.986));
 }
 
 .drive-settings-tab:hover:not(:disabled) svg {
   color: var(--drive-ui-blue-600);
-  transform: scale(1.04);
 }
 
 .drive-settings-tab[data-active="true"] {
@@ -130,15 +128,6 @@
   box-shadow: var(--drive-ui-shadow-1);
   box-sizing: border-box;
   transition: border-color 180ms var(--drive-ui-ease), box-shadow 220ms var(--drive-ui-ease), transform 220ms var(--drive-ui-ease);
-}
-
-.drive-settings-main-column:hover,
-.drive-settings-section:hover,
-.drive-settings-side-panel:hover,
-.drive-settings-avatar-panel:hover {
-  border-color: var(--drive-ui-line-strong);
-  box-shadow: var(--drive-ui-shadow-hover);
-  transform: translateY(-1px);
 }
 
 .drive-settings-main-column,

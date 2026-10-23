@@ -69,7 +69,6 @@
   background: transparent;
   border-color: #e3e8f2;
   color: var(--drive-ui-ink);
-  transform: translateX(2px);
 }
 
 .drive-settings-tab[data-active="true"] {
@@ -585,7 +584,6 @@
 
 .drive-system-side-action:hover {
   color: var(--drive-ui-blue-600);
-  transform: translateX(2px);
 }
 
 .drive-system-side-action:last-child {
@@ -894,7 +892,6 @@
   background: #f5f8ff;
   border-color: #e3e9fb;
   color: var(--drive-ui-ink);
-  transform: translateX(2px);
 }
 
 .drive-system-settings-nav a[data-active="true"] {

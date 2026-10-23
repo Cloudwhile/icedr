@@ -194,7 +194,6 @@
 .icedr-setup-step-button:hover:not(:disabled) {
   background: var(--setup-step-hover-bg);
   color: var(--setup-step-active-color);
-  transform: translateY(-1px);
 }
 
 .icedr-setup-step-button:disabled {
@@ -560,9 +559,10 @@
   opacity: 0.64;
 }
 
-.icedr-setup-toggle-row:hover,
-.icedr-setup-select-card:not(:disabled):hover {
-  transform: translateY(-1px);
+.icedr-setup-toggle-row:where(:not(:disabled, [data-checked="true"])):hover,
+.icedr-setup-select-card:where(:not(:disabled, [data-active="true"])):hover {
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border-strong);
 }
 
 .icedr-setup-toggle-row:focus-visible,
@@ -686,7 +686,6 @@
     line-height: max(1.5em, 14px);
     -webkit-line-clamp: 1;
   }
-
 }
 
 @media (max-width: 720px) {

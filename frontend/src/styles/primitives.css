@@ -8,6 +8,7 @@
   flex: 0 0 auto;
   justify-content: center;
   min-width: 0;
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .icedr-action-button {
@@ -29,16 +30,15 @@
   white-space: nowrap;
 }
 
-.icedr-action-button:hover,
-.icedr-action-button[data-hovered="true"] {
+.icedr-action-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.icedr-action-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   background: var(--action-hover-bg, var(--action-bg, var(--surface)));
   border-color: var(--action-hover-border, var(--action-border, var(--border)));
-  transform: translateY(-1px);
 }
 
-.icedr-action-button:active,
-.icedr-action-button[data-pressed="true"] {
-  transform: scale(0.98);
+.icedr-action-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):active,
+.icedr-action-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-pressed="true"] {
+  transform: scale(var(--motion-press-scale, 0.98));
 }
 
 .icedr-action-button:focus-visible,
@@ -47,6 +47,7 @@
   outline-offset: 2px;
 }
 
+.icedr-action-button:disabled,
 .icedr-action-button[aria-disabled="true"],
 .icedr-action-button[data-disabled="true"] {
   opacity: 0.48;
@@ -115,8 +116,8 @@
   white-space: normal;
 }
 
-.icedr-tool-button:hover,
-.icedr-tool-button[data-hovered="true"] {
+.icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   background: var(--tool-hover-bg, var(--tool-bg, transparent));
   border-color: var(--tool-hover-border, var(--tool-border, transparent));
   color: var(--tool-hover-color, var(--tool-color, currentColor));
@@ -163,8 +164,8 @@
   width: auto;
 }
 
-.icedr-segmented-tool:hover,
-.icedr-segmented-tool[data-hovered="true"] {
+.icedr-segmented-tool:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.icedr-segmented-tool:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   background: var(--segmented-tool-hover-bg, var(--surface-secondary));
   color: var(--segmented-tool-hover-color, var(--foreground));
 }
@@ -188,9 +189,10 @@ button.icedr-surface-panel {
   text-align: left;
 }
 
-button.icedr-surface-panel:hover,
-button.icedr-surface-panel[data-hovered="true"] {
-  transform: translateY(-1px);
+button.icedr-surface-panel:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"], .is-selected, [data-selected])):hover,
+button.icedr-surface-panel:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"], .is-selected, [data-selected]))[data-hovered="true"] {
+  background: var(--surface-hover-bg, var(--ui-surface-subtle));
+  border-color: var(--ui-border-strong);
 }
 
 .icedr-surface-panel:focus-visible,
@@ -282,7 +284,7 @@ button.icedr-surface-panel[data-hovered="true"] {
   top: -6px;
 }
 
-.icedr-context-menu-button:hover,
+.icedr-context-menu-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
 .icedr-context-menu-button:focus-visible {
   background: var(--menu-hover, var(--surface-secondary));
   outline: none;

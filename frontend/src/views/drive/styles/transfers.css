@@ -42,11 +42,10 @@
 
 .drive-transfers-module .drive-transfer-tabs button:hover {
   color: var(--drive-ui-ink);
-  transform: translateY(-1px);
 }
 
 .drive-transfers-module .drive-transfer-tabs button:active {
-  transform: translateY(0) scale(0.97);
+  transform: translateY(0) scale(var(--motion-press-scale, 0.97));
 }
 
 .drive-transfers-module .drive-transfer-tabs button[data-active="true"] {
@@ -114,12 +113,6 @@
 
 .drive-transfers-module .drive-module-stat-card::after {
   display: none;
-}
-
-.drive-transfers-module .drive-module-stat-card:hover {
-  border-color: color-mix(in srgb, var(--transfer-stat-accent) 24%, var(--drive-ui-line));
-  box-shadow: var(--drive-ui-shadow-hover);
-  transform: translateY(-1px);
 }
 
 .drive-transfers-module .drive-module-stat-copy span:first-child {
@@ -367,7 +360,6 @@
 .drive-transfers-module .drive-transfer-row:hover {
   background: color-mix(in srgb, var(--drive-ui-surface-raised) 84%, transparent);
   box-shadow: var(--drive-ui-shadow-1);
-  transform: translateY(-1px);
 }
 
 .drive-transfers-module .drive-transfer-row[data-status="running"] {
@@ -536,9 +528,9 @@
   width: 28px;
 }
 
-.drive-transfers-module .drive-transfer-actions .icedr-tool-button:hover {
+.drive-transfers-module .drive-transfer-actions .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover {
   color: var(--drive-ui-ink) !important;
-  transform: translateY(-1px);
+
   opacity: 1;
 }
 
@@ -548,12 +540,6 @@
   min-height: 24px;
   min-width: 88px;
   padding: 2px 10px;
-}
-
-.drive-transfers-module .drive-module-side-card:hover {
-  border-color: var(--drive-ui-line-strong);
-  box-shadow: var(--drive-ui-shadow-hover);
-  transform: none;
 }
 
 .drive-transfers-module .drive-module-side-list {

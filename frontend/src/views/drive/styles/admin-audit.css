@@ -3,7 +3,7 @@
 }
 
 .admin-shell .drive-audit-filter-panel {
-  animation: admin-card-in 360ms var(--drive-ui-ease) both;
+  animation: admin-card-in 200ms var(--drive-ui-ease) both;
   background: var(--ui-surface);
   border-color: var(--ui-border-default);
   box-shadow: var(--ui-shadow-card);
@@ -118,7 +118,7 @@
 }
 
 .admin-shell .drive-audit-panel {
-  animation: admin-card-in 400ms var(--drive-ui-ease) both;
+  animation: admin-card-in 200ms var(--drive-ui-ease) both;
   background: var(--ui-surface);
   border-color: var(--ui-border-default);
   box-shadow: var(--ui-shadow-card);
@@ -251,7 +251,6 @@
 .admin-shell .drive-audit-row:hover {
   background: var(--ui-surface-subtle);
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-accent) 48%, transparent);
-  transform: translateY(-1px);
 }
 
 .admin-shell .drive-audit-row[data-result="failed"] {
@@ -488,10 +487,6 @@
   justify-content: center;
   opacity: 0.76;
   width: 20px;
-}
-
-.admin-shell .drive-audit-row:hover .drive-audit-action-cell {
-  transform: translateX(1px);
 }
 
 .admin-shell .drive-audit-result-pill .icedr-status-pill-label {

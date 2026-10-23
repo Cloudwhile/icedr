@@ -59,7 +59,6 @@
 .drive-space-trigger:hover {
   border-color: var(--drive-ui-line-strong);
   box-shadow: var(--drive-ui-shadow-hover);
-  transform: translateY(-1px);
 }
 
 .drive-space-trigger-main {
@@ -269,7 +268,7 @@
 }
 
 .drive-directory-tree-toggle:active {
-  transform: scale(0.9);
+  transform: scale(var(--motion-press-scale, 0.9));
 }
 
 .drive-directory-tree-button {
@@ -358,7 +357,6 @@
   border-color: var(--drive-ui-line);
   box-shadow: var(--drive-ui-shadow-tight);
   color: var(--drive-ui-ink);
-  transform: translateX(2px);
 }
 
 .drive-sidebar-item[data-active="true"] {

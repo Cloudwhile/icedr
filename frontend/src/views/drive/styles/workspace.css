@@ -284,15 +284,14 @@
   box-shadow: none;
 }
 
-.drive-workspace-tools .icedr-tool-button:hover,
-.drive-workspace-tools .icedr-tool-button[data-hovered="true"] {
+.drive-workspace-tools .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.drive-workspace-tools .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   box-shadow: var(--drive-ui-shadow-tight);
-  transform: translateY(-1px);
 }
 
 .drive-workspace-tools .icedr-tool-button:active,
 .drive-workspace-tools .icedr-tool-button[data-pressed="true"] {
-  transform: scale(0.96);
+  transform: scale(var(--motion-press-scale, 0.96));
 }
 
 .drive-workspace-tools .icedr-segmented-tool-group {
@@ -310,12 +309,8 @@
   transition: background-color 160ms var(--drive-ui-ease), box-shadow 160ms var(--drive-ui-ease), color 160ms var(--drive-ui-ease), transform 160ms var(--drive-ui-ease);
 }
 
-.drive-workspace-tools .icedr-segmented-tool:hover {
-  transform: translateY(-1px);
-}
-
 .drive-workspace-tools .icedr-segmented-tool:active {
-  transform: scale(0.96);
+  transform: scale(var(--motion-press-scale, 0.96));
 }
 
 .drive-workspace-tools .icedr-segmented-tool[aria-pressed="true"],

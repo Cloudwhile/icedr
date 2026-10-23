@@ -89,11 +89,10 @@
 
 .external-share-topbar-home:hover {
   color: var(--ui-accent-hover);
-  transform: translateY(-1px);
 }
 
 .external-share-topbar-home:active {
-  transform: scale(0.985);
+  transform: scale(var(--motion-press-scale, 0.985));
 }
 
 .external-share-topbar-actions::before,
@@ -134,7 +133,7 @@
 }
 
 .external-share-workbench {
-  animation: external-share-panel-in 380ms var(--motion-ease) both;
+  animation: external-share-panel-in 200ms var(--motion-ease) both;
   background: color-mix(in srgb, var(--ui-surface) 97%, transparent);
   border: 1px solid var(--ui-border-default);
   border-radius: var(--radius-md);
@@ -155,7 +154,7 @@
 }
 
 .external-share-side-card {
-  animation: external-share-panel-in 430ms var(--motion-ease) both;
+  animation: external-share-panel-in 200ms var(--motion-ease) both;
   background: color-mix(in srgb, var(--ui-surface) 97%, transparent);
   border: 1px solid var(--ui-border-default);
   border-radius: var(--radius-md);
@@ -171,12 +170,6 @@
 
 .external-share-side-card + .external-share-side-card {
   margin-top: 0;
-}
-
-.external-share-side-card:hover {
-  border-color: color-mix(in srgb, var(--ui-accent) 30%, var(--ui-border-default));
-  box-shadow: var(--ui-shadow-card);
-  transform: translateY(-1px);
 }
 
 .external-share-side-card-heading {
@@ -277,17 +270,6 @@
   flex-direction: column;
 }
 
-.external-share-browser:hover {
-  border-color: color-mix(in srgb, var(--ui-accent) 24%, var(--ui-border-default)) !important;
-  box-shadow: var(--ui-shadow-popover) !important;
-}
-
-.external-share-workbench .external-share-browser:hover {
-  border-color: var(--ui-border-subtle) !important;
-  box-shadow: none !important;
-  transform: none;
-}
-
 .external-share-browser-header {
   background: var(--ui-surface-subtle);
   height: 54px !important;
@@ -358,11 +340,10 @@
 .external-share-browser-footer:hover {
   background: var(--external-share-accent-softer);
   color: var(--ui-accent-hover);
-  transform: translateY(-1px);
 }
 
 .external-share-browser-footer:active {
-  transform: scale(0.998);
+  transform: scale(var(--motion-press-scale, 0.998));
 }
 
 .external-share-browser-footer:disabled {
@@ -456,21 +437,23 @@
   transition: opacity 160ms var(--motion-ease);
 }
 
-.external-share-file-row:hover {
+.external-share-file-row:hover,
+.external-share-file-row:focus-within {
   background: var(--external-share-accent-softer) !important;
   box-shadow:
     inset 2px 0 0 color-mix(in srgb, var(--ui-accent) 16%, transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--ui-accent) 7%, transparent);
-  filter: saturate(1.02);
-  transform: translateY(-1px);
 }
 
-.external-share-file-row:hover .external-share-file-actions {
+.external-share-file-row:hover .external-share-file-actions,
+.external-share-file-row:focus-within .external-share-file-actions {
   opacity: 1;
 }
 
-.external-share-file-row:active {
-  transform: scale(0.998);
+@media (hover: none) {
+  .external-share-file-actions {
+    opacity: 1;
+  }
 }
 
 .external-share-browser-empty {
@@ -538,7 +521,7 @@
 @keyframes external-share-panel-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.992);
+    transform: translateY(6px);
   }
 
   to {

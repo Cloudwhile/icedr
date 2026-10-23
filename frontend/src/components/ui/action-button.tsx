@@ -50,7 +50,7 @@ export function ActionButton({
       onKeyDown={onKeyDown}
       onPress={(event) => onClick?.(event)}
       style={{
-        "--action-bg": primary ? `linear-gradient(180deg, ${palette.primary} 0%, ${palette.primaryHover} 100%)` : palette.surface1,
+        "--action-bg": primary ? palette.primary : palette.surface1,
         "--action-border": primary ? palette.primaryHover : palette.hairline,
         "--action-color": primary ? palette.onPrimary : palette.ink,
         "--action-focus": palette.focusRing,

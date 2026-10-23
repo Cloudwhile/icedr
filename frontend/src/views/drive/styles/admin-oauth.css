@@ -356,7 +356,7 @@
   width: 32px;
 }
 
-.admin-shell .drive-oauth-row-actions .icedr-tool-button:hover {
+.admin-shell .drive-oauth-row-actions .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover {
   background: var(--drive-ui-blue-100);
   border-color: color-mix(in srgb, var(--drive-ui-blue-600) 24%, var(--drive-ui-line));
 }

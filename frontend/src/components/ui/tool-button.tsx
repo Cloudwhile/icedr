@@ -51,8 +51,11 @@ export function ToolButton({
   const descriptionId = useId();
   const unavailableReason = (disabled || isDisabled) ? disabledReason : undefined;
   const solid = visual === "solid";
-  const solidColor = tone === "danger" ? palette.danger : tone === "success" ? palette.success : palette.primary;
+  const solidColor = tone === "danger" ? palette.danger : tone === "success" ? `color-mix(in srgb, ${palette.success} 95%, black)` : palette.primary;
   const solidInk = tone === "danger" ? "var(--ui-on-danger)" : palette.onPrimary;
+  const solidHoverBg = tone === "danger" || tone === "success"
+    ? `color-mix(in srgb, ${solidColor} 90%, black)`
+    : palette.primaryHover;
 
   return (
     <AppTooltip content={unavailableReason ? `${label}: ${unavailableReason}` : label} isDisabled={showLabel && !unavailableReason} palette={palette} placement={tooltipPlacement}>
@@ -76,7 +79,7 @@ export function ToolButton({
           "--tool-active-shadow": `inset 0 0 0 1px ${palette.hairline}`,
           "--tool-color": solid ? solidInk : tone !== "neutral" ? toneColor : active ? palette.ink : palette.subtle,
           "--tool-focus": palette.focusRing,
-          "--tool-hover-bg": solid ? `color-mix(in srgb, ${solidColor} 90%, black)` : palette.surface2,
+          "--tool-hover-bg": solid ? solidHoverBg : palette.surface2,
           "--tool-hover-border": solid ? solidColor : visual === "surface" ? palette.hairlineStrong : palette.hairline,
           "--tool-hover-color": solid ? solidInk : tone !== "neutral" ? toneColor : palette.ink,
         } as React.CSSProperties}

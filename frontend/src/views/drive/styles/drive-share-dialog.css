@@ -12,7 +12,6 @@
 }
 
 .icedr-dialog.drive-share-dialog {
-  animation: drive-share-dialog-in 360ms var(--motion-ease-emphasized) both;
   background: var(--share-dialog-bg);
   border: 1px solid var(--share-dialog-border-strong);
   border-radius: var(--radius-md);
@@ -67,7 +66,6 @@
 
 .drive-share-dialog-close:hover {
   color: var(--share-dialog-text);
-  transform: scale(1.06);
 }
 
 .drive-share-dialog-close:disabled {
@@ -211,7 +209,6 @@
 .drive-share-option-toggle:hover {
   background: var(--share-dialog-surface-2);
   border-color: var(--share-dialog-border-strong);
-  transform: translateY(-1px);
 }
 
 .drive-share-option-toggle:focus-visible {
@@ -467,7 +464,6 @@
 
 .drive-share-open-inline:hover {
   color: var(--share-dialog-accent);
-  transform: translateY(-1px);
 }
 
 .drive-share-dialog-footer {
@@ -478,20 +474,6 @@
   justify-content: flex-end;
   min-height: 58px;
   padding: 10px 15px;
-}
-
-@keyframes drive-share-dialog-in {
-  from {
-    filter: blur(6px);
-    opacity: 0;
-    transform: translateY(18px) scale(0.976);
-  }
-
-  to {
-    filter: blur(0);
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 @media (max-width: 560px) {
@@ -508,5 +490,4 @@
   .drive-share-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-
 }

@@ -68,7 +68,6 @@
 .icedr-file-preview-dialog-media .icedr-file-preview-back:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
-  transform: translateX(-1px);
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-icon {
@@ -114,9 +113,9 @@
   width: 34px;
 }
 
-.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:hover,
-.icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button:hover,
-.icedr-file-preview-dialog-media .icedr-preview-metadata-heading .icedr-tool-button:hover {
+.icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.icedr-file-preview-dialog-media .icedr-preview-metadata-heading .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover {
   background: rgba(255, 255, 255, 0.09);
   border-color: transparent;
   color: #ffffff;
@@ -125,7 +124,7 @@
 
 .icedr-file-preview-dialog-media .icedr-file-preview-actions .icedr-tool-button:active,
 .icedr-file-preview-dialog-media .icedr-preview-media-toolbar .icedr-tool-button:active {
-  transform: scale(0.95);
+  transform: scale(var(--motion-press-scale, 0.95));
 }
 
 .icedr-file-preview-dialog-media .icedr-file-preview-body-media,

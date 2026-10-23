@@ -362,11 +362,10 @@
   width: 100%;
 }
 
-.drive-details-quick-actions .icedr-tool-button:hover,
-.drive-details-quick-actions .icedr-tool-button[data-hovered="true"] {
+.drive-details-quick-actions .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.drive-details-quick-actions .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   border-color: var(--drive-ui-line-strong);
   box-shadow: var(--drive-ui-shadow-hover);
-  transform: translateY(-1px);
 }
 
 .drive-details-more-trigger {
@@ -379,8 +378,8 @@
   box-shadow: none !important;
 }
 
-.drive-details-header > .icedr-tool-button:hover,
-.drive-details-header > .icedr-tool-button[data-hovered="true"] {
+.drive-details-header > .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"])):hover,
+.drive-details-header > .icedr-tool-button:where(:not(:disabled, [aria-disabled="true"], [data-disabled="true"]))[data-hovered="true"] {
   background: var(--drive-ui-surface-soft) !important;
   border-color: transparent !important;
   box-shadow: none !important;
