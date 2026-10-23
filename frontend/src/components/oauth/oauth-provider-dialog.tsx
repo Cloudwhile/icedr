@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { OAuthDomainsInput } from "./oauth-domains-input";
 import { AppField } from "@/components/ui/app-field";
 import {
   AppDialogBody,
@@ -29,6 +30,7 @@ export type OAuthEditorMode = "create" | "edit" | "duplicate";
 
 type OAuthProviderDialogProps = {
   draft: OAuthSettings;
+  errorMessage?: string | null;
   mode: OAuthEditorMode;
   onClearSecret: () => void;
   onClose: () => void;
@@ -56,6 +58,7 @@ const validationFields: Record<string, readonly string[]> = {
 
 export function OAuthProviderDialog({
   draft,
+  errorMessage,
   mode,
   onClearSecret,
   onClose,
@@ -77,15 +80,91 @@ export function OAuthProviderDialog({
     mode === "edit" ? "admin.oauthEditProvider" : "admin.oauthAddProvider";
   const busy = savingKey !== null;
   const advancedRef = useRef<HTMLDetailsElement>(null);
+  const formRef = useRef<HTMLElement>(null);
   const fieldError = (field: string) => validationErrorKey && validationFields[validationErrorKey]?.includes(field)
     ? t(validationErrorKey)
     : undefined;
 
   useEffect(() => {
-    if (advancedRef.current && (validationErrorKey === "admin.oauthRedirectInvalid" || validationErrorKey === "admin.oauthDomainInvalid")) {
+    if (advancedRef.current && validationErrorKey === "admin.oauthDomainInvalid") {
       advancedRef.current.open = true;
     }
+    if (validationErrorKey) {
+      const input = formRef.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]');
+      input?.focus({ preventScroll: true });
+      input?.scrollIntoView?.({ block: "nearest" });
+    }
   }, [validationErrorKey]);
+
+  const credentials = (
+    <>
+      <OAuthInputField
+        label={t("admin.oauthClientId")}
+        errorText={fieldError("clientId")}
+        palette={palette}
+      >
+        <AppInput invalid={Boolean(fieldError("clientId"))}
+          disabled={busy}
+          onChange={(event) =>
+            onDraftChange({ ...draft, clientId: event.target.value })
+          }
+          palette={palette}
+          value={draft.clientId}
+        />
+      </OAuthInputField>
+      <OAuthInputField
+        label={t("admin.oauthSecret")}
+        errorText={fieldError("secret")}
+        palette={palette}
+      >
+        <div className="drive-oauth-copy-field">
+          <AppInput invalid={Boolean(fieldError("secret"))}
+            disabled={busy}
+            onChange={(event) => onSecretChange(event.target.value)}
+            palette={palette}
+            placeholder={
+              draft.clientSecretConfigured
+                ? t("admin.secretConfigured")
+                : ""
+            }
+            type="password"
+            value={secret}
+          />
+          {draft.clientSecretConfigured ? (
+            <ToolButton
+              disabled={busy}
+              label={t("admin.oauthClearSecret")}
+              onClick={onClearSecret}
+              palette={palette}
+              size="sm"
+              tone="danger"
+            >
+              <LocalIcon name="trash" size={16} />
+            </ToolButton>
+          ) : null}
+        </div>
+      </OAuthInputField>
+    </>
+  );
+  const issuerField = (
+    <OAuthInputField
+      label={t("admin.oauthIssuerDiscoveryUrl")}
+      errorText={fieldError("issuerUrl")}
+      palette={palette}
+    >
+      <AppInput invalid={Boolean(fieldError("issuerUrl"))}
+        disabled={busy}
+        onChange={(event) =>
+          onDraftChange({
+            ...draft,
+            issuerUrl: event.target.value,
+          })
+        }
+        palette={palette}
+        value={draft.issuerUrl}
+      />
+    </OAuthInputField>
+  );
 
   return (
     <AppDialogShell
@@ -177,6 +256,7 @@ export function OAuthProviderDialog({
           <section
             aria-labelledby="oauth-provider-config-heading"
             className="drive-oauth-form-panel"
+            ref={formRef}
           >
             <div className="drive-oauth-form-heading">
               <h3
@@ -204,10 +284,10 @@ export function OAuthProviderDialog({
               ) : null}
             </div>
 
-            {validationErrorKey ? (
+            {validationErrorKey || errorMessage ? (
               <div className="drive-oauth-validation-message" role="alert">
                 <LocalIcon name="exclamation" size={16} />
-                <span>{t(validationErrorKey)}</span>
+                <span>{validationErrorKey ? t(validationErrorKey) : errorMessage}</span>
               </div>
             ) : null}
 
@@ -229,52 +309,7 @@ export function OAuthProviderDialog({
                     value={draft.displayName}
                   />
                 </OAuthInputField>
-                <OAuthInputField
-                  label={t("admin.oauthClientId")}
-                  errorText={fieldError("clientId")}
-                  palette={palette}
-                >
-                  <AppInput invalid={Boolean(fieldError("clientId"))}
-                    disabled={busy}
-                    onChange={(event) =>
-                      onDraftChange({ ...draft, clientId: event.target.value })
-                    }
-                    palette={palette}
-                    value={draft.clientId}
-                  />
-                </OAuthInputField>
-                <OAuthInputField
-                  label={t("admin.oauthSecret")}
-                  errorText={fieldError("secret")}
-                  palette={palette}
-                >
-                  <div className="drive-oauth-copy-field">
-                    <AppInput invalid={Boolean(fieldError("secret"))}
-                      disabled={busy}
-                      onChange={(event) => onSecretChange(event.target.value)}
-                      palette={palette}
-                      placeholder={
-                        draft.clientSecretConfigured
-                          ? t("admin.secretConfigured")
-                          : ""
-                      }
-                      type="password"
-                      value={secret}
-                    />
-                    {draft.clientSecretConfigured ? (
-                      <ToolButton
-                        disabled={busy}
-                        label={t("admin.oauthClearSecret")}
-                        onClick={onClearSecret}
-                        palette={palette}
-                        size="sm"
-                        tone="danger"
-                      >
-                        <LocalIcon name="trash" size={16} />
-                      </ToolButton>
-                    ) : null}
-                  </div>
-                </OAuthInputField>
+                {draft.providerProfile === "oauth2" ? credentials : issuerField}
               </div>
 
               <div className="drive-oauth-form-column">
@@ -333,26 +368,39 @@ export function OAuthProviderDialog({
                     </OAuthInputField>
                   </>
                 ) : (
-                  <OAuthInputField
-                    label={t("admin.oauthIssuerDiscoveryUrl")}
-                    errorText={fieldError("issuerUrl")}
-                    palette={palette}
-                  >
-                    <AppInput invalid={Boolean(fieldError("issuerUrl"))}
-                      disabled={busy}
-                      onChange={(event) =>
-                        onDraftChange({
-                          ...draft,
-                          issuerUrl: event.target.value,
-                        })
-                      }
-                      palette={palette}
-                      value={draft.issuerUrl}
-                    />
-                  </OAuthInputField>
+                  credentials
                 )}
               </div>
             </div>
+
+            <OAuthInputField
+              label={t("admin.oauthRedirectUri")}
+              errorText={fieldError("redirectUri")}
+              palette={palette}
+            >
+              <div className="drive-oauth-copy-field">
+                <AppInput invalid={Boolean(fieldError("redirectUri"))}
+                  disabled={busy}
+                  onChange={(event) =>
+                    onDraftChange({
+                      ...draft,
+                      redirectUri: event.target.value,
+                    })
+                  }
+                  palette={palette}
+                  value={draft.redirectUri}
+                />
+                <ToolButton
+                  disabled={!draft.redirectUri}
+                  label={t("admin.copyOAuthRedirectUri")}
+                  onClick={() => onCopy(draft.redirectUri)}
+                  palette={palette}
+                  size="sm"
+                >
+                  <LocalIcon name="copy" size={16} />
+                </ToolButton>
+              </div>
+            </OAuthInputField>
 
             <details className="drive-oauth-advanced" ref={advancedRef}>
               <summary>
@@ -362,34 +410,6 @@ export function OAuthProviderDialog({
               <div className="drive-oauth-advanced-body">
                 <div className="drive-oauth-form-columns">
                   <div className="drive-oauth-form-column">
-                    <OAuthInputField
-                      label={t("admin.oauthRedirectUri")}
-                      errorText={fieldError("redirectUri")}
-                      palette={palette}
-                    >
-                      <div className="drive-oauth-copy-field">
-                        <AppInput invalid={Boolean(fieldError("redirectUri"))}
-                          disabled={busy}
-                          onChange={(event) =>
-                            onDraftChange({
-                              ...draft,
-                              redirectUri: event.target.value,
-                            })
-                          }
-                          palette={palette}
-                          value={draft.redirectUri}
-                        />
-                        <ToolButton
-                          disabled={!draft.redirectUri}
-                          label={t("admin.copyOAuthRedirectUri")}
-                          onClick={() => onCopy(draft.redirectUri)}
-                          palette={palette}
-                          size="sm"
-                        >
-                          <LocalIcon name="copy" size={16} />
-                        </ToolButton>
-                      </div>
-                    </OAuthInputField>
                     <OAuthInputField
                       label={t("admin.oauthScopes")}
                       palette={palette}
@@ -463,19 +483,14 @@ export function OAuthProviderDialog({
                       errorText={fieldError("allowedEmailDomains")}
                       palette={palette}
                     >
-                      <AppInput invalid={Boolean(fieldError("allowedEmailDomains"))}
+                      <OAuthDomainsInput
+                        key={draft.id + ":" + draft.providerKey}
+                        invalid={Boolean(fieldError("allowedEmailDomains"))}
                         disabled={busy}
-                        onChange={(event) =>
-                          onDraftChange({
-                            ...draft,
-                            allowedEmailDomains: parseDomains(
-                              event.target.value,
-                            ),
-                          })
-                        }
+                        onChange={(allowedEmailDomains) => onDraftChange({ ...draft, allowedEmailDomains })}
                         palette={palette}
                         placeholder={t("admin.oauthAllowedDomainsPlaceholder")}
-                        value={(draft.allowedEmailDomains ?? []).join(", ")}
+                        value={draft.allowedEmailDomains ?? []}
                       />
                     </OAuthInputField>
                   </div>
@@ -540,6 +555,7 @@ function OAuthTestResult({ result }: { result: OAuthConnectionTestResult }) {
     <div
       className="drive-oauth-test-result"
       data-tone={result.ok ? "secure" : "risk"}
+      role={result.ok ? "status" : "alert"}
     >
       <header>
         <LocalIcon
@@ -552,6 +568,7 @@ function OAuthTestResult({ result }: { result: OAuthConnectionTestResult }) {
             : t("admin.oauthTestFailed")}
         </strong>
       </header>
+      <p>{t("admin.oauthConnectionCheckHint")}</p>
       <div>
         {result.checks.map((check) => (
           <span data-ok={check.ok ? "true" : "false"} key={check.key}>
@@ -650,17 +667,6 @@ function ToolAction({
       <LocalIcon name={icon} size={16} />
     </ToolButton>
   );
-}
-
-function parseDomains(value: string) {
-  return Array.from(
-    new Set(
-      value
-        .split(/[\s,;]+/)
-        .map((domain) => domain.trim().toLowerCase().replace(/^@/, ""))
-        .filter(Boolean),
-    ),
-  ).slice(0, 32);
 }
 
 function formatOAuthProfile(

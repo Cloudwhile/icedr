@@ -61,16 +61,29 @@ vi.mock("@/components/oauth/oauth-provider-dialog", () => ({
     onClose,
     onDraftChange,
     onSecretChange,
+    onSave,
+    onTest,
+    onClearSecret,
+    errorMessage,
     secret,
   }: {
     draft: OAuthSettings;
     onClose: () => void;
     onDraftChange: (draft: OAuthSettings) => void;
     onSecretChange: (secret: string) => void;
+    onSave: (enabled: boolean) => void;
+    onTest: () => void;
+    onClearSecret: () => void;
+    errorMessage?: string | null;
     secret: string;
   }) => (
     <div aria-label="oauth-editor" data-provider={draft.providerKey} role="dialog">
       <button onClick={onClose}>close-editor</button>
+      <button onClick={() => onSave(false)}>save-provider</button>
+      <button onClick={() => { onSave(false); onSave(false); }}>save-provider-twice</button>
+      <button onClick={onTest}>test-provider</button>
+      <button onClick={onClearSecret}>clear-secret</button>
+      {errorMessage ? <p role="alert">{errorMessage}</p> : null}
       <input
         aria-label="oauth-draft"
         onChange={(event) =>
@@ -143,7 +156,7 @@ vi.mock("@/components/ui/app-select", () => ({
 }));
 
 vi.mock("@/components/ui/confirmation-dialog", () => ({
-  ConfirmationDialog: () => null,
+  ConfirmationDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) => open ? <button onClick={onConfirm}>confirm-sensitive</button> : null,
 }));
 
 vi.mock("@/components/ui/app-toast-store", () => ({
@@ -364,6 +377,45 @@ describe("OAuthAdminSettingsPage unsaved editor", () => {
     await waitFor(() =>
       expect(screen.queryByLabelText("oauth-editor")).not.toBeInTheDocument(),
     );
+  });
+
+  it("submits a new provider only once while saving is pending", async () => {
+    driveApi.fetchOAuthProviders.mockResolvedValue({ activeProvider: null, configured: false, providers: [] });
+    let finish!: (value: OAuthSettings) => void;
+    driveApi.createOAuthProvider.mockImplementation(() => new Promise<OAuthSettings>((resolve) => { finish = resolve; }));
+    renderPage();
+    const emptyState = (await screen.findByText("admin.oauthProviderEmpty")).closest(".drive-oauth-empty");
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "admin.oauthAddProvider" }));
+    fireEvent.click(screen.getByText("save-provider-twice"));
+    expect(driveApi.createOAuthProvider).toHaveBeenCalledTimes(1);
+    finish(provider);
+    await waitFor(() => expect(screen.queryByLabelText("oauth-editor")).not.toBeInTheDocument());
+  });
+
+  it("keeps a failed save visible and allows retry without losing the secret", async () => {
+    driveApi.updateOAuthProvider.mockRejectedValueOnce(new Error("offline"));
+    renderPage();
+    const { draft, secret } = await openEditor();
+    fireEvent.change(draft, { target: { value: "Retry Provider" } });
+    fireEvent.change(secret, { target: { value: "replacement-secret" } });
+    fireEvent.click(screen.getByText("save-provider"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("api-error");
+    expect(draft).toHaveValue("Retry Provider");
+    expect(secret).toHaveValue("replacement-secret");
+    fireEvent.click(screen.getByText("save-provider"));
+    await waitFor(() => expect(screen.queryByLabelText("oauth-editor")).not.toBeInTheDocument());
+    expect(driveApi.updateOAuthProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["", "replacement"])("preserves an explicit secret clear or replacement (%s)", async (replacement) => {
+    renderPage();
+    const { secret } = await openEditor();
+    fireEvent.click(screen.getByText("clear-secret"));
+    fireEvent.click(screen.getByText("confirm-sensitive"));
+    fireEvent.change(secret, { target: { value: "replacement" } });
+    fireEvent.change(secret, { target: { value: replacement } });
+    fireEvent.click(screen.getByText("save-provider"));
+    await waitFor(() => expect(driveApi.updateOAuthProvider).toHaveBeenCalledWith("oauth-1", expect.objectContaining({ clientSecret: replacement })));
   });
 
   it("does not open the editor after activating a provider", async () => {

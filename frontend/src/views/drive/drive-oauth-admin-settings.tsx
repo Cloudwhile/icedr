@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUnsavedChangesSection } from "@/components/admin/use-unsaved-changes-section";
 import {
   UnsavedChangesDialog,
@@ -54,17 +54,19 @@ import {
   type OAuthProviderKey,
   type OAuthSettings,
 } from "@/lib/drive-api";
+import {
+  cloneOAuthDraft,
+  createEditorSnapshot,
+  isOAuthEditorDirty,
+  upsertOAuthProvider,
+  type OAuthEditorSnapshot,
+} from "@/components/oauth/oauth-editor-state";
 import { LocalIcon, StatusPill, ToolButton } from "./drive-primitives";
 
 type OAuthStatusFilter = "all" | "active" | "configured" | "draft";
 type OAuthConfirmation =
   | { kind: "clear-secret" }
   | { kind: "delete"; provider: OAuthSettings };
-type OAuthEditorSnapshot = {
-  draft: OAuthSettings;
-  secret: string;
-  secretCleared: boolean;
-};
 
 export function OAuthAdminSettingsPage({
   locale,
@@ -103,6 +105,8 @@ export function OAuthAdminSettingsPage({
   >("all");
   const [providers, setProviders] = useState<OAuthSettings[]>([]);
   const [query, setQuery] = useState("");
+  const operationRef = useRef(false);
+  const [editorError, setEditorError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [secret, setSecret] = useState("");
   const [secretCleared, setSecretCleared] = useState(false);
@@ -217,6 +221,17 @@ export function OAuthAdminSettingsPage({
     [providers],
   );
 
+  const beginOperation = (key: string) => {
+    if (operationRef.current) return false;
+    operationRef.current = true;
+    setSavingKey(key);
+    return true;
+  };
+  const endOperation = () => {
+    operationRef.current = false;
+    setSavingKey(null);
+  };
+
   const resetEditor = () => {
     setEditorBaseline(null);
     setDraft(null);
@@ -224,11 +239,13 @@ export function OAuthAdminSettingsPage({
     setSecretCleared(false);
     setTestResult(null);
     setValidationErrorKey(null);
+    setEditorError(null);
     setEditorCloseError(null);
     setEditorClosePending(null);
     setEditorClosePromptOpen(false);
   };
   const openCreate = (providerKey: OAuthProviderKey = "google") => {
+    if (operationRef.current) return;
     const nextDraft = createOAuthDraft(
       getOAuthProviderTemplate(providerKey),
       systemBaseUrl,
@@ -238,19 +255,23 @@ export function OAuthAdminSettingsPage({
     setSecretCleared(false);
     setTestResult(null);
     setValidationErrorKey(null);
+    setEditorError(null);
     setEditorBaseline(createEditorSnapshot(nextDraft));
     setDraft(nextDraft);
   };
   const openEdit = (provider: OAuthSettings) => {
+    if (operationRef.current) return;
     setModalMode("edit");
     setSecret("");
     setSecretCleared(false);
     setTestResult(null);
     setValidationErrorKey(null);
+    setEditorError(null);
     setEditorBaseline(createEditorSnapshot(provider));
     setDraft(cloneOAuthDraft(provider));
   };
   const openDuplicate = (provider: OAuthSettings) => {
+    if (operationRef.current) return;
     const nextDraft = {
       ...provider,
       allowedEmailDomains: [...(provider.allowedEmailDomains ?? [])],
@@ -267,14 +288,17 @@ export function OAuthAdminSettingsPage({
     setSecretCleared(false);
     setTestResult(null);
     setValidationErrorKey(null);
+    setEditorError(null);
     setEditorBaseline(createEditorSnapshot(nextDraft));
     setDraft(nextDraft);
   };
   const selectTemplate = (template: OAuthProviderTemplate) => {
+    if (operationRef.current) return;
     setSecret("");
     setSecretCleared(false);
     setTestResult(null);
     setValidationErrorKey(null);
+    setEditorError(null);
     setDraft((current) => {
       const next = createOAuthDraft(template, systemBaseUrl);
       return current?.id
@@ -291,61 +315,60 @@ export function OAuthAdminSettingsPage({
     if (!draft) return null;
     return {
       ...toOAuthProviderInput(draft, secret, enabled),
-      ...(secretCleared ? { clientSecret: "" } : {}),
+      ...(secretCleared && !secret.trim() ? { clientSecret: "" } : {}),
     };
   };
 
   const testDraft = () => {
-    if (savingKey) return;
+    if (operationRef.current) return;
     const input = providerInput(false);
     if (!draft || !input) return;
     const validation = validateOAuthDraft(draft, secret);
     if (!validation.valid) {
       setValidationErrorKey(validation.errorKey);
-      showToast(t(validation.errorKey), "error");
       return;
     }
     setValidationErrorKey(null);
-    setSavingKey("test");
+    setEditorError(null);
+    if (!beginOperation("test")) return;
     setTestResult(null);
     void testOAuthProvider(input)
       .then((result) => {
         setTestResult(result);
-        showToast(
-          result.ok ? t("admin.oauthTestPassed") : t("admin.oauthTestFailed"),
-          result.ok ? "success" : "error",
-        );
       })
-      .catch((error) =>
-        showToast(
-          getDriveApiErrorMessage(error, t, {
-            fallbackKey: "admin.oauthTestFailed",
-            scope: "form",
-          }),
-          "error",
-        ),
-      )
-      .finally(() => setSavingKey(null));
+      .catch((error) => {
+        const message = getDriveApiErrorMessage(error, t, {
+          fallbackKey: "admin.oauthTestFailed",
+          scope: "form",
+        });
+        setEditorError(message);
+      })
+      .finally(() => endOperation());
   };
 
   const persistDraft = async (enabled: boolean) => {
+    if (operationRef.current) throw new Error("OAuth operation is pending");
     const nextEnabled =
       enabled || (modalMode === "edit" && draft?.enabled === true);
     const input = providerInput(nextEnabled);
     if (!draft || !input) throw new Error("OAuth editor is not open");
-    const validation = validateOAuthDraft(draft, secret);
-    if (nextEnabled && !validation.valid) {
+    const validation = validateOAuthDraft(draft, secret, {
+      allowIncomplete: !nextEnabled,
+    });
+    if (!validation.valid) {
       setValidationErrorKey(validation.errorKey);
-      showToast(t(validation.errorKey), "error");
       throw new Error(validation.errorKey);
     }
     setValidationErrorKey(null);
-    setSavingKey(enabled ? "activate" : "save");
-    const request =
-      modalMode === "edit"
-        ? updateOAuthProvider(draft.id, input)
-        : createOAuthProvider(input);
+    setEditorError(null);
+    if (!beginOperation(enabled ? "activate" : "save")) {
+      throw new Error("OAuth operation is pending");
+    }
     try {
+      const request =
+        modalMode === "edit"
+          ? updateOAuthProvider(draft.id, input)
+          : createOAuthProvider(input);
       const provider = await request;
       setProviders((current) => upsertOAuthProvider(current, provider));
       showToast(enabled ? t("admin.oauthActivated") : t("admin.saved"), "success");
@@ -355,16 +378,14 @@ export function OAuthAdminSettingsPage({
       }
       await syncAfterMutation();
     } catch (error) {
-      showToast(
-        getDriveApiErrorMessage(error, t, {
-          fallbackKey: "admin.saveFailed",
-          scope: "form",
-        }),
-        "error",
-      );
+      const message = getDriveApiErrorMessage(error, t, {
+        fallbackKey: "admin.saveFailed",
+        scope: "form",
+      });
+      setEditorError(message);
       throw error;
     } finally {
-      setSavingKey(null);
+      endOperation();
     }
   };
   const saveDraft = (enabled: boolean) => {
@@ -378,6 +399,7 @@ export function OAuthAdminSettingsPage({
     setSecretCleared(baseline.secretCleared);
     setTestResult(null);
     setValidationErrorKey(null);
+    setEditorError(null);
   };
   const editorDirty = isOAuthEditorDirty(
     draft,
@@ -394,6 +416,7 @@ export function OAuthAdminSettingsPage({
   });
 
   const requestEditorClose = () => {
+    if (operationRef.current) return;
     if (!editorDirty) {
       resetEditor();
       return;
@@ -410,9 +433,9 @@ export function OAuthAdminSettingsPage({
   };
 
   const setProviderActive = (provider: OAuthSettings, enabled: boolean) => {
-    if (savingKey) return;
+    if (operationRef.current) return;
     const key = `${enabled ? "activate" : "deactivate"}:${provider.id}`;
-    setSavingKey(key);
+    if (!beginOperation(key)) return;
     const request = enabled
       ? activateOAuthProvider(provider.id)
       : updateOAuthProvider(provider.id, { enabled: false });
@@ -436,12 +459,11 @@ export function OAuthAdminSettingsPage({
           "error",
         ),
       )
-      .finally(() => setSavingKey(null));
+      .finally(() => endOperation());
   };
 
   const enableGlobalOAuth = () => {
-    if (!authSettings || savingKey) return;
-    setSavingKey("global-auth");
+    if (!authSettings || !beginOperation("global-auth")) return;
     void updateAuthSettings({
       localEnabled: authSettings.localEnabled,
       oauthEnabled: true,
@@ -463,10 +485,11 @@ export function OAuthAdminSettingsPage({
           "error",
         ),
       )
-      .finally(() => setSavingKey(null));
+      .finally(() => endOperation());
   };
 
   const removeProvider = (provider: OAuthSettings) => {
+    if (operationRef.current) return;
     setConfirmation({ kind: "delete", provider });
   };
 
@@ -479,12 +502,13 @@ export function OAuthAdminSettingsPage({
       : undefined;
 
   const confirmSensitiveAction = () => {
-    if (!confirmation) return;
+    if (!confirmation || operationRef.current) return;
     if (confirmation.kind === "clear-secret") {
       setSecret("");
       setSecretCleared(true);
       setTestResult(null);
       setValidationErrorKey(null);
+      setEditorError(null);
       setDraft((current) =>
         current ? { ...current, clientSecretConfigured: false } : current,
       );
@@ -492,8 +516,8 @@ export function OAuthAdminSettingsPage({
       return;
     }
     const { provider } = confirmation;
-    if (savingKey) return;
-    setSavingKey(`delete:${provider.id}`);
+    if (operationRef.current) return;
+    if (!beginOperation(`delete:${provider.id}`)) return;
     void deleteOAuthProvider(provider.id)
       .then(async () => {
         setProviders((current) =>
@@ -513,16 +537,16 @@ export function OAuthAdminSettingsPage({
         ),
       )
       .finally(() => {
-        setSavingKey(null);
+        endOperation();
       });
   };
 
   const refreshOAuthData = () => {
-    if (savingKey) return;
-    setSavingKey("refresh");
+    if (operationRef.current) return;
+    if (!beginOperation("refresh")) return;
     void refresh()
       .catch((error) => showToast(reportLoadFailure(error), "error"))
-      .finally(() => setSavingKey(null));
+      .finally(() => endOperation());
   };
 
   if (loading)
@@ -721,6 +745,7 @@ export function OAuthAdminSettingsPage({
       {draft ? (
         <OAuthProviderDialog
           draft={draft}
+          errorMessage={editorError}
           mode={modalMode}
           onClearSecret={() => setConfirmation({ kind: "clear-secret" })}
           onClose={requestEditorClose}
@@ -729,13 +754,14 @@ export function OAuthAdminSettingsPage({
             setDraft(nextDraft);
             setTestResult(null);
             setValidationErrorKey(null);
+            setEditorError(null);
           }}
           onSave={saveDraft}
           onSecretChange={(value) => {
             setSecret(value);
-            setSecretCleared(false);
             setTestResult(null);
             setValidationErrorKey(null);
+            setEditorError(null);
           }}
           onSelectTemplate={selectTemplate}
           onTest={testDraft}
@@ -882,55 +908,4 @@ function matchesQuery(provider: OAuthSettings, query: string) {
   ]
     .filter(Boolean)
     .some((value) => value.toLowerCase().includes(query));
-}
-
-function cloneOAuthDraft(draft: OAuthSettings): OAuthSettings {
-  return {
-    ...draft,
-    allowedEmailDomains: [...(draft.allowedEmailDomains ?? [])],
-  };
-}
-
-function createEditorSnapshot(draft: OAuthSettings): OAuthEditorSnapshot {
-  return {
-    draft: cloneOAuthDraft(draft),
-    secret: "",
-    secretCleared: false,
-  };
-}
-
-function isOAuthEditorDirty(
-  draft: OAuthSettings | null,
-  baseline: OAuthEditorSnapshot | null,
-  secret: string,
-  secretCleared: boolean,
-) {
-  if (!draft || !baseline) return false;
-  return (
-    JSON.stringify(draft) !== JSON.stringify(baseline.draft) ||
-    secret !== baseline.secret ||
-    secretCleared !== baseline.secretCleared
-  );
-}
-
-function upsertOAuthProvider(
-  current: OAuthSettings[],
-  nextProvider: OAuthSettings,
-) {
-  let found = false;
-  const next = current.map((provider) => {
-    if (provider.id === nextProvider.id) {
-      found = true;
-      return nextProvider;
-    }
-    if (
-      nextProvider.enabled &&
-      provider.providerKey === nextProvider.providerKey &&
-      provider.enabled
-    ) {
-      return { ...provider, enabled: false };
-    }
-    return provider;
-  });
-  return found ? next : [...next, nextProvider];
 }

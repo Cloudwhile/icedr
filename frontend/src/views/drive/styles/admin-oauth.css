@@ -942,6 +942,13 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.drive-oauth-test-result > p {
+  color: var(--drive-ui-muted);
+  font-size: var(--text-ui-xs);
+  line-height: 1.6;
+  margin: 0;
+}
+
 .drive-oauth-test-result > div > span {
   align-items: center;
   background: color-mix(in srgb, var(--drive-ui-surface) 68%, transparent);

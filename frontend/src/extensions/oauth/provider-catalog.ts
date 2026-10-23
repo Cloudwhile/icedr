@@ -51,10 +51,12 @@ export const oauthProviderTemplates: OAuthProviderTemplate[] = [
   },
   {
     accent: "#5e5ce6",
-    authorizationUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    authorizationUrl:
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     audience: "",
     displayName: "Microsoft",
-    docsUrl: "https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow",
+    docsUrl:
+      "https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow",
     issuerUrl: "https://login.microsoftonline.com/common/v2.0",
     key: "microsoft",
     profile: "oidc",
@@ -108,7 +110,10 @@ export const oauthProviderTemplates: OAuthProviderTemplate[] = [
 ];
 
 export function getOAuthProviderTemplate(providerKey: OAuthProviderKey) {
-  return oauthProviderTemplates.find((template) => template.key === providerKey) ?? oauthProviderTemplates[4];
+  return (
+    oauthProviderTemplates.find((template) => template.key === providerKey) ??
+    oauthProviderTemplates[4]
+  );
 }
 
 export function buildOAuthCallbackUrl(systemBaseUrl: string) {
@@ -116,7 +121,10 @@ export function buildOAuthCallbackUrl(systemBaseUrl: string) {
   return base ? `${base}/callback` : "";
 }
 
-export function createOAuthDraft(template: OAuthProviderTemplate, systemBaseUrl: string): OAuthSettings {
+export function createOAuthDraft(
+  template: OAuthProviderTemplate,
+  systemBaseUrl: string,
+): OAuthSettings {
   const timestamp = new Date(0).toISOString();
   return {
     allowedEmailDomains: [],
@@ -133,7 +141,8 @@ export function createOAuthDraft(template: OAuthProviderTemplate, systemBaseUrl:
     issuerUrl: template.issuerUrl,
     linkByVerifiedEmail: template.trustVerifiedEmail,
     providerKey: template.key,
-    providerMode: template.profile === "icetowne-blog" ? "compatibility" : "standard",
+    providerMode:
+      template.profile === "icetowne-blog" ? "compatibility" : "standard",
     providerProfile: template.profile,
     redirectUri: buildOAuthCallbackUrl(systemBaseUrl),
     requireVerifiedEmail: template.trustVerifiedEmail,
@@ -148,29 +157,46 @@ export function isOAuthDraftReady(draft: OAuthSettings, secret: string) {
   return validateOAuthDraft(draft, secret).valid;
 }
 
-export function validateOAuthDraft(draft: OAuthSettings, secret: string) {
+export function validateOAuthDraft(
+  draft: OAuthSettings,
+  secret: string,
+  { allowIncomplete = false } = {},
+) {
   const hasSecret = secret.trim() || draft.clientSecretConfigured;
-  if (!draft.clientId.trim()) {
+  if (!allowIncomplete && !draft.clientId.trim()) {
     return { errorKey: "admin.oauthClientIdRequired", valid: false } as const;
   }
-  if (!isOAuthUrl(draft.redirectUri)) {
+  if (
+    (!allowIncomplete || draft.redirectUri.trim()) &&
+    !isOAuthUrl(draft.redirectUri)
+  ) {
     return { errorKey: "admin.oauthRedirectInvalid", valid: false } as const;
   }
   if (draft.providerProfile === "oauth2") {
     if (
-      !isOAuthUrl(draft.authorizationUrl) ||
-      !isOAuthUrl(draft.tokenUrl) ||
-      !isOAuthUrl(draft.userinfoUrl)
+      [draft.authorizationUrl, draft.tokenUrl, draft.userinfoUrl].some(
+        (url) => (!allowIncomplete || url.trim()) && !isOAuthUrl(url),
+      )
     ) {
       return { errorKey: "admin.oauthEndpointInvalid", valid: false } as const;
     }
-  } else if (!isOAuthUrl(draft.issuerUrl)) {
+  } else if (
+    (!allowIncomplete || draft.issuerUrl.trim()) &&
+    !isOAuthUrl(draft.issuerUrl)
+  ) {
     return { errorKey: "admin.oauthIssuerInvalid", valid: false } as const;
   }
-  if (draft.providerProfile === "icetowne-blog" && !hasSecret) {
+  if (
+    !allowIncomplete &&
+    draft.providerProfile === "icetowne-blog" &&
+    !hasSecret
+  ) {
     return { errorKey: "admin.oauthSecretRequired", valid: false } as const;
   }
-  if ((draft.allowedEmailDomains ?? []).some((domain) => !isEmailDomain(domain))) {
+  if (
+    (draft.allowedEmailDomains ?? []).length > 32 ||
+    (draft.allowedEmailDomains ?? []).some((domain) => !isEmailDomain(domain))
+  ) {
     return { errorKey: "admin.oauthDomainInvalid", valid: false } as const;
   }
   return { errorKey: null, valid: true } as const;
@@ -182,6 +208,7 @@ function isOAuthUrl(value: string) {
     return (
       (url.protocol === "http:" || url.protocol === "https:") &&
       Boolean(url.hostname) &&
+      !url.hash &&
       !url.username &&
       !url.password
     );
@@ -192,7 +219,12 @@ function isOAuthUrl(value: string) {
 
 function isEmailDomain(value: string) {
   const domain = value.trim().toLowerCase().replace(/^@/, "");
-  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/i.test(domain);
+  return (
+    domain.length <= 253 &&
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/i.test(
+      domain,
+    )
+  );
 }
 
 export function toOAuthProviderInput(
@@ -207,7 +239,9 @@ export function toOAuthProviderInput(
     audience: draft.audience,
     authorizationUrl: draft.authorizationUrl,
     clientId: draft.clientId,
-    displayName: draft.displayName.trim() || getOAuthProviderTemplate(draft.providerKey).displayName,
+    displayName:
+      draft.displayName.trim() ||
+      getOAuthProviderTemplate(draft.providerKey).displayName,
     enabled,
     issuerUrl: draft.issuerUrl,
     linkByVerifiedEmail: draft.linkByVerifiedEmail === true,

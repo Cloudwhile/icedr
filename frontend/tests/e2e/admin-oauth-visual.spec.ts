@@ -88,8 +88,12 @@ test("offers an empty-root icon and creation actions without selection actions",
   await expect(emptyState.locator(".drive-empty-state-title")).toBeVisible();
   await page.waitForTimeout(450);
   await expect(emptyState.locator(".drive-empty-state-icon")).toBeVisible();
-  await expect(emptyState.getByRole("button", { name: "Upload", exact: true })).toBeEnabled();
-  await expect(emptyState.getByRole("button", { name: "New folder", exact: true })).toBeEnabled();
+  await expect(
+    emptyState.getByRole("button", { name: "Upload", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    emptyState.getByRole("button", { name: "New folder", exact: true }),
+  ).toBeEnabled();
   await expect(page.locator(".drive-toolbar-action-group")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
@@ -97,6 +101,165 @@ test("offers an empty-root icon and creation actions without selection actions",
     path: resolve(screenshotRoot, "drive-empty-root-final.png"),
   });
 });
+
+for (const [theme, width] of [
+  ["light", 1440],
+  ["dark", 390],
+] as const) {
+  test(`creates and activates OAuth with recoverable failures (${theme}, ${width})`, async ({
+    page,
+  }) => {
+    let providers = [oauthProvider()];
+    const submissions: Record<string, unknown>[] = [];
+    let checkAttempts = 0;
+    let oauthEnabled = false;
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(
+      (theme) => localStorage.setItem("icedr.ui.themePreference", theme),
+      theme,
+    );
+    await page.route("**/api/auth/me", (route) =>
+      json(route, { ...adminUser(), theme }),
+    );
+    await page.route("**/api/auth/settings", (route) => {
+      if (route.request().method() === "PATCH") oauthEnabled = true;
+      return json(route, {
+        localEnabled: true,
+        oauthEnabled,
+        minimumAuthenticationMethods: 1,
+        passkeyEnabled: true,
+        passkeyConfigured: true,
+        oauthConfigured: true,
+        updatedAt: now,
+      });
+    });
+    await page.route(
+      "**/api/identity/oauth/settings/providers**",
+      async (route) => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (path.endsWith("/test")) {
+          checkAttempts += 1;
+          if (checkAttempts === 1)
+            return json(
+              route,
+              { message: "Service Unavailable", statusCode: 503 },
+              503,
+            );
+          return json(route, {
+            ok: true,
+            checks: [{ key: "discovery", ok: true }],
+            testedAt: now,
+          });
+        }
+        if (request.method() === "GET")
+          return json(route, {
+            activeProvider: providers[0],
+            configured: true,
+            providers,
+          });
+        if (request.method() === "POST") {
+          const input = request.postDataJSON() as Record<string, unknown>;
+          submissions.push(input);
+          if (submissions.length === 1)
+            return json(
+              route,
+              { message: "Service Unavailable", statusCode: 503 },
+              503,
+            );
+          const saved = {
+            ...oauthProvider(),
+            ...input,
+            id: "oauth-new",
+            clientSecretConfigured: true,
+          };
+          providers = [{ ...providers[0], enabled: false }, saved];
+          return json(route, saved);
+        }
+        return route.fallback();
+      },
+    );
+    await page.goto("/admin/system/oauth");
+    await page
+      .getByRole("button", { name: "Add provider", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Add OAuth provider" });
+    await expect(
+      dialog.getByRole("textbox", { name: "OAuth redirect URI" }),
+    ).toBeVisible();
+    await dialog
+      .getByRole("button", { name: "Test connection", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(
+      dialog.getByRole("textbox", { name: "OAuth client ID" }),
+    ).toHaveAttribute("aria-invalid", "true");
+    await dialog
+      .getByRole("textbox", { name: "Configuration name" })
+      .fill("New OAuth provider");
+    await dialog
+      .getByRole("textbox", { name: "OAuth client ID" })
+      .fill("new-client");
+    await dialog
+      .getByLabel("OAuth client secret", { exact: true })
+      .fill("new-secret");
+    await dialog.locator("summary").click();
+    const domains = dialog.getByRole("textbox", {
+      name: "Allowed email domains",
+    });
+    await domains.pressSequentially("example.com,support.example.com");
+    await expect(domains).toHaveValue("example.com,support.example.com");
+    await dialog
+      .getByRole("button", { name: "Test connection", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(
+      dialog.getByLabel("OAuth client secret", { exact: true }),
+    ).toHaveValue("new-secret");
+    await dialog
+      .getByRole("button", { name: "Test connection", exact: true })
+      .click();
+    await expect(dialog.locator(".drive-oauth-test-result")).toHaveAttribute(
+      "data-tone",
+      "secure",
+    );
+    await expect(dialog.locator(".drive-oauth-test-result")).toContainText(
+      "complete an account authorization",
+    );
+    await dialog
+      .getByRole("button", { name: "Save and activate", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(domains).toHaveValue("example.com,support.example.com");
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: resolve(screenshotRoot, `oauth-create-retry-${theme}-${width}.png`),
+    });
+    await dialog
+      .getByRole("button", { name: "Save and activate", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    expect(submissions).toHaveLength(2);
+    expect(submissions[1]).toMatchObject({
+      clientId: "new-client",
+      clientSecret: "new-secret",
+      enabled: true,
+      allowedEmailDomains: ["example.com", "support.example.com"],
+    });
+    const globalPrompt = page.getByRole("dialog");
+    await expect(globalPrompt).toBeVisible();
+    await globalPrompt
+      .getByRole("button", { name: "Enable OAuth sign-in", exact: true })
+      .click();
+    await expect(globalPrompt).toHaveCount(0);
+    expect(oauthEnabled).toBe(true);
+    await expect(
+      page.getByText("New OAuth provider", { exact: true }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+}
 
 async function expectNoHorizontalOverflow(page: Page) {
   await expect
@@ -154,10 +317,10 @@ async function expectNoOverlap(page: Page, left: string, right: string) {
   expect(boxes).not.toBeNull();
   const overlaps = Boolean(
     boxes &&
-      boxes.a.left < boxes.b.right &&
-      boxes.a.right > boxes.b.left &&
-      boxes.a.top < boxes.b.bottom &&
-      boxes.a.bottom > boxes.b.top,
+    boxes.a.left < boxes.b.right &&
+    boxes.a.right > boxes.b.left &&
+    boxes.a.top < boxes.b.bottom &&
+    boxes.a.bottom > boxes.b.top,
   );
   expect(overlaps).toBe(false);
 }
@@ -184,10 +347,7 @@ async function mockApplicationApi(page: Page) {
     if (method === "GET" && path === "/site/settings/public") {
       return json(route, { authLogoDataUrl: null, siteName: "ICEDR" });
     }
-    if (
-      method === "GET" &&
-      path === "/site/settings/public/translations"
-    ) {
+    if (method === "GET" && path === "/site/settings/public/translations") {
       return json(route, { bundles: [] });
     }
     if (method === "GET" && path === "/workspaces") {
@@ -204,10 +364,7 @@ async function mockApplicationApi(page: Page) {
         updatedAt: now,
       });
     }
-    if (
-      method === "GET" &&
-      path === "/identity/oauth/settings/providers"
-    ) {
+    if (method === "GET" && path === "/identity/oauth/settings/providers") {
       const provider = oauthProvider();
       return json(route, {
         activeProvider: provider,
@@ -224,7 +381,10 @@ async function mockApplicationApi(page: Page) {
     if (method === "GET" && path === "/transfers") {
       return json(route, []);
     }
-    if (method === "GET" && path === `/workspaces/${workspaceId}/share-settings`) {
+    if (
+      method === "GET" &&
+      path === `/workspaces/${workspaceId}/share-settings`
+    ) {
       return json(route, shareSettings());
     }
     if (method === "GET" && path === "/storage/usage") {

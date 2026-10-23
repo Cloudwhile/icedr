@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RootI18nProvider } from "@/components/i18n/root-i18n-provider";
 import { createOAuthDraft, getOAuthProviderTemplate } from "@/extensions/oauth/provider-catalog";
@@ -40,10 +41,25 @@ describe("OAuth field error presentation", () => {
     expect(screen.getByRole("textbox", { name: "Configuration name" })).not.toHaveAttribute("aria-invalid", "true");
   });
 
-  it("opens advanced settings when the invalid callback would otherwise be hidden", () => {
+  it("keeps the callback visible in basic settings", () => {
     renderError("admin.oauthRedirectInvalid");
     const input = screen.getByRole("textbox", { name: "OAuth redirect URI" });
     expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(input.closest("details")).toHaveAttribute("open");
+    expect(input.closest("details")).toBeNull();
+  });
+
+  it("preserves domain separators while typing multiple allowed domains", () => {
+    function Editor() {
+      const [draft, setDraft] = useState(createOAuthDraft(getOAuthProviderTemplate("oidc"), "https://app.example"));
+      return <OAuthProviderDialog draft={draft} mode="create" onClearSecret={vi.fn()} onClose={vi.fn()} onCopy={vi.fn()}
+        onDraftChange={setDraft} onSave={vi.fn()} onSecretChange={vi.fn()} onSelectTemplate={vi.fn()} onTest={vi.fn()}
+        palette={palettes.light} savingKey={null} secret="" testResult={null} validationErrorKey="admin.oauthDomainInvalid" />;
+    }
+    render(<RootI18nProvider><Editor /></RootI18nProvider>);
+    const input = screen.getByRole("textbox", { name: "Allowed email domains" });
+    fireEvent.change(input, { target: { value: "one.example," } });
+    expect(input).toHaveValue("one.example,");
+    fireEvent.change(input, { target: { value: `${(input as HTMLInputElement).value}two.example` } });
+    expect(input).toHaveValue("one.example,two.example");
   });
 });
