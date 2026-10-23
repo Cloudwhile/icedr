@@ -7,6 +7,7 @@ import {
   createOAuthProviderAdapter,
   mapIcetowneBlogUserProfile,
   mapOidcUserProfile,
+  testOAuthProviderConnection,
 } from './oauth-provider-adapters';
 import * as oidc from 'openid-client';
 import { fetch as undiciFetch } from 'undici';
@@ -48,6 +49,7 @@ describe('OAuth provider adapters', () => {
     jest.restoreAllMocks();
     jest.clearAllMocks();
     jest.mocked(undiciFetch).mockReset();
+    jest.mocked(oidc.discovery).mockReset();
   });
 
   it('maps standard OIDC user fields into the local identity shape', () => {
@@ -204,6 +206,136 @@ describe('OAuth provider adapters', () => {
         pkceCodeVerifier: 'verifier',
       }),
     );
+  });
+
+  it.each([404, 410, 429, 500])(
+    'fails connection checks for HTTP %i',
+    async (status) => {
+      jest
+        .mocked(undiciFetch)
+        .mockResolvedValue(new Response(null, { status }) as never);
+      const result = await testOAuthProviderConnection(
+        {
+          ...baseOAuth,
+          providerProfile: 'oauth2',
+          authorizationUrl: 'https://provider.example/authorize',
+          tokenUrl: 'https://provider.example/token',
+          userinfoUrl: 'https://provider.example/userinfo',
+        } as never,
+        { production: false },
+      );
+
+      expect(result.ok).toBe(false);
+      expect(result.checks).toHaveLength(3);
+      expect(
+        result.checks.every((check) => !check.ok && check.status === status),
+      ).toBe(true);
+    },
+  );
+
+  it.each([200, 302, 400, 401, 403, 405])(
+    'recognizes reachable protected endpoints returning HTTP %i',
+    async (status) => {
+      jest
+        .mocked(undiciFetch)
+        .mockResolvedValue(new Response(null, { status }) as never);
+      const result = await testOAuthProviderConnection(baseOAuth as never, {
+        production: false,
+      });
+      expect(result.ok).toBe(true);
+      expect(undiciFetch).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({ method: 'HEAD', redirect: 'manual' }),
+      );
+    },
+  );
+
+  it('refreshes OIDC discovery for every explicit connection check', async () => {
+    jest
+      .mocked(oidc.discovery)
+      .mockResolvedValueOnce({ client: 'connection-check' } as never)
+      .mockRejectedValueOnce(new Error('provider is now offline'));
+    jest
+      .mocked(oidc.buildAuthorizationUrl)
+      .mockReturnValue(new URL('https://connection-check.example/authorize'));
+    const oauth = {
+      ...baseOAuth,
+      providerProfile: 'oidc',
+      issuerUrl: 'https://connection-check.example',
+    } as never;
+
+    expect(
+      (await testOAuthProviderConnection(oauth, { production: false })).ok,
+    ).toBe(true);
+    expect(
+      (await testOAuthProviderConnection(oauth, { production: false })).ok,
+    ).toBe(false);
+    expect(oidc.discovery).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])(
+    'uses UserInfo email verification (%s) when the ID token has no email',
+    async (verified) => {
+      const issuerUrl = `https://userinfo-${verified}.example`;
+      jest
+        .mocked(oidc.discovery)
+        .mockResolvedValue({ client: 'userinfo-client' } as never);
+      jest.mocked(oidc.authorizationCodeGrant).mockResolvedValue({
+        access_token: 'access-token',
+        claims: () => ({ sub: 'subject', email_verified: true }),
+      } as never);
+      jest.mocked(oidc.fetchUserInfo).mockResolvedValue({
+        sub: 'subject',
+        email: 'fallback@example.com',
+        email_verified: verified,
+      });
+      const oauth = {
+        ...baseOAuth,
+        providerProfile: 'oidc',
+        issuerUrl,
+      };
+      const user = await createOAuthProviderAdapter('oidc', {
+        production: false,
+      }).exchangeCode({
+        oauth,
+        redirectUri: oauth.redirectUri,
+        url: new URL(`${oauth.redirectUri}?state=state&code=code`),
+        state: 'state',
+        codeVerifier: 'verifier',
+      });
+
+      expect(user.email).toBe('fallback@example.com');
+      expect(user.emailVerified).toBe(verified);
+      expect(oidc.fetchUserInfo).toHaveBeenCalledWith(
+        expect.anything(),
+        'access-token',
+        'subject',
+      );
+    },
+  );
+
+  it('rejects a missing ID token subject before requesting UserInfo', async () => {
+    jest
+      .mocked(oidc.discovery)
+      .mockResolvedValue({ client: 'missing-subject' } as never);
+    jest.mocked(oidc.authorizationCodeGrant).mockResolvedValue({
+      access_token: 'access-token',
+      claims: () => ({ email_verified: true }),
+    } as never);
+    await expect(
+      createOAuthProviderAdapter('oidc', { production: false }).exchangeCode({
+        oauth: {
+          ...baseOAuth,
+          providerProfile: 'oidc',
+          issuerUrl: 'https://missing-subject.example',
+        },
+        redirectUri: baseOAuth.redirectUri,
+        url: new URL(`${baseOAuth.redirectUri}?state=state&code=code`),
+        state: 'state',
+        codeVerifier: 'verifier',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(oidc.fetchUserInfo).not.toHaveBeenCalled();
   });
 
   it('maps ICETOWNE BLOG compatibility user fields from nested payloads', () => {

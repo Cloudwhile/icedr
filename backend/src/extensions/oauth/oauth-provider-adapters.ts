@@ -66,6 +66,7 @@ type OAuthAuthorizationInput = {
   state: string;
   codeChallenge: string;
   reauthenticate?: boolean;
+  freshDiscovery?: boolean;
 };
 
 type OAuthCodeExchangeInput = {
@@ -140,6 +141,7 @@ export async function testOAuthProviderConnection(
         oauth,
         redirectUri: oauth.redirectUri,
         state: 'connection-test',
+        freshDiscovery: true,
         codeChallenge: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       });
       checks = [{ key: 'discovery', ok: true }];
@@ -337,7 +339,11 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
 
   async buildAuthorizationUrl(input: OAuthAuthorizationInput) {
     try {
-      const client = await this.createClient(input.oauth, input.redirectUri);
+      const client = await this.createClient(
+        input.oauth,
+        input.redirectUri,
+        input.freshDiscovery,
+      );
       const authorizationUrl = oidc.buildAuthorizationUrl(client, {
         redirect_uri: input.redirectUri,
         scope: ensureOpenIdScope(input.oauth.scopes),
@@ -371,6 +377,7 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
       });
       const claims = (tokens.claims() ?? {}) as Record<string, unknown>;
       const subject = readStringField(claims, 'sub');
+      if (!subject) throw new UnauthorizedException('OIDC subject is missing');
       const accessToken = tokens.access_token;
       let email = readStringField(claims, 'email');
       let emailVerified = readBooleanValue(claims.email_verified);
@@ -382,11 +389,12 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
         const userInfo = (await oidc.fetchUserInfo(
           client,
           accessToken,
-          subject || oidc.skipSubjectCheck,
+          subject,
         )) as Record<string, unknown>;
-        if (!email) email = readStringField(userInfo, 'email');
-        if (!emailVerified)
+        if (!email) {
+          email = readStringField(userInfo, 'email');
           emailVerified = readBooleanValue(userInfo.email_verified);
+        }
         if (!displayName) {
           displayName = firstStringField(userInfo, [
             'name',
@@ -417,11 +425,16 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
     }
   }
 
-  private async createClient(oauth: OAuthSettings, redirectUri: string) {
+  private async createClient(
+    oauth: OAuthSettings,
+    redirectUri: string,
+    freshDiscovery = false,
+  ) {
     try {
       const issuer = parseOAuthIssuer(oauth.issuerUrl, 'OIDC issuer URL');
       assertOAuthIssuerTransport(issuer, this.options, 'OIDC OAuth');
       const cacheKey = createOidcDiscoveryCacheKey(issuer, oauth, redirectUri);
+      if (freshDiscovery) OidcOAuthAdapter.discoveryCache.delete(cacheKey);
       let clientPromise = OidcOAuthAdapter.discoveryCache.get(cacheKey);
       if (!clientPromise) {
         const discoveryOptions: oidc.DiscoveryRequestOptions = {
@@ -445,7 +458,11 @@ class OidcOAuthAdapter implements OAuthProviderAdapter {
             discoveryOptions,
           )
           .catch((error: unknown) => {
-            OidcOAuthAdapter.discoveryCache.delete(cacheKey);
+            if (
+              OidcOAuthAdapter.discoveryCache.get(cacheKey) === clientPromise
+            ) {
+              OidcOAuthAdapter.discoveryCache.delete(cacheKey);
+            }
             throw error;
           });
         OidcOAuthAdapter.discoveryCache.set(cacheKey, clientPromise);
@@ -674,7 +691,11 @@ async function probeOAuthEndpoint(
       },
       options,
     );
-    return { key, ok: response.status < 500, status: response.status };
+    await response.body?.cancel().catch(() => undefined);
+    const reachable =
+      (response.status >= 200 && response.status < 400) ||
+      [400, 401, 403, 405].includes(response.status);
+    return { key, ok: reachable, status: response.status };
   } catch (error) {
     void error;
     return { key, ok: false };
