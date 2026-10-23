@@ -48,7 +48,7 @@ export type DriveSettingsWorkspaceProps = {
 const settingsTabs: UserSettingsNavigationItem[] = [
   { icon: <LocalIcon name="user_avatar" size={15} />, id: "profile", labelKey: "settings.accountSettings" },
   { icon: <LocalIcon name="shield" size={15} />, id: "security", labelKey: "settings.securitySettings" },
-  { icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.appearanceSettings" },
+  { icon: <LocalIcon name="settings" size={15} />, id: "preferences", labelKey: "settings.preferences" },
   { icon: <LocalIcon name="file" size={15} />, id: "storage", labelKey: "settings.storageSpace" },
 ];
 
@@ -124,7 +124,7 @@ function DriveSettingsContent({
                 id={`settings-tab-${tab.id}`}
                 tabIndex={active ? 0 : -1}
                 onKeyDown={(event) => {
-                  const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+                  const offset = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
                   if (!offset && event.key !== "Home" && event.key !== "End") return;
                   event.preventDefault();
                   const index = event.key === "Home" ? 0 : event.key === "End" ? settingsTabs.length - 1 : (settingsTabs.indexOf(tab) + offset + settingsTabs.length) % settingsTabs.length;
@@ -214,6 +214,7 @@ function UserProfileSettings({
   const displayName = displayNameDraft.trim() || currentUser?.displayName || currentUser?.email || t("app.accountGuest");
   const roleLabel = currentUser?.role === "admin" ? t("settings.roleAdmin") : t("settings.roleMember");
   const registeredAt = formatUserDate(currentUser?.createdAt, locale, timeZone);
+  const profileDirty = displayNameDraft.trim() !== (currentUser?.displayName ?? "");
   const emailBoundLabel = currentUser?.email ? t("settings.bound") : t("settings.notConfigured");
 
   const chooseAvatar = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,7 +265,7 @@ function UserProfileSettings({
   };
   useUnsavedChangesSection({
     id: "user-profile",
-    isDirty: displayNameDraft.trim() !== (currentUser?.displayName ?? ""),
+    isDirty: profileDirty,
     onSave: saveProfile,
     onDiscard: () => setDisplayNameDraft(currentUser?.displayName ?? ""),
   });
@@ -275,30 +276,10 @@ function UserProfileSettings({
         <div className="drive-settings-main-stack">
           <section className="drive-settings-main-column drive-settings-profile-card" aria-label={t("settings.personalInfo")}>
             <SettingsSectionHeader icon="user_avatar" title={t("settings.personalInfo")} trailing={(
-              <ToolButton showLabel disabled={!currentUser || !displayNameDraft.trim()} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="solid" tone="accent">
+              <ToolButton showLabel disabled={!currentUser || !displayNameDraft.trim() || !profileDirty} isPending={profileSaving} label={t("settings.saveProfile")} palette={palette} onClick={() => { void saveProfile().catch(() => showAppToast({ title: t("admin.saveFailed"), tone: "error" })); }} visual="solid" tone="accent">
                 <LocalIcon name="save" size={16} />
               </ToolButton>
             )} />
-            <div className="drive-settings-profile-hero">
-              <AppUserAvatar
-                className="drive-settings-profile-avatar"
-                fallbackClassName="drive-settings-avatar-fallback"
-                label={displayName}
-                size="lg"
-                src={currentUser?.avatarUrl}
-              />
-              <div className="drive-settings-profile-copy">
-                <span className="drive-settings-profile-title icedr-truncate">{displayName}</span>
-                <span className="icedr-truncate">{currentUser?.email ?? "--"}</span>
-                <span className="drive-settings-profile-note icedr-truncate">{t("settings.profileIdentityHint")}</span>
-              </div>
-              <div className="drive-settings-profile-status">
-                <StatusPill palette={palette} tone={currentUser?.role === "admin" ? "accent" : "secure"}>
-                  {roleLabel}
-                </StatusPill>
-              </div>
-            </div>
-
             <div className="drive-settings-profile-fields">
               <SettingsField helperText={t("settings.displayNameHint")} label={t("settings.nickname")}>
                 <AppInput
@@ -342,9 +323,6 @@ function UserProfileSettings({
                   size="lg"
                   src={currentUser?.avatarUrl}
                 />
-                <ToolButton className="drive-settings-avatar-camera" disabled={!currentUser} isPending={avatarSaving} label={t("settings.avatarChoose")} palette={palette} onClick={() => avatarInputRef.current?.click()} visual="surface">
-                  <LocalIcon name="image" size={16} />
-                </ToolButton>
               </div>
               <div className="drive-settings-avatar-actions">
                 <ToolButton showLabel disabled={!currentUser} isPending={avatarSaving} label={t("settings.avatarChoose")} palette={palette} onClick={() => avatarInputRef.current?.click()} visual="surface">
@@ -357,14 +335,6 @@ function UserProfileSettings({
               <span className="drive-settings-avatar-hint">{t("settings.avatarFormatHint")}</span>
             </div>
             <input ref={avatarInputRef} aria-label={t("settings.avatarChoose")} type="file" accept="image/*" onChange={chooseAvatar} hidden />
-          </section>
-          <section className="drive-settings-side-panel">
-            <SettingsPanelHeader icon="mail" title={t("settings.accountBindings")} />
-            <div className="drive-settings-side-list">
-              <SettingsInfoRow label={t("auth.email")} tone={currentUser?.email ? "secure" : undefined} value={currentUser?.email ?? "--"} />
-              <SettingsInfoRow label={t("settings.userGroup")} tone={currentUser ? "secure" : undefined} value={roleLabel} />
-              <SettingsInfoRow label={t("settings.registeredAt")} value={registeredAt} />
-            </div>
           </section>
           <section className="drive-settings-side-panel drive-settings-account-panel">
             <SettingsPanelHeader icon="user_avatar" title={t("settings.accountOperations")} />
@@ -612,23 +582,6 @@ function SettingsPanelHeader({ icon, title }: { icon: "key" | "lock" | "mail" | 
       <LocalIcon name={icon} size={16} />
       <span className="icedr-truncate">{title}</span>
     </header>
-  );
-}
-
-function SettingsInfoRow({
-  label,
-  tone,
-  value,
-}: {
-  label: string;
-  tone?: "secure";
-  value: string;
-}) {
-  return (
-    <div className="drive-settings-info-row">
-      <span>{label}</span>
-      <span data-tone={tone} className="icedr-truncate">{value}</span>
-    </div>
   );
 }
 

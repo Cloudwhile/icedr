@@ -634,8 +634,8 @@ export function DriveSystemPlatformSettings({
                   label={t("admin.save")}
                   palette={palette}
                   onClick={() => void saveSite().catch(() => undefined)}
-                  visual="surface"
-                >
+                  visual="solid"
+                 tone="accent">
                   <LocalIcon name="save" size={17} />
                 </ToolButton>
               </SystemBlockActions>
@@ -751,8 +751,8 @@ export function DriveSystemPlatformSettings({
                 onClick={() =>
                   void saveAuthPolicy().catch(() => undefined)
                 }
-                visual="surface"
-              >
+                visual="solid"
+               tone="accent">
                 <LocalIcon name="save" size={17} />
               </ToolButton>
             }
@@ -865,8 +865,8 @@ export function DriveSystemPlatformSettings({
                 onClick={() =>
                   void saveAuthPolicy().catch(() => undefined)
                 }
-                visual="surface"
-              >
+                visual="solid"
+               tone="accent">
                 <LocalIcon name="save" size={17} />
               </ToolButton>
             }

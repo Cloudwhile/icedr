@@ -73,7 +73,6 @@ export function AdminSystemStatus({
       aria-label={t("settings.systemStatus")}
       className="admin-system-status"
     >
-      <h1 className="icedr-sr-only">{t("settings.systemStatus")}</h1>
       <div className="admin-system-status-summary" role="list">
         <StatusMetric
           icon="info"

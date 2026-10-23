@@ -226,16 +226,24 @@
 }
 
 .admin-header-title {
-  display: grid;
-  gap: 3px;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   min-width: 0;
 }
 
 .admin-header-title > span:last-child {
-  color: var(--drive-ui-ink);
-  font-size: var(--text-ui-md);
-  font-weight: var(--font-weight-bold);
+  color: var(--drive-ui-muted);
+  font-size: var(--text-ui-sm);
+  font-weight: var(--font-weight-medium);
   line-height: max(1.5em, 22px);
+}
+
+.admin-header-title > span:last-child::before {
+  color: var(--drive-ui-subtle);
+  content: "/";
+  margin-right: 8px;
 }
 
 .admin-header-kicker {

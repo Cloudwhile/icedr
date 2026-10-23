@@ -23,12 +23,12 @@
 
 .drive-settings-tab-list {
   align-self: start;
-  background: color-mix(in srgb, var(--drive-ui-surface) 66%, transparent);
+  background: transparent;
   border-color: var(--drive-ui-line);
   border-radius: var(--radius-md);
-  box-shadow: var(--drive-ui-shadow-1);
+  box-shadow: none;
   gap: 7px;
-  min-height: min(656px, calc(100dvh - 180px));
+  min-height: 0;
   padding: 11px;
 }
 

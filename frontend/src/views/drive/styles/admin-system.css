@@ -199,6 +199,16 @@
   padding: 0;
 }
 
+.admin-shell .drive-system-settings-block-header[data-heading="false"] {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drive-system-quota-member-action {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
 .admin-shell .drive-system-settings-block-title {
   align-items: start;
   display: inline-flex;

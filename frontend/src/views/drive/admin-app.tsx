@@ -458,7 +458,6 @@ function AdminPanelGate({
           ? t("settings.systemStatusSubtitle")
           : t(activeSystemSectionMeta.subtitleKey);
   const panelOwnsHeading =
-    activePanel === "status" ||
     (activePanel === "system" &&
       (activeSystemSection === "oauth" || activeSystemSection === "integrity"));
   const showsScopeSelector =

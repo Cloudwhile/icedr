@@ -11,6 +11,7 @@ export function SystemConfigBlock({
   icon,
   id,
   palette,
+  showHeading = true,
   title,
 }: {
   actions?: ReactNode;
@@ -19,18 +20,21 @@ export function SystemConfigBlock({
   icon: ComponentProps<typeof LocalIcon>["name"];
   id: string;
   palette: Palette;
+  showHeading?: boolean;
   title: string;
 }) {
   return (
-    <section className="drive-system-settings-block" id={id}>
-      <header className="drive-system-settings-block-header">
-        <span className="drive-system-settings-block-title">
-          <LocalIcon name={icon} size={17} color={palette.primaryHover} />
-          <span className="drive-system-settings-block-heading">
-            <span>{title}</span>
-            {description ? <small>{description}</small> : null}
+    <section aria-label={title} className="drive-system-settings-block" id={id}>
+      <header className="drive-system-settings-block-header" data-heading={showHeading ? undefined : "false"}>
+        {showHeading ? (
+          <span className="drive-system-settings-block-title">
+            <LocalIcon name={icon} size={17} color={palette.primaryHover} />
+            <span className="drive-system-settings-block-heading">
+              <span>{title}</span>
+              {description ? <small>{description}</small> : null}
+            </span>
           </span>
-        </span>
+        ) : null}
         {actions}
       </header>
       {children}

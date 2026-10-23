@@ -65,8 +65,8 @@ export function PlatformDeliverySection({
             label={t("admin.save")}
             palette={palette}
             onClick={onSave}
-            visual="surface"
-          >
+            visual="solid"
+           tone="accent">
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </SystemBlockActions>
@@ -226,8 +226,8 @@ export function PlatformStorageSection({
             label={t("admin.save")}
             palette={palette}
             onClick={onSave}
-            visual="surface"
-          >
+            visual="solid"
+           tone="accent">
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </SystemBlockActions>

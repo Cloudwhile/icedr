@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { SystemConfigBlock as SettingsBlock } from "@/components/admin/system-config-block";
 import { AppInput } from "@/components/ui/app-input";
 import { UsageBreakdownList } from "@/components/admin/usage-breakdown-list";
 import { AppSelect } from "@/components/ui/app-select";
@@ -90,22 +91,14 @@ export function StoragePolicySection({
           >
             <LocalIcon name="refresh" size={17} />
           </ToolButton>
-          <ToolButton showLabel
-            isPending={savingKey === "user-quota"}
-            label={t("settings.saveUserQuota")}
-            palette={palette}
-            onClick={onSaveUserQuota}
-            visual="surface"
-          >
-            <LocalIcon name="user_check" size={17} />
-          </ToolButton>
+
           <ToolButton showLabel
             isPending={savingKey === "quota"}
             label={t("admin.save")}
             palette={palette}
             onClick={onSaveQuota}
-            visual="surface"
-          >
+            visual="solid"
+           tone="accent">
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </BlockActions>
@@ -113,7 +106,8 @@ export function StoragePolicySection({
       id="storage-policy"
       icon="file"
       palette={palette}
-      subtitle={t("settings.storagePolicySubtitle")}
+      showHeading={false}
+      description={t("settings.storagePolicySubtitle")}
       title={t("settings.storagePolicy")}
     >
       <div className="drive-system-control-grid drive-system-quota-grid">
@@ -149,6 +143,17 @@ export function StoragePolicySection({
           unit={userQuotaUnit}
           value={userQuotaDraft}
         />
+        <div className="drive-system-quota-member-action">
+          <ToolButton showLabel
+            isPending={savingKey === "user-quota"}
+            label={t("settings.saveUserQuota")}
+            palette={palette}
+            onClick={onSaveUserQuota}
+            visual="surface"
+          >
+            <LocalIcon name="user_check" size={17} />
+          </ToolButton>
+        </div>
       </div>
       <div className="drive-system-policy-strip">
         {storagePolicyRows.map((row) => (
@@ -219,8 +224,8 @@ export function LifecyclePolicySection({
             label={t("admin.save")}
             palette={palette}
             onClick={onSavePolicy}
-            visual="surface"
-          >
+            visual="solid"
+           tone="accent">
             <LocalIcon name="save" size={17} />
           </ToolButton>
         </BlockActions>
@@ -228,7 +233,8 @@ export function LifecyclePolicySection({
       id="lifecycle-policy"
       icon="trash"
       palette={palette}
-      subtitle={t("settings.lifecyclePolicySubtitle")}
+      showHeading={false}
+      description={t("settings.lifecyclePolicySubtitle")}
       title={t("settings.lifecyclePolicy")}
     >
       <div className="drive-system-control-grid">
@@ -276,40 +282,6 @@ export function LifecyclePolicySection({
         />
       </div>
     </SettingsBlock>
-  );
-}
-
-function SettingsBlock({
-  actions,
-  children,
-  icon,
-  id,
-  palette,
-  subtitle,
-  title,
-}: {
-  actions?: ReactNode;
-  children: ReactNode;
-  icon: ComponentProps<typeof LocalIcon>["name"];
-  id: string;
-  palette: Palette;
-  subtitle?: string;
-  title: string;
-}) {
-  return (
-    <section className="drive-system-settings-block" id={id}>
-      <header className="drive-system-settings-block-header">
-        <span className="drive-system-settings-block-title">
-          <LocalIcon name={icon} size={17} color={palette.primaryHover} />
-          <span className="drive-system-settings-block-heading">
-            <span>{title}</span>
-            {subtitle ? <small>{subtitle}</small> : null}
-          </span>
-        </span>
-        {actions}
-      </header>
-      {children}
-    </section>
   );
 }
 
