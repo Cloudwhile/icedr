@@ -1,3 +1,4 @@
+import { assertOAuthStoreUnchanged } from './settings-oauth-write-policy';
 import {
   BadRequestException,
   Injectable,
@@ -5,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
-import { validateOAuthHttpUrl } from '../../../extensions/oauth/oauth-url-policy';
+import {
+  assertOAuthEmailDomainsValid,
+  assertOAuthSettingsValid,
+} from './settings-oauth-validation';
 import { StorageService } from '../../storage/storage.service';
 import { AuthRepository } from '../../auth/core/auth.repository';
 import { assertAccountHasLogin } from '../../auth/core/authentication-method-reader';
@@ -320,6 +324,7 @@ export class SettingsService {
     });
   }
   async createOAuthProvider(dto: UpdateOAuthSettingsDto, actorUserId?: string) {
+    assertOAuthEmailDomainsValid(dto.allowedEmailDomains);
     const providerKey = normalizeOAuthProviderKey(
       dto.providerKey ?? defaultOAuthProviderKeyForProfile(dto.providerProfile),
     );
@@ -352,7 +357,7 @@ export class SettingsService {
       [...providers, provider],
       provider.enabled ? provider.id : undefined,
     );
-    await this.saveOAuthProviders(nextProviders, actorUserId);
+    await this.saveOAuthProviders(nextProviders, providers, actorUserId);
     return this.toOAuthResponse(provider);
   }
 
@@ -376,7 +381,7 @@ export class SettingsService {
       next.enabled ? next.id : undefined,
     );
     await this.assertOAuthProviderRemovalSafe(providers, nextProviders);
-    await this.saveOAuthProviders(nextProviders, actorUserId);
+    await this.saveOAuthProviders(nextProviders, providers, actorUserId);
     return this.toOAuthResponse(next);
   }
 
@@ -392,13 +397,14 @@ export class SettingsService {
       throw new BadRequestException('OAuth provider was not found');
     }
     await this.assertOAuthProviderRemovalSafe(providers, nextProviders);
-    await this.saveOAuthProviders(nextProviders, actorUserId);
+    await this.saveOAuthProviders(nextProviders, providers, actorUserId);
     return { ok: true };
   }
 
   async updateOAuthSettings(dto: UpdateOAuthSettingsDto, actorUserId?: string) {
-    const { next, nextProviders } = await this.prepareOAuthSettingsUpdate(dto);
-    await this.saveOAuthProviders(nextProviders, actorUserId);
+    const { next, nextProviders, providers } =
+      await this.prepareOAuthSettingsUpdate(dto);
+    await this.saveOAuthProviders(nextProviders, providers, actorUserId);
     return this.toOAuthResponse(next);
   }
 
@@ -425,7 +431,7 @@ export class SettingsService {
       [...remainingProviders, next],
       next.enabled ? next.id : undefined,
     );
-    return { next, nextProviders };
+    return { next, nextProviders, providers };
   }
 
   async getPasskeySettings(): Promise<PasskeySettings> {
@@ -756,6 +762,7 @@ export class SettingsService {
 
   private async saveOAuthProviders(
     providers: OAuthSettings[],
+    previousProviders: OAuthSettings[],
     actorUserId?: string,
   ) {
     await this.repository.set<JsonRecord>(
@@ -764,7 +771,12 @@ export class SettingsService {
       {
         providers,
       },
-      actorUserId ? (tx) => assertAccountHasLogin(tx, actorUserId) : undefined,
+      async (tx, previous) => {
+        assertOAuthStoreUnchanged(previous, previousProviders, (options) =>
+          this.defaultOAuthSettings(options),
+        );
+        if (actorUserId) await assertAccountHasLogin(tx, actorUserId);
+      },
     );
   }
 
@@ -790,55 +802,10 @@ export class SettingsService {
   }
 
   private assertOAuthSettingsValid(settings: OAuthSettings) {
-    if (!settings.enabled) return;
-    if (
-      !settings.clientId ||
-      (settings.providerProfile !== 'oauth2' && !settings.issuerUrl)
-    ) {
-      throw new BadRequestException(
-        'OAuth issuer URL and client ID are required when OAuth is enabled',
-      );
-    }
-    if (
-      settings.providerProfile === 'oauth2' &&
-      (!settings.authorizationUrl ||
-        !settings.tokenUrl ||
-        !settings.userinfoUrl)
-    ) {
-      throw new BadRequestException(
-        'OAuth authorization, token, and userinfo URLs are required when OAuth2 is enabled',
-      );
-    }
-    if (
-      settings.providerProfile === 'icetowne-blog' &&
-      !settings.clientSecret
-    ) {
-      throw new BadRequestException(
-        'OAuth client secret is required for ICETOWNE BLOG OAuth',
-      );
-    }
-    const production = Boolean(this.config.get<boolean>('app.production'));
-    const endpoints = [
-      ...(settings.providerProfile === 'oauth2'
-        ? [
-            ['OAuth authorization URL', settings.authorizationUrl],
-            ['OAuth token URL', settings.tokenUrl],
-            ['OAuth userinfo URL', settings.userinfoUrl],
-          ]
-        : [['OAuth issuer URL', settings.issuerUrl]]),
-      ...(settings.redirectUri
-        ? [['OAuth redirect URI', settings.redirectUri]]
-        : []),
-    ] as const;
-    for (const [label, endpoint] of endpoints) {
-      try {
-        validateOAuthHttpUrl(endpoint, { label, production });
-      } catch (error) {
-        throw new BadRequestException(
-          error instanceof Error ? error.message : `${label} is invalid`,
-        );
-      }
-    }
+    assertOAuthSettingsValid(
+      settings,
+      Boolean(this.config.get<boolean>('app.production')),
+    );
   }
 
   private defaultPasskeySettings(): PasskeySettings {

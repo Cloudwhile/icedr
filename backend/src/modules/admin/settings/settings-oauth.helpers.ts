@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { assertOAuthEmailDomainsValid } from './settings-oauth-validation';
 import {
   JsonRecord,
   OAuthSettings,
@@ -107,6 +108,7 @@ export function mergeOAuthProviderSettings(
   current: OAuthSettings,
   dto: UpdateOAuthSettingsDto,
 ): OAuthSettings {
+  assertOAuthEmailDomainsValid(dto.allowedEmailDomains);
   const now = new Date().toISOString();
   const providerProfile = normalizeOAuthProviderProfile(
     dto.providerProfile ?? current.providerProfile,
@@ -239,9 +241,9 @@ export function normalizeOAuthEmailDomains(
     new Set(
       value
         .map((domain) => String(domain).trim().toLowerCase().replace(/^@/, ''))
-        .filter((domain) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)),
+        .filter(Boolean),
     ),
-  ).slice(0, 32);
+  );
 }
 
 export function normalizeOAuthProviderProfile(

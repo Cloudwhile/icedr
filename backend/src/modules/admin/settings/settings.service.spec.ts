@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -194,6 +194,92 @@ describe('SettingsService setup status', () => {
       origin,
       rpId,
     });
+  });
+
+  it.each([
+    ['https://example.com'],
+    ['-bad.example'],
+    ['example..com'],
+    Array.from({ length: 33 }, (_, index) => `domain${index}.example`),
+  ])(
+    'rejects invalid OAuth domain restrictions instead of dropping them: %s',
+    async (...domains) => {
+      const setSettings = jest.fn();
+      const repository = {
+        get: jest.fn().mockResolvedValue({ providers: [] }),
+        set: setSettings,
+      } as unknown as SettingsRepository;
+      const service = createSettingsService(repository);
+      await expect(
+        service.createOAuthProvider({
+          enabled: false,
+          allowedEmailDomains: domains,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(setSettings).not.toHaveBeenCalled();
+    },
+  );
+
+  it('validates nonempty URLs in drafts while allowing incomplete drafts', async () => {
+    const setSettings = jest.fn((_parent, _meta, value) =>
+      Promise.resolve(value),
+    );
+    const repository = {
+      get: jest.fn().mockResolvedValue({ providers: [] }),
+      set: setSettings,
+    } as unknown as SettingsRepository;
+    const service = createSettingsService(repository);
+    await expect(
+      service.createOAuthProvider({ enabled: false, issuerUrl: 'not-a-url' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(setSettings).not.toHaveBeenCalled();
+    await expect(
+      service.createOAuthProvider({
+        enabled: false,
+        issuerUrl: '',
+        clientId: '',
+      }),
+    ).resolves.toMatchObject({ enabled: false, configured: false });
+  });
+
+  it('rejects a stale OAuth store instead of overwriting a concurrent addition', async () => {
+    const concurrentStore = {
+      providers: [{ id: 'concurrent', enabled: false }],
+    };
+    const setSettings = jest.fn(
+      async (
+        _parent,
+        _meta,
+        value,
+        validate?: (tx: never, previous: unknown) => Promise<void>,
+      ) => {
+        if (validate) await validate({} as never, concurrentStore);
+        return value as unknown;
+      },
+    );
+    const getSettings = jest.fn().mockResolvedValue({ providers: [] });
+    const repository = {
+      get: getSettings,
+      set: setSettings,
+    } as unknown as SettingsRepository;
+    const service = createSettingsService(repository);
+    await expect(
+      service.createOAuthProvider({ id: 'new-provider', enabled: false }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(concurrentStore.providers).toEqual([
+      { id: 'concurrent', enabled: false },
+    ]);
+    getSettings.mockResolvedValue(concurrentStore);
+    await expect(
+      service.createOAuthProvider({ id: 'new-provider', enabled: false }),
+    ).resolves.toMatchObject({ id: 'new-provider' });
+    const saved = setSettings.mock.lastCall?.[2] as {
+      providers: Array<{ id: string }>;
+    };
+    expect(saved.providers.map((provider) => provider.id)).toEqual([
+      'concurrent',
+      'new-provider',
+    ]);
   });
 
   it('prevents deleting the final active OAuth provider when it is the only login method', async () => {
