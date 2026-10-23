@@ -242,6 +242,30 @@ describe('SettingsService setup status', () => {
     ).resolves.toMatchObject({ enabled: false, configured: false });
   });
 
+  it('does not inherit the legacy environment secret when adding a public client', async () => {
+    const previousSecret = process.env.ICA_OAUTH_CLIENT_SECRET;
+    process.env.ICA_OAUTH_CLIENT_SECRET = 'legacy-provider-secret';
+    try {
+      const repository = {
+        get: jest.fn().mockResolvedValue({ providers: [] }),
+        set: jest.fn(),
+      } as unknown as SettingsRepository;
+      const service = createSettingsService(repository);
+      await expect(
+        service.createOAuthProvider({
+          providerKey: 'oidc',
+          clientId: 'public-client',
+          issuerUrl: 'https://issuer.example',
+          enabled: true,
+        }),
+      ).resolves.toMatchObject({ clientSecretConfigured: false });
+    } finally {
+      if (previousSecret === undefined)
+        delete process.env.ICA_OAUTH_CLIENT_SECRET;
+      else process.env.ICA_OAUTH_CLIENT_SECRET = previousSecret;
+    }
+  });
+
   it('rejects a stale OAuth store instead of overwriting a concurrent addition', async () => {
     const concurrentStore = {
       providers: [{ id: 'concurrent', enabled: false }],

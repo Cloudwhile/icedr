@@ -311,9 +311,13 @@ export class SettingsService {
     const providerProfile = normalizeOAuthProviderProfile(
       dto.providerProfile ?? defaultOAuthProfileForProviderKey(providerKey),
     );
-    const current =
-      providers.find((provider) => provider.id === dto.id) ??
-      this.defaultOAuthSettings({ providerKey, providerProfile });
+    const current = providers.find((provider) => provider.id === dto.id) ?? {
+      ...this.defaultOAuthSettings({ providerKey, providerProfile }),
+      clientSecret: '',
+    };
+    if (dto.id && !providers.some((provider) => provider.id === dto.id)) {
+      throw new BadRequestException('OAuth provider was not found');
+    }
     const candidate = mergeOAuthProviderSettings(current, {
       ...dto,
       enabled: true,
@@ -339,6 +343,7 @@ export class SettingsService {
           providerProfile: profile,
         }),
         ...dto,
+        clientSecret: dto.clientSecret ?? '',
         id: dto.id?.trim() || createOAuthProviderId(),
         createdAt: now,
         updatedAt: now,
