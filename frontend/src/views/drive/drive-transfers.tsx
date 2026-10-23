@@ -416,8 +416,8 @@ function TransferTableRow({
         <ProgressMeter ariaLabel={row.name} color={progressColor} palette={palette} value={row.progress} />
       </div>
 
-      <span className="drive-transfer-speed-cell icedr-truncate">{speedLabel}</span>
-      <span className="drive-transfer-time-cell icedr-truncate">{remainingLabel}</span>
+      <span className="drive-transfer-speed-cell icedr-truncate" data-label={t("transfers.speed")}>{speedLabel}</span>
+      <span className="drive-transfer-time-cell icedr-truncate" data-label={t("transfers.remaining")}>{remainingLabel}</span>
       <StatusPill palette={palette} tone={getTransferStatusTone(status)}>
         {t(`transfers.${status}`)}
       </StatusPill>

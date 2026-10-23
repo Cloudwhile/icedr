@@ -237,6 +237,13 @@ test.describe("responsive Drive workspace", () => {
     await expect(notification).toContainText("Workspace refreshed");
     await expectElementsNotToOverlap([hud, notification, toolbar]);
     await expectNoHorizontalOverflow(page);
+
+    await page.goto("/transfers");
+    const transferRow = page.locator(".drive-transfer-row").first();
+    await expect(transferRow.locator(".drive-module-row-copy")).toBeInViewport({ ratio: 1 });
+    await expect(transferRow.locator(".icedr-status-pill")).toBeInViewport({ ratio: 1 });
+    await expect(transferRow.locator(".drive-transfer-progress")).toBeInViewport({ ratio: 1 });
+    await expectNoHorizontalOverflow(page);
   });
 
   test("keeps newly refreshed share flags when the file list finishes later", async ({ page }) => {
