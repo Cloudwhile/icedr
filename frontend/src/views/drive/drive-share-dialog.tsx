@@ -136,10 +136,6 @@ function DriveShareDialogContent({
     ],
   );
   const totalSize = formatFileSize(collection.totalSizeBytes, locale);
-  const expiresLabel = t("share.expiryValue", {
-    count: policy.expiresValue,
-    unit: t(`share.units.${policy.expiresUnit}`),
-  });
   const shareUrl = createdShareUrl ?? (createdToken ? createShareUrl(createdToken) : "");
   const routeShareUrl = createdToken ? `/share/s/${encodeURIComponent(createdToken)}` : "";
   const expiryDays = expiryDaysInput ?? String(policy.expiresValue);
@@ -250,7 +246,6 @@ function DriveShareDialogContent({
             <div className="drive-share-dialog-body">
               <ShareTargetSummary
                 collection={collection}
-                expiresLabel={expiresLabel}
                 palette={palette}
                 shareItems={collection.itemCount}
                 totalSize={totalSize}
@@ -304,9 +299,9 @@ function DriveShareDialogContent({
                     </span>
                   ) : null}
                 </section>
-              ) : (
+              ) : collection.mode !== "single-file" ? (
                 <ShareCollectionList collection={collection} locale={locale} palette={palette} sourceItems={sourceItems} />
-              )}
+              ) : null}
             </div>
           )}
 
@@ -358,13 +353,11 @@ function DriveShareDialogContent({
 
 function ShareTargetSummary({
   collection,
-  expiresLabel,
   palette,
   shareItems,
   totalSize,
 }: {
   collection: ShareCollection;
-  expiresLabel: string;
   palette: Palette;
   shareItems: number;
   totalSize: string;
@@ -374,7 +367,7 @@ function ShareTargetSummary({
   return (
     <section className="drive-share-target">
       <div className="drive-share-target-file">
-        {primaryItem ? (
+        {primaryItem && collection.rootItems.length === 1 ? (
           <ItemIcon item={primaryItem} palette={palette} size={28} />
         ) : (
           <LocalIcon name={getShareModeIcon(collection.mode)} size={28} />
@@ -383,13 +376,9 @@ function ShareTargetSummary({
           <span className="drive-share-target-name icedr-truncate">{collection.title}</span>
           <span className="drive-share-target-meta icedr-truncate">
             {t(`share.mode.${collection.mode}`)} · {totalSize}
+            {collection.mode !== "single-file" ? ` · ${t("share.itemCountValue", { count: shareItems })}` : null}
           </span>
         </span>
-      </div>
-      <div className="drive-share-metrics" aria-label={t("share.quickFacts")}>
-        <Metric label={t("share.items")} value={String(shareItems)} />
-        <Metric label={t("share.totalSize")} value={totalSize} />
-        <Metric label={t("share.expires")} value={expiresLabel} />
       </div>
     </section>
   );
@@ -594,15 +583,6 @@ function ShareOptionToggle({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="drive-share-metric">
-      <span>{label}</span>
-      <strong className="icedr-truncate">{value}</strong>
-    </span>
-  );
-}
-
 async function copyShareLink(
   shareUrl: string,
   t: ReturnType<typeof useTranslations>,
@@ -804,7 +784,7 @@ function getFolderShareRootId({
 
 function getShareModeIcon(mode: RegisteredShareMode): LocalIconName {
   if (mode === "folder") return "folder";
-  if (mode === "multi-file") return "user_group";
+  if (mode === "multi-file") return "list";
   return "link";
 }
 

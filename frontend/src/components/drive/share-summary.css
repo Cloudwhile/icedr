@@ -1,0 +1,50 @@
+.external-share-summary {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+  padding: 22px;
+}
+
+.external-share-summary > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.external-share-summary > div {
+  min-width: 0;
+}
+
+.external-share-summary h1 {
+  color: var(--ui-text-primary);
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.external-share-summary p {
+  color: var(--ui-text-secondary);
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.external-share-summary span {
+  color: var(--ui-text-tertiary);
+  font-size: var(--text-ui-xs);
+}
+
+.external-share-access {
+  border-bottom: 1px solid var(--ui-border-subtle);
+  padding: 0 22px 22px;
+}
+
+.external-share-access p {
+  color: var(--ui-text-secondary);
+  margin: 0 0 12px;
+}
+
+.external-share-auth-methods {
+  width: 100%;
+}

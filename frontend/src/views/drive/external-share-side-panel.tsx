@@ -18,20 +18,16 @@ export function ExternalShareSidePanel({
   collectionItems,
   experience,
   expiresLabel,
-  onStartAccess,
   registeredShare,
   totalItems,
   totalSize,
-  verified,
 }: {
   collectionItems: DriveItem[];
   experience: AccessPolicySummary;
   expiresLabel: string;
-  onStartAccess?: () => void;
   registeredShare: RegisteredShare;
   totalItems: number;
   totalSize: string;
-  verified: boolean;
 }) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
@@ -42,27 +38,6 @@ export function ExternalShareSidePanel({
 
   return (
     <aside className="external-share-side-panel">
-      <section className="external-share-side-card external-share-verification-card">
-        <div className="external-share-side-card-heading">
-          <LocalIcon name="shield" size={17} />
-          <span>{t("share.authenticate")}</span>
-        </div>
-        <p>{verified ? t("share.verifiedAccess") : t("share.verificationHint")}</p>
-        <button
-          className="external-share-auth-primary"
-          disabled={!onStartAccess}
-          onClick={onStartAccess}
-          type="button"
-        >
-          <LocalIcon name={verified ? "tick" : "shield"} size={16} />
-          <span>{verified ? t("share.openDownload") : t("share.downloadAndVerify")}</span>
-        </button>
-        <span className="external-share-auth-note">
-          <LocalIcon name="lock" size={13} />
-          {t("share.privacyAssurance")}
-        </span>
-      </section>
-
       <section className="external-share-side-card">
         <div className="external-share-side-card-heading">
           <LocalIcon name="shield" size={17} />

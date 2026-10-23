@@ -143,40 +143,6 @@
   line-height: max(1.5em, 16px);
 }
 
-.drive-share-metrics {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.drive-share-metric {
-  border-right: 1px solid var(--share-dialog-border);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding-right: 11px;
-}
-
-.drive-share-metric:last-child {
-  border-right: 0;
-  padding-right: 0;
-}
-
-.drive-share-metric > span {
-  color: var(--share-dialog-subtle);
-  font-size: var(--text-ui-xs);
-  font-weight: var(--font-weight-semibold);
-  line-height: max(1.5em, 14px);
-}
-
-.drive-share-metric > strong {
-  color: var(--share-dialog-text);
-  font-size: var(--text-ui-sm);
-  font-weight: var(--font-weight-bold);
-  line-height: max(1.5em, 18px);
-}
-
 .drive-share-dialog-notice,
 .drive-share-dialog-feedback {
   border-top: 1px solid var(--share-dialog-border);
@@ -538,20 +504,9 @@
     width: min(100%, calc(100vw - 28px));
   }
 
-  .drive-share-metrics,
   .drive-share-option-grid,
   .drive-share-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .drive-share-metric {
-    border-right: 0;
-    border-bottom: 1px solid var(--share-dialog-border);
-    padding: 0 0 8px;
-  }
-
-  .drive-share-metric:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
 }

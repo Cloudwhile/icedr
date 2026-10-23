@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { Modal } from "@heroui/react";
+import { AppDialogShell } from "@/components/ui/app-dialog-shell";
 import { useRouter } from "@/compat/navigation";
 import { useTimeZone, useTranslations } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +25,8 @@ import { AppImage } from "@/components/ui/app-image";
 import { ApiErrorState } from "@/components/ui/app-error-boundary";
 import { ReadOnlyFilePreview } from "@/components/ui/read-only-file-preview";
 import { PreviewLifecycleBoundary } from "@/components/ui/preview-lifecycle-boundary";
-import { ExternalShareHeroCard } from "./external-share-hero-card";
+import { ShareAccessCard } from "@/components/drive/share-access-card";
+import { ShareSummary } from "@/components/drive/share-summary";
 import { ExternalShareSidePanel } from "./external-share-side-panel";
 import { ShareAuthDialog } from "./external-share-auth-dialog";
 import { VisitorShareBrowser } from "./external-share-browser";
@@ -629,7 +631,12 @@ function ExternalSharePreview({
         minWidth: "0px"
       }}>
           <div className="external-share-workbench">
-            <ExternalShareHeroCard collection={collection} expiresLabel={expiresLabel} locale={locale} palette={palette} shareToken={registeredShare.token} sourceItems={sourceItems} totalItems={shareContentCount} totalSize={totalSize} />
+            <ShareSummary collection={collection} expiresLabel={expiresLabel} palette={palette} totalItems={shareContentCount} totalSize={totalSize} />
+            <ShareAccessCard allowDownload={registeredShare.allowDownload} palette={palette} verified={verified} onStartAccess={primaryAccessItem && primaryAccessAction
+            ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction)
+            : contentLocked
+              ? () => requestVisitorAction(null, primaryAccessAction ?? "preview")
+              : undefined} />
 
             <VisitorShareBrowser activeItemId={accessItem?.id ?? null} allowDownload={registeredShare.allowDownload} allowPreview={registeredShare.allowPreview} collectionTitle={collection.title} currentFolder={currentFolder} folderId={folderId} goUp={goUp} locale={locale} onDownloadItem={item => requestVisitorAction(item, "download")} onOpenFolder={setFolderId} onPreviewItem={item => requestVisitorAction(item, "preview")} palette={palette} registeredShare={registeredShare} sourceItems={sourceItems} totalItems={shareContentCount} visibleItems={visibleItems} visibleListRef={visibleListRef} />
           </div>
@@ -639,15 +646,9 @@ function ExternalSharePreview({
           collectionItems={collection.rootItems}
           experience={experience}
           expiresLabel={expiresLabel}
-          onStartAccess={primaryAccessItem && primaryAccessAction
-            ? () => requestVisitorAction(primaryAccessItem, primaryAccessAction)
-            : contentLocked
-              ? () => requestVisitorAction(null, primaryAccessAction ?? "preview")
-              : undefined}
           registeredShare={registeredShare}
           totalItems={shareContentCount}
           totalSize={totalSize}
-          verified={verified}
         />
       </div>
 
@@ -756,21 +757,7 @@ function SharePreviewDialog({
     ? t("preview.lifecycleStatus.completed")
     : t("preview.notConfigured");
   const loadBlobUrl = useCallback((targetItem: DriveItem) => createSharedDriveItemBlobUrl(shareToken, targetItem, accessSessionId ?? undefined), [accessSessionId, shareToken]);
-  return <Modal.Backdrop isOpen={open} onOpenChange={nextOpen => !nextOpen && onClose()} style={{
-        background: palette.backdrop
-      }}>
-        <Modal.Container placement="center">
-          <Modal.Dialog style={{
-    background: "transparent",
-          color: palette.ink,
-          borderWidth: "1px",
-          borderColor: palette.hairlineStrong,
-          borderRadius: "var(--radius-md)",
-          maxWidth: "980px",
-          width: "min(980px, calc(100vw - 24px))",
-          overflow: "hidden",
-          boxShadow: palette.shadowDialog
-        }}>
+  return <AppDialogShell open={open} onOpenChange={nextOpen => !nextOpen && onClose()} palette={palette} size="lg" style={{ maxWidth: "980px", width: "min(980px, calc(100vw - 32px))", overflow: "hidden" }}>
             <Modal.Header style={{
             borderBottomWidth: "1px",
             borderColor: palette.hairline,
@@ -828,7 +815,5 @@ function SharePreviewDialog({
                 <ReadOnlyFilePreview key={item?.id ?? "empty"} item={item} loadBlobUrl={loadBlobUrl} locale={locale} palette={palette} statusLabel={statusLabel} t={t} />
               </PreviewLifecycleBoundary>
             </Modal.Body>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>;
+          </AppDialogShell>;
 }

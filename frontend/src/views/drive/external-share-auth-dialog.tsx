@@ -2,6 +2,7 @@
 
 import { AuthCodeInput } from "@/components/auth/auth-code-input";
 import { Modal } from "@heroui/react";
+import { AppDialogShell } from "@/components/ui/app-dialog-shell";
 import { MotionPresence } from "@/components/ui/motion";
 import { SegmentedToolGroup } from "@/components/ui/segmented-tool-group";
 import { isValidEmailAddress } from "@/features/auth/auth-input-validation";
@@ -92,24 +93,7 @@ export function ShareAuthDialog({
   const actionLabel = action === "download" ? t("actions.download") : t("share.openPreview");
 
   return (
-    <Modal.Backdrop
-      isOpen={open}
-      onOpenChange={(nextOpen) => !nextOpen && onClose()}
-      style={{ background: palette.backdrop }}
-    >
-      <Modal.Container placement="center">
-        <Modal.Dialog
-          style={{
-            background: palette.overlay,
-            color: palette.ink,
-            borderWidth: "1px",
-            borderColor: palette.hairlineStrong,
-            borderRadius: "var(--radius-md)",
-            maxWidth: "420px",
-            overflow: "hidden",
-            boxShadow: palette.shadowDialog,
-          }}
-        >
+    <AppDialogShell open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()} palette={palette} size="sm" style={{ maxWidth: "420px", overflow: "hidden" }}>
           <Modal.Header
             style={{
               borderBottomWidth: "1px",
@@ -170,6 +154,8 @@ export function ShareAuthDialog({
 
               {showAuthMethodSelector ? (
                 <SegmentedToolGroup
+                  showLabels
+                  className="external-share-auth-methods"
                   ariaLabel={`${t("share.accountLogin")} / ${t("share.temporaryEmail")}`}
                   onChange={onMethodChange}
                   options={[
@@ -351,8 +337,6 @@ export function ShareAuthDialog({
               </MotionPresence>
             </div>
           </Modal.Body>
-        </Modal.Dialog>
-      </Modal.Container>
-    </Modal.Backdrop>
+        </AppDialogShell>
   );
 }
