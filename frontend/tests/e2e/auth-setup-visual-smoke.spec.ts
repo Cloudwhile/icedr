@@ -105,7 +105,9 @@ test("visual smoke: renders auth and gated setup surfaces", async ({ page }, tes
 
   await page.goto("/login");
   await expect(page.locator(".icedr-auth-shell")).toBeVisible();
-  await expect(page.locator(".icedr-auth-visual-panel")).toBeVisible();
+  await expect(page.locator(".icedr-auth-brand")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.locator(".icedr-auth-visual-panel")).toHaveCount(0);
   await expect(page.locator(".icedr-auth-form-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await capture(page, "auth-login.png", testInfo);

@@ -15,7 +15,7 @@ import { LocalizedDriveShell, ThemeActions } from "./drive-shell";
 import { LegalConsentDialog } from "./legal-consent-dialog";
 import { LegalFooter } from "./legal-footer";
 import { Surface } from "./drive-primitives";
-import { AppImage } from "@/components/ui/app-image";
+import { AuthBrand } from "@/components/auth/auth-brand";
 import { OAuthProviderMark } from "@/components/ui/oauth-provider-mark";
 import {
   type AuthFieldErrors,
@@ -549,11 +549,10 @@ function AuthPage({
   } as React.CSSProperties}>
       <main className="icedr-auth-main">
         <section className="icedr-auth-shell">
-          <AuthVisualPanel brandLogo={brandLogo} mode={mode} siteName={siteName} />
           <section className="icedr-auth-panel">
             <div className="icedr-auth-panel-top">
+              <AuthBrand brandLogo={brandLogo} siteName={siteName} />
               <ThemeActions palette={palette} setThemeMode={setThemeMode} themeMode={themeMode} />
-              <AuthModePrompt mode={mode} next={next} />
             </div>
             <div ref={formRef} className="icedr-auth-form-slot">
               <AuthFormCard authCopy={authCopy} authSettings={authSettings} busy={busy} currentUser={currentUser} confirmPassword={confirmPassword} displayName={displayName} email={email} fieldErrors={fieldErrors} mode={mode} next={next} oauthProviders={oauthProviders} onContinue={continueCurrentSession} onOAuthLogin={loginWithOAuth} onDisplayNameChange={value => {
@@ -589,112 +588,6 @@ function AuthPage({
       setPendingRegistrationValues(null);
     }} open={legalDialogOpen} palette={palette} />
     </div>;
-}
-function AuthVisualPanel({
-  brandLogo,
-  mode,
-  siteName
-}: {
-  brandLogo: string;
-  mode: AuthPageMode;
-  siteName: string;
-}) {
-  const t = useTranslations();
-  const visualCopy = getAuthVisualCopy(mode, siteName, t);
-  const features = [
-    { title: t("auth.previewUser"), detail: t("auth.previewUserDetail") },
-    { title: t("auth.previewUpload"), detail: t("auth.previewUploadDetail") },
-    { title: t("auth.previewShare"), detail: t("auth.previewShareDetail") }
-  ];
-
-  return <aside className="icedr-auth-visual-panel">
-      <div className="icedr-auth-visual-brand">
-        <AppImage src={brandLogo} alt="" className="icedr-auth-visual-logo" />
-        <strong>{siteName}</strong>
-      </div>
-      <div className="icedr-auth-visual-copy">
-        <span>{visualCopy.badge}</span>
-        <h1>{visualCopy.title}</h1>
-        <p>{visualCopy.subtitle}</p>
-      </div>
-      <div className="icedr-auth-product-scene" aria-hidden="true">
-        <div className="icedr-auth-scene-grid">
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="icedr-auth-scene-card icedr-auth-scene-card-back">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="icedr-auth-scene-card icedr-auth-scene-card-front">
-          <AppImage src={brandLogo} alt="" />
-          <span />
-          <span />
-        </div>
-      </div>
-      <div className="icedr-auth-feature-row">
-        {features.map((feature) => (
-          <div className="icedr-auth-feature" key={feature.title}>
-            <span>
-              <strong>{feature.title}</strong>
-              <small>{feature.detail}</small>
-            </span>
-          </div>
-        ))}
-      </div>
-    </aside>;
-}
-
-function getAuthVisualCopy(
-  mode: AuthPageMode,
-  siteName: string,
-  t: ReturnType<typeof useTranslations>,
-) {
-  if (mode === "register") {
-    return {
-      badge: t("auth.registerHeroBadge"),
-      subtitle: t("auth.registerHeroSubtitle"),
-      title: t("auth.registerHeroTitle", { siteName }),
-    };
-  }
-  if (mode === "forgot" || mode === "reset") {
-    return {
-      badge: t("auth.recoveryHeroBadge"),
-      subtitle: t("auth.recoveryHeroSubtitle"),
-      title: t("auth.recoveryHeroTitle", { siteName }),
-    };
-  }
-  return {
-    badge: t("auth.loginHeroBadge"),
-    subtitle: t("auth.loginHeroSubtitle"),
-    title: t("auth.loginHeroTitle", { siteName }),
-  };
-}
-function AuthModePrompt({
-  mode,
-  next
-}: {
-  mode: AuthPageMode;
-  next: string;
-}) {
-  const t = useTranslations();
-  if (mode === "register") {
-    return <Link href={`/login?next=${encodeURIComponent(next)}`} className="icedr-auth-mode-prompt icedr-has-hover">
-        {t("auth.backToLogin")}
-      </Link>;
-  }
-  if (mode === "login") {
-    return <Link href={`/register?next=${encodeURIComponent(next)}`} className="icedr-auth-mode-prompt icedr-has-hover">
-        {t("auth.createInstead")}
-      </Link>;
-  }
-  return <Link href={`/login?next=${encodeURIComponent(next)}`} className="icedr-auth-mode-prompt icedr-has-hover">
-      {t("auth.backToLogin")}
-    </Link>;
 }
 function AuthFormCard({
   authCopy,
