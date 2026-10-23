@@ -542,7 +542,7 @@ export function OAuthAdminSettingsPage({
       aria-label={t("admin.oauthSettings")}
     >
       <div className="drive-system-settings-main drive-oauth-admin-main">
-        <h1 className="icedr-sr-only">{t("admin.oauthSettings")}</h1>
+        <h1 className="drive-oauth-page-title">{t("admin.oauthSettings")}</h1>
         {loadError ? (
           <div className="admin-inline-alert drive-oauth-load-error" role="alert">
             <span>
@@ -854,8 +854,8 @@ function GlobalOAuthPrompt({
             label={t("admin.oauthEnableGlobalTitle")}
             onClick={onEnable}
             palette={palette}
-            tone="success"
-            visual="surface"
+            tone="accent"
+            visual="solid"
           >
             <LocalIcon name="power" size={17} />
           </ToolButton>

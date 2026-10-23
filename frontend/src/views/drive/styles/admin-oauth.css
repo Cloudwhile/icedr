@@ -19,6 +19,14 @@
   overflow: visible;
 }
 
+.drive-oauth-page-title {
+  color: var(--ui-text-primary);
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.5;
+  margin: 0;
+}
+
 .admin-shell .drive-oauth-toolbar {
   background: var(--drive-ui-surface);
   border: 1px solid var(--drive-ui-line);
@@ -45,11 +53,17 @@
   min-width: 0;
 }
 
-.admin-shell .drive-oauth-overview-actions .icedr-tool-button,
+.admin-shell .drive-oauth-overview-actions .icedr-tool-button:not(.icedr-tool-button-labeled),
 .admin-shell .drive-oauth-filterbar > .icedr-tool-button {
   height: 38px;
   min-width: 38px;
   width: 38px;
+}
+
+.admin-shell .drive-oauth-overview-actions .icedr-tool-button-labeled {
+  height: auto;
+  min-height: 38px;
+  width: auto;
 }
 
 .admin-shell .drive-oauth-summary {
@@ -1012,7 +1026,7 @@
   padding: 0;
 }
 
-.drive-oauth-global-dialog > header {
+.drive-oauth-global-dialog > [data-slot="modal-header"] {
   align-items: center;
   border-bottom: 1px solid var(--drive-ui-line);
   display: grid;
@@ -1022,7 +1036,7 @@
   padding: 14px 16px;
 }
 
-.drive-oauth-global-dialog > header h2 {
+.drive-oauth-global-dialog > [data-slot="modal-header"] h2 {
   color: var(--drive-ui-ink);
   font-size: var(--text-ui-md);
   font-weight: var(--font-weight-bold);
@@ -1030,7 +1044,7 @@
   margin: 0;
 }
 
-.drive-oauth-global-dialog [data-slot="body"] {
+.drive-oauth-global-dialog [data-slot="modal-body"] {
   margin: 0;
   padding: 14px 16px 16px;
 }
